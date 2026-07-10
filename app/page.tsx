@@ -1,3 +1,4 @@
+import Image from "next/image";
 const loopSteps = [
   { number: "01", title: "測る", english: "MEASURE", text: "SOXAIなどのウェアラブルデータを活用し、睡眠時間・睡眠ステージ・心拍・HRV・ストレスなどを可視化します。" },
   { number: "02", title: "理解する", english: "UNDERSTAND", text: "睡眠データと前日の生活習慣を組み合わせ、その日の睡眠に影響した可能性のある要因を整理します。" },
@@ -26,10 +27,16 @@ export default function Home() {
     <main className="min-h-screen bg-[#f4f1ea] text-[#17212b]">
       <header className="fixed left-0 top-0 z-50 w-full border-b border-black/5 bg-[#f4f1ea]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 lg:px-10">
-          <a href="#" className="leading-none">
-            <p className="text-[11px] font-semibold tracking-[0.35em] text-[#9b7a43]">SLEEP WELLNESS</p>
-            <p className="mt-2 text-sm font-medium tracking-[0.08em]">PLATFORM</p>
-          </a>
+        <a href="#" className="block">
+  <Image
+    src="/swij1.PNG"
+    alt="Sleep Wellness Institute Japan"
+    width={180}
+    height={100}
+    priority
+    className="h-auto w-[150px] object-contain"
+  />
+</a>  
 
           <nav className="hidden items-center gap-8 text-sm text-[#17212b]/65 md:flex">
             <a className="transition hover:text-[#17212b]" href="#about">About</a>
