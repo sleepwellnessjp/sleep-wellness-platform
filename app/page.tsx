@@ -25,7 +25,7 @@ const educationItems = [
 const programItems = [
   {
     title: "メラトニンヨガ™",
-    image: "/メラトニンヨガ指導.JPG",
+    image: "/melatonin-yoga.jpg",
     alt: "メラトニンヨガ指導",
     description: "呼吸・動き・間・瞑想を組み合わせ、夜の休息へ導く睡眠ウェルネスプログラム。",
   },
