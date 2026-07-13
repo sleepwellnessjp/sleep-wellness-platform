@@ -22,6 +22,27 @@ const educationItems = [
   "指導・レポート作成",
 ];
 
+const programItems = [
+  {
+    title: "メラトニンヨガ™",
+    image: "/メラトニンヨガ指導.JPG",
+    alt: "メラトニンヨガ指導",
+    description: "呼吸・動き・間・瞑想を組み合わせ、夜の休息へ導く睡眠ウェルネスプログラム。",
+  },
+  {
+    title: "睡眠ウェルネス分析",
+    image: "/睡眠分析.JPG",
+    alt: "睡眠ウェルネス分析",
+    description: "睡眠データと前日の行動を照合し、改善につながるポイントを分かりやすく整理します。",
+  },
+  {
+    title: "Sleep Wellness Retreat™",
+    image: "/リトリート.JPG",
+    alt: "Sleep Wellness Retreat",
+    description: "自然環境、ヨガ、食事、入浴、睡眠データを組み合わせ、滞在前後の変化を可視化するリトリートプログラムです。",
+  },
+];
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#f4f1ea] text-[#17212b]">
@@ -202,17 +223,24 @@ export default function Home() {
           </div>
 
           <div className="mt-16 grid gap-6 lg:grid-cols-2">
-            <article className="relative min-h-[560px] overflow-hidden rounded-[2rem] bg-[#8ca89a] p-8 text-white md:p-12">
-              <div className="absolute -right-28 -top-28 h-80 w-80 rounded-full border border-white/20" />
-              <div className="absolute -right-12 -top-12 h-80 w-80 rounded-full border border-white/20" />
-              <div className="relative flex h-full flex-col justify-between">
-                <div>
-                  <p className="text-xs font-semibold tracking-[0.3em] text-white/60">SLEEP WELLNESS RETREAT</p>
-                  <h3 className="mt-7 text-4xl font-medium tracking-[-0.04em] md:text-5xl">滞在そのものを、<br />回復の体験へ。</h3>
+            {programItems.map((program, index) => (
+              <article key={program.title} className="overflow-hidden rounded-[2rem] border border-[#17212b]/10 bg-[#f4f1ea]">
+                <div className="relative h-[280px] w-full md:h-[320px]">
+                  <Image
+                    src={program.image}
+                    alt={program.alt}
+                    fill
+                    priority={index === 0}
+                    className="object-cover"
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                  />
                 </div>
-                <p className="mt-40 max-w-xl text-lg leading-9 text-white/75">自然環境、ヨガ、食事、入浴、睡眠データを組み合わせ、滞在前後の変化を可視化するリトリートプログラムです。</p>
-              </div>
-            </article>
+                <div className="p-8 md:p-10">
+                  <h3 className="text-2xl font-medium tracking-[-0.04em] md:text-3xl">{program.title}</h3>
+                  <p className="mt-6 text-base leading-8 text-[#17212b]/65 md:text-lg md:leading-9">{program.description}</p>
+                </div>
+              </article>
+            ))}
 
             <article className="relative min-h-[560px] overflow-hidden rounded-[2rem] bg-[#d8d0bf] p-8 md:p-12">
               <div className="absolute right-[-80px] top-12 h-64 w-64 rounded-full bg-[#c8a96a]/35 blur-2xl" />
