@@ -240,9 +240,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const analysis = JSON.parse(outputText) as unknown;
+    let analysis: unknown;
+    try {
+      analysis = JSON.parse(outputText) as unknown;
+    } catch {
+      console.error("Failed to parse OpenAI analysis JSON");
+      return NextResponse.json(
+        { error: "分析結果の解析に失敗しました。" },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json(analysis);
-  } catch {
+  } catch (error) {
+    console.error("OpenAI analysis failed:", error);
     return NextResponse.json(
       { error: "AI分析に失敗しました。しばらくしてから再度お試しください。" },
       { status: 500 },
