@@ -256,8 +256,12 @@ export default function AnalysisResultPage() {
           </section>
         )}
 
-        <div className="mt-12 flex flex-col gap-4 sm:flex-row">
-          <button className="rounded-full bg-[#071426] px-8 py-5 text-lg font-semibold text-white transition hover:-translate-y-1 hover:bg-[#10233c]">
+        <div className="mt-12 flex flex-col gap-4 print:hidden sm:flex-row">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="rounded-full bg-[#071426] px-8 py-5 text-lg font-semibold text-white transition hover:-translate-y-1 hover:bg-[#10233c]"
+          >
             PDFダウンロード
           </button>
 
