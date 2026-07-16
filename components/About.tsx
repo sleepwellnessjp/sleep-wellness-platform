@@ -29,7 +29,7 @@ export default function About() {
   return (
     <section
       id="about"
-      className="relative overflow-hidden bg-[#f4f1e9] py-24 text-[#0b1b31] sm:py-28 lg:py-36"
+      className="relative overflow-hidden bg-[#f4f1e9] py-28 text-[#0b1b31] sm:py-32 lg:py-40"
     >
       <div className="absolute -left-40 top-0 h-[420px] w-[420px] rounded-full bg-cyan-100/50 blur-3xl" />
       <div className="absolute -right-40 bottom-0 h-[460px] w-[460px] rounded-full bg-amber-100/45 blur-3xl" />

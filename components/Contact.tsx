@@ -13,7 +13,7 @@ const inquiryTypes = [
 ];
 
 const inputClass =
-  "mt-3 w-full rounded-2xl border border-slate-200 bg-white px-5 py-4 text-base text-[#0b1b31] outline-none transition placeholder:text-slate-400 focus:border-[#315f68] focus:ring-4 focus:ring-[#315f68]/10";
+  "mt-3 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition duration-300 placeholder:text-white/35 focus:border-[#d8b36a]/50 focus:bg-white/[0.07] focus:ring-4 focus:ring-[#d8b36a]/10";
 
 export default function Contact() {
   const [inquiryType, setInquiryType] = useState("");
@@ -27,7 +27,7 @@ export default function Contact() {
   return (
     <section
       id="contact"
-      className="relative overflow-hidden bg-white py-24 text-[#0b1b31] sm:py-28 lg:py-36"
+      className="relative overflow-hidden bg-white py-28 text-[#0b1b31] sm:py-32 lg:py-40"
     >
       <div className="absolute left-0 top-1/3 h-96 w-96 -translate-x-1/2 rounded-full bg-cyan-100/50 blur-3xl" />
       <div className="absolute bottom-0 right-0 h-[460px] w-[460px] translate-x-1/3 translate-y-1/3 rounded-full bg-amber-100/45 blur-3xl" />
@@ -50,7 +50,7 @@ export default function Contact() {
               <span className="text-[#315f68]">つくりませんか。</span>
             </h2>
 
-            <p className="mt-8 max-w-xl text-base leading-8 text-slate-700 sm:text-lg">
+            <p className="mt-8 max-w-xl text-base leading-8 text-slate-700 sm:text-lg sm:leading-9">
               睡眠ウェルネスを、企業、教育、地域、メディア、
               イベントなど、さまざまな領域へ広げていくための
               ご相談を受け付けています。
@@ -109,166 +109,213 @@ export default function Contact() {
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-slate-200 bg-[#f8f8f6] p-7 shadow-[0_30px_90px_-45px_rgba(15,23,42,0.28)] sm:p-10 lg:p-12">
-            {submitted ? (
-              <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
-                <p className="text-xs font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                  THANK YOU
-                </p>
+          {/* Luxury inquiry card */}
+          <div className="relative overflow-hidden rounded-[2rem] bg-[#071426] p-[1px] shadow-[0_40px_100px_-40px_rgba(7,20,38,0.55)]">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-80"
+              aria-hidden="true"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(216,179,106,0.55), rgba(49,95,104,0.35), rgba(255,255,255,0.08), rgba(216,179,106,0.4))",
+              }}
+            />
 
-                <h3 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-[#071426]">
-                  お問い合わせを
-                  <br />
-                  受け付けました
-                </h3>
+            <div className="relative overflow-hidden rounded-[calc(2rem-1px)] bg-[#071426]">
+              <div
+                className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-[#d8b36a]/10 blur-3xl"
+                aria-hidden="true"
+              />
+              <div
+                className="pointer-events-none absolute -bottom-28 -left-16 h-72 w-72 rounded-full bg-[#315f68]/20 blur-3xl"
+                aria-hidden="true"
+              />
 
-                <p className="mt-6 max-w-md text-base leading-8 text-slate-600">
-                  内容を確認のうえ、担当よりご連絡いたします。
-                  しばらくお待ちください。
-                </p>
+              <div className="relative p-7 sm:p-10 lg:p-12">
+                {submitted ? (
+                  <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[#d8b36a]/35 bg-[#d8b36a]/10">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        className="h-7 w-7 text-[#d8b36a]"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 12.5l4.5 4.5L19 7.5" />
+                      </svg>
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSubmitted(false)}
-                  className="mt-10 inline-flex items-center justify-center rounded-full border border-[#071426]/15 bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition hover:-translate-y-0.5"
-                >
-                  別のご相談を送る
-                </button>
+                    <p className="mt-8 text-xs font-semibold tracking-[0.26em] text-[#d8b36a]">
+                      THANK YOU
+                    </p>
+
+                    <h3 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white">
+                      お問い合わせを
+                      <br />
+                      受け付けました
+                    </h3>
+
+                    <p className="mt-6 max-w-md text-base leading-8 text-white/65">
+                      内容を確認のうえ、担当よりご連絡いたします。
+                      しばらくお待ちください。
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubmitted(false)}
+                      className="mt-10 inline-flex items-center justify-center rounded-full border border-white/20 bg-white/5 px-7 py-3.5 text-sm font-semibold text-white transition duration-500 hover:-translate-y-0.5 hover:border-[#d8b36a]/40 hover:bg-white/10"
+                    >
+                      別のご相談を送る
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-10 border-b border-white/10 pb-8">
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xs font-semibold tracking-[0.26em] text-[#d8b36a]">
+                          PRIVATE INQUIRY
+                        </p>
+                        <span className="hidden text-[10px] font-semibold tracking-[0.22em] text-white/35 sm:inline">
+                          SWIJ
+                        </span>
+                      </div>
+
+                      <h3 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">
+                        お問い合わせ
+                      </h3>
+
+                      <p className="mt-3 text-sm leading-7 text-white/55">
+                        必要事項をご入力のうえ、送信してください。
+                      </p>
+                    </div>
+
+                    <form className="space-y-6" onSubmit={handleSubmit}>
+                      <div>
+                        <label
+                          htmlFor="name"
+                          className="text-sm font-semibold text-white/85"
+                        >
+                          お名前
+                        </label>
+
+                        <input
+                          id="name"
+                          name="name"
+                          type="text"
+                          required
+                          autoComplete="name"
+                          placeholder="山田 太郎"
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="organization"
+                          className="text-sm font-semibold text-white/85"
+                        >
+                          会社・団体名
+                        </label>
+
+                        <input
+                          id="organization"
+                          name="organization"
+                          type="text"
+                          autoComplete="organization"
+                          placeholder="会社名・団体名"
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="email"
+                          className="text-sm font-semibold text-white/85"
+                        >
+                          メールアドレス
+                        </label>
+
+                        <input
+                          id="email"
+                          name="email"
+                          type="email"
+                          required
+                          autoComplete="email"
+                          placeholder="example@email.com"
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="inquiryType"
+                          className="text-sm font-semibold text-white/85"
+                        >
+                          お問い合わせ種別
+                        </label>
+
+                        <select
+                          id="inquiryType"
+                          name="inquiryType"
+                          required
+                          value={inquiryType}
+                          onChange={(event) =>
+                            setInquiryType(event.target.value)
+                          }
+                          className={`${inputClass} appearance-none`}
+                        >
+                          <option value="" disabled className="bg-[#071426]">
+                            選択してください
+                          </option>
+
+                          {inquiryTypes.map((item) => (
+                            <option
+                              key={item}
+                              value={item}
+                              className="bg-[#071426]"
+                            >
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="message"
+                          className="text-sm font-semibold text-white/85"
+                        >
+                          お問い合わせ内容
+                        </label>
+
+                        <textarea
+                          id="message"
+                          name="message"
+                          required
+                          rows={7}
+                          placeholder="ご相談内容をご入力ください。"
+                          className={`${inputClass} resize-none leading-7`}
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="group inline-flex w-full items-center justify-center rounded-full bg-gradient-to-r from-[#e6c78a] via-[#d8b36a] to-[#c49a4a] px-7 py-4 text-sm font-bold text-[#071426] shadow-[0_18px_40px_-20px_rgba(216,179,106,0.7)] transition duration-500 hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-18px_rgba(216,179,106,0.85)] sm:w-auto"
+                      >
+                        送信する
+                        <span
+                          aria-hidden="true"
+                          className="ml-3 transition-transform duration-500 group-hover:translate-x-1"
+                        >
+                          →
+                        </span>
+                      </button>
+                    </form>
+                  </>
+                )}
               </div>
-            ) : (
-              <>
-                <div className="mb-10">
-                  <p className="text-xs font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                    MESSAGE FORM
-                  </p>
-
-                  <h3 className="mt-4 text-2xl font-semibold tracking-[-0.03em] sm:text-3xl">
-                    お問い合わせ
-                  </h3>
-
-                  <p className="mt-3 text-sm leading-7 text-slate-600">
-                    必要事項をご入力のうえ、送信してください。
-                  </p>
-                </div>
-
-                <form className="space-y-6" onSubmit={handleSubmit}>
-                  <div>
-                    <label
-                      htmlFor="name"
-                      className="text-sm font-semibold text-[#0b1b31]"
-                    >
-                      お名前
-                    </label>
-
-                    <input
-                      id="name"
-                      name="name"
-                      type="text"
-                      required
-                      autoComplete="name"
-                      placeholder="山田 太郎"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="organization"
-                      className="text-sm font-semibold text-[#0b1b31]"
-                    >
-                      会社・団体名
-                    </label>
-
-                    <input
-                      id="organization"
-                      name="organization"
-                      type="text"
-                      autoComplete="organization"
-                      placeholder="会社名・団体名"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="email"
-                      className="text-sm font-semibold text-[#0b1b31]"
-                    >
-                      メールアドレス
-                    </label>
-
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      placeholder="example@email.com"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="inquiryType"
-                      className="text-sm font-semibold text-[#0b1b31]"
-                    >
-                      お問い合わせ種別
-                    </label>
-
-                    <select
-                      id="inquiryType"
-                      name="inquiryType"
-                      required
-                      value={inquiryType}
-                      onChange={(event) => setInquiryType(event.target.value)}
-                      className={`${inputClass} appearance-none`}
-                    >
-                      <option value="" disabled>
-                        選択してください
-                      </option>
-
-                      {inquiryTypes.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="message"
-                      className="text-sm font-semibold text-[#0b1b31]"
-                    >
-                      お問い合わせ内容
-                    </label>
-
-                    <textarea
-                      id="message"
-                      name="message"
-                      required
-                      rows={7}
-                      placeholder="ご相談内容をご入力ください。"
-                      className={`${inputClass} resize-none leading-7`}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="group inline-flex w-full items-center justify-center rounded-full bg-[#0b1b31] px-7 py-4 text-sm font-bold text-white transition duration-300 hover:-translate-y-0.5 hover:bg-[#15304f] sm:w-auto"
-                  >
-                    送信する
-                    <span
-                      aria-hidden="true"
-                      className="ml-3 transition-transform duration-300 group-hover:translate-x-1"
-                    >
-                      →
-                    </span>
-                  </button>
-                </form>
-              </>
-            )}
+            </div>
           </div>
         </div>
       </div>
