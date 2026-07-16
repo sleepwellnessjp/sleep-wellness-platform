@@ -54,6 +54,82 @@
   }
 }
 
+@keyframes analysis-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes analysis-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes analysis-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes analysis-orbit {
+  from {
+    transform: rotate(0deg) translateX(58px) rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg) translateX(58px) rotate(-360deg);
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #071426 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-hidden,
+  .no-print {
+    display: none !important;
+  }
+
+  .report-print-root {
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .report-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .report-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .report-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
