@@ -9,8 +9,8 @@ import { AnalysisError, runPendingAnalysis } from "@/lib/analysis-session";
 
 const steps = [
   {
-    title: "SOXAI画像を読み取り中",
-    detail: "睡眠スコア・HRV・SpO₂ などを抽出しています",
+    title: "確認済みデータを反映中",
+    detail: "抽出・手入力した睡眠指標を分析に渡しています",
   },
   {
     title: "生活習慣との関連を分析中",
@@ -183,7 +183,7 @@ export default function AnalysisLoadingPage() {
       <div className="relative z-10 flex flex-1 items-center justify-center px-5 py-12 sm:py-16">
         <div className="w-full max-w-lg text-center">
           <div className="mb-8 sm:mb-10">
-            <AnalysisFlow current={2} variant="dark" />
+            <AnalysisFlow current={3} variant="dark" />
           </div>
 
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
@@ -195,7 +195,7 @@ export default function AnalysisLoadingPage() {
           </h1>
 
           <p className="mx-auto mt-4 max-w-md text-[15px] leading-7 text-white/65 sm:text-base sm:leading-8">
-            SOXAI画像と生活習慣をもとに、
+            確認済みの睡眠データと生活習慣をもとに、
             Sleep Wellness Report を作成しています。
           </p>
 

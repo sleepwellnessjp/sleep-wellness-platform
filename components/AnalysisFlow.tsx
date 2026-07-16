@@ -1,9 +1,10 @@
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 const STEPS: { n: Step; label: string }[] = [
   { n: 1, label: "入力" },
-  { n: 2, label: "分析" },
-  { n: 3, label: "結果" },
+  { n: 2, label: "確認" },
+  { n: 3, label: "分析" },
+  { n: 4, label: "結果" },
 ];
 
 export default function AnalysisFlow({
@@ -18,7 +19,7 @@ export default function AnalysisFlow({
   return (
     <nav
       aria-label="分析の進行状況"
-      className="flex items-center justify-center gap-2 sm:gap-3"
+      className="flex flex-wrap items-center justify-center gap-2 sm:gap-3"
     >
       {STEPS.map((step, index) => {
         const done = step.n < current;
@@ -28,7 +29,7 @@ export default function AnalysisFlow({
           <div key={step.n} className="flex items-center gap-2 sm:gap-3">
             {index > 0 && (
               <span
-                className={`hidden h-px w-6 sm:block ${
+                className={`hidden h-px w-4 sm:block sm:w-5 ${
                   isDark
                     ? done || active
                       ? "bg-[#d8b36a]/45"
@@ -40,9 +41,9 @@ export default function AnalysisFlow({
                 aria-hidden
               />
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold ${
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold sm:h-7 sm:w-7 sm:text-[11px] ${
                   isDark
                     ? active
                       ? "bg-[#d8b36a] text-[#071426]"
@@ -59,7 +60,7 @@ export default function AnalysisFlow({
                 {done ? "✓" : step.n}
               </span>
               <span
-                className={`text-xs font-medium sm:text-sm ${
+                className={`text-[11px] font-medium sm:text-sm ${
                   isDark
                     ? active
                       ? "text-white"

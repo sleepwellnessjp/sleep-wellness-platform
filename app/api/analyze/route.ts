@@ -1,45 +1,16 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import {
+  isImageDataUrl,
+  metricsJsonSchema,
+  openaiErrorMessage,
+} from "@/lib/openai-helpers";
+import { normalizeMetrics, type AnalysisMetrics } from "@/lib/analysis-session";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const isDev = process.env.NODE_ENV === "development";
-
-function openaiErrorMessage(error: unknown): string {
-  if (!error || typeof error !== "object") {
-    return error instanceof Error ? error.message : String(error);
-  }
-
-  const record = error as {
-    message?: unknown;
-    status?: unknown;
-    code?: unknown;
-    type?: unknown;
-    error?: { message?: unknown; code?: unknown; type?: unknown };
-  };
-
-  const parts: string[] = [];
-  if (typeof record.status === "number") {
-    parts.push(`HTTP ${record.status}`);
-  }
-  if (typeof record.message === "string" && record.message.trim()) {
-    parts.push(record.message.trim());
-  }
-  const nested = record.error;
-  if (nested && typeof nested === "object") {
-    if (typeof nested.message === "string" && nested.message.trim()) {
-      parts.push(nested.message.trim());
-    }
-    if (typeof nested.code === "string") parts.push(`code=${nested.code}`);
-    if (typeof nested.type === "string") parts.push(`type=${nested.type}`);
-  } else {
-    if (typeof record.code === "string") parts.push(`code=${record.code}`);
-    if (typeof record.type === "string") parts.push(`type=${record.type}`);
-  }
-
-  return parts.length > 0 ? parts.join(" | ") : "Unknown OpenAI error";
-}
 
 type LifestyleData = {
   clientName?: string;
@@ -95,6 +66,7 @@ type LifestyleData = {
 type AnalyzeRequestBody = {
   lifestyle?: LifestyleData;
   images?: unknown;
+  metrics?: Partial<AnalysisMetrics>;
 };
 
 const analysisSchema = {
@@ -138,50 +110,7 @@ const analysisSchema = {
         recovery: { type: "integer", enum: [1, 2, 3, 4, 5] },
       },
     },
-    metrics: {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "sleepScore",
-        "bedtime",
-        "wakeTime",
-        "sleepDuration",
-        "sleepEfficiency",
-        "awakenings",
-        "remSleep",
-        "lightSleep",
-        "deepSleep",
-        "sleepDebt",
-        "sleepLatency",
-        "circadianRhythm",
-        "respiratoryRate",
-        "spo2",
-        "heartRate",
-        "hrv",
-        "skinTemperature",
-        "stress",
-      ],
-      properties: {
-        sleepScore: { type: ["number", "null"] },
-        bedtime: { type: "string" },
-        wakeTime: { type: "string" },
-        sleepDuration: { type: "string" },
-        sleepEfficiency: { type: "string" },
-        awakenings: { type: "string" },
-        remSleep: { type: "string" },
-        lightSleep: { type: "string" },
-        deepSleep: { type: "string" },
-        sleepDebt: { type: "string" },
-        sleepLatency: { type: "string" },
-        circadianRhythm: { type: "string" },
-        respiratoryRate: { type: "string" },
-        spo2: { type: "string" },
-        heartRate: { type: "string" },
-        hrv: { type: "string" },
-        skinTemperature: { type: "string" },
-        stress: { type: "string" },
-      },
-    },
+    metrics: metricsJsonSchema,
     goodPoints: {
       type: "array",
       items: { type: "string" },
@@ -203,8 +132,8 @@ const analysisSchema = {
 
 const SYSTEM_INSTRUCTIONS = `あなたは Sleep Wellness Institute Japan（SWIJ）創設者・若林貴久の睡眠分析エンジン
 「Sleep Wellness Brain™ Version 1」です。
-SOXAIなどのウェアラブル睡眠データ画像と、利用者の生活習慣情報をもとに、
-SWIJ専用レポートを日本語で作成してください。
+SOXAIなどのウェアラブル睡眠データ画像と、利用者の生活習慣情報、
+および確認済みの抽出メトリクスをもとに、SWIJ専用レポートを日本語で作成してください。
 AI、ChatGPT、モデル名、エンジン名などの内部事情は文章に書かないでください。
 
 ==============================
@@ -248,44 +177,23 @@ summary（総合評価）の冒頭、および goodPoints を先に示す。課�
 1文は短く。冗長な言い回し・同じ内容の繰り返しを避ける。重要文のみ **太字**。
 
 ==============================
-画像からの数値・時刻の読み取り（最大限抽出）
+確認済みメトリクスの扱い（最重要）
 ==============================
-画像に表示されている項目は可能な限りすべて抽出し、metrics に入れる。
-手入力より画像を常に優先する。推測で数値を作らない。読めない項目は ""、sleepScore は null。
+ユーザーが確認・確定したメトリクスが渡された場合、それを分析の唯一の数値根拠とする。
+画像の再読取で上書きしない。空文字の項目は「確認できなかった」扱いとし、推測で埋めない。
+出力 JSON の metrics には、確認済みメトリクスをそのまま（または同等の表記で）入れる。
 
-必ず探して抽出する項目（ラベル表記ゆれに対応）:
-- sleepScore … 睡眠スコア / Sleep Score / 総合スコア（数値）
-- bedtime … 入眠時間 / 就寝 / 睡眠開始
-- wakeTime … 起床時間 / 覚醒 / 睡眠終了
-- sleepDuration … 睡眠時間 / Total Sleep / 総睡眠
-- sleepEfficiency … 睡眠効率 / Efficiency
-- awakenings … 覚醒時間 / 中途覚醒 / Awake（時間または回数。単位付きで記載）
-- remSleep … REM睡眠 / レム / REM
-- lightSleep … 浅い睡眠 / Light / ライト
-- deepSleep … 深い睡眠 / Deep / ディープ
-- sleepDebt … 睡眠負債 / Sleep Debt / 負債
-- sleepLatency … 入眠潜時 / Latency / 潜時
-- circadianRhythm … 体内時計 / Circadian / クロノタイプ・位相の表示
-- respiratoryRate … 呼吸数 / Respiratory / 呼吸（回/分など）
-- spo2 … 平均SpO₂ / SpO2 / 血中酸素
-- heartRate … 平均心拍数 / HR / RHR / 安静時心拍
-- hrv … HRV / 心拍変動 / RMSSD など
-- skinTemperature … 皮膚温度 / Skin Temp / 皮膚温
-- stress … ストレス / Stress（測定値。日中/夜間が分かる場合は区別して記載）
+確認済みメトリクスが無い場合のみ、画像から最大限抽出する:
+- 手入力より画像を常に優先する
+- 推測で数値を作らない。読めない項目は ""、sleepScore は null
 
-読み取りルール:
-- 単位付き・簡潔。時刻は HH:MM 優先
-- 日付またぎ（例：23:40→翌6:20）も正しく解釈
-- 複数画像は同日データを統合。矛盾時は summary / caution で不確実性を示す
-- 「入眠／就寝／睡眠開始」→ bedtime、「起床／覚醒／睡眠終了」→ wakeTime
-- 画像値が読めたら必ず metrics に入れ、分析の根拠とする（手入力より画像優先）
-- 両方あり差異がある場合：画像採用＋ summary または caution に短く注記
-- 画像から確認できない場合は推測せず metrics は ""
-- 画像が読めず手入力のみ：metrics に手入力を入れてよい（補助情報である旨を必要なら注記）
+必ず扱う項目:
+睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 覚醒時間 /
+REM睡眠 / 浅い睡眠 / 深い睡眠 / 睡眠負債 / 入眠潜時 / 体内時計 /
+呼吸数 / 平均SpO₂ / 平均心拍 / HRV / 皮膚温度 / ストレス
 
 【ストレス】
-- 画像の測定ストレスを metrics.stress に優先して入れる
-- 単一数値で心理を断定しない。心拍・HRV・効率・覚醒・生活習慣と総合評価
+- 測定ストレスは metrics.stress
 - 「主観的ストレス・気分」は本人申告。metrics.stress に入れず文章で分けて扱う
 
 ==============================
@@ -340,17 +248,11 @@ summary（総合評価）の冒頭、および goodPoints を先に示す。課�
 - 一般論の羅列は禁止。今回のデータと入力に紐づける
 - 出力は指定の JSON スキーマのみ`;
 
-function isDataUrl(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^data:image\/(jpeg|jpg|png);base64,/i.test(value)
-  );
-}
-
 function validateBody(body: unknown): {
   ok: true;
   lifestyle: LifestyleData;
   images: string[];
+  metrics?: AnalysisMetrics;
 } | {
   ok: false;
   message: string;
@@ -359,7 +261,7 @@ function validateBody(body: unknown): {
     return { ok: false, message: "リクエスト形式が正しくありません。" };
   }
 
-  const { lifestyle, images } = body as AnalyzeRequestBody;
+  const { lifestyle, images, metrics } = body as AnalyzeRequestBody;
 
   if (!lifestyle || typeof lifestyle !== "object" || Array.isArray(lifestyle)) {
     return { ok: false, message: "生活習慣データが不足しています。" };
@@ -369,14 +271,19 @@ function validateBody(body: unknown): {
     return { ok: false, message: "睡眠データ画像が不足しています。" };
   }
 
-  if (!images.every(isDataUrl)) {
+  if (!images.every(isImageDataUrl)) {
     return {
       ok: false,
       message: "画像は JPEG または PNG の data URL で送信してください。",
     };
   }
 
-  return { ok: true, lifestyle, images };
+  const confirmed =
+    metrics && typeof metrics === "object" && !Array.isArray(metrics)
+      ? normalizeMetrics(metrics)
+      : undefined;
+
+  return { ok: true, lifestyle, images, metrics: confirmed };
 }
 
 function formatYesNone(
@@ -401,36 +308,42 @@ function formatCaffeineType(value: string | undefined): string | undefined {
   return labels[value] ?? value;
 }
 
-/** 画像から読めなかった入眠・起床は、手入力があれば補助値として埋める */
-function applyLifestyleMetricFallbacks(
+function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
+  const rows: Array<[string, string]> = [
+    [
+      "睡眠スコア",
+      metrics.sleepScore == null ? "未確認" : String(metrics.sleepScore),
+    ],
+    ["睡眠時間", metrics.sleepDuration || "未確認"],
+    ["入眠時間", metrics.bedtime || "未確認"],
+    ["起床時間", metrics.wakeTime || "未確認"],
+    ["睡眠効率", metrics.sleepEfficiency || "未確認"],
+    ["覚醒時間", metrics.awakenings || "未確認"],
+    ["REM睡眠", metrics.remSleep || "未確認"],
+    ["浅い睡眠", metrics.lightSleep || "未確認"],
+    ["深い睡眠", metrics.deepSleep || "未確認"],
+    ["睡眠負債", metrics.sleepDebt || "未確認"],
+    ["入眠潜時", metrics.sleepLatency || "未確認"],
+    ["体内時計", metrics.circadianRhythm || "未確認"],
+    ["呼吸数", metrics.respiratoryRate || "未確認"],
+    ["平均SpO₂", metrics.spo2 || "未確認"],
+    ["平均心拍", metrics.heartRate || "未確認"],
+    ["HRV", metrics.hrv || "未確認"],
+    ["皮膚温度", metrics.skinTemperature || "未確認"],
+    ["ストレス（測定）", metrics.stress || "未確認"],
+  ];
+
+  return rows.map(([label, value]) => `${label}: ${value}`).join("\n");
+}
+
+/** 確認済みメトリクスを分析結果に強制反映（モデルが上書きしても戻す） */
+function applyConfirmedMetrics(
   analysis: unknown,
-  lifestyle: LifestyleData,
+  confirmed: AnalysisMetrics,
 ): unknown {
   if (!analysis || typeof analysis !== "object") return analysis;
-
-  const record = analysis as {
-    metrics?: Record<string, unknown>;
-  };
-  const metrics =
-    record.metrics && typeof record.metrics === "object"
-      ? { ...record.metrics }
-      : {};
-
-  const bedtime =
-    typeof metrics.bedtime === "string" ? metrics.bedtime.trim() : "";
-  const wakeTime =
-    typeof metrics.wakeTime === "string" ? metrics.wakeTime.trim() : "";
-  const lifestyleBedtime = lifestyle.bedtime?.trim() ?? "";
-  const lifestyleWakeTime = lifestyle.wakeTime?.trim() ?? "";
-
-  if (!bedtime && lifestyleBedtime) {
-    metrics.bedtime = lifestyleBedtime;
-  }
-  if (!wakeTime && lifestyleWakeTime) {
-    metrics.wakeTime = lifestyleWakeTime;
-  }
-
-  return { ...record, metrics };
+  const record = analysis as Record<string, unknown>;
+  return { ...record, metrics: confirmed };
 }
 
 function formatLifestyle(lifestyle: LifestyleData): string {
@@ -444,14 +357,6 @@ function formatLifestyle(lifestyle: LifestyleData): string {
   const rows: Array<[string, string | undefined]> = [
     ["対象者名", lifestyle.clientName],
     ["測定日", lifestyle.measurementDate],
-    [
-      "就寝・入眠時間（任意・手入力の補助情報。画像から読めた場合は画像優先。読めない場合は確認できない扱い）",
-      lifestyle.bedtime,
-    ],
-    [
-      "起床時間（任意・手入力の補助情報。画像から読めた場合は画像優先。読めない場合は確認できない扱い）",
-      lifestyle.wakeTime,
-    ],
     ["ヨガ（実施したか）", formatYesNone(lifestyle.yogaDone, "実施した", "していない")],
     ["ヨガ実施時間（分）", lifestyle.yogaDuration],
     ["ヨガ実施時刻・時間帯", lifestyle.yogaTime],
@@ -566,7 +471,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { lifestyle, images } = validated;
+  const { lifestyle, images, metrics: confirmedMetrics } = validated;
 
   try {
     const client = new OpenAI({
@@ -574,6 +479,15 @@ export async function POST(request: Request) {
       timeout: 280_000,
       maxRetries: 1,
     });
+
+    const metricsBlock = confirmedMetrics
+      ? `【確認済みメトリクス（分析の唯一の数値根拠。上書き・推測禁止）】
+${formatConfirmedMetrics(confirmedMetrics)}
+
+出力 metrics には上記をそのまま反映すること。空＝未確認。`
+      : `【画像解析 — 最大限抽出】
+画像に存在する数値・時刻はすべて読み取り、手入力より優先する。推測禁止。読めない項目は ""、sleepScore は null。
+抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 覚醒時間 / REM睡眠 / 浅い睡眠 / 深い睡眠 / 睡眠負債 / 入眠潜時 / 体内時計 / 呼吸数 / 平均SpO₂ / 平均心拍数 / HRV / 皮膚温度 / ストレス`;
 
     const response = await client.responses.create({
       model: "gpt-5.6",
@@ -584,13 +498,9 @@ export async function POST(request: Request) {
           content: [
             {
               type: "input_text",
-              text: `以下の生活習慣データと睡眠データ画像をもとに、Sleep Wellness Brain™ Version 1 でSWIJレポートを作成してください。一般論ではなく、今回のデータと入力に紐づいた分析にしてください。文章は簡潔で読みやすく。
+              text: `以下の生活習慣データと睡眠データ画像、確認済みメトリクスをもとに、Sleep Wellness Brain™ Version 1 でSWIJレポートを作成してください。一般論ではなく、今回のデータと入力に紐づいた分析にしてください。文章は簡潔で読みやすく。
 
-【画像解析 — 最大限抽出】
-画像に存在する数値・時刻はすべて読み取り、手入力より優先する。推測禁止。読めない項目は ""、sleepScore は null。
-抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 覚醒時間 / REM睡眠 / 浅い睡眠 / 深い睡眠 / 睡眠負債 / 入眠潜時 / 体内時計 / 呼吸数 / 平均SpO₂ / 平均心拍数 / HRV / 皮膚温度 / ストレス
-- 「入眠／就寝／睡眠開始」→ metrics.bedtime、「起床／覚醒／睡眠終了」→ metrics.wakeTime
-- 日付またぎも正しく解釈。複数画像は同日統合、矛盾時は不確実性を示す
+${metricsBlock}
 
 【レポート構成（この順で書く）】
 ① summary＝総合評価（2〜4文。良かった点→課題→背景→推移）
@@ -666,9 +576,13 @@ ${formatLifestyle(lifestyle)}`,
       );
     }
 
-    return NextResponse.json(
-      applyLifestyleMetricFallbacks(analysis, lifestyle),
-    );
+    if (confirmedMetrics) {
+      return NextResponse.json(
+        applyConfirmedMetrics(analysis, confirmedMetrics),
+      );
+    }
+
+    return NextResponse.json(analysis);
   } catch (error) {
     console.error("OpenAI analysis failed:", error);
     const details = openaiErrorMessage(error);

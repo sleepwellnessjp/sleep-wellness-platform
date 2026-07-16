@@ -13,7 +13,12 @@ import {
   useState,
 } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
-import { setPendingAnalysisRequest } from "@/lib/analysis-session";
+import {
+  AnalysisError,
+  extractSoxaiMetrics,
+  setExtractionDraft,
+} from "@/lib/analysis-session";
+import { collectedMetricKeys, SOXAI_METRIC_FIELDS } from "@/lib/soxai-metrics";
 
 const MAX_FILES = 8;
 
@@ -23,14 +28,10 @@ const inputClass =
 const textareaClass =
   "mt-2.5 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
-const soxaiMetrics = [
-  { label: "入眠・起床", hint: "画像から自動読取" },
-  { label: "睡眠時間", hint: "総睡眠・在床時間" },
-  { label: "深い睡眠", hint: "Deep Sleep" },
-  { label: "睡眠効率", hint: "効率・連続性" },
-  { label: "HRV", hint: "心拍変動" },
-  { label: "ストレス", hint: "日中・夜間" },
-];
+const soxaiMetrics = SOXAI_METRIC_FIELDS.slice(0, 6).map((field) => ({
+  label: field.label,
+  hint: field.hint,
+}));
 
 const caffeineTypeOptions = [
   { value: "coffee", label: "コーヒー" },
@@ -207,7 +208,6 @@ export default function NewAnalysisPage() {
   const [breakfastEaten, setBreakfastEaten] = useState("");
   const [lunchEaten, setLunchEaten] = useState("");
   const [dinnerEaten, setDinnerEaten] = useState("");
-  const [showSleepOverride, setShowSleepOverride] = useState(false);
   const [touchedUpload, setTouchedUpload] = useState(false);
 
   const previewUrls = useMemo(
@@ -415,8 +415,8 @@ export default function NewAnalysisPage() {
       const lifestyle = {
         clientName,
         measurementDate,
-        bedtime: String(formData.get("bedtime") ?? ""),
-        wakeTime: String(formData.get("wakeTime") ?? ""),
+        bedtime: "",
+        wakeTime: "",
         exercise: otherExerciseSummary,
         yoga: yogaSummary,
         yogaDone: yogaDoneValue,
@@ -479,10 +479,25 @@ export default function NewAnalysisPage() {
         notes: String(formData.get("notes") ?? ""),
       };
 
-      setPendingAnalysisRequest({ lifestyle, images });
-      router.push("/analysis/loading");
-    } catch {
-      setError("画像の準備に失敗しました。もう一度お試しください。");
+      const extractedMetrics = await extractSoxaiMetrics(images);
+      const imageKeys = collectedMetricKeys(extractedMetrics);
+
+      setExtractionDraft({
+        lifestyle,
+        images,
+        extractedMetrics,
+        imageKeys,
+      });
+      router.push("/analysis/confirm");
+    } catch (err) {
+      console.error("SOXAI extract failed:", err);
+      if (err instanceof AnalysisError) {
+        setError(err.message);
+      } else {
+        setError(
+          "画像の自動解析に失敗しました。もう一度お試しください。",
+        );
+      }
       setIsSubmitting(false);
     }
   };
@@ -523,8 +538,8 @@ export default function NewAnalysisPage() {
           </h1>
 
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            SOXAIの画面と生活習慣を入力すると、
-            Sleep Wellness Report を作成します。
+            SOXAIのスクリーンショットをアップロードするだけで、
+            睡眠データを自動抽出し Sleep Wellness Report を作成します。
           </p>
         </header>
 
@@ -569,6 +584,9 @@ export default function NewAnalysisPage() {
                   </div>
                 ))}
               </div>
+              <p className="mt-3 text-center text-[12px] text-slate-400 sm:text-left">
+                ほか睡眠効率・覚醒・REM・浅い睡眠・睡眠負債・入眠潜時・体内時計・呼吸・SpO₂・心拍・皮膚温なども自動抽出します
+              </p>
             </div>
 
             <div className="px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
@@ -703,41 +721,12 @@ export default function NewAnalysisPage() {
               </FormGroup>
 
               <FormGroup
-                title="入眠時間・起床時間"
-                description="SOXAI画像から自動で読み取ります"
+                title="睡眠データ（自動抽出）"
+                description="入眠・起床・スコア・ステージ・HRV などは画像から自動読み取ります"
               >
                 <p className="rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-[15px] leading-7 text-slate-600 sm:text-sm">
-                  入眠時間・起床時間は、SOXAI画像から自動で読み取ります。
+                  次の画面で抽出結果を確認できます。画像から取れなかった項目だけ、そこで手入力してください。画像にある値は手入力より優先されます。
                 </p>
-
-                <button
-                  type="button"
-                  onClick={() => setShowSleepOverride((current) => !current)}
-                  className="mt-4 text-[13px] font-medium text-[#315f68] underline-offset-2 transition hover:underline sm:text-sm"
-                >
-                  {showSleepOverride
-                    ? "任意入力を閉じる"
-                    : "画像から読み取れない場合のみ入力"}
-                </button>
-
-                {showSleepOverride && (
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2 sm:gap-5">
-                    <Field label="入眠時間" optional>
-                      <input
-                        name="bedtime"
-                        type="time"
-                        className={inputClass}
-                      />
-                    </Field>
-                    <Field label="起床時間" optional>
-                      <input
-                        name="wakeTime"
-                        type="time"
-                        className={inputClass}
-                      />
-                    </Field>
-                  </div>
-                )}
               </FormGroup>
 
               <FormGroup
@@ -1284,13 +1273,13 @@ export default function NewAnalysisPage() {
               )}
 
               <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
-                READY TO ANALYZE
+                SOXAI AUTO READ
               </p>
               <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
-                AI分析を開始する
+                画像を読み取り、結果を確認する
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                必須：SOXAI画像・対象者名・測定日。入力後、分析画面へ進みます。
+                必須：SOXAI画像・対象者名・測定日。抽出後、確認画面へ進みます。
               </p>
 
               <button
@@ -1301,11 +1290,11 @@ export default function NewAnalysisPage() {
                 {isSubmitting ? (
                   <>
                     <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#071426]/20 border-t-[#071426]" />
-                    準備中...
+                    SOXAI画像を解析中...
                   </>
                 ) : (
                   <>
-                    AI分析を開始する
+                    画像を解析して確認へ
                     <span className="transition-transform duration-500 group-hover:translate-x-1">
                       →
                     </span>
