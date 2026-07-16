@@ -19,12 +19,12 @@ const textareaClass =
   "mt-2.5 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
 const soxaiMetrics = [
+  { label: "入眠・起床", hint: "画像から自動読取" },
   { label: "睡眠時間", hint: "総睡眠・在床時間" },
   { label: "深い睡眠", hint: "Deep Sleep" },
   { label: "睡眠効率", hint: "効率・連続性" },
   { label: "HRV", hint: "心拍変動" },
   { label: "ストレス", hint: "日中・夜間" },
-  { label: "SpO₂", hint: "血中酸素" },
 ];
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -320,12 +320,18 @@ export default function NewAnalysisPage() {
                 </div>
               </FormGroup>
 
-              <FormGroup title="睡眠リズム" description="就寝・起床の目安">
+              <FormGroup
+                title="睡眠リズム"
+                description="入眠・起床は任意入力"
+              >
+                <p className="mb-4 rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-sm leading-7 text-slate-600">
+                  画像から自動で読み取ります。読み取れない場合のみ入力してください。
+                </p>
                 <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-                  <Field label="就寝時間">
+                  <Field label="入眠時間" optional>
                     <input name="bedtime" type="time" className={inputClass} />
                   </Field>
-                  <Field label="起床時間">
+                  <Field label="起床時間" optional>
                     <input name="wakeTime" type="time" className={inputClass} />
                   </Field>
                 </div>
@@ -377,17 +383,24 @@ export default function NewAnalysisPage() {
                       <option value="night">夜あり</option>
                     </select>
                   </Field>
-                  <Field label="ストレス（1〜10）">
-                    <select name="stress" className={inputClass}>
-                      <option value="">選択してください</option>
-                      {Array.from({ length: 10 }, (_, index) => (
-                        <option key={index + 1} value={index + 1}>
-                          {index + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
                 </div>
+              </FormGroup>
+
+              <FormGroup
+                title="主観的なストレス・気分"
+                description="測定データとは別に扱う任意の補足"
+              >
+                <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-sm leading-7 text-slate-600">
+                  ストレスはSOXAIなどの測定データを参考に分析します。ご自身の体感を補足したい場合のみ入力してください。
+                </p>
+                <Field label="主観的なストレス・気分" optional>
+                  <textarea
+                    name="stress"
+                    rows={3}
+                    className={textareaClass}
+                    placeholder="例：仕事の締切で少し張りつめていた、全体的に穏やかだった、など"
+                  />
+                </Field>
               </FormGroup>
 
               <FormGroup title="コンディション" description="体調と生活背景">
@@ -520,10 +533,12 @@ function FormGroup({
 function Field({
   label,
   required,
+  optional,
   children,
 }: {
   label: string;
   required?: boolean;
+  optional?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -533,6 +548,11 @@ function Field({
         {required && (
           <span className="ml-1.5 text-[11px] font-medium text-[#8a6a2d]">
             必須
+          </span>
+        )}
+        {optional && (
+          <span className="ml-1.5 text-[11px] font-medium text-slate-400">
+            任意
           </span>
         )}
       </span>

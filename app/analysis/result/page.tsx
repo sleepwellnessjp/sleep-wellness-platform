@@ -11,135 +11,74 @@ import {
 
 const NAVY = "#071426";
 const GOLD = "#9d7a2d";
-const TEAL = "#315f68";
 
 type MetricDef = {
   key: keyof AnalysisMetrics;
   label: string;
-  unit?: string;
 };
 
-const primaryMetrics: MetricDef[] = [
+const reportMetrics: MetricDef[] = [
+  { key: "bedtime", label: "入眠" },
+  { key: "wakeTime", label: "起床" },
   { key: "sleepDuration", label: "睡眠時間" },
+  { key: "sleepEfficiency", label: "睡眠効率" },
   { key: "deepSleep", label: "深い睡眠" },
   { key: "hrv", label: "HRV" },
   { key: "stress", label: "ストレス" },
   { key: "spo2", label: "SpO₂" },
-  { key: "sleepEfficiency", label: "睡眠効率" },
-];
-
-const secondaryMetrics: MetricDef[] = [
-  { key: "sleepScore", label: "睡眠スコア" },
-  { key: "awakenings", label: "途中覚醒" },
-  { key: "heartRate", label: "心拍" },
-  { key: "skinTemperature", label: "皮膚温度" },
 ];
 
 function formatMetricValue(
   key: keyof AnalysisMetrics,
   metrics: AnalysisMetrics,
-  fallbackScore?: number,
 ): string {
   if (key === "sleepScore") {
     const score = metrics.sleepScore;
-    if (score === null || score === undefined) {
-      return fallbackScore !== undefined ? `${fallbackScore}` : "—";
-    }
+    if (score === null || score === undefined) return "—";
     return `${score}`;
   }
 
   const value = metrics[key];
-  return value.trim() ? value : "—";
+  return typeof value === "string" && value.trim() ? value : "—";
 }
 
-function hasMetricValue(
-  key: keyof AnalysisMetrics,
-  metrics: AnalysisMetrics,
-): boolean {
-  if (key === "sleepScore") {
-    return metrics.sleepScore !== null && metrics.sleepScore !== undefined;
-  }
-  return typeof metrics[key] === "string" && metrics[key].trim().length > 0;
+function takeItems(items: string[] | undefined, max: number): string[] {
+  if (!items?.length) return [];
+  return items.slice(0, max);
 }
 
-function ScoreRing({ score }: { score: number }) {
-  const clamped = Math.max(0, Math.min(100, Math.round(score)));
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clamped / 100) * circumference;
+function clampSentences(text: string, maxSentences: number): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
 
-  return (
-    <div className="relative mx-auto flex h-[148px] w-[148px] items-center justify-center sm:h-[168px] sm:w-[168px]">
-      <svg
-        viewBox="0 0 120 120"
-        className="absolute inset-0 h-full w-full -rotate-90"
-        aria-hidden
-      >
-        <circle
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="none"
-          stroke="#eef1f3"
-          strokeWidth="8"
-        />
-        <circle
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="none"
-          stroke={GOLD}
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-[stroke-dashoffset] duration-1000 ease-out"
-        />
-      </svg>
+  const parts = trimmed.match(/[^.!?。！？]+[.!?。！？]?/g);
+  if (!parts) return trimmed;
 
-      <div className="relative text-center">
-        <p
-          className="text-[3.25rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.75rem]"
-          style={{ color: NAVY }}
-        >
-          {clamped}
-        </p>
-        <p className="mt-1 text-[11px] font-medium tracking-[0.16em] text-slate-400">
-          / 100
-        </p>
-      </div>
-    </div>
-  );
+  const sentences = parts.map((part) => part.trim()).filter(Boolean);
+  if (sentences.length <= maxSentences) return trimmed;
+  return sentences.slice(0, maxSentences).join("");
 }
 
-function MetricCard({
-  label,
-  value,
-  emphasize = false,
-}: {
-  label: string;
-  value: string;
-  emphasize?: boolean;
-}) {
-  return (
-    <div
-      className={`report-card rounded-[20px] border px-4 py-5 sm:rounded-[22px] sm:px-5 sm:py-6 ${
-        emphasize
-          ? "border-slate-200/90 bg-[#fafaf8]"
-          : "border-slate-100 bg-white"
-      }`}
-    >
-      <p className="text-[11px] font-medium tracking-[0.04em] text-slate-400 sm:text-xs">
-        {label}
-      </p>
-      <p
-        className="mt-2.5 text-[1.35rem] font-semibold tracking-[-0.04em] sm:mt-3 sm:text-[1.55rem]"
-        style={{ color: NAVY }}
-      >
-        {value}
-      </p>
-    </div>
-  );
+function clampLine(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  return `${trimmed.slice(0, maxChars - 1).trimEnd()}…`;
+}
+
+function formatDateLabel(value?: string): string {
+  if (!value?.trim()) return "—";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  return `${match[1]}.${match[2]}.${match[3]}`;
+}
+
+function splitActions(actions: string[]): {
+  primary: string | null;
+  next: string[];
+} {
+  const limited = takeItems(actions, 3).map((item) => clampLine(item, 90));
+  if (limited.length === 0) return { primary: null, next: [] };
+  return { primary: limited[0], next: limited.slice(1) };
 }
 
 export default function AnalysisResultPage() {
@@ -160,7 +99,7 @@ export default function AnalysisResultPage() {
   if (missing) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
-        <div className="w-full max-w-md rounded-[28px] border border-slate-100 bg-white p-10 text-center shadow-[0_24px_60px_-36px_rgba(7,20,38,.18)] sm:max-w-lg sm:p-12">
+        <div className="w-full max-w-md rounded-[20px] border border-slate-200 bg-white p-10 text-center sm:max-w-lg sm:p-12">
           <p
             className="text-[11px] font-semibold tracking-[0.32em]"
             style={{ color: GOLD }}
@@ -199,325 +138,288 @@ export default function AnalysisResultPage() {
     );
   }
 
-  const shownPrimary = primaryMetrics.filter(({ key }) =>
-    hasMetricValue(key, result.metrics),
+  const score = Math.max(0, Math.min(100, Math.round(result.score)));
+  const goodPoints = takeItems(result.goodPoints, 3).map((item) =>
+    clampLine(item, 88),
   );
-  const shownSecondary = secondaryMetrics.filter(({ key }) =>
-    hasMetricValue(key, result.metrics),
+  const improvements = takeItems(result.improvements, 2).map((item) =>
+    clampLine(item, 88),
   );
-
-  const displayPrimary =
-    shownPrimary.length > 0
-      ? shownPrimary
-      : primaryMetrics.slice(0, 4);
-
-  const displaySecondary =
-    shownSecondary.length > 0
-      ? shownSecondary
-      : [{ key: "sleepScore" as const, label: "睡眠スコア" }];
+  const possibleFactors = takeItems(result.possibleFactors, 3).map((item) =>
+    clampLine(item, 88),
+  );
+  const { primary: primaryAction, next: nextActions } = splitActions(
+    result.actions,
+  );
+  const summaryText = clampSentences(result.summary, 4);
+  const yogaText = clampLine(result.yoga ?? "", 160);
+  const cautionText = clampLine(result.caution ?? "", 120);
+  const disclaimerText = clampLine(result.disclaimer ?? "", 120);
 
   return (
     <main className="report-print-root min-h-screen bg-[#f5f5f3] py-8 print:bg-white print:py-0 sm:py-12 md:py-16">
-      <div className="report-sheet mx-auto max-w-[780px] px-4 print:max-w-none print:px-0 sm:px-6">
-        <article className="overflow-hidden rounded-[28px] border border-slate-200/70 bg-white px-5 py-10 shadow-[0_28px_80px_-48px_rgba(7,20,38,.2)] print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:rounded-[32px] sm:px-10 sm:py-12 md:px-14 md:py-14">
+      <div className="report-sheet mx-auto max-w-[820px] px-4 print:max-w-none print:px-0 sm:px-6">
+        <article className="report-article overflow-hidden rounded-[22px] border border-slate-200/80 bg-white px-5 py-8 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:rounded-[24px] sm:px-9 sm:py-10 md:px-11 md:py-11">
           {/* Header */}
-          <header className="report-card text-center">
-            <div
-              className="mx-auto mb-6 h-px w-12 sm:mb-8 sm:w-14"
-              style={{ backgroundColor: GOLD }}
-              aria-hidden
-            />
+          <header className="report-header">
+            <div className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-5 sm:pb-6">
+              <div className="min-w-0">
+                <Image
+                  src="/swij-logo-horizontal.png"
+                  alt="Sleep Wellness Institute Japan"
+                  width={220}
+                  height={55}
+                  className="report-logo h-auto w-[118px] object-contain sm:w-[148px]"
+                  priority
+                />
+                <h1
+                  className="report-title mt-4 text-[1.45rem] font-semibold tracking-[-0.04em] sm:mt-5 sm:text-[1.85rem]"
+                  style={{ color: NAVY }}
+                >
+                  Sleep Wellness Report
+                  <span style={{ color: GOLD }}>™</span>
+                </h1>
+              </div>
 
-            <p
-              className="text-[10px] font-semibold tracking-[0.34em] sm:text-[11px] sm:tracking-[0.36em]"
-              style={{ color: GOLD }}
-            >
-              SLEEP WELLNESS INSTITUTE JAPAN
-            </p>
+              <div className="report-score-block shrink-0 text-right">
+                <p
+                  className="text-[9px] font-semibold tracking-[0.22em] sm:text-[10px]"
+                  style={{ color: GOLD }}
+                >
+                  WELLNESS SCORE
+                </p>
+                <p
+                  className="report-score mt-1 text-[2.6rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.1rem]"
+                  style={{ color: NAVY }}
+                >
+                  {score}
+                </p>
+                <p className="mt-1 text-[10px] tracking-[0.12em] text-slate-400">
+                  / 100
+                </p>
+              </div>
+            </div>
 
-            <h1
-              className="mt-4 text-[1.65rem] font-semibold tracking-[-0.045em] sm:mt-5 sm:text-[2.2rem] md:text-[2.55rem]"
-              style={{ color: NAVY }}
-            >
-              Sleep Wellness Report
-              <span style={{ color: GOLD }}>™</span>
-            </h1>
+            <div className="report-meta mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600 sm:mt-5">
+              <p>
+                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                  NAME
+                </span>
+                <span className="font-medium" style={{ color: NAVY }}>
+                  {result.clientName?.trim() || "—"}
+                </span>
+              </p>
+              <p>
+                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                  DATE
+                </span>
+                <span className="font-medium" style={{ color: NAVY }}>
+                  {formatDateLabel(result.measurementDate)}
+                </span>
+              </p>
+            </div>
           </header>
 
-          {/* Score */}
-          <section className="report-card mt-10 sm:mt-12">
-            <p
-              className="text-center text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-              style={{ color: GOLD }}
-            >
-              SLEEP WELLNESS SCORE
-            </p>
-            <div className="mt-5 sm:mt-6">
-              <ScoreRing score={result.score} />
-            </div>
-          </section>
-
-          {/* Summary */}
-          <section className="report-card mt-10 rounded-[22px] border border-slate-100 bg-[#fafafa] px-5 py-7 sm:mt-12 sm:rounded-[24px] sm:px-8 sm:py-9">
-            <p
-              className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-              style={{ color: GOLD }}
-            >
-              OVERALL ASSESSMENT
-            </p>
-
-            <h2
-              className="mt-2.5 text-lg font-semibold tracking-[-0.03em] sm:mt-3 sm:text-xl"
-              style={{ color: NAVY }}
-            >
-              総合評価
-            </h2>
-
-            <p className="mt-4 text-[0.95rem] leading-8 text-slate-600 sm:mt-5 sm:text-[1.05rem] sm:leading-9">
-              {result.summary}
-            </p>
-          </section>
-
-          {/* Condition cards */}
-          <section className="report-card mt-10 sm:mt-12">
-            <p
-              className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-              style={{ color: GOLD }}
-            >
-              TODAY&apos;S CONDITION
-            </p>
-
-            <h2
-              className="mt-2.5 text-lg font-semibold tracking-[-0.03em] sm:mt-3 sm:text-xl"
-              style={{ color: NAVY }}
-            >
-              今日のコンディション
-            </h2>
-
-            <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-7 sm:grid-cols-3 sm:gap-4">
-              {displayPrimary.map(({ key, label }) => (
-                <MetricCard
-                  key={key}
-                  label={label}
-                  value={formatMetricValue(key, result.metrics, result.score)}
-                  emphasize
-                />
-              ))}
-            </div>
-
-            {displaySecondary.length > 0 && (
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:mt-4 sm:grid-cols-4 sm:gap-4">
-                {displaySecondary.map(({ key, label }) => (
-                  <MetricCard
-                    key={key}
-                    label={label}
-                    value={formatMetricValue(key, result.metrics, result.score)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Strengths / Improvements */}
-          <div className="mt-10 grid gap-4 sm:mt-12 sm:gap-5 md:grid-cols-2">
-            <section className="report-card rounded-[22px] border border-slate-100 bg-white px-5 py-7 sm:rounded-[24px] sm:px-7 sm:py-8">
-              <p
-                className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-                style={{ color: GOLD }}
-              >
-                STRENGTHS
-              </p>
-
-              <h2
-                className="mt-2.5 text-lg font-semibold tracking-[-0.03em]"
-                style={{ color: NAVY }}
-              >
-                良かった点
-              </h2>
-
-              <ul className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
-                {result.goodPoints.map((item) => (
-                  <li key={item} className="flex gap-3">
-                    <span
-                      className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: TEAL }}
-                      aria-hidden
-                    />
-                    <span className="text-[0.92rem] leading-7 text-slate-600">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <section className="report-card rounded-[22px] border border-slate-100 bg-white px-5 py-7 sm:rounded-[24px] sm:px-7 sm:py-8">
-              <p
-                className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-                style={{ color: GOLD }}
-              >
-                IMPROVEMENTS
-              </p>
-
-              <h2
-                className="mt-2.5 text-lg font-semibold tracking-[-0.03em]"
-                style={{ color: NAVY }}
-              >
-                改善ポイント
-              </h2>
-
-              <ul className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
-                {result.improvements.map((item) => (
-                  <li key={item} className="flex gap-3">
-                    <span
-                      className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: GOLD }}
-                      aria-hidden
-                    />
-                    <span className="text-[0.92rem] leading-7 text-slate-600">
-                      {item}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
-
-          {/* Factors */}
-          {result.possibleFactors?.length > 0 && (
-            <section className="report-card mt-10 sm:mt-12">
-              <p
-                className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-                style={{ color: GOLD }}
-              >
-                POSSIBLE FACTORS
-              </p>
-
-              <h2
-                className="mt-2.5 text-lg font-semibold tracking-[-0.03em] sm:mt-3 sm:text-xl"
-                style={{ color: NAVY }}
-              >
-                考えられる要因
-              </h2>
-
-              <ul className="mt-5 space-y-3 sm:mt-6">
-                {result.possibleFactors.map((item) => (
-                  <li
-                    key={item}
-                    className="rounded-[18px] border border-slate-100 bg-[#fafafa] px-4 py-4 text-[0.92rem] leading-7 text-slate-600 sm:px-5"
-                  >
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Actions */}
-          <section className="report-card mt-10 sm:mt-12">
-            <p
-              className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-              style={{ color: GOLD }}
-            >
-              PRIORITY ACTIONS
-            </p>
-
-            <h2
-              className="mt-2.5 text-lg font-semibold tracking-[-0.03em] sm:mt-3 sm:text-xl"
-              style={{ color: NAVY }}
-            >
-              今日の優先アクション
-            </h2>
-
-            <div className="mt-6 space-y-3 sm:mt-7 sm:space-y-4">
-              {result.actions.map((item, index) => (
+          {/* Metrics grid */}
+          <section className="report-metrics mt-6 sm:mt-7">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+              {reportMetrics.map(({ key, label }) => (
                 <div
-                  key={item}
-                  className="flex gap-4 rounded-[20px] border border-slate-100 bg-[#fafafa] px-4 py-5 sm:gap-5 sm:px-6 sm:py-6"
+                  key={key}
+                  className="report-metric rounded-[8px] border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-3.5"
                 >
-                  <p
-                    className="shrink-0 pt-0.5 text-xs font-semibold tracking-[0.16em]"
-                    style={{ color: GOLD }}
-                  >
-                    {String(index + 1).padStart(2, "0")}
+                  <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400">
+                    {label}
                   </p>
-                  <p className="text-[0.92rem] leading-7 text-slate-600 sm:text-[0.98rem] sm:leading-8">
-                    {item}
+                  <p
+                    className="mt-1.5 text-[0.98rem] font-semibold tracking-[-0.03em] sm:text-[1.05rem]"
+                    style={{ color: NAVY }}
+                  >
+                    {formatMetricValue(key, result.metrics)}
                   </p>
                 </div>
               ))}
             </div>
           </section>
 
-          {/* Yoga */}
-          <section
-            className="report-card mt-10 rounded-[22px] px-5 py-8 text-white sm:mt-12 sm:rounded-[24px] sm:px-8 sm:py-10"
-            style={{ backgroundColor: NAVY }}
-          >
-            <p
-              className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-              style={{ color: "#d4b56a" }}
-            >
-              MELATONIN YOGA™
-            </p>
-
-            <h2 className="mt-2.5 text-lg font-semibold tracking-[-0.03em] sm:mt-3 sm:text-xl">
-              メラトニンヨガ™提案
-            </h2>
-
-            <p className="mt-4 text-[0.95rem] leading-8 text-white/78 sm:mt-5 sm:text-[1.05rem] sm:leading-9">
-              {result.yoga}
+          {/* Assessment */}
+          <section className="report-assessment mt-6 border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
+            <div className="flex items-baseline justify-between gap-3 border-b border-[#071426]/10 pb-2.5">
+              <h2
+                className="text-[0.95rem] font-semibold tracking-[-0.02em] sm:text-base"
+                style={{ color: NAVY }}
+              >
+                総合評価
+              </h2>
+              <p
+                className="text-[9px] font-semibold tracking-[0.22em]"
+                style={{ color: GOLD }}
+              >
+                OVERVIEW
+              </p>
+            </div>
+            <p className="report-summary mt-3 text-[0.88rem] leading-7 text-slate-600 sm:text-[0.92rem] sm:leading-7">
+              {summaryText}
             </p>
           </section>
 
-          {/* Disclaimer */}
-          {(result.caution || result.disclaimer) && (
-            <section className="report-card mt-10 border-t border-slate-100 pt-8 sm:mt-12 sm:pt-10">
-              <p
-                className="text-[10px] font-semibold tracking-[0.28em] sm:text-[11px]"
-                style={{ color: GOLD }}
-              >
-                DISCLAIMER
-              </p>
-
+          {/* Good / Improve */}
+          <section className="report-split mt-5 grid gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
+            <div className="report-panel rounded-[8px] border border-[#071426]/10 px-4 py-4 sm:px-5">
               <h2
-                className="mt-2.5 text-base font-semibold tracking-[-0.02em] sm:text-lg"
+                className="text-[0.92rem] font-semibold tracking-[-0.02em]"
                 style={{ color: NAVY }}
               >
-                免責事項
+                良かった点
+              </h2>
+              <ul className="mt-3 space-y-2">
+                {goodPoints.map((item) => (
+                  <li
+                    key={item}
+                    className="flex gap-2.5 text-[0.84rem] leading-6 text-slate-600"
+                  >
+                    <span
+                      className="mt-[0.55rem] h-1 w-1 shrink-0 rounded-full"
+                      style={{ backgroundColor: GOLD }}
+                      aria-hidden
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="report-panel rounded-[8px] border border-[#071426]/10 px-4 py-4 sm:px-5">
+              <h2
+                className="text-[0.92rem] font-semibold tracking-[-0.02em]"
+                style={{ color: NAVY }}
+              >
+                改善余地
+              </h2>
+              <ul className="mt-3 space-y-2">
+                {improvements.map((item) => (
+                  <li
+                    key={item}
+                    className="flex gap-2.5 text-[0.84rem] leading-6 text-slate-600"
+                  >
+                    <span
+                      className="mt-[0.55rem] h-1 w-1 shrink-0 rounded-full bg-slate-300"
+                      aria-hidden
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+
+          {/* Factors & Actions */}
+          <section className="report-split mt-5 grid gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
+            <div className="report-panel rounded-[8px] border border-[#071426]/10 px-4 py-4 sm:px-5">
+              <h2
+                className="text-[0.92rem] font-semibold tracking-[-0.02em]"
+                style={{ color: NAVY }}
+              >
+                考えられる要因
+              </h2>
+              <ul className="mt-3 space-y-2">
+                {possibleFactors.map((item) => (
+                  <li
+                    key={item}
+                    className="text-[0.84rem] leading-6 text-slate-600"
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="report-panel rounded-[8px] border border-[#071426]/10 px-4 py-4 sm:px-5">
+              <h2
+                className="text-[0.92rem] font-semibold tracking-[-0.02em]"
+                style={{ color: NAVY }}
+              >
+                アクション
               </h2>
 
-              {result.caution && (
-                <p className="mt-4 text-sm leading-7 text-slate-500">
-                  {result.caution}
-                </p>
+              {primaryAction && (
+                <div className="mt-3 border-l-2 pl-3" style={{ borderColor: GOLD }}>
+                  <p
+                    className="text-[9px] font-semibold tracking-[0.18em]"
+                    style={{ color: GOLD }}
+                  >
+                    最優先
+                  </p>
+                  <p className="mt-1 text-[0.84rem] leading-6 text-slate-600">
+                    {primaryAction}
+                  </p>
+                </div>
               )}
 
-              {result.disclaimer && (
-                <p className="mt-3 text-sm leading-7 text-slate-400">
-                  {result.disclaimer}
+              {nextActions.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[9px] font-semibold tracking-[0.18em] text-slate-400">
+                    次のアクション
+                  </p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {nextActions.map((item) => (
+                      <li
+                        key={item}
+                        className="text-[0.84rem] leading-6 text-slate-600"
+                      >
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Yoga */}
+          <section className="report-yoga mt-5 rounded-[8px] border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2
+                className="text-[0.92rem] font-semibold tracking-[-0.02em]"
+                style={{ color: NAVY }}
+              >
+                メラトニンヨガ™ / 呼吸・休養
+              </h2>
+              <p
+                className="text-[9px] font-semibold tracking-[0.18em]"
+                style={{ color: GOLD }}
+              >
+                PRACTICE
+              </p>
+            </div>
+            <p className="mt-2.5 text-[0.84rem] leading-6 text-slate-600">
+              {yogaText || "—"}
+            </p>
+          </section>
+
+          {/* Caution / Disclaimer */}
+          {(cautionText || disclaimerText) && (
+            <section className="report-disclaimer mt-5 border-t border-[#071426]/12 pt-4 sm:mt-6">
+              <h2
+                className="text-[0.8rem] font-semibold tracking-[-0.01em]"
+                style={{ color: NAVY }}
+              >
+                注意事項／免責
+              </h2>
+              {cautionText && (
+                <p className="mt-2 text-[0.75rem] leading-5 text-slate-500">
+                  {cautionText}
+                </p>
+              )}
+              {disclaimerText && (
+                <p className="mt-1.5 text-[0.72rem] leading-5 text-slate-400">
+                  {disclaimerText}
                 </p>
               )}
             </section>
           )}
-
-          {/* Footer */}
-          <footer className="report-footer mt-10 flex flex-col items-center border-t border-slate-100 pt-8 text-center sm:mt-12 sm:pt-10">
-            <Image
-              src="/swij-logo-horizontal.png"
-              alt="Sleep Wellness Institute Japan"
-              width={280}
-              height={70}
-              className="h-auto w-[150px] object-contain opacity-90 sm:w-[200px]"
-            />
-
-            <p className="mt-4 text-[11px] tracking-[0.12em] text-slate-400 sm:mt-5 sm:text-xs">
-              Powered by Sleep Wellness Institute Japan
-            </p>
-          </footer>
         </article>
 
-        {/* Screen-only actions */}
         <div className="no-print mt-8 flex flex-col gap-3 pb-6 sm:mt-10 sm:flex-row sm:justify-center sm:pb-4">
           <button
             type="button"
