@@ -99,7 +99,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 7mm;
   }
 
   html,
@@ -140,6 +140,7 @@
     background: #fff !important;
   }
 
+  /* Keep text + visual as two logical PDF pages */
   .report-page-text {
     page-break-after: always;
     break-after: page;
@@ -151,66 +152,66 @@
   }
 
   .report-header {
-    margin: 0 0 4px !important;
+    margin: 0 0 3px !important;
   }
 
   .report-header .border-b {
-    padding-bottom: 4px !important;
+    padding-bottom: 3px !important;
   }
 
   .report-logo {
-    width: 88px !important;
+    width: 78px !important;
   }
 
   .report-title {
-    margin-top: 4px !important;
-    font-size: 13pt !important;
-    line-height: 1.15 !important;
+    margin-top: 3px !important;
+    font-size: 12pt !important;
+    line-height: 1.1 !important;
   }
 
   .report-score {
-    font-size: 20pt !important;
+    font-size: 18pt !important;
     line-height: 1 !important;
   }
 
   .report-score-block p:first-child {
-    font-size: 6.5pt !important;
+    font-size: 6pt !important;
   }
 
   .report-score-block p:last-child {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
   .report-meta {
-    margin-top: 4px !important;
-    font-size: 8pt !important;
+    margin-top: 3px !important;
+    font-size: 7.5pt !important;
   }
 
   .report-metrics {
-    margin-top: 5px !important;
+    margin-top: 3px !important;
   }
 
   .report-score-breakdown {
-    margin-top: 5px !important;
+    margin-top: 3px !important;
   }
 
   .report-breakdown-list {
-    padding: 4px 6px !important;
-    border-radius: 3px !important;
+    padding: 3px 5px !important;
+    border-radius: 2px !important;
   }
 
   .report-breakdown-row {
-    padding-top: 2px !important;
-    padding-bottom: 2px !important;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
   }
 
   .report-breakdown-row span {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
   .report-stars {
-    letter-spacing: 0.06em !important;
-    font-size: 7.5pt !important;
+    letter-spacing: 0.05em !important;
+    font-size: 7pt !important;
   }
 
   .report-status-chip,
@@ -219,156 +220,168 @@
   }
 
   .report-breakdown-total {
-    padding-top: 3px !important;
+    padding-top: 2px !important;
     margin-top: 1px !important;
   }
 
   .report-breakdown-total span {
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
   }
 
+  /* 18 metrics → 6×3 on A4 */
   .report-metrics > div {
     display: grid !important;
     grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-    gap: 3px !important;
+    gap: 2px !important;
   }
 
   .report-metric {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 3px 4px !important;
-    border-radius: 3px !important;
+    padding: 2px 3px !important;
+    border-radius: 2px !important;
   }
 
   .report-metric p:first-child,
   .report-metric span {
-    font-size: 5.5pt !important;
+    font-size: 5pt !important;
   }
 
   .report-metric p:last-child {
-    margin-top: 1px !important;
-    font-size: 7.5pt !important;
-    line-height: 1.15 !important;
+    margin-top: 0 !important;
+    font-size: 7pt !important;
+    line-height: 1.1 !important;
   }
 
+  /*
+   * Long prose sections may break across pages if needed.
+   * Forcing avoid on every panel overflows A4 after metrics expansion.
+   */
   .report-assessment,
   .report-panel {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-top: 4px !important;
-    padding: 4px 6px !important;
-    border-radius: 3px !important;
+    break-inside: auto;
+    page-break-inside: auto;
+    margin-top: 3px !important;
+    padding: 3px 5px !important;
+    border-radius: 2px !important;
   }
 
   .report-assessment h2,
   .report-panel h2 {
-    font-size: 8pt !important;
+    font-size: 7.5pt !important;
   }
 
   .report-assessment .mb-3,
   .report-panel .mb-3 {
-    margin-bottom: 2px !important;
+    margin-bottom: 1px !important;
   }
 
   .report-summary p,
   .report-summary li,
   .report-panel p,
   .report-panel li {
-    font-size: 7pt !important;
-    line-height: 1.3 !important;
+    font-size: 6.5pt !important;
+    line-height: 1.25 !important;
   }
 
   .report-summary .space-y-2\.5 > :not([hidden]) ~ :not([hidden]),
   .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 1px !important;
+    margin-top: 0 !important;
   }
 
   .report-powered {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-top: 5px !important;
-    padding-top: 4px !important;
+    margin-top: 3px !important;
+    padding-top: 3px !important;
   }
 
   .report-powered p:first-child {
-    font-size: 6pt !important;
+    font-size: 5.5pt !important;
   }
 
   .report-powered p:last-child {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
   .report-disclaimer {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-top: 4px !important;
-    padding-top: 3px !important;
+    margin-top: 3px !important;
+    padding-top: 2px !important;
   }
 
   .report-disclaimer h2 {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
   .report-disclaimer p {
     margin-top: 1px !important;
-    font-size: 6pt !important;
-    line-height: 1.25 !important;
+    font-size: 5.5pt !important;
+    line-height: 1.2 !important;
   }
 
   .visual-header {
-    margin-bottom: 5px !important;
+    margin-bottom: 3px !important;
   }
 
   .visual-header .border-b {
-    padding-bottom: 4px !important;
+    padding-bottom: 3px !important;
   }
 
   .visual-title {
-    margin-top: 4px !important;
-    font-size: 13pt !important;
+    margin-top: 3px !important;
+    font-size: 12pt !important;
   }
 
   .visual-panels {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 4px !important;
-    margin-top: 5px !important;
+    gap: 3px !important;
+    margin-top: 3px !important;
   }
 
   .visual-panel {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 4px 5px !important;
-    border-radius: 3px !important;
+    padding: 3px 4px !important;
+    border-radius: 2px !important;
   }
 
   .visual-panel p,
   .visual-panel h3,
   .visual-panel dt,
   .visual-panel dd {
-    font-size: 6.5pt !important;
-    line-height: 1.25 !important;
+    font-size: 6pt !important;
+    line-height: 1.2 !important;
   }
 
   .visual-panel h3 {
-    font-size: 8pt !important;
+    font-size: 7pt !important;
   }
 
   .visual-grid {
-    margin-top: 5px !important;
-    gap: 5px !important;
+    margin-top: 3px !important;
+    gap: 4px !important;
   }
 
   .visual-cell {
     break-inside: avoid;
     page-break-inside: avoid;
-    border-radius: 3px !important;
+    border-radius: 2px !important;
   }
 
+  /* Cap screenshot height so visual page fits A4 with 8 metric panels */
   .visual-cell > div {
     min-height: 0 !important;
-    aspect-ratio: 3 / 4 !important;
-    height: 95mm !important;
+    aspect-ratio: auto !important;
+    height: 52mm !important;
+    max-height: 52mm !important;
+  }
+
+  .visual-grid:has(.visual-cell:only-child) .visual-cell > div {
+    height: 68mm !important;
+    max-height: 68mm !important;
   }
 
   .visual-cell img {
@@ -376,13 +389,13 @@
   }
 
   .visual-cell figcaption {
-    padding: 2px 4px !important;
-    font-size: 6pt !important;
+    padding: 1px 3px !important;
+    font-size: 5.5pt !important;
   }
 
   .visual-footer {
-    margin-top: 5px !important;
-    font-size: 6.5pt !important;
+    margin-top: 3px !important;
+    font-size: 6pt !important;
   }
 }
 
