@@ -29,7 +29,7 @@ export default function Programs() {
   return (
     <section
       id="programs"
-      className="relative overflow-hidden bg-[#fafaf8] py-24 sm:py-28 lg:py-36"
+      className="relative overflow-hidden bg-[#fafaf8] py-28 sm:py-32 lg:py-40"
     >
       <div className="absolute -left-40 top-0 h-[420px] w-[420px] rounded-full bg-cyan-100/40 blur-3xl" />
       <div className="absolute -right-40 bottom-0 h-[480px] w-[480px] rounded-full bg-amber-100/35 blur-3xl" />
