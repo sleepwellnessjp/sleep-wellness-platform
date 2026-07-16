@@ -53,14 +53,14 @@ const reportMetrics: MetricDef[] = [
   { key: "sleepDebt", label: "睡眠負債" },
   { key: "sleepLatency", label: "入眠潜時" },
   { key: "circadianRhythm", label: "体内時計" },
-  { key: "respiratoryRate", label: "呼吸数" },
+  { key: "respiratoryRate", label: "呼吸速度" },
   {
     key: "spo2",
     label: "平均SpO₂",
     important: true,
     breakdownKey: "spo2",
   },
-  { key: "heartRate", label: "平均心拍数" },
+  { key: "restingHeartRate", label: "安静時心拍数" },
   {
     key: "hrv",
     label: "HRV",
@@ -93,7 +93,8 @@ type VisualPanel = {
   id: string;
   title: string;
   subtitle: string;
-  values: Array<{ label: string; value: string }>;
+  graph?: ReactNode;
+  values?: Array<{ label: string; value: string }>;
 };
 
 const STATUS_STYLE: Record<
@@ -189,52 +190,369 @@ function renderStars(count: ScoreStars): string {
   return "★".repeat(count) + "☆".repeat(5 - count);
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function parsePercent(text: string): number | null {
+  if (!text.trim()) return null;
+  const normalized = text.replace(/,/g, "");
+  const match = normalized.match(/(-?\d+(?:\.\d+)?)\s*%/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseLeadingNumber(text: string): number | null {
+  if (!text.trim()) return null;
+  const normalized = text.replace(/,/g, "");
+  const match = normalized.match(/(-?\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseDurationMinutes(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+
+  const hMatch = t.match(/(-?\d+(?:\.\d+)?)\s*時間/);
+  const mMatch = t.match(/(-?\d+(?:\.\d+)?)\s*分/);
+
+  if (hMatch || mMatch) {
+    const hours = hMatch ? Number(hMatch[1]) : 0;
+    const minutes = mMatch ? Number(mMatch[1]) : 0;
+    const total = hours * 60 + minutes;
+    return Number.isFinite(total) ? total : null;
+  }
+
+  // fallback: "42分 / 3回" etc
+  const fallbackMinutes = t.match(/(-?\d+(?:\.\d+)?)\s*min/i);
+  if (fallbackMinutes) {
+    const total = Number(fallbackMinutes[1]);
+    return Number.isFinite(total) ? total : null;
+  }
+
+  return null;
+}
+
+function parseHHMM(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+  const match = t.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function StageSegmentBar({
+  remRatio,
+  lightRatio,
+  deepRatio,
+}: {
+  remRatio: number;
+  lightRatio: number;
+  deepRatio: number;
+}) {
+  const total = remRatio + lightRatio + deepRatio;
+  const remW = total > 0 ? (remRatio / total) * 100 : 33.33;
+  const lightW = total > 0 ? (lightRatio / total) * 100 : 33.33;
+  const deepW = total > 0 ? (deepRatio / total) * 100 : 33.34;
+
+  return (
+    <div className="mt-2">
+      <div
+        className="flex h-3 w-full overflow-hidden rounded-full"
+        style={{ background: "rgba(7,20,38,0.06)" }}
+        aria-hidden
+      >
+        <div style={{ width: `${remW}%`, backgroundColor: "#0f6b5c" }} />
+        <div style={{ width: `${lightW}%`, backgroundColor: "#b89242" }} />
+        <div style={{ width: `${deepW}%`, backgroundColor: "#315f68" }} />
+      </div>
+      <div className="mt-2 flex justify-between">
+        <p className="text-[11px] font-semibold text-slate-500">REM</p>
+        <p className="text-[11px] font-semibold text-slate-500">浅い</p>
+        <p className="text-[11px] font-semibold text-slate-500">深い</p>
+      </div>
+    </div>
+  );
+}
+
+function SimpleMeterBar({
+  label,
+  valueText,
+  ratio01,
+  color,
+}: {
+  label: string;
+  valueText: string;
+  ratio01: number | null;
+  color: string;
+}) {
+  const safeRatio = ratio01 == null ? null : clamp(ratio01, 0, 1);
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
+        <p className="text-[11px] font-semibold" style={{ color: NAVY }}>
+          {valueText}
+        </p>
+      </div>
+      <div
+        className="mt-1 h-2 w-full overflow-hidden rounded-full"
+        style={{ background: "rgba(7,20,38,0.06)" }}
+        aria-hidden
+      >
+        <div
+          className="h-full"
+          style={{
+            width: safeRatio == null ? "0%" : `${safeRatio * 100}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function StressGauge({ stressText }: { stressText: string }) {
+  const stress = parseLeadingNumber(stressText);
+  const ratio01 = stress == null ? null : clamp(stress / 100, 0, 1);
+  return (
+    <div className="mt-2">
+      <SimpleMeterBar
+        label="測定ストレス"
+        valueText={stressText ? stressText : "—"}
+        ratio01={ratio01}
+        color="#a33a3a"
+      />
+    </div>
+  );
+}
+
+function CircadianTimeline({
+  bedtime,
+  wakeTime,
+  phaseText,
+}: {
+  bedtime: string;
+  wakeTime: string;
+  phaseText: string;
+}) {
+  const bed = parseHHMM(bedtime);
+  const wake = parseHHMM(wakeTime);
+
+  if (bed == null || wake == null) {
+    return (
+      <div className="mt-2">
+        <p className="text-[11px] font-semibold text-slate-500">体内時計</p>
+        <p className="mt-1 text-[13px] font-semibold" style={{ color: NAVY }}>
+          {phaseText || "—"}
+        </p>
+      </div>
+    );
+  }
+
+  const start = bed;
+  let end = wake;
+  let crosses = false;
+  if (end <= start) {
+    crosses = true;
+    end += 1440;
+  }
+
+  const startPct = (start / 1440) * 100;
+  const endPctRaw = (end % 1440) / 1440;
+  const endPct = crosses ? endPctRaw * 100 : (end / 1440) * 100;
+
+  const widthPct = crosses ? 100 - startPct : endPct - startPct;
+  const widthPct2 = crosses ? endPct : 0;
+
+  return (
+    <div className="mt-2">
+      <div
+        className="relative h-3 w-full overflow-hidden rounded-full"
+        style={{ background: "rgba(7,20,38,0.06)" }}
+        aria-hidden
+      >
+        <div
+          className="absolute h-full"
+          style={{
+            left: `${startPct}%`,
+            width: `${Math.max(0, widthPct)}%`,
+            backgroundColor: "#d8b36a",
+          }}
+        />
+        {crosses && (
+          <div
+            className="absolute h-full"
+            style={{
+              left: "0%",
+              width: `${Math.max(0, widthPct2)}%`,
+              backgroundColor: "#d8b36a",
+            }}
+          />
+        )}
+      </div>
+      <div className="mt-2 flex justify-between">
+        <p className="text-[11px] font-semibold text-slate-500">
+          入眠 {bedtime || "—"}
+        </p>
+        <p className="text-[11px] font-semibold text-slate-500">
+          起床 {wakeTime || "—"}
+        </p>
+      </div>
+      <p className="mt-2 text-[11px] font-semibold" style={{ color: NAVY }}>
+        {phaseText || "—"}
+      </p>
+    </div>
+  );
+}
+
 function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
   return [
     {
       id: "stages",
       title: "睡眠ステージ",
       subtitle: "SLEEP STAGES",
+      graph: (() => {
+        const remP = parsePercent(metrics.remSleepRate);
+        const lightP = parsePercent(metrics.lightSleepRate);
+        const deepP = parsePercent(metrics.deepSleepRate);
+
+        if (remP != null || lightP != null || deepP != null) {
+          return (
+            <StageSegmentBar
+              remRatio={remP ?? 0}
+              lightRatio={lightP ?? 0}
+              deepRatio={deepP ?? 0}
+            />
+          );
+        }
+
+        const remM = parseDurationMinutes(metrics.remSleep);
+        const lightM = parseDurationMinutes(metrics.lightSleep);
+        const deepM = parseDurationMinutes(metrics.deepSleep);
+        return (
+          <StageSegmentBar
+            remRatio={remM ?? 0}
+            lightRatio={lightM ?? 0}
+            deepRatio={deepM ?? 0}
+          />
+        );
+      })(),
       values: [
-        { label: "REM", value: displayValue(metrics.remSleep) },
-        { label: "浅い睡眠", value: displayValue(metrics.lightSleep) },
-        { label: "深い睡眠", value: displayValue(metrics.deepSleep) },
+        {
+          label: "REM（時間）",
+          value:
+            metrics.remSleep.trim() ? displayValue(metrics.remSleep) : "—",
+        },
+        {
+          label: "浅い睡眠（時間）",
+          value:
+            metrics.lightSleep.trim()
+              ? displayValue(metrics.lightSleep)
+              : "—",
+        },
+        {
+          label: "深い睡眠（時間）",
+          value:
+            metrics.deepSleep.trim() ? displayValue(metrics.deepSleep) : "—",
+        },
       ],
     },
     {
       id: "stage-detail",
       title: "睡眠ステージ詳細",
       subtitle: "STAGE DETAIL",
+      graph: (() => {
+        const eff = parsePercent(metrics.sleepEfficiency);
+        const awake = parsePercent(metrics.awakeningRate);
+        const effRatio01 = eff == null ? null : clamp(eff / 100, 0, 1);
+        const awakeRatio01 = awake == null ? null : clamp(awake / 100, 0, 1);
+        return (
+          <div className="mt-2 space-y-1">
+            <SimpleMeterBar
+              label="睡眠効率"
+              valueText={metrics.sleepEfficiency || "—"}
+              ratio01={effRatio01}
+              color="#315f68"
+            />
+            <SimpleMeterBar
+              label="覚醒率"
+              valueText={metrics.awakeningRate || "—"}
+              ratio01={awakeRatio01}
+              color="#8a6a2d"
+            />
+          </div>
+        );
+      })(),
       values: [
         { label: "睡眠時間", value: displayValue(metrics.sleepDuration) },
         { label: "睡眠効率", value: displayValue(metrics.sleepEfficiency) },
         { label: "覚醒時間", value: displayValue(metrics.awakenings) },
+        { label: "覚醒率", value: displayValue(metrics.awakeningRate) },
         { label: "入眠潜時", value: displayValue(metrics.sleepLatency) },
         { label: "睡眠負債", value: displayValue(metrics.sleepDebt) },
+        { label: "REM睡眠率", value: displayValue(metrics.remSleepRate) },
+        { label: "浅い睡眠率", value: displayValue(metrics.lightSleepRate) },
+        { label: "深い睡眠率", value: displayValue(metrics.deepSleepRate) },
       ],
     },
     {
       id: "stress",
-      title: "ストレス",
-      subtitle: "STRESS",
-      values: [{ label: "測定値", value: displayValue(metrics.stress) }],
+      title: "ストレスモニター",
+      subtitle: "STRESS MONITOR",
+      graph: <StressGauge stressText={metrics.stress} />,
+      values: [{ label: "ストレス（測定）", value: displayValue(metrics.stress) }],
     },
     {
       id: "circadian",
       title: "体内時計",
       subtitle: "CIRCADIAN",
+      graph: (
+        <CircadianTimeline
+          bedtime={metrics.bedtime}
+          wakeTime={metrics.wakeTime}
+          phaseText={metrics.circadianRhythm}
+        />
+      ),
       values: [
-        { label: "体内時計", value: displayValue(metrics.circadianRhythm) },
-        { label: "入眠", value: displayValue(metrics.bedtime) },
-        { label: "起床", value: displayValue(metrics.wakeTime) },
+        { label: "位相", value: displayValue(metrics.circadianRhythm) },
       ],
     },
     {
       id: "respiration",
       title: "睡眠時呼吸",
-      subtitle: "RESPIRATION",
+      subtitle: "SLEEP RESPIRATION",
+      graph: (() => {
+        const rr = parseLeadingNumber(metrics.respiratoryRate);
+        const spo2 = parsePercent(metrics.spo2) ?? parseLeadingNumber(metrics.spo2);
+        const rrRatio01 = rr == null ? null : clamp(rr / 30, 0, 1);
+        const spo2Ratio01 = spo2 == null ? null : clamp(Number(spo2) / 100, 0, 1);
+        return (
+          <div className="mt-2 space-y-1">
+            <SimpleMeterBar
+              label="呼吸速度"
+              valueText={metrics.respiratoryRate || "—"}
+              ratio01={rrRatio01}
+              color="#315f68"
+            />
+            <SimpleMeterBar
+              label="SpO₂"
+              valueText={metrics.spo2 || "—"}
+              ratio01={spo2Ratio01}
+              color="#d8b36a"
+            />
+          </div>
+        );
+      })(),
       values: [
-        { label: "呼吸数", value: displayValue(metrics.respiratoryRate) },
+        { label: "呼吸速度", value: displayValue(metrics.respiratoryRate) },
         { label: "平均SpO₂", value: displayValue(metrics.spo2) },
       ],
     },
@@ -242,13 +560,43 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       id: "rhr",
       title: "安静時心拍数",
       subtitle: "RESTING HR",
-      values: [{ label: "平均心拍数", value: displayValue(metrics.heartRate) }],
+      values: [
+        { label: "安静時心拍数", value: displayValue(metrics.restingHeartRate) },
+      ],
+      graph: (() => {
+        const rhr = parseLeadingNumber(metrics.restingHeartRate);
+        const ratio01 = rhr == null ? null : clamp((rhr - 40) / 50, 0, 1);
+        return (
+          <div className="mt-2">
+            <SimpleMeterBar
+              label="RHR"
+              valueText={metrics.restingHeartRate || "—"}
+              ratio01={ratio01}
+              color="#0f6b5c"
+            />
+          </div>
+        );
+      })(),
     },
     {
       id: "hrv",
-      title: "心拍変動",
+      title: "HRV",
       subtitle: "HRV",
       values: [{ label: "HRV", value: displayValue(metrics.hrv) }],
+      graph: (() => {
+        const hrv = parseLeadingNumber(metrics.hrv);
+        const ratio01 = hrv == null ? null : clamp((hrv - 10) / 90, 0, 1);
+        return (
+          <div className="mt-2">
+            <SimpleMeterBar
+              label="HRV"
+              valueText={metrics.hrv || "—"}
+              ratio01={ratio01}
+              color="#8a6a2d"
+            />
+          </div>
+        );
+      })(),
     },
     {
       id: "skin-temp",
@@ -257,6 +605,20 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       values: [
         { label: "皮膚温度", value: displayValue(metrics.skinTemperature) },
       ],
+      graph: (() => {
+        const t = parseLeadingNumber(metrics.skinTemperature);
+        const ratio01 = t == null ? null : clamp((t + 1) / 2, 0, 1);
+        return (
+          <div className="mt-2">
+            <SimpleMeterBar
+              label="Skin Temp"
+              valueText={metrics.skinTemperature || "—"}
+              ratio01={ratio01}
+              color="#b89242"
+            />
+          </div>
+        );
+      })(),
     },
   ];
 }
@@ -497,8 +859,7 @@ function ResultContent({
                   className="report-title mt-4 text-[1.5rem] font-semibold tracking-[-0.04em] sm:mt-5 sm:text-[1.9rem]"
                   style={{ color: NAVY }}
                 >
-                  Sleep Wellness Report
-                  <span style={{ color: GOLD }}>™</span>
+                  Sleep Wellness Medical Report
                 </h1>
               </div>
 
@@ -541,151 +902,58 @@ function ResultContent({
             </div>
           </header>
 
-          <section className="report-score-breakdown mt-6 sm:mt-7">
-            <SectionLabel title="Scoreの内訳" eyebrow="BREAKDOWN" />
-            <div className="report-breakdown-list rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-3.5 sm:px-5 sm:py-4">
-              {scoreBreakdownItems.map(({ key, label }) => {
-                const stars = breakdown[key];
-                const status = starsToStatus(stars);
-                const style = STATUS_STYLE[status];
-                return (
-                  <div
-                    key={key}
-                    className="report-breakdown-row flex items-center justify-between gap-3 border-b border-[#071426]/06 py-2.5 last:border-b-0 last:pb-0 first:pt-0"
-                  >
-                    <span
-                      className="text-[15px] font-medium tracking-[-0.02em] sm:text-base"
-                      style={{ color: NAVY }}
-                    >
-                      {label}
-                    </span>
-                    <span
-                      className="report-stars shrink-0 text-[15px] tracking-[0.12em] sm:text-base"
-                      style={{ color: style.color }}
-                      aria-label={`${stars} / 5`}
-                    >
-                      {renderStars(stars)}
-                    </span>
-                  </div>
-                );
-              })}
-              <div className="report-breakdown-total mt-1 flex items-center justify-between gap-3 border-t border-[#071426]/12 pt-3">
-                <span
-                  className="text-[15px] font-semibold tracking-[-0.02em] sm:text-base"
-                  style={{ color: NAVY }}
-                >
-                  総合
-                </span>
-                <span
-                  className="text-[1.15rem] font-semibold tracking-[-0.03em] sm:text-[1.25rem]"
-                  style={{ color: NAVY }}
-                >
-                  {score}
-                  <span className="ml-1 text-[13px] font-medium text-slate-400">
-                    点
-                  </span>
-                </span>
-              </div>
-            </div>
-          </section>
-
-          <section className="report-metrics mt-6 sm:mt-7">
-            <SectionLabel title="睡眠サマリー" eyebrow="METRICS" />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
-              {reportMetrics.map(({ key, label, important, breakdownKey }) => {
-                const status =
-                  important && breakdownKey
-                    ? starsToStatus(breakdown[breakdownKey])
-                    : null;
-                const style = status ? STATUS_STYLE[status] : null;
-
-                return (
-                  <div
-                    key={key}
-                    className="report-metric rounded-xl border px-3 py-3 sm:px-3.5 sm:py-3.5"
-                    style={
-                      style
-                        ? {
-                            borderColor: style.border,
-                            backgroundColor: style.bg,
-                          }
-                        : {
-                            borderColor: "rgba(7, 20, 38, 0.1)",
-                            backgroundColor: "#fafaf8",
-                          }
-                    }
-                  >
-                    <p
-                      className="text-[10px] font-medium tracking-[0.04em] sm:text-[11px]"
-                      style={{ color: style?.color ?? "#94a3b8" }}
-                    >
-                      {label}
-                    </p>
-                    <p
-                      className="mt-1 text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
-                      style={{ color: style?.color ?? NAVY }}
-                    >
-                      {formatMetricValue(key, result.metrics)}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
           <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
-            <SectionLabel title="① 総合評価" eyebrow="OVERVIEW" />
-            <div className="report-summary">
-              <FormattedAiText text={summaryText} />
+            <SectionLabel title="睡眠ウェルネス所見" eyebrow="MEDICAL" />
+
+            <div className="mt-3 space-y-2">
+              <p className="text-[15px] leading-7 text-slate-600">
+                睡眠スコアは<strong style={{ color: NAVY }}> {displayValue(result.metrics.sleepScore)}</strong>です。
+              </p>
+              <div className="space-y-1">
+                {[
+                  ["睡眠時間", displayValue(result.metrics.sleepDuration)],
+                  ["睡眠効率", displayValue(result.metrics.sleepEfficiency)],
+                  ["睡眠負債", displayValue(result.metrics.sleepDebt)],
+                  ["入眠潜時", displayValue(result.metrics.sleepLatency)],
+                  ["覚醒", displayValue(result.metrics.awakenings)],
+                  ["レム睡眠", displayValue(result.metrics.remSleep)],
+                  ["浅い睡眠", displayValue(result.metrics.lightSleep)],
+                  ["深い睡眠", displayValue(result.metrics.deepSleep)],
+                  ["体内時計", displayValue(result.metrics.circadianRhythm)],
+                  ["呼吸速度", displayValue(result.metrics.respiratoryRate)],
+                  ["平均酸素レベル（SpO₂）", displayValue(result.metrics.spo2)],
+                  ["安静時心拍数", displayValue(result.metrics.restingHeartRate)],
+                  ["HRV", displayValue(result.metrics.hrv)],
+                  ["皮膚温度", displayValue(result.metrics.skinTemperature)],
+                  ["ストレス", displayValue(result.metrics.stress)],
+                ].map(([label, value]) => (
+                  <p
+                    key={label}
+                    className="text-[13px] leading-6 text-slate-600"
+                  >
+                    <span style={{ color: NAVY, fontWeight: 600 }}>
+                      {label}：
+                    </span>
+                    <span>{value}</span>
+                  </p>
+                ))}
+              </div>
             </div>
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="② 今回良かった点" eyebrow="STRENGTHS" />
-            <BulletList items={goodPoints} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="③ 改善点" eyebrow="IMPROVE" />
-            <BulletList items={improvements} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="④ 睡眠データ考察" eyebrow="DATA" />
-            <FormattedAiText text={dataInsightText || "—"} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="⑤ 生活習慣との関係" eyebrow="LIFESTYLE" />
-            <FormattedAiText text={lifestyleRelationText || "—"} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="⑥ Tomorrow Plan" eyebrow="PLAN" />
-            {primaryPlan && (
-              <div
-                className="border-l-[3px] pl-4"
-                style={{ borderColor: GOLD }}
-              >
-                <p
-                  className="text-[10px] font-semibold tracking-[0.18em]"
-                  style={{ color: GOLD }}
-                >
-                  最優先
-                </p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
-                  {renderRichText(primaryPlan)}
-                </p>
+            <SectionLabel title="生活習慣を踏まえた改善提案" eyebrow="IMPROVEMENT" />
+            <div className="mt-2">
+              <FormattedAiText text={lifestyleRelationText || "—"} />
+              <div className="mt-3">
+                <BulletList
+                  items={[
+                    ...(primaryPlan ? [clampLine(primaryPlan, 88)] : []),
+                    ...improvements,
+                  ].slice(0, 3)}
+                />
               </div>
-            )}
-            {nextPlans.length > 0 && (
-              <div className={primaryPlan ? "mt-3.5" : undefined}>
-                <BulletList items={nextPlans} />
-              </div>
-            )}
-            {!primaryPlan && nextPlans.length === 0 && (
-              <p className="text-[15px] leading-7 text-slate-400">—</p>
-            )}
+            </div>
           </section>
 
           {(cautionText || disclaimerText) && (
@@ -738,7 +1006,7 @@ function ResultContent({
                   className="visual-title mt-4 text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-[1.65rem]"
                   style={{ color: NAVY }}
                 >
-                  SOXAI Visual Report
+                  Sleep Wellness Visual Report
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
                   睡眠ステージ・生体指標の可視化
@@ -800,24 +1068,27 @@ function ResultContent({
                 >
                   {panel.title}
                 </h3>
-                <dl className="mt-2.5 space-y-1.5">
-                  {panel.values.map((row) => (
-                    <div
-                      key={`${panel.id}-${row.label}`}
-                      className="flex items-baseline justify-between gap-2"
-                    >
-                      <dt className="text-[10px] text-slate-400 sm:text-[11px]">
-                        {row.label}
-                      </dt>
-                      <dd
-                        className="text-right text-[12px] font-semibold tracking-[-0.02em] sm:text-[13px]"
-                        style={{ color: NAVY }}
-                      >
-                        {row.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                  {panel.graph}
+                  {panel.values && panel.values.length > 0 && (
+                    <dl className="mt-2.5 space-y-1.5">
+                      {panel.values.map((row) => (
+                        <div
+                          key={`${panel.id}-${row.label}`}
+                          className="flex items-baseline justify-between gap-2"
+                        >
+                          <dt className="text-[10px] text-slate-400 sm:text-[11px]">
+                            {row.label}
+                          </dt>
+                          <dd
+                            className="text-right text-[12px] font-semibold tracking-[-0.02em] sm:text-[13px]"
+                            style={{ color: NAVY }}
+                          >
+                            {row.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
               </div>
             ))}
           </section>
@@ -837,7 +1108,7 @@ function ResultContent({
                       alt={`SOXAI測定画面 ${index + 1}`}
                       fill
                       unoptimized
-                      className="object-contain p-1.5 sm:p-2"
+                        className="object-cover"
                     />
                   </div>
                   <figcaption className="border-t border-[#071426]/08 px-3 py-2 text-center text-[11px] font-medium tracking-[0.08em] text-slate-400">

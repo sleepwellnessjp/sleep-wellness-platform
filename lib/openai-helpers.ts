@@ -51,15 +51,19 @@ export const metricsJsonSchema = {
     "sleepDuration",
     "sleepEfficiency",
     "awakenings",
+    "awakeningRate",
     "remSleep",
+    "remSleepRate",
     "lightSleep",
+    "lightSleepRate",
     "deepSleep",
+    "deepSleepRate",
     "sleepDebt",
     "sleepLatency",
     "circadianRhythm",
     "respiratoryRate",
     "spo2",
-    "heartRate",
+    "restingHeartRate",
     "hrv",
     "skinTemperature",
     "stress",
@@ -71,15 +75,19 @@ export const metricsJsonSchema = {
     sleepDuration: { type: "string" },
     sleepEfficiency: { type: "string" },
     awakenings: { type: "string" },
+    awakeningRate: { type: "string" },
     remSleep: { type: "string" },
+    remSleepRate: { type: "string" },
     lightSleep: { type: "string" },
+    lightSleepRate: { type: "string" },
     deepSleep: { type: "string" },
+    deepSleepRate: { type: "string" },
     sleepDebt: { type: "string" },
     sleepLatency: { type: "string" },
     circadianRhythm: { type: "string" },
     respiratoryRate: { type: "string" },
     spo2: { type: "string" },
-    heartRate: { type: "string" },
+    restingHeartRate: { type: "string" },
     hrv: { type: "string" },
     skinTemperature: { type: "string" },
     stress: { type: "string" },
@@ -99,15 +107,19 @@ export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ�
 - sleepDuration … 睡眠時間 / Total Sleep / 総睡眠 / 実際の睡眠
 - sleepEfficiency … 睡眠効率 / Efficiency / Sleep efficiency（%付き可）
 - awakenings … 覚醒時間 / 中途覚醒 / Awake / 覚醒（時間または回数。単位付き）
+- awakeningRate … 覚醒率 / Awake % / 覚醒（割合）
 - remSleep … REM睡眠 / レム / REM
+- remSleepRate … レム睡眠率 / REM %
 - lightSleep … 浅い睡眠 / Light / ライト
+- lightSleepRate … 浅い睡眠率 / Light %
 - deepSleep … 深い睡眠 / Deep / ディープ
+- deepSleepRate … 深い睡眠率 / Deep %
 - sleepDebt … 睡眠負債 / Sleep Debt / 負債
 - sleepLatency … 入眠潜時 / Latency / 潜時 / 入眠までにかかった時間
 - circadianRhythm … 体内時計 / Circadian / クロノタイプ / 位相の表示
 - respiratoryRate … 呼吸数 / Respiratory / 呼吸（回/分など）
 - spo2 … 平均SpO₂ / SpO2 / SpO₂ / 血中酸素 / 酸素飽和度
-- heartRate … 平均心拍数 / 平均心拍 / HR / RHR / 安静時心拍
+- restingHeartRate … 安静時心拍数 / RHR / Resting HR / HR
 - hrv … HRV / 心拍変動 / RMSSD / SDNN など
 - skinTemperature … 皮膚温度 / Skin Temp / 皮膚温 / 体温偏差
 - stress … ストレス / Stress（測定値。日中/夜間が分かる場合は区別して記載）

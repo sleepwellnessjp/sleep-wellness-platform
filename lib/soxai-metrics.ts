@@ -5,15 +5,19 @@ export type AnalysisMetrics = {
   sleepDuration: string;
   sleepEfficiency: string;
   awakenings: string;
+  awakeningRate: string;
   remSleep: string;
+  remSleepRate: string;
   lightSleep: string;
+  lightSleepRate: string;
   deepSleep: string;
+  deepSleepRate: string;
   sleepDebt: string;
   sleepLatency: string;
   circadianRhythm: string;
   respiratoryRate: string;
   spo2: string;
-  heartRate: string;
+  restingHeartRate: string;
   hrv: string;
   skinTemperature: string;
   stress: string;
@@ -67,46 +71,11 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     placeholder: "例：87%",
   },
   {
-    key: "awakenings",
-    label: "覚醒時間",
-    hint: "中途覚醒 / Awake",
-    inputType: "text",
-    placeholder: "例：42分 / 3回",
-  },
-  {
-    key: "remSleep",
-    label: "REM睡眠",
-    hint: "レム / REM",
-    inputType: "text",
-    placeholder: "例：1時間28分",
-  },
-  {
-    key: "lightSleep",
-    label: "浅い睡眠",
-    hint: "Light",
-    inputType: "text",
-    placeholder: "例：3時間10分",
-  },
-  {
-    key: "deepSleep",
-    label: "深い睡眠",
-    hint: "Deep",
-    inputType: "text",
-    placeholder: "例：1時間05分",
-  },
-  {
     key: "sleepDebt",
     label: "睡眠負債",
-    hint: "Sleep Debt",
+    hint: "Sleep Debt / 負債",
     inputType: "text",
     placeholder: "例：-1時間20分",
-  },
-  {
-    key: "sleepLatency",
-    label: "入眠潜時",
-    hint: "Latency",
-    inputType: "text",
-    placeholder: "例：12分",
   },
   {
     key: "circadianRhythm",
@@ -116,9 +85,72 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     placeholder: "例：やや遅れ",
   },
   {
+    key: "sleepLatency",
+    label: "入眠潜時",
+    hint: "Latency / 入眠までにかかった時間",
+    inputType: "text",
+    placeholder: "例：12分",
+  },
+  {
+    key: "awakenings",
+    label: "覚醒時間",
+    hint: "中途覚醒 / Awake",
+    inputType: "text",
+    placeholder: "例：42分 / 3回",
+  },
+  {
+    key: "awakeningRate",
+    label: "覚醒率",
+    hint: "Awake % / 覚醒（割合）",
+    inputType: "text",
+    placeholder: "例：8%",
+  },
+  {
+    key: "remSleep",
+    label: "REM睡眠",
+    hint: "レム / REM",
+    inputType: "text",
+    placeholder: "例：1時間28分",
+  },
+  {
+    key: "remSleepRate",
+    label: "レム睡眠率",
+    hint: "REM %",
+    inputType: "text",
+    placeholder: "例：22%",
+  },
+  {
+    key: "lightSleep",
+    label: "浅い睡眠",
+    hint: "Light",
+    inputType: "text",
+    placeholder: "例：3時間10分",
+  },
+  {
+    key: "lightSleepRate",
+    label: "浅い睡眠率",
+    hint: "Light %",
+    inputType: "text",
+    placeholder: "例：55%",
+  },
+  {
+    key: "deepSleep",
+    label: "深い睡眠",
+    hint: "Deep",
+    inputType: "text",
+    placeholder: "例：1時間05分",
+  },
+  {
+    key: "deepSleepRate",
+    label: "深い睡眠率",
+    hint: "Deep %",
+    inputType: "text",
+    placeholder: "例：18%",
+  },
+  {
     key: "respiratoryRate",
-    label: "呼吸数",
-    hint: "Respiratory",
+    label: "呼吸速度",
+    hint: "Respiratory / 回/分",
     inputType: "text",
     placeholder: "例：14回/分",
   },
@@ -130,9 +162,9 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     placeholder: "例：96%",
   },
   {
-    key: "heartRate",
-    label: "平均心拍",
-    hint: "HR / RHR",
+    key: "restingHeartRate",
+    label: "安静時心拍数",
+    hint: "RHR / Resting HR",
     inputType: "text",
     placeholder: "例：58 bpm",
   },
@@ -167,15 +199,19 @@ export function emptyMetrics(): AnalysisMetrics {
     sleepDuration: "",
     sleepEfficiency: "",
     awakenings: "",
+    awakeningRate: "",
     remSleep: "",
+    remSleepRate: "",
     lightSleep: "",
+    lightSleepRate: "",
     deepSleep: "",
+    deepSleepRate: "",
     sleepDebt: "",
     sleepLatency: "",
     circadianRhythm: "",
     respiratoryRate: "",
     spo2: "",
-    heartRate: "",
+    restingHeartRate: "",
     hrv: "",
     skinTemperature: "",
     stress: "",

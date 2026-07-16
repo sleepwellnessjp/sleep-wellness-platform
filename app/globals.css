@@ -385,7 +385,7 @@
   }
 
   .visual-cell img {
-    object-fit: contain !important;
+    object-fit: cover !important;
   }
 
   .visual-cell figcaption {
