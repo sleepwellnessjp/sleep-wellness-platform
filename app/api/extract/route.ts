@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   isImageDataUrl,
   metricsJsonSchema,
+  normalizeImageDataUrl,
   openaiErrorMessage,
   SOXAI_EXTRACT_INSTRUCTIONS,
 } from "@/lib/openai-helpers";
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { images } = validated;
+  const images = validated.images.map(normalizeImageDataUrl);
 
   try {
     const client = new OpenAI({

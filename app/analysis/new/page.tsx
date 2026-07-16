@@ -18,7 +18,11 @@ import {
   extractSoxaiMetrics,
   setExtractionDraft,
 } from "@/lib/analysis-session";
-import { collectedMetricKeys, SOXAI_METRIC_FIELDS } from "@/lib/soxai-metrics";
+import {
+  collectedMetricKeys,
+  emptyMetrics,
+  SOXAI_METRIC_FIELDS,
+} from "@/lib/soxai-metrics";
 
 const MAX_FILES = 8;
 
@@ -479,8 +483,14 @@ export default function NewAnalysisPage() {
         notes: String(formData.get("notes") ?? ""),
       };
 
-      const extractedMetrics = await extractSoxaiMetrics(images);
-      const imageKeys = collectedMetricKeys(extractedMetrics);
+      let extractedMetrics = emptyMetrics();
+      let imageKeys: ReturnType<typeof collectedMetricKeys> = [];
+      try {
+        extractedMetrics = await extractSoxaiMetrics(images);
+        imageKeys = collectedMetricKeys(extractedMetrics);
+      } catch (extractErr) {
+        console.error("SOXAI extract fallback to manual confirm:", extractErr);
+      }
 
       setExtractionDraft({
         lifestyle,

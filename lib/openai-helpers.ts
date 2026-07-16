@@ -40,6 +40,11 @@ export function isImageDataUrl(value: unknown): value is string {
   );
 }
 
+/** OpenAIへ渡す前に data:image/jpg を data:image/jpeg に正規化 */
+export function normalizeImageDataUrl(value: string): string {
+  return value.replace(/^data:image\/jpg;base64,/i, "data:image/jpeg;base64,");
+}
+
 /** metrics JSON schema（抽出・分析で共通） */
 export const metricsJsonSchema = {
   type: "object",
