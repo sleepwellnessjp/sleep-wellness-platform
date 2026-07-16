@@ -21,14 +21,14 @@ type MetricStatus = "good" | "caution" | "improve" | "check";
 type MetricDef = {
   key: keyof AnalysisMetrics;
   label: string;
-  /** 色分け対象の重要指標 */
   important?: boolean;
   breakdownKey?: keyof ScoreBreakdown;
 };
 
 const reportMetrics: MetricDef[] = [
-  { key: "bedtime", label: "入眠" },
-  { key: "wakeTime", label: "起床" },
+  { key: "sleepScore", label: "睡眠スコア" },
+  { key: "bedtime", label: "入眠時間" },
+  { key: "wakeTime", label: "起床時間" },
   {
     key: "sleepDuration",
     label: "睡眠時間",
@@ -41,15 +41,39 @@ const reportMetrics: MetricDef[] = [
     important: true,
     breakdownKey: "sleepEfficiency",
   },
+  { key: "awakenings", label: "覚醒時間" },
+  { key: "remSleep", label: "REM睡眠" },
+  { key: "lightSleep", label: "浅い睡眠" },
   {
     key: "deepSleep",
     label: "深い睡眠",
     important: true,
     breakdownKey: "deepSleep",
   },
-  { key: "hrv", label: "HRV", important: true, breakdownKey: "hrv" },
-  { key: "stress", label: "ストレス", important: true, breakdownKey: "stress" },
-  { key: "spo2", label: "SpO₂", important: true, breakdownKey: "spo2" },
+  { key: "sleepDebt", label: "睡眠負債" },
+  { key: "sleepLatency", label: "入眠潜時" },
+  { key: "circadianRhythm", label: "体内時計" },
+  { key: "respiratoryRate", label: "呼吸数" },
+  {
+    key: "spo2",
+    label: "平均SpO₂",
+    important: true,
+    breakdownKey: "spo2",
+  },
+  { key: "heartRate", label: "平均心拍数" },
+  {
+    key: "hrv",
+    label: "HRV",
+    important: true,
+    breakdownKey: "hrv",
+  },
+  { key: "skinTemperature", label: "皮膚温度" },
+  {
+    key: "stress",
+    label: "ストレス",
+    important: true,
+    breakdownKey: "stress",
+  },
 ];
 
 const scoreBreakdownItems: Array<{
@@ -64,6 +88,13 @@ const scoreBreakdownItems: Array<{
   { key: "spo2", label: "SpO₂" },
   { key: "recovery", label: "回復力" },
 ];
+
+type VisualPanel = {
+  id: string;
+  title: string;
+  subtitle: string;
+  values: Array<{ label: string; value: string }>;
+};
 
 const STATUS_STYLE: Record<
   MetricStatus,
@@ -102,12 +133,17 @@ function starsToStatus(stars: ScoreStars): MetricStatus {
   return "check";
 }
 
+function displayValue(value: string | number | null | undefined): string {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return "—";
+}
+
 function formatMetricValue(
   key: keyof AnalysisMetrics,
   metrics: AnalysisMetrics,
 ): string {
-  const value = metrics[key];
-  return typeof value === "string" && value.trim() ? value : "—";
+  return displayValue(metrics[key]);
 }
 
 function takeItems(items: string[] | undefined, max: number): string[] {
@@ -140,17 +176,89 @@ function formatDateLabel(value?: string): string {
   return `${match[1]}.${match[2]}.${match[3]}`;
 }
 
-function splitActions(actions: string[]): {
+function splitTomorrowPlan(plan: string[]): {
   primary: string | null;
   next: string[];
 } {
-  const limited = takeItems(actions, 3).map((item) => clampLine(item, 90));
+  const limited = takeItems(plan, 3).map((item) => clampLine(item, 90));
   if (limited.length === 0) return { primary: null, next: [] };
   return { primary: limited[0], next: limited.slice(1) };
 }
 
 function renderStars(count: ScoreStars): string {
   return "★".repeat(count) + "☆".repeat(5 - count);
+}
+
+function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
+  return [
+    {
+      id: "stages",
+      title: "睡眠ステージ",
+      subtitle: "SLEEP STAGES",
+      values: [
+        { label: "REM", value: displayValue(metrics.remSleep) },
+        { label: "浅い睡眠", value: displayValue(metrics.lightSleep) },
+        { label: "深い睡眠", value: displayValue(metrics.deepSleep) },
+      ],
+    },
+    {
+      id: "stage-detail",
+      title: "睡眠ステージ詳細",
+      subtitle: "STAGE DETAIL",
+      values: [
+        { label: "睡眠時間", value: displayValue(metrics.sleepDuration) },
+        { label: "睡眠効率", value: displayValue(metrics.sleepEfficiency) },
+        { label: "覚醒時間", value: displayValue(metrics.awakenings) },
+        { label: "入眠潜時", value: displayValue(metrics.sleepLatency) },
+        { label: "睡眠負債", value: displayValue(metrics.sleepDebt) },
+      ],
+    },
+    {
+      id: "stress",
+      title: "ストレス",
+      subtitle: "STRESS",
+      values: [{ label: "測定値", value: displayValue(metrics.stress) }],
+    },
+    {
+      id: "circadian",
+      title: "体内時計",
+      subtitle: "CIRCADIAN",
+      values: [
+        { label: "体内時計", value: displayValue(metrics.circadianRhythm) },
+        { label: "入眠", value: displayValue(metrics.bedtime) },
+        { label: "起床", value: displayValue(metrics.wakeTime) },
+      ],
+    },
+    {
+      id: "respiration",
+      title: "睡眠時呼吸",
+      subtitle: "RESPIRATION",
+      values: [
+        { label: "呼吸数", value: displayValue(metrics.respiratoryRate) },
+        { label: "平均SpO₂", value: displayValue(metrics.spo2) },
+      ],
+    },
+    {
+      id: "rhr",
+      title: "安静時心拍数",
+      subtitle: "RESTING HR",
+      values: [{ label: "平均心拍数", value: displayValue(metrics.heartRate) }],
+    },
+    {
+      id: "hrv",
+      title: "心拍変動",
+      subtitle: "HRV",
+      values: [{ label: "HRV", value: displayValue(metrics.hrv) }],
+    },
+    {
+      id: "skin-temp",
+      title: "皮膚温度",
+      subtitle: "SKIN TEMP",
+      values: [
+        { label: "皮膚温度", value: displayValue(metrics.skinTemperature) },
+      ],
+    },
+  ];
 }
 
 /** Markdown風 **太字** を描画 */
@@ -169,7 +277,6 @@ function renderRichText(text: string): ReactNode {
   });
 }
 
-/** AIコメントを短い段落と箇条書きで整形 */
 function FormattedAiText({ text }: { text: string }) {
   const blocks = text
     .split(/\n+/)
@@ -179,49 +286,65 @@ function FormattedAiText({ text }: { text: string }) {
   if (blocks.length === 0) return null;
 
   return (
-    <div className="space-y-3">
-      {blocks.map((block, index) => {
-        const lines = block
-          .split(/(?=[・•●\-]\s)/)
-          .map((line) => line.trim())
-          .filter(Boolean);
-        const isList =
-          lines.length > 1 &&
-          lines.every((line) => /^[・•●\-]\s?/.test(line));
-
-        if (isList) {
-          return (
-            <ul key={index} className="space-y-2">
-              {lines.map((line) => {
-                const content = line.replace(/^[・•●\-]\s?/, "");
-                return (
-                  <li
-                    key={line}
-                    className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                  >
-                    <span
-                      className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: GOLD }}
-                      aria-hidden
-                    />
-                    <span>{renderRichText(content)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          );
-        }
-
-        return (
-          <p
-            key={index}
-            className="text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8"
-          >
-            {renderRichText(block)}
-          </p>
-        );
-      })}
+    <div className="space-y-2.5">
+      {blocks.map((block, index) => (
+        <p
+          key={index}
+          className="text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8"
+        >
+          {renderRichText(block)}
+        </p>
+      ))}
     </div>
+  );
+}
+
+function SectionLabel({
+  title,
+  eyebrow,
+}: {
+  title: string;
+  eyebrow: string;
+}) {
+  return (
+    <div className="mb-3 flex items-baseline justify-between gap-3">
+      <h2
+        className="text-base font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
+        style={{ color: NAVY }}
+      >
+        {title}
+      </h2>
+      <p
+        className="text-[10px] font-semibold tracking-[0.22em]"
+        style={{ color: GOLD }}
+      >
+        {eyebrow}
+      </p>
+    </div>
+  );
+}
+
+function BulletList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {items.map((item) => (
+        <li
+          key={item}
+          className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
+        >
+          <span
+            className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: GOLD }}
+            aria-hidden
+          />
+          <span>{renderRichText(item)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -307,38 +430,31 @@ function ResultContent({
   const improvements = takeItems(result.improvements, 2).map((item) =>
     clampLine(item, 88),
   );
-  const possibleFactors = takeItems(result.possibleFactors, 3).map((item) =>
-    clampLine(item, 88),
+  const { primary: primaryPlan, next: nextPlans } = splitTomorrowPlan(
+    result.tomorrowPlan,
   );
-  const { primary: primaryAction, next: nextActions } = splitActions(
-    result.actions,
+  const summaryText = clampLine(clampSentences(result.summary, 5), 360);
+  const dataInsightText = clampLine(
+    clampSentences(result.dataInsight, 5),
+    340,
   );
-  const summaryText = clampLine(clampSentences(result.summary, 6), 420);
-  const yogaText = clampLine(result.yoga ?? "", 110);
+  const lifestyleRelationText = clampLine(
+    clampSentences(result.lifestyleRelation, 5),
+    340,
+  );
   const cautionText = clampLine(result.caution ?? "", 90);
   const disclaimerText = clampLine(
     clampSentences(result.disclaimer ?? "", 2),
     100,
   );
-  const closingSummary =
-    result.closingSummary?.trim() ||
-    clampLine(clampSentences(result.summary, 2), 150);
-  const nextCheckPoints = takeItems(
-    result.nextCheckPoints?.length
-      ? result.nextCheckPoints
-      : [...improvements, ...possibleFactors],
-    4,
-  ).map((item) => clampLine(item, 48));
-
+  const visualPanels = buildVisualPanels(result.metrics);
   const visualSlots = Math.max(images.length, 1);
   const visualCols =
     visualSlots === 1
       ? "grid-cols-1"
       : visualSlots === 2
         ? "grid-cols-1 sm:grid-cols-2"
-        : visualSlots <= 4
-          ? "grid-cols-2"
-          : "grid-cols-2 sm:grid-cols-3";
+        : "grid-cols-2";
 
   return (
     <main className="report-print-root min-h-screen bg-[#f7f7f5] py-8 print:bg-white print:py-0 sm:py-12 md:py-16">
@@ -364,6 +480,7 @@ function ResultContent({
           <AnalysisFlow current={3} />
         </div>
 
+        {/* ===== PAGE 1: Text Report ===== */}
         <article className="report-page report-page-text overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-5 py-8 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:px-9 sm:py-10 md:px-11 md:py-11">
           <header className="report-header">
             <div className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-5 sm:pb-6">
@@ -425,21 +542,7 @@ function ResultContent({
           </header>
 
           <section className="report-score-breakdown mt-6 sm:mt-7">
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
-                style={{ color: NAVY }}
-              >
-                Scoreの内訳
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.22em]"
-                style={{ color: GOLD }}
-              >
-                BREAKDOWN
-              </p>
-            </div>
-
+            <SectionLabel title="Scoreの内訳" eyebrow="BREAKDOWN" />
             <div className="report-breakdown-list rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-3.5 sm:px-5 sm:py-4">
               {scoreBreakdownItems.map(({ key, label }) => {
                 const stars = breakdown[key];
@@ -450,24 +553,12 @@ function ResultContent({
                     key={key}
                     className="report-breakdown-row flex items-center justify-between gap-3 border-b border-[#071426]/06 py-2.5 last:border-b-0 last:pb-0 first:pt-0"
                   >
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span
-                        className="text-[15px] font-medium tracking-[-0.02em] sm:text-base"
-                        style={{ color: NAVY }}
-                      >
-                        {label}
-                      </span>
-                      <span
-                        className="report-status-chip hidden shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-[0.06em] sm:inline-block"
-                        style={{
-                          color: style.color,
-                          backgroundColor: style.bg,
-                          border: `1px solid ${style.border}`,
-                        }}
-                      >
-                        {style.label}
-                      </span>
-                    </div>
+                    <span
+                      className="text-[15px] font-medium tracking-[-0.02em] sm:text-base"
+                      style={{ color: NAVY }}
+                    >
+                      {label}
+                    </span>
                     <span
                       className="report-stars shrink-0 text-[15px] tracking-[0.12em] sm:text-base"
                       style={{ color: style.color }}
@@ -478,7 +569,6 @@ function ResultContent({
                   </div>
                 );
               })}
-
               <div className="report-breakdown-total mt-1 flex items-center justify-between gap-3 border-t border-[#071426]/12 pt-3">
                 <span
                   className="text-[15px] font-semibold tracking-[-0.02em] sm:text-base"
@@ -497,41 +587,11 @@ function ResultContent({
                 </span>
               </div>
             </div>
-
-            <div className="report-status-legend mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
-              {(
-                Object.entries(STATUS_STYLE) as Array<
-                  [MetricStatus, (typeof STATUS_STYLE)[MetricStatus]]
-                >
-              ).map(([key, style]) => (
-                <span key={key} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: style.color }}
-                    aria-hidden
-                  />
-                  {style.label}
-                </span>
-              ))}
-            </div>
           </section>
 
-          <section className="report-metrics mt-7 sm:mt-8">
-            <div className="mb-3 flex items-baseline justify-between gap-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
-                style={{ color: NAVY }}
-              >
-                睡眠サマリー
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.22em]"
-                style={{ color: GOLD }}
-              >
-                SUMMARY
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+          <section className="report-metrics mt-6 sm:mt-7">
+            <SectionLabel title="睡眠サマリー" eyebrow="METRICS" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
               {reportMetrics.map(({ key, label, important, breakdownKey }) => {
                 const status =
                   important && breakdownKey
@@ -542,7 +602,7 @@ function ResultContent({
                 return (
                   <div
                     key={key}
-                    className="report-metric rounded-xl border px-3.5 py-3.5 sm:px-4 sm:py-4"
+                    className="report-metric rounded-xl border px-3 py-3 sm:px-3.5 sm:py-3.5"
                     style={
                       style
                         ? {
@@ -555,24 +615,14 @@ function ResultContent({
                           }
                     }
                   >
-                    <div className="flex items-center justify-between gap-1">
-                      <p
-                        className="text-[11px] font-medium tracking-[0.04em]"
-                        style={{ color: style?.color ?? "#94a3b8" }}
-                      >
-                        {label}
-                      </p>
-                      {style && (
-                        <span
-                          className="text-[9px] font-semibold tracking-[0.04em]"
-                          style={{ color: style.color }}
-                        >
-                          {style.label}
-                        </span>
-                      )}
-                    </div>
                     <p
-                      className="mt-1.5 text-[1.02rem] font-semibold tracking-[-0.03em] sm:text-[1.08rem]"
+                      className="text-[10px] font-medium tracking-[0.04em] sm:text-[11px]"
+                      style={{ color: style?.color ?? "#94a3b8" }}
+                    >
+                      {label}
+                    </p>
+                    <p
+                      className="mt-1 text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
                       style={{ color: style?.color ?? NAVY }}
                     >
                       {formatMetricValue(key, result.metrics)}
@@ -583,128 +633,38 @@ function ResultContent({
             </div>
           </section>
 
-          <section className="report-assessment mt-7 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-8 sm:px-5 sm:py-6">
-            <div className="flex items-baseline justify-between gap-3 border-b border-[#071426]/10 pb-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                AI総合分析
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.22em]"
-                style={{ color: GOLD }}
-              >
-                OVERVIEW
-              </p>
-            </div>
-
-            <div className="mt-4">
-              <p
-                className="mb-2 text-[11px] font-semibold tracking-[0.14em]"
-                style={{ color: GOLD }}
-              >
-                今回の見立て
-              </p>
-              <div className="report-summary">
-                <FormattedAiText text={summaryText} />
-              </div>
-            </div>
-
-            {goodPoints.length > 0 && (
-              <div className="mt-5 border-t border-[#071426]/08 pt-4">
-                <p
-                  className="text-[11px] font-semibold tracking-[0.14em]"
-                  style={{ color: GOLD }}
-                >
-                  良かった点
-                </p>
-                <ul className="mt-2.5 space-y-2">
-                  {goodPoints.map((item) => (
-                    <li
-                      key={item}
-                      className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                    >
-                      <span
-                        className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: GOLD }}
-                        aria-hidden
-                      />
-                      <span>{renderRichText(item)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
-
-          <section className="report-split mt-6 grid gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
-            <div className="report-panel rounded-xl border border-[#071426]/10 px-4 py-5 sm:px-5">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                改善ポイント
-              </h2>
-              <ul className="mt-3.5 space-y-2.5">
-                {improvements.map((item) => (
-                  <li
-                    key={item}
-                    className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                  >
-                    <span
-                      className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
-                      aria-hidden
-                    />
-                    <span>{renderRichText(item)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="report-panel rounded-xl border border-[#071426]/10 px-4 py-5 sm:px-5">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                考えられる要因
-              </h2>
-              <ul className="mt-3.5 space-y-2.5">
-                {possibleFactors.map((item) => (
-                  <li
-                    key={item}
-                    className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                  >
-                    <span
-                      className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
-                      aria-hidden
-                    />
-                    <span>{renderRichText(item)}</span>
-                  </li>
-                ))}
-              </ul>
+          <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
+            <SectionLabel title="① 総合評価" eyebrow="OVERVIEW" />
+            <div className="report-summary">
+              <FormattedAiText text={summaryText} />
             </div>
           </section>
 
-          <section className="report-panel mt-6 rounded-xl border border-[#071426]/10 px-4 py-5 sm:mt-7 sm:px-5">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                実践アクション
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.18em]"
-                style={{ color: GOLD }}
-              >
-                ACTIONS
-              </p>
-            </div>
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="② 今回良かった点" eyebrow="STRENGTHS" />
+            <BulletList items={goodPoints} />
+          </section>
 
-            {primaryAction && (
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="③ 改善点" eyebrow="IMPROVE" />
+            <BulletList items={improvements} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="④ 睡眠データ考察" eyebrow="DATA" />
+            <FormattedAiText text={dataInsightText || "—"} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="⑤ 生活習慣との関係" eyebrow="LIFESTYLE" />
+            <FormattedAiText text={lifestyleRelationText || "—"} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="⑥ Tomorrow Plan" eyebrow="PLAN" />
+            {primaryPlan && (
               <div
-                className="mt-4 border-l-[3px] pl-4"
+                className="border-l-[3px] pl-4"
                 style={{ borderColor: GOLD }}
               >
                 <p
@@ -714,110 +674,22 @@ function ResultContent({
                   最優先
                 </p>
                 <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
-                  {renderRichText(primaryAction)}
+                  {renderRichText(primaryPlan)}
                 </p>
               </div>
             )}
-
-            {nextActions.length > 0 && (
-              <div className="mt-4">
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-400">
-                  次のアクション
-                </p>
-                <ul className="mt-2 space-y-2">
-                  {nextActions.map((item) => (
-                    <li
-                      key={item}
-                      className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                    >
-                      <span
-                        className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
-                        aria-hidden
-                      />
-                      <span>{renderRichText(item)}</span>
-                    </li>
-                  ))}
-                </ul>
+            {nextPlans.length > 0 && (
+              <div className={primaryPlan ? "mt-3.5" : undefined}>
+                <BulletList items={nextPlans} />
               </div>
             )}
+            {!primaryPlan && nextPlans.length === 0 && (
+              <p className="text-[15px] leading-7 text-slate-400">—</p>
+            )}
           </section>
-
-          <section className="report-yoga mt-6 rounded-xl border border-[#071426]/10 px-4 py-5 sm:mt-7 sm:px-5">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                メラトニンヨガ™ / 呼吸・休養
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.18em]"
-                style={{ color: GOLD }}
-              >
-                PRACTICE
-              </p>
-            </div>
-            <p className="mt-3 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
-              {yogaText ? renderRichText(yogaText) : "—"}
-            </p>
-          </section>
-
-          <section className="report-closing mt-6 rounded-xl border border-[#071426]/10 bg-[#f7f9fb] px-4 py-5 sm:mt-7 sm:px-5">
-            <div className="flex items-baseline justify-between gap-3">
-              <h2
-                className="text-base font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                今回の総括
-              </h2>
-              <p
-                className="text-[10px] font-semibold tracking-[0.18em]"
-                style={{ color: GOLD }}
-              >
-                CLOSING
-              </p>
-            </div>
-            <p className="mt-3 text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8">
-              {renderRichText(closingSummary)}
-            </p>
-          </section>
-
-          {nextCheckPoints.length > 0 && (
-            <section className="report-next-checks mt-6 rounded-xl border border-[#071426]/10 px-4 py-5 sm:mt-7 sm:px-5">
-              <div className="flex items-baseline justify-between gap-3">
-                <h2
-                  className="text-base font-semibold tracking-[-0.02em]"
-                  style={{ color: NAVY }}
-                >
-                  次回確認したいポイント
-                </h2>
-                <p
-                  className="text-[10px] font-semibold tracking-[0.18em]"
-                  style={{ color: GOLD }}
-                >
-                  NEXT
-                </p>
-              </div>
-              <ul className="mt-3.5 space-y-2.5">
-                {nextCheckPoints.map((item) => (
-                  <li
-                    key={item}
-                    className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
-                  >
-                    <span
-                      className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: GOLD }}
-                      aria-hidden
-                    />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
 
           {(cautionText || disclaimerText) && (
-            <section className="report-disclaimer mt-6 border-t border-[#071426]/12 pt-4 sm:mt-7">
+            <section className="report-disclaimer mt-5 border-t border-[#071426]/12 pt-4 sm:mt-6">
               <h2
                 className="text-sm font-semibold tracking-[-0.01em]"
                 style={{ color: NAVY }}
@@ -837,7 +709,7 @@ function ResultContent({
             </section>
           )}
 
-          <footer className="report-powered mt-8 border-t border-[#071426]/10 pt-5 text-center sm:mt-9">
+          <footer className="report-powered mt-6 border-t border-[#071426]/10 pt-4 text-center sm:mt-7">
             <p className="text-[10px] font-semibold tracking-[0.28em] text-slate-400">
               Powered by
             </p>
@@ -850,6 +722,7 @@ function ResultContent({
           </footer>
         </article>
 
+        {/* ===== PAGE 2: SOXAI Visual Report ===== */}
         <article className="report-page report-page-visual mt-8 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-5 py-8 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:mt-0 print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:mt-10 sm:px-9 sm:py-10 md:px-11 md:py-11">
           <header className="visual-header">
             <div className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-5">
@@ -868,7 +741,7 @@ function ResultContent({
                   SOXAI Visual Report
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
-                  今回の分析に使用した測定画面
+                  睡眠ステージ・生体指標の可視化
                 </p>
               </div>
               <div className="shrink-0 text-right">
@@ -876,11 +749,16 @@ function ResultContent({
                   className="text-[10px] font-semibold tracking-[0.22em]"
                   style={{ color: GOLD }}
                 >
-                  SOURCE DATA
+                  VISUAL
                 </p>
-                <p className="mt-2 text-sm font-medium" style={{ color: NAVY }}>
-                  {images.length > 0 ? `${images.length} 枚` : "—"}
-                </p>
+                {result.metrics.sleepScore != null && (
+                  <p
+                    className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
+                    style={{ color: NAVY }}
+                  >
+                    {result.metrics.sleepScore}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -904,22 +782,62 @@ function ResultContent({
             </div>
           </header>
 
+          <section className="visual-panels mt-5 grid grid-cols-2 gap-2.5 sm:mt-6 sm:grid-cols-4 sm:gap-3">
+            {visualPanels.map((panel) => (
+              <div
+                key={panel.id}
+                className="visual-panel rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3.5 sm:px-3.5 sm:py-4"
+              >
+                <p
+                  className="text-[9px] font-semibold tracking-[0.18em]"
+                  style={{ color: GOLD }}
+                >
+                  {panel.subtitle}
+                </p>
+                <h3
+                  className="mt-1 text-[13px] font-semibold tracking-[-0.02em] sm:text-sm"
+                  style={{ color: NAVY }}
+                >
+                  {panel.title}
+                </h3>
+                <dl className="mt-2.5 space-y-1.5">
+                  {panel.values.map((row) => (
+                    <div
+                      key={`${panel.id}-${row.label}`}
+                      className="flex items-baseline justify-between gap-2"
+                    >
+                      <dt className="text-[10px] text-slate-400 sm:text-[11px]">
+                        {row.label}
+                      </dt>
+                      <dd
+                        className="text-right text-[12px] font-semibold tracking-[-0.02em] sm:text-[13px]"
+                        style={{ color: NAVY }}
+                      >
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </section>
+
           {images.length > 0 ? (
             <div
-              className={`visual-grid mt-6 grid gap-3 sm:mt-7 sm:gap-4 ${visualCols}`}
+              className={`visual-grid mt-5 grid gap-3 sm:mt-6 sm:gap-4 ${visualCols}`}
             >
               {images.map((src, index) => (
                 <figure
                   key={`visual-${index}`}
-                  className="visual-cell overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8]"
+                  className="visual-cell overflow-hidden rounded-xl border border-[#071426]/10 bg-[#f4f4f2]"
                 >
-                  <div className="relative aspect-[3/4] w-full">
+                  <div className="relative aspect-[3/4] w-full min-h-[220px] sm:min-h-[280px]">
                     <Image
                       src={src}
                       alt={`SOXAI測定画面 ${index + 1}`}
                       fill
                       unoptimized
-                      className="object-contain p-2"
+                      className="object-contain p-1.5 sm:p-2"
                     />
                   </div>
                   <figcaption className="border-t border-[#071426]/08 px-3 py-2 text-center text-[11px] font-medium tracking-[0.08em] text-slate-400">
@@ -929,16 +847,16 @@ function ResultContent({
               ))}
             </div>
           ) : (
-            <div className="mt-6 rounded-xl border border-dashed border-slate-200 bg-[#fafaf8] px-5 py-12 text-center sm:mt-7">
+            <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-[#fafaf8] px-5 py-10 text-center sm:mt-6">
               <p className="text-sm leading-7 text-slate-500 sm:text-[15px]">
                 測定画面のプレビューは保存されていません。
                 <br />
-                次回の分析では、アップロード画像がここに表示されます。
+                上記パネルに抽出データが表示されています。
               </p>
             </div>
           )}
 
-          <footer className="report-powered mt-8 border-t border-[#071426]/10 pt-5 text-center sm:mt-9">
+          <footer className="report-powered mt-6 border-t border-[#071426]/10 pt-4 text-center sm:mt-7">
             <p className="text-[10px] font-semibold tracking-[0.28em] text-slate-400">
               Powered by
             </p>

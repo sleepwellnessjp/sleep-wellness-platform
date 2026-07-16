@@ -60,13 +60,19 @@ export type AnalysisMetrics = {
   wakeTime: string;
   sleepDuration: string;
   sleepEfficiency: string;
-  deepSleep: string;
   awakenings: string;
+  remSleep: string;
+  lightSleep: string;
+  deepSleep: string;
+  sleepDebt: string;
+  sleepLatency: string;
+  circadianRhythm: string;
+  respiratoryRate: string;
+  spo2: string;
   heartRate: string;
   hrv: string;
-  stress: string;
-  spo2: string;
   skinTemperature: string;
+  stress: string;
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -83,19 +89,21 @@ export type ScoreBreakdown = {
 };
 
 export type AnalysisResult = {
+  /** ①総合評価 */
   summary: string;
   score: number;
   scoreBreakdown: ScoreBreakdown;
   metrics: AnalysisMetrics;
+  /** ②今回良かった点 */
   goodPoints: string[];
+  /** ③改善点 */
   improvements: string[];
-  possibleFactors: string[];
-  actions: string[];
-  yoga: string;
-  /** 今日の総括（約100文字） */
-  closingSummary: string;
-  /** 次回確認したいポイント */
-  nextCheckPoints: string[];
+  /** ④睡眠データ考察 */
+  dataInsight: string;
+  /** ⑤生活習慣との関係 */
+  lifestyleRelation: string;
+  /** ⑥Tomorrow Plan */
+  tomorrowPlan: string[];
   caution: string;
   disclaimer: string;
   clientName?: string;
@@ -109,31 +117,33 @@ const MAX_STORED_IMAGES = 6;
 let pendingRequest: AnalysisRequest | null = null;
 let inFlightAnalysis: Promise<AnalysisResult> | null = null;
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function normalizeMetrics(
   metrics: Partial<AnalysisMetrics> | undefined,
 ): AnalysisMetrics {
   return {
     sleepScore:
       typeof metrics?.sleepScore === "number" ? metrics.sleepScore : null,
-    bedtime: typeof metrics?.bedtime === "string" ? metrics.bedtime : "",
-    wakeTime: typeof metrics?.wakeTime === "string" ? metrics.wakeTime : "",
-    sleepDuration:
-      typeof metrics?.sleepDuration === "string" ? metrics.sleepDuration : "",
-    sleepEfficiency:
-      typeof metrics?.sleepEfficiency === "string"
-        ? metrics.sleepEfficiency
-        : "",
-    deepSleep: typeof metrics?.deepSleep === "string" ? metrics.deepSleep : "",
-    awakenings:
-      typeof metrics?.awakenings === "string" ? metrics.awakenings : "",
-    heartRate: typeof metrics?.heartRate === "string" ? metrics.heartRate : "",
-    hrv: typeof metrics?.hrv === "string" ? metrics.hrv : "",
-    stress: typeof metrics?.stress === "string" ? metrics.stress : "",
-    spo2: typeof metrics?.spo2 === "string" ? metrics.spo2 : "",
-    skinTemperature:
-      typeof metrics?.skinTemperature === "string"
-        ? metrics.skinTemperature
-        : "",
+    bedtime: asString(metrics?.bedtime),
+    wakeTime: asString(metrics?.wakeTime),
+    sleepDuration: asString(metrics?.sleepDuration),
+    sleepEfficiency: asString(metrics?.sleepEfficiency),
+    awakenings: asString(metrics?.awakenings),
+    remSleep: asString(metrics?.remSleep),
+    lightSleep: asString(metrics?.lightSleep),
+    deepSleep: asString(metrics?.deepSleep),
+    sleepDebt: asString(metrics?.sleepDebt),
+    sleepLatency: asString(metrics?.sleepLatency),
+    circadianRhythm: asString(metrics?.circadianRhythm),
+    respiratoryRate: asString(metrics?.respiratoryRate),
+    spo2: asString(metrics?.spo2),
+    heartRate: asString(metrics?.heartRate),
+    hrv: asString(metrics?.hrv),
+    skinTemperature: asString(metrics?.skinTemperature),
+    stress: asString(metrics?.stress),
   };
 }
 
@@ -179,8 +189,15 @@ function normalizeStringList(items: unknown, max: number): string[] {
     .slice(0, max);
 }
 
+type LegacyAnalysisFields = {
+  possibleFactors?: unknown;
+  actions?: unknown;
+  yoga?: unknown;
+  closingSummary?: unknown;
+};
+
 function normalizeAnalysisResult(
-  raw: AnalysisResult,
+  raw: AnalysisResult & LegacyAnalysisFields,
   extras?: { clientName?: string; measurementDate?: string },
 ): AnalysisResult {
   const score =
@@ -188,18 +205,36 @@ function normalizeAnalysisResult(
       ? Math.max(0, Math.min(100, Math.round(raw.score)))
       : 0;
 
+  const dataInsight =
+    typeof raw.dataInsight === "string" && raw.dataInsight.trim()
+      ? raw.dataInsight.trim()
+      : typeof raw.closingSummary === "string"
+        ? raw.closingSummary.trim()
+        : "";
+
+  const lifestyleRelation =
+    typeof raw.lifestyleRelation === "string" && raw.lifestyleRelation.trim()
+      ? raw.lifestyleRelation.trim()
+      : normalizeStringList(raw.possibleFactors, 3).join(" ");
+
+  const tomorrowPlan = (() => {
+    const plan = normalizeStringList(raw.tomorrowPlan, 3);
+    if (plan.length > 0) return plan;
+    return normalizeStringList(raw.actions, 3);
+  })();
+
   return {
-    ...raw,
+    summary: typeof raw.summary === "string" ? raw.summary.trim() : "",
     score,
     scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
     metrics: normalizeMetrics(raw.metrics),
     goodPoints: normalizeStringList(raw.goodPoints, 3),
     improvements: normalizeStringList(raw.improvements, 2),
-    possibleFactors: normalizeStringList(raw.possibleFactors, 3),
-    actions: normalizeStringList(raw.actions, 3),
-    closingSummary:
-      typeof raw.closingSummary === "string" ? raw.closingSummary.trim() : "",
-    nextCheckPoints: normalizeStringList(raw.nextCheckPoints, 5),
+    dataInsight,
+    lifestyleRelation,
+    tomorrowPlan,
+    caution: typeof raw.caution === "string" ? raw.caution.trim() : "",
+    disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer.trim() : "",
     clientName: extras?.clientName ?? raw.clientName,
     measurementDate: extras?.measurementDate ?? raw.measurementDate,
   };
@@ -211,7 +246,6 @@ function storeImages(images: string[]) {
   try {
     sessionStorage.setItem(IMAGES_KEY, JSON.stringify(limited));
   } catch {
-    // Quota exceeded: drop images one by one until it fits.
     for (let count = limited.length - 1; count >= 1; count -= 1) {
       try {
         sessionStorage.setItem(

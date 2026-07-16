@@ -99,7 +99,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 8mm;
   }
 
   html,
@@ -151,245 +151,238 @@
   }
 
   .report-header {
-    margin: 0 0 6px !important;
+    margin: 0 0 4px !important;
   }
 
   .report-header .border-b {
-    padding-bottom: 6px !important;
+    padding-bottom: 4px !important;
   }
 
   .report-logo {
-    width: 96px !important;
+    width: 88px !important;
   }
 
   .report-title {
-    margin-top: 5px !important;
-    font-size: 15pt !important;
+    margin-top: 4px !important;
+    font-size: 13pt !important;
     line-height: 1.15 !important;
   }
 
   .report-score {
-    font-size: 24pt !important;
+    font-size: 20pt !important;
     line-height: 1 !important;
   }
 
   .report-score-block p:first-child {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
   .report-score-block p:last-child {
-    font-size: 7.5pt !important;
+    font-size: 7pt !important;
   }
 
   .report-meta {
-    margin-top: 5px !important;
-    font-size: 9pt !important;
-  }
-
-  .report-metrics {
-    margin-top: 7px !important;
-  }
-
-  .report-score-breakdown {
-    margin-top: 6px !important;
-  }
-
-  .report-breakdown-list {
-    padding: 5px 8px !important;
-    border-radius: 4px !important;
-  }
-
-  .report-breakdown-row {
-    padding-top: 3px !important;
-    padding-bottom: 3px !important;
-  }
-
-  .report-breakdown-row span {
+    margin-top: 4px !important;
     font-size: 8pt !important;
   }
 
-  .report-stars {
-    letter-spacing: 0.08em !important;
-    font-size: 8.5pt !important;
+  .report-metrics {
+    margin-top: 5px !important;
   }
 
-  .report-status-chip {
+  .report-score-breakdown {
+    margin-top: 5px !important;
+  }
+
+  .report-breakdown-list {
+    padding: 4px 6px !important;
+    border-radius: 3px !important;
+  }
+
+  .report-breakdown-row {
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .report-breakdown-row span {
+    font-size: 7pt !important;
+  }
+
+  .report-stars {
+    letter-spacing: 0.06em !important;
+    font-size: 7.5pt !important;
+  }
+
+  .report-status-chip,
+  .report-status-legend {
     display: none !important;
   }
 
-  .report-status-legend {
-    margin-top: 3px !important;
-    font-size: 6.5pt !important;
-    gap: 8px !important;
-  }
-
   .report-breakdown-total {
-    padding-top: 4px !important;
-    margin-top: 2px !important;
+    padding-top: 3px !important;
+    margin-top: 1px !important;
   }
 
   .report-breakdown-total span {
-    font-size: 9pt !important;
+    font-size: 8pt !important;
   }
 
   .report-metrics > div {
-    gap: 5px !important;
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    gap: 3px !important;
   }
 
   .report-metric {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 5px 7px !important;
-    border-radius: 4px !important;
+    padding: 3px 4px !important;
+    border-radius: 3px !important;
   }
 
   .report-metric p:first-child,
   .report-metric span {
-    font-size: 6.5pt !important;
+    font-size: 5.5pt !important;
   }
 
   .report-metric p:last-child {
-    margin-top: 2px !important;
-    font-size: 9pt !important;
-    line-height: 1.2 !important;
+    margin-top: 1px !important;
+    font-size: 7.5pt !important;
+    line-height: 1.15 !important;
   }
 
-  .report-assessment {
-    margin-top: 7px !important;
-    padding: 6px 8px !important;
-  }
-
-  .report-assessment h2 {
-    font-size: 9.5pt !important;
-  }
-
-  .report-assessment .border-b {
-    padding-bottom: 3px !important;
-  }
-
-  .report-summary {
-    margin-top: 0 !important;
-  }
-
-  .report-summary p,
-  .report-summary li {
-    font-size: 8pt !important;
-    line-height: 1.35 !important;
-  }
-
-  .report-summary .space-y-3 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 4px !important;
-  }
-
-  .report-split {
-    margin-top: 6px !important;
-    gap: 6px !important;
-  }
-
+  .report-assessment,
   .report-panel {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 6px 7px !important;
-    border-radius: 4px !important;
+    margin-top: 4px !important;
+    padding: 4px 6px !important;
+    border-radius: 3px !important;
   }
 
-  .report-panel h2,
-  .report-yoga h2,
-  .report-closing h2,
-  .report-next-checks h2 {
-    font-size: 9pt !important;
-  }
-
-  .report-panel ul {
-    margin-top: 3px !important;
-  }
-
-  .report-panel li,
-  .report-panel p,
-  .report-yoga p,
-  .report-closing p,
-  .report-next-checks li {
+  .report-assessment h2,
+  .report-panel h2 {
     font-size: 8pt !important;
-    line-height: 1.35 !important;
   }
 
-  .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]),
-  .report-panel ul.space-y-1\.5 > :not([hidden]) ~ :not([hidden]),
-  .report-next-checks ul > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 2px !important;
+  .report-assessment .mb-3,
+  .report-panel .mb-3 {
+    margin-bottom: 2px !important;
   }
 
-  .report-yoga,
-  .report-closing,
-  .report-next-checks {
-    break-inside: avoid;
-    page-break-inside: avoid;
-    margin-top: 6px !important;
-    padding: 6px 7px !important;
-    border-radius: 4px !important;
+  .report-summary p,
+  .report-summary li,
+  .report-panel p,
+  .report-panel li {
+    font-size: 7pt !important;
+    line-height: 1.3 !important;
+  }
+
+  .report-summary .space-y-2\.5 > :not([hidden]) ~ :not([hidden]),
+  .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1px !important;
   }
 
   .report-powered {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-top: 8px !important;
-    padding-top: 6px !important;
+    margin-top: 5px !important;
+    padding-top: 4px !important;
   }
 
   .report-powered p:first-child {
-    font-size: 6.5pt !important;
+    font-size: 6pt !important;
   }
 
   .report-powered p:last-child {
-    font-size: 8pt !important;
+    font-size: 7pt !important;
   }
 
   .report-disclaimer {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-top: 6px !important;
-    padding-top: 5px !important;
+    margin-top: 4px !important;
+    padding-top: 3px !important;
   }
 
   .report-disclaimer h2 {
-    font-size: 7.5pt !important;
+    font-size: 7pt !important;
   }
 
   .report-disclaimer p {
-    margin-top: 2px !important;
-    font-size: 6.5pt !important;
-    line-height: 1.3 !important;
+    margin-top: 1px !important;
+    font-size: 6pt !important;
+    line-height: 1.25 !important;
   }
 
   .visual-header {
-    margin-bottom: 8px !important;
+    margin-bottom: 5px !important;
   }
 
   .visual-header .border-b {
-    padding-bottom: 6px !important;
+    padding-bottom: 4px !important;
   }
 
   .visual-title {
-    font-size: 14pt !important;
+    margin-top: 4px !important;
+    font-size: 13pt !important;
+  }
+
+  .visual-panels {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    margin-top: 5px !important;
+  }
+
+  .visual-panel {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 4px 5px !important;
+    border-radius: 3px !important;
+  }
+
+  .visual-panel p,
+  .visual-panel h3,
+  .visual-panel dt,
+  .visual-panel dd {
+    font-size: 6.5pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .visual-panel h3 {
+    font-size: 8pt !important;
   }
 
   .visual-grid {
-    gap: 6px !important;
+    margin-top: 5px !important;
+    gap: 5px !important;
   }
 
   .visual-cell {
     break-inside: avoid;
     page-break-inside: avoid;
-    border-radius: 4px !important;
+    border-radius: 3px !important;
+  }
+
+  .visual-cell > div {
+    min-height: 0 !important;
+    aspect-ratio: 3 / 4 !important;
+    height: 95mm !important;
   }
 
   .visual-cell img {
     object-fit: contain !important;
   }
 
+  .visual-cell figcaption {
+    padding: 2px 4px !important;
+    font-size: 6pt !important;
+  }
+
   .visual-footer {
-    margin-top: 8px !important;
-    font-size: 7pt !important;
+    margin-top: 5px !important;
+    font-size: 6.5pt !important;
   }
 }
 
