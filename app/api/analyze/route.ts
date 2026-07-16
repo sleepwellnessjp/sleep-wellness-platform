@@ -12,9 +12,20 @@ type LifestyleData = {
   yoga?: string;
   bathing?: string;
   alcohol?: string;
+  alcoholDrank?: string;
+  alcoholType?: string;
+  alcoholAmount?: string;
+  alcoholEndTime?: string;
+  alcoholNotes?: string;
   caffeine?: string;
   stress?: string;
   meals?: string;
+  breakfastTime?: string;
+  breakfastContent?: string;
+  lunchTime?: string;
+  lunchContent?: string;
+  dinnerTime?: string;
+  dinnerContent?: string;
   work?: string;
   condition?: string;
   nasalCongestion?: string;
@@ -32,18 +43,43 @@ const analysisSchema = {
   required: [
     "summary",
     "score",
+    "scoreBreakdown",
     "metrics",
     "goodPoints",
     "improvements",
     "possibleFactors",
     "actions",
     "yoga",
+    "closingSummary",
+    "nextCheckPoints",
     "caution",
     "disclaimer",
   ],
   properties: {
     summary: { type: "string" },
     score: { type: "number" },
+    scoreBreakdown: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "sleepDuration",
+        "sleepEfficiency",
+        "deepSleep",
+        "hrv",
+        "stress",
+        "spo2",
+        "recovery",
+      ],
+      properties: {
+        sleepDuration: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        sleepEfficiency: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        deepSleep: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        hrv: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        stress: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        spo2: { type: "integer", enum: [1, 2, 3, 4, 5] },
+        recovery: { type: "integer", enum: [1, 2, 3, 4, 5] },
+      },
+    },
     metrics: {
       type: "object",
       additionalProperties: false,
@@ -93,6 +129,11 @@ const analysisSchema = {
       items: { type: "string" },
     },
     yoga: { type: "string" },
+    closingSummary: { type: "string" },
+    nextCheckPoints: {
+      type: "array",
+      items: { type: "string" },
+    },
     caution: { type: "string" },
     disclaimer: { type: "string" },
   },
@@ -141,6 +182,18 @@ AI、ChatGPT、モデル名などの内部事情は文章に書かないでく�
 - メラトニンヨガ™を毎回機械的に勧めず、必要性と実行時間を具体的に示す
 - 本人を責める言い方や命令口調を避ける
 
+【食事の扱い】
+- 朝食・昼食・夕食の時間と内容を区別して扱う
+- 就寝直前の夕食や夜食の可能性を、夕食時間と入眠時間の関係から確認する
+- 一度の食事内容だけで良し悪しを断定しない
+- 時間帯と睡眠との関係を中心に見る
+
+【飲酒の扱い】
+- 飲酒の有無だけでなく、種類・量・終了時刻・就寝までの間隔を考慮する
+- 複数種類の記載がある場合は、その合計量や終了時刻を踏まえて現実的に扱う
+- 量が不明な場合は推測しない。「飲酒あり」だけで睡眠への影響を強く断定しない
+- 飲酒を責める表現は使わず、終了時刻の前倒しや量の調整など現実的な改善案を優先する
+
 【文章の口調】
 - 若林貴久がクライアントへ説明するような、やさしく実践的な文章にする
 - 専門用語を使う場合は短く意味を補う
@@ -148,18 +201,22 @@ AI、ChatGPT、モデル名などの内部事情は文章に書かないでく�
 - 過剰に褒めず、問題を過度に深刻化しない
 
 【各フィールドの書き方】
-- summary: 3〜4文。良い点から始め、現在の課題、考えられる背景、今後の見方を順番に整理する。数値を使う場合は画像から確認できたものだけ使う
+- summary: 読みやすさ最優先。改行で短い段落に分ける（1段落は1〜2文）。重要な一文は **太字**（Markdownの **...**）で囲む。良い点→今回の課題→背景→今後の見方の順。数値は画像で確認できたものだけ使う。長い連続文は避ける
+- scoreBreakdown: 総合スコアの根拠。各項目は1〜5の整数（星評価）。sleepDuration（睡眠時間）、sleepEfficiency（睡眠効率）、deepSleep（深い睡眠）、hrv、stress（ストレス：星が多いほど回復・安定側が良好）、spo2、recovery（回復力）。画像で確認できない項目は総合スコアと他指標から控えめに推定し、極端な高低を避ける。総合スコアと大きく矛盾しないこと
 - goodPoints: 最大3件。各項目は簡潔だが、なぜ良いのかが分かる文章にする。数値の羅列だけにしない
 - improvements: 最大2件。本人を責めず、「改善余地」「整える余地」という表現を使う。睡眠時間を増やすことだけを安易に提案しない
 - possibleFactors: 最大3件。生活習慣入力と画像の両方から考えられる要因を示す。断定せず、可能性として書く
 - actions: 優先順位の高い順に最大3件。最初の項目には「最優先」だと分かる表現を入れる。今日から実行できる、時間や回数が具体的な内容にする。提案を詰め込みすぎない
 - yoga: メラトニンヨガ™の提案が適切な場合のみ、時間、呼吸法、強度を具体的に書く。就寝前なら、強い運動ではなく心身の切り替えと副交感神経への移行を重視する。適切でない場合は、休養や短い呼吸法を優先してよい
-- caution: 単日のデータの限界、体調や機器測定の影響などを簡潔に書く。強い症状、呼吸の苦しさ、著しいSpO₂低下などが疑われる場合のみ、医療機関への相談を穏やかに促す
+- closingSummary: 「今回の総括」。100〜150文字程度で今日の状態を一言でまとめる。回復力・優先して整えたい点・今後の見通しを穏やかに。医療診断調や不安をあおる表現は禁止。例：『回復力は保たれています。睡眠時間よりも睡眠効率を優先して整えることで、今後さらに安定した睡眠が期待できます。』
+- nextCheckPoints: 「次回確認したいポイント」。最大4件。短い名詞句で具体的に（例：就寝30分前のスマホ使用、夕食時間、飲酒量、鼻づまり）。生活習慣入力と今回の改善余地に紐づける
+- caution: 単日のデータの限界、体調や機器測定の影響などを簡潔に書く。強い症状、呼吸の苦しさ、著しいSpO₂低下などが疑われる場合のみ、医療機関への相談を穏やかに促す。異常・疾患の断定はしない
 - disclaimer: 睡眠ウェルネス支援を目的とし、医療診断や治療を代替しない旨を簡潔に書く
 
 【データ取り扱い】
 - 画像から読み取れない数値は推測しない。確認できない項目は空文字 ""、sleepScore は null にする
 - score は SWIJ 睡眠ウェルネス総合スコア（0〜100の整数）。睡眠時間だけでなく、回復力・効率・生活習慣との整合を総合評価する
+- scoreBreakdown の星評価が score の根拠になるよう、項目間のバランスを取る
 - 仕事や生活上の制約を踏まえ、実行可能な現実的な提案にする
 - 出力は指定の JSON スキーマのみ`;
 
@@ -203,6 +260,13 @@ function validateBody(body: unknown): {
 }
 
 function formatLifestyle(lifestyle: LifestyleData): string {
+  const alcoholDrankLabel =
+    lifestyle.alcoholDrank === "none"
+      ? "なし"
+      : lifestyle.alcoholDrank === "yes"
+        ? "あり"
+        : lifestyle.alcoholDrank;
+
   const rows: Array<[string, string | undefined]> = [
     ["対象者名", lifestyle.clientName],
     ["測定日", lifestyle.measurementDate],
@@ -217,13 +281,24 @@ function formatLifestyle(lifestyle: LifestyleData): string {
     ["運動", lifestyle.exercise],
     ["ヨガ", lifestyle.yoga],
     ["入浴", lifestyle.bathing],
-    ["飲酒", lifestyle.alcohol],
+    ["飲酒したか", alcoholDrankLabel || lifestyle.alcohol],
+    ["飲酒の種類", lifestyle.alcoholType],
+    ["飲酒量", lifestyle.alcoholAmount],
+    ["飲酒終了時刻", lifestyle.alcoholEndTime],
+    ["飲酒の補足（複数種類など）", lifestyle.alcoholNotes],
+    ["飲酒まとめ", lifestyle.alcohol],
     ["カフェイン", lifestyle.caffeine],
     [
       "主観的ストレス・気分（任意の本人申告。測定ストレスとは別扱い）",
       lifestyle.stress,
     ],
-    ["食事", lifestyle.meals],
+    ["朝食時間", lifestyle.breakfastTime],
+    ["朝食内容", lifestyle.breakfastContent],
+    ["昼食時間", lifestyle.lunchTime],
+    ["昼食内容", lifestyle.lunchContent],
+    ["夕食時間", lifestyle.dinnerTime],
+    ["夕食内容", lifestyle.dinnerContent],
+    ["食事まとめ", lifestyle.meals],
     ["仕事", lifestyle.work],
     ["体調", lifestyle.condition],
     ["鼻づまり", lifestyle.nasalCongestion],
@@ -291,8 +366,21 @@ export async function POST(request: Request) {
 - 単日だけで結論を出さず、数日から2週間程度の推移を確認する見方を促す
 - 提案は最優先を1つ、その次を最大2つまで。睡眠時間を増やせない人にも実行可能な内容にする
 - メラトニンヨガ™は毎回機械的に勧めず、必要性がある場合のみ時間・呼吸法・強度を具体的に示す
-- summaryは3〜4文、goodPoints最大3、improvements最大2、possibleFactors最大3、actions最大3に収める
+- summaryは短い段落に分け、重要文は **太字** で囲む。goodPoints最大3、improvements最大2、possibleFactors最大3、actions最大3
+- scoreBreakdown（各1〜5）を必ず出力し、総合スコアの根拠にする
+- closingSummaryは100〜150文字程度の総括。nextCheckPointsは最大4件の短い確認ポイント
 - 「まずは」「今回のデータでは」「可能性があります」「推移を確認しましょう」を自然に使う
+- 医療診断・病名・異常の断定はしない。要確認は穏やかに伝える
+
+【食事の扱い】
+- 朝食・昼食・夕食の時間と内容を区別する
+- 就寝直前の夕食や夜食の可能性を確認する
+- 一度の食事内容だけで良し悪しを断定せず、時間帯と睡眠の関係を中心に見る
+
+【飲酒の扱い】
+- 種類・量・終了時刻・就寝までの間隔を考慮する。複数種類があればその記載も踏まえる
+- 量が不明な場合は推測しない。「飲酒あり」だけで強く断定しない
+- 責める表現は使わず、現実的な改善案を優先する
 
 【生活習慣データ】
 ${formatLifestyle(lifestyle)}`,
