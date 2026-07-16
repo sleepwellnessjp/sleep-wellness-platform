@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   isImageDataUrl,
   metricsJsonSchema,
+  normalizeImageDataUrl,
   openaiErrorMessage,
 } from "@/lib/openai-helpers";
 import { normalizeMetrics, type AnalysisMetrics } from "@/lib/analysis-session";
@@ -475,7 +476,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const { lifestyle, images, metrics: confirmedMetrics } = validated;
+  const lifestyle = validated.lifestyle;
+  const images = validated.images.map(normalizeImageDataUrl);
+  const confirmedMetrics = validated.metrics;
 
   try {
     const client = new OpenAI({
@@ -529,11 +532,13 @@ ${metricsBlock}
 【生活習慣データ】
 ${formatLifestyle(lifestyle)}`,
             },
-            ...images.map((imageUrl) => ({
-              type: "input_image" as const,
-              image_url: imageUrl,
-              detail: "high" as const,
-            })),
+            ...(confirmedMetrics
+              ? []
+              : images.map((imageUrl) => ({
+                  type: "input_image" as const,
+                  image_url: imageUrl,
+                  detail: "high" as const,
+                }))),
           ],
         },
       ],

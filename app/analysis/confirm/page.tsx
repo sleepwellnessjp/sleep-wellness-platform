@@ -106,7 +106,7 @@ export default function ConfirmExtractionPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
             SOXAI画像から読み取った値を確認してください。
-            取得できた項目は画像データを優先し、未取得の項目のみ手入力できます。
+            画像抽出値を含めて全項目を修正でき、修正内容でAI分析を実行します。
           </p>
         </header>
 
