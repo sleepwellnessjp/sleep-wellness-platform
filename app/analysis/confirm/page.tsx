@@ -21,9 +21,6 @@ import {
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
-const inputReadonlyClass =
-  "mt-2.5 w-full rounded-2xl border border-[#315f68]/20 bg-[#f4f7f7] px-4 py-3.5 text-[15px] text-[#071426] sm:px-5 sm:py-4 sm:text-base";
-
 export default function ConfirmExtractionPage() {
   const router = useRouter();
   const initialDraft = useMemo(() => getExtractionDraft(), []);
@@ -182,7 +179,7 @@ export default function ConfirmExtractionPage() {
                       onChange={(event) =>
                         updateField(field.key, event.target.value)
                       }
-                      className={fromImage ? inputReadonlyClass : inputClass}
+                      className={inputClass}
                       placeholder={field.placeholder}
                     />
                   </label>
