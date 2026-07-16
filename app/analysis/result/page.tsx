@@ -7,87 +7,12 @@ import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   AnalysisMetrics,
   AnalysisResult,
-  ScoreBreakdown,
-  ScoreStars,
   loadAnalysisImages,
   loadAnalysisResult,
 } from "@/lib/analysis-session";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
-
-type MetricStatus = "good" | "caution" | "improve" | "check";
-
-type MetricDef = {
-  key: keyof AnalysisMetrics;
-  label: string;
-  important?: boolean;
-  breakdownKey?: keyof ScoreBreakdown;
-};
-
-const reportMetrics: MetricDef[] = [
-  { key: "sleepScore", label: "睡眠スコア" },
-  { key: "bedtime", label: "入眠時間" },
-  { key: "wakeTime", label: "起床時間" },
-  {
-    key: "sleepDuration",
-    label: "睡眠時間",
-    important: true,
-    breakdownKey: "sleepDuration",
-  },
-  {
-    key: "sleepEfficiency",
-    label: "睡眠効率",
-    important: true,
-    breakdownKey: "sleepEfficiency",
-  },
-  { key: "awakenings", label: "覚醒時間" },
-  { key: "remSleep", label: "REM睡眠" },
-  { key: "lightSleep", label: "浅い睡眠" },
-  {
-    key: "deepSleep",
-    label: "深い睡眠",
-    important: true,
-    breakdownKey: "deepSleep",
-  },
-  { key: "sleepDebt", label: "睡眠負債" },
-  { key: "sleepLatency", label: "入眠潜時" },
-  { key: "circadianRhythm", label: "体内時計" },
-  { key: "respiratoryRate", label: "呼吸速度" },
-  {
-    key: "spo2",
-    label: "平均SpO₂",
-    important: true,
-    breakdownKey: "spo2",
-  },
-  { key: "restingHeartRate", label: "安静時心拍数" },
-  {
-    key: "hrv",
-    label: "HRV",
-    important: true,
-    breakdownKey: "hrv",
-  },
-  { key: "skinTemperature", label: "皮膚温度" },
-  {
-    key: "stress",
-    label: "ストレス",
-    important: true,
-    breakdownKey: "stress",
-  },
-];
-
-const scoreBreakdownItems: Array<{
-  key: keyof ScoreBreakdown;
-  label: string;
-}> = [
-  { key: "sleepDuration", label: "睡眠時間" },
-  { key: "sleepEfficiency", label: "睡眠効率" },
-  { key: "deepSleep", label: "深い睡眠" },
-  { key: "hrv", label: "HRV" },
-  { key: "stress", label: "ストレス" },
-  { key: "spo2", label: "SpO₂" },
-  { key: "recovery", label: "回復力" },
-];
 
 type VisualPanel = {
   id: string;
@@ -97,54 +22,11 @@ type VisualPanel = {
   values?: Array<{ label: string; value: string }>;
 };
 
-const STATUS_STYLE: Record<
-  MetricStatus,
-  { color: string; bg: string; border: string; label: string }
-> = {
-  good: {
-    color: "#0f6b5c",
-    bg: "rgba(15, 107, 92, 0.06)",
-    border: "rgba(15, 107, 92, 0.22)",
-    label: "良好",
-  },
-  caution: {
-    color: "#9a7b12",
-    bg: "rgba(154, 123, 18, 0.08)",
-    border: "rgba(154, 123, 18, 0.28)",
-    label: "注意",
-  },
-  improve: {
-    color: "#b45a1a",
-    bg: "rgba(180, 90, 26, 0.08)",
-    border: "rgba(180, 90, 26, 0.28)",
-    label: "改善余地",
-  },
-  check: {
-    color: "#a33a3a",
-    bg: "rgba(163, 58, 58, 0.07)",
-    border: "rgba(163, 58, 58, 0.26)",
-    label: "要確認",
-  },
-};
-
-function starsToStatus(stars: ScoreStars): MetricStatus {
-  if (stars >= 4) return "good";
-  if (stars === 3) return "caution";
-  if (stars === 2) return "improve";
-  return "check";
-}
 
 function displayValue(value: string | number | null | undefined): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "string" && value.trim()) return value.trim();
   return "—";
-}
-
-function formatMetricValue(
-  key: keyof AnalysisMetrics,
-  metrics: AnalysisMetrics,
-): string {
-  return displayValue(metrics[key]);
 }
 
 function takeItems(items: string[] | undefined, max: number): string[] {
@@ -184,10 +66,6 @@ function splitTomorrowPlan(plan: string[]): {
   const limited = takeItems(plan, 3).map((item) => clampLine(item, 90));
   if (limited.length === 0) return { primary: null, next: [] };
   return { primary: limited[0], next: limited.slice(1) };
-}
-
-function renderStars(count: ScoreStars): string {
-  return "★".repeat(count) + "☆".repeat(5 - count);
 }
 
 function clamp(n: number, min: number, max: number) {
@@ -785,21 +663,10 @@ function ResultContent({
   images: string[];
 }) {
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
-  const breakdown = result.scoreBreakdown;
-  const goodPoints = takeItems(result.goodPoints, 3).map((item) =>
-    clampLine(item, 88),
-  );
   const improvements = takeItems(result.improvements, 2).map((item) =>
     clampLine(item, 88),
   );
-  const { primary: primaryPlan, next: nextPlans } = splitTomorrowPlan(
-    result.tomorrowPlan,
-  );
-  const summaryText = clampLine(clampSentences(result.summary, 5), 360);
-  const dataInsightText = clampLine(
-    clampSentences(result.dataInsight, 5),
-    340,
-  );
+  const { primary: primaryPlan } = splitTomorrowPlan(result.tomorrowPlan);
   const lifestyleRelationText = clampLine(
     clampSentences(result.lifestyleRelation, 5),
     340,
