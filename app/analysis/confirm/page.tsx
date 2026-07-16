@@ -12,7 +12,6 @@ import {
   type ExtractionDraft,
 } from "@/lib/analysis-session";
 import {
-  isMetricPresent,
   metricDisplayValue,
   setMetricValue,
   SOXAI_METRIC_FIELDS,
@@ -27,21 +26,19 @@ const inputReadonlyClass =
 
 export default function ConfirmExtractionPage() {
   const router = useRouter();
-  const [draft, setDraft] = useState<ExtractionDraft | null>(null);
-  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(null);
+  const initialDraft = useMemo(() => getExtractionDraft(), []);
+  const [draft] = useState<ExtractionDraft | null>(() => initialDraft);
+  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(
+    () => initialDraft?.extractedMetrics ?? null,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const current = getExtractionDraft();
-    if (!current) {
+    if (!initialDraft) {
       router.replace("/analysis/new");
       return;
     }
-    setDraft(current);
-    setMetrics(current.extractedMetrics);
-    setReady(true);
-  }, [router]);
+  }, [router, initialDraft]);
 
   const imageKeySet = useMemo(
     () => new Set(draft?.imageKeys ?? []),
@@ -71,7 +68,7 @@ export default function ConfirmExtractionPage() {
     router.push("/analysis/loading");
   };
 
-  if (!ready || !draft || !metrics) {
+  if (!draft || !metrics) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
         <p className="text-sm text-slate-500">抽出結果を読み込み中...</p>
@@ -149,7 +146,7 @@ export default function ConfirmExtractionPage() {
                 睡眠データ
               </h2>
               <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                「画像から取得」の項目は変更できません。空欄のみ入力してください。
+                画像から取得した値を優先しますが、必要に応じてすべて修正できます。
               </p>
             </div>
 
@@ -157,7 +154,6 @@ export default function ConfirmExtractionPage() {
               {SOXAI_METRIC_FIELDS.map((field) => {
                 const fromImage = imageKeySet.has(field.key);
                 const value = metricDisplayValue(metrics, field.key);
-                const present = isMetricPresent(metrics, field.key);
 
                 return (
                   <label key={field.key} className="block">
@@ -178,29 +174,17 @@ export default function ConfirmExtractionPage() {
                     <span className="mt-0.5 block text-[11px] text-slate-400">
                       {field.hint}
                     </span>
-                    {fromImage ? (
-                      <input
-                        type="text"
-                        readOnly
-                        value={present ? value : "—"}
-                        className={inputReadonlyClass}
-                        tabIndex={-1}
-                      />
-                    ) : (
-                      <input
-                        type={field.inputType === "number" ? "number" : field.inputType}
-                        inputMode={
-                          field.inputType === "number" ? "decimal" : undefined
-                        }
-                        step={field.inputType === "number" ? "1" : undefined}
-                        value={value}
-                        onChange={(event) =>
-                          updateField(field.key, event.target.value)
-                        }
-                        className={inputClass}
-                        placeholder={field.placeholder}
-                      />
-                    )}
+                    <input
+                      type={field.inputType === "number" ? "number" : field.inputType}
+                      inputMode={field.inputType === "number" ? "decimal" : undefined}
+                      step={field.inputType === "number" ? "1" : undefined}
+                      value={value}
+                      onChange={(event) =>
+                        updateField(field.key, event.target.value)
+                      }
+                      className={fromImage ? inputReadonlyClass : inputClass}
+                      placeholder={field.placeholder}
+                    />
                   </label>
                 );
               })}
