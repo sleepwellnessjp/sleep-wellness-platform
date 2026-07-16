@@ -2,6 +2,44 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
+
+const isDev = process.env.NODE_ENV === "development";
+
+function openaiErrorMessage(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  const record = error as {
+    message?: unknown;
+    status?: unknown;
+    code?: unknown;
+    type?: unknown;
+    error?: { message?: unknown; code?: unknown; type?: unknown };
+  };
+
+  const parts: string[] = [];
+  if (typeof record.status === "number") {
+    parts.push(`HTTP ${record.status}`);
+  }
+  if (typeof record.message === "string" && record.message.trim()) {
+    parts.push(record.message.trim());
+  }
+  const nested = record.error;
+  if (nested && typeof nested === "object") {
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      parts.push(nested.message.trim());
+    }
+    if (typeof nested.code === "string") parts.push(`code=${nested.code}`);
+    if (typeof nested.type === "string") parts.push(`type=${nested.type}`);
+  } else {
+    if (typeof record.code === "string") parts.push(`code=${record.code}`);
+    if (typeof record.type === "string") parts.push(`type=${record.type}`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : "Unknown OpenAI error";
+}
 
 type LifestyleData = {
   clientName?: string;
@@ -455,7 +493,11 @@ function formatLifestyle(lifestyle: LifestyleData): string {
 export async function POST(request: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
-      { error: "AI分析の設定が完了していません。" },
+      {
+        error: "AI分析の設定が完了していません。",
+        errorType: "Validation Error",
+        details: isDev ? "OPENAI_API_KEY is missing." : undefined,
+      },
       { status: 500 },
     );
   }
@@ -463,22 +505,41 @@ export async function POST(request: Request) {
   let body: unknown;
   try {
     body = await request.json();
-  } catch {
+  } catch (parseError) {
     return NextResponse.json(
-      { error: "リクエスト形式が正しくありません。" },
+      {
+        error: "リクエスト形式が正しくありません。",
+        errorType: "JSON Parse Error",
+        details: isDev
+          ? parseError instanceof Error
+            ? parseError.message
+            : String(parseError)
+          : undefined,
+      },
       { status: 400 },
     );
   }
 
   const validated = validateBody(body);
   if (!validated.ok) {
-    return NextResponse.json({ error: validated.message }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: validated.message,
+        errorType: "Validation Error",
+        details: isDev ? validated.message : undefined,
+      },
+      { status: 400 },
+    );
   }
 
   const { lifestyle, images } = validated;
 
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: 280_000,
+      maxRetries: 1,
+    });
 
     const response = await client.responses.create({
       model: "gpt-5.6",
@@ -556,7 +617,13 @@ ${formatLifestyle(lifestyle)}`,
     const outputText = response.output_text?.trim();
     if (!outputText) {
       return NextResponse.json(
-        { error: "分析結果の取得に失敗しました。" },
+        {
+          error: "分析結果の取得に失敗しました。",
+          errorType: "OpenAI Error",
+          details: isDev
+            ? "OpenAI response.output_text was empty."
+            : undefined,
+        },
         { status: 500 },
       );
     }
@@ -564,10 +631,18 @@ ${formatLifestyle(lifestyle)}`,
     let analysis: unknown;
     try {
       analysis = JSON.parse(outputText) as unknown;
-    } catch {
-      console.error("Failed to parse OpenAI analysis JSON");
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI analysis JSON", parseError);
       return NextResponse.json(
-        { error: "分析結果の解析に失敗しました。" },
+        {
+          error: "分析結果の解析に失敗しました。",
+          errorType: "JSON Parse Error",
+          details: isDev
+            ? parseError instanceof Error
+              ? parseError.message
+              : String(parseError)
+            : undefined,
+        },
         { status: 500 },
       );
     }
@@ -575,8 +650,13 @@ ${formatLifestyle(lifestyle)}`,
     return NextResponse.json(analysis);
   } catch (error) {
     console.error("OpenAI analysis failed:", error);
+    const details = openaiErrorMessage(error);
     return NextResponse.json(
-      { error: "AI分析に失敗しました。しばらくしてから再度お試しください。" },
+      {
+        error: "AI分析に失敗しました。しばらくしてから再度お試しください。",
+        errorType: "OpenAI Error",
+        details: isDev ? details : undefined,
+      },
       { status: 500 },
     );
   }
