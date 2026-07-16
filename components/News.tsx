@@ -2,32 +2,36 @@ import Link from "next/link";
 
 const newsItems = [
   {
-    date: "2026.10",
+    date: "2026.10.01",
     category: "EVENT",
     title: "ヨガフェスタ横浜2026登壇",
     description:
-      "睡眠科学とヨガを融合した「メラトニンヨガ™」をテーマに登壇予定。",
+      "睡眠科学とヨガを融合した「メラトニンヨガ™」をテーマに登壇予定。実践とデータから、眠りを整えるヒントをお届けします。",
+    href: "#contact",
   },
   {
-    date: "2026.08",
+    date: "2026.08.01",
     category: "ACADEMY",
     title: "メラトニンヨガ™養成講座",
     description:
-      "睡眠ウェルネスを実践・指導できるインストラクター育成プログラム。",
+      "睡眠ウェルネスを実践・指導できるインストラクター育成プログラムを開講。科学と身体知を学べる講座です。",
+    href: "#academy",
   },
   {
-    date: "2026",
+    date: "2026.06.15",
     category: "PROJECT",
     title: "SOXAI共同プロジェクト",
     description:
-      "ウェアラブルデータを活用した睡眠ウェルネス分析・実証プロジェクトを推進。",
+      "ウェアラブルデータを活用した睡眠ウェルネス分析・実証プロジェクトを推進。個人と組織の眠りを可視化します。",
+    href: "#analysis",
   },
   {
-    date: "COMING SOON",
+    date: "2026.04.01",
     category: "PLATFORM",
     title: "Sleep Wellness Platform公開予定",
     description:
-      "睡眠分析・学習・実践を統合するSleep Wellness Platformを公開予定。",
+      "睡眠分析・学習・実践を統合するSleep Wellness Platformを公開予定。エコシステム全体をつなぐ基盤です。",
+    href: "#vision",
   },
 ];
 
@@ -56,46 +60,52 @@ export default function News() {
           </p>
         </div>
 
-        <div className="mt-16 grid gap-6 md:grid-cols-2 xl:grid-cols-4 lg:mt-20">
+        <div className="mt-14 grid gap-5 sm:mt-16 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 lg:mt-20">
           {newsItems.map((item) => (
             <article
               key={item.title}
-              className="group cursor-pointer rounded-[24px] border border-slate-200 bg-[#fafaf8] p-8 shadow-[0_18px_60px_-40px_rgba(15,23,42,0.16)] transition-all duration-300 hover:-translate-y-2 hover:border-[#315f68]/20 hover:bg-white hover:shadow-[0_35px_90px_-40px_rgba(15,23,42,0.24)]"
+              className="group flex flex-col rounded-[24px] border border-slate-200 bg-[#fafaf8] p-7 shadow-[0_18px_60px_-40px_rgba(15,23,42,0.16)] transition-all duration-300 hover:-translate-y-2 hover:border-[#315f68]/20 hover:bg-white hover:shadow-[0_35px_90px_-40px_rgba(15,23,42,0.24)] sm:p-8"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <span className="rounded-full bg-[#315f68]/10 px-3 py-1 text-[10px] font-semibold tracking-[0.18em] text-[#315f68]">
                   {item.category}
                 </span>
 
-                <span className="text-xs font-medium text-slate-400">
+                <time
+                  dateTime={item.date.replace(/\./g, "-")}
+                  className="shrink-0 text-xs font-medium text-slate-400"
+                >
                   {item.date}
-                </span>
+                </time>
               </div>
 
-              <h3 className="mt-10 text-2xl font-semibold leading-snug tracking-[-0.03em] text-[#071426]">
+              <h3 className="mt-8 text-xl font-semibold leading-snug tracking-[-0.03em] text-[#071426] sm:mt-10 sm:text-2xl">
                 {item.title}
               </h3>
 
-              <p className="mt-5 text-sm leading-7 text-slate-600">
+              <p className="mt-4 flex-1 text-sm leading-7 text-slate-600 sm:mt-5">
                 {item.description}
               </p>
 
-              <div className="mt-10 flex items-center text-sm font-semibold text-[#315f68]">
-                Read More
+              <Link
+                href={item.href}
+                className="mt-8 inline-flex items-center self-start rounded-full border border-[#315f68]/20 bg-white px-5 py-2.5 text-sm font-semibold text-[#315f68] transition-all duration-300 hover:border-[#315f68]/40 hover:bg-[#315f68] hover:text-white sm:mt-10"
+              >
+                続きを読む
                 <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
                   →
                 </span>
-              </div>
+              </Link>
             </article>
           ))}
         </div>
 
-        <div className="mt-16 flex justify-center lg:mt-20">
+        <div className="mt-14 flex justify-center sm:mt-16 lg:mt-20">
           <Link
             href="#contact"
             className="group inline-flex items-center rounded-full border border-[#071426]/10 bg-white px-8 py-4 text-sm font-semibold text-[#071426] shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#315f68]/20 hover:shadow-lg"
           >
-            View All News
+            すべてのニュースを見る
             <span className="ml-3 transition-transform duration-300 group-hover:translate-x-1">
               →
             </span>
