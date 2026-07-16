@@ -6,21 +6,21 @@ const programs = [
     title: "メラトニンヨガ™",
     description:
       "夜の休息へ導く、ヨガ・呼吸・瞑想・サウンドのプログラム。",
-    image: "/melatoninyoga.JPG",
+    image: "/melatonin-yoga.jpg",
     href: "#contact",
   },
   {
     title: "Sleep Wellness Analysis",
     description:
       "睡眠データと生活習慣から、改善の優先順位を整理する。",
-    image: "/soxai4.png",
-    href: "#analysis",
+    image: "/sleep-analysis.jpg",
+    href: "/analysis/new",
   },
   {
     title: "Sleep Wellness Retreat™",
     description:
       "自然・食・入浴・ヨガを通して、回復の質を見つめ直す。",
-    image: "/retreat.JPG",
+    image: "/retreat.jpg",
     href: "#contact",
   },
 ];
