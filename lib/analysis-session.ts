@@ -23,6 +23,8 @@ export type AnalysisRequest = {
 
 export type AnalysisMetrics = {
   sleepScore: number | null;
+  bedtime: string;
+  wakeTime: string;
   sleepDuration: string;
   sleepEfficiency: string;
   deepSleep: string;
@@ -45,12 +47,42 @@ export type AnalysisResult = {
   yoga: string;
   caution: string;
   disclaimer: string;
+  clientName?: string;
+  measurementDate?: string;
 };
 
 const RESULT_KEY = "swij-analysis-result";
 
 let pendingRequest: AnalysisRequest | null = null;
 let inFlightAnalysis: Promise<AnalysisResult> | null = null;
+
+function normalizeMetrics(
+  metrics: Partial<AnalysisMetrics> | undefined,
+): AnalysisMetrics {
+  return {
+    sleepScore:
+      typeof metrics?.sleepScore === "number" ? metrics.sleepScore : null,
+    bedtime: typeof metrics?.bedtime === "string" ? metrics.bedtime : "",
+    wakeTime: typeof metrics?.wakeTime === "string" ? metrics.wakeTime : "",
+    sleepDuration:
+      typeof metrics?.sleepDuration === "string" ? metrics.sleepDuration : "",
+    sleepEfficiency:
+      typeof metrics?.sleepEfficiency === "string"
+        ? metrics.sleepEfficiency
+        : "",
+    deepSleep: typeof metrics?.deepSleep === "string" ? metrics.deepSleep : "",
+    awakenings:
+      typeof metrics?.awakenings === "string" ? metrics.awakenings : "",
+    heartRate: typeof metrics?.heartRate === "string" ? metrics.heartRate : "",
+    hrv: typeof metrics?.hrv === "string" ? metrics.hrv : "",
+    stress: typeof metrics?.stress === "string" ? metrics.stress : "",
+    spo2: typeof metrics?.spo2 === "string" ? metrics.spo2 : "",
+    skinTemperature:
+      typeof metrics?.skinTemperature === "string"
+        ? metrics.skinTemperature
+        : "",
+  };
+}
 
 export function setPendingAnalysisRequest(request: AnalysisRequest) {
   pendingRequest = request;
@@ -91,7 +123,14 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       );
     }
 
-    const result = data as AnalysisResult;
+    const raw = data as AnalysisResult;
+    const result: AnalysisResult = {
+      ...raw,
+      metrics: normalizeMetrics(raw.metrics),
+      clientName: payload.lifestyle.clientName,
+      measurementDate: payload.lifestyle.measurementDate,
+    };
+
     pendingRequest = null;
     sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
     return result;
@@ -109,7 +148,11 @@ export function loadAnalysisResult(): AnalysisResult | null {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as AnalysisResult;
+    const parsed = JSON.parse(raw) as AnalysisResult;
+    return {
+      ...parsed,
+      metrics: normalizeMetrics(parsed.metrics),
+    };
   } catch {
     return null;
   }
