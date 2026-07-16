@@ -5,6 +5,20 @@ type LifestyleData = {
   wakeTime: string;
   exercise: string;
   yoga: string;
+  yogaDone?: string;
+  yogaDuration?: string;
+  yogaTime?: string;
+  yogaNotes?: string;
+  pilates?: string;
+  pilatesDone?: string;
+  pilatesDuration?: string;
+  pilatesTime?: string;
+  pilatesNotes?: string;
+  otherExerciseDone?: string;
+  otherExerciseName?: string;
+  otherExerciseDuration?: string;
+  otherExerciseTime?: string;
+  otherExerciseNotes?: string;
   bathing: string;
   alcohol: string;
   alcoholDrank: string;
@@ -13,12 +27,20 @@ type LifestyleData = {
   alcoholEndTime: string;
   alcoholNotes: string;
   caffeine: string;
+  caffeineDone?: string;
+  caffeineType?: string;
+  caffeineAmount?: string;
+  caffeineTime?: string;
+  caffeineNotes?: string;
   stress: string;
   meals: string;
+  breakfastEaten?: string;
   breakfastTime: string;
   breakfastContent: string;
+  lunchEaten?: string;
   lunchTime: string;
   lunchContent: string;
+  dinnerEaten?: string;
   dinnerTime: string;
   dinnerContent: string;
   work: string;
@@ -70,7 +92,7 @@ export type AnalysisResult = {
   possibleFactors: string[];
   actions: string[];
   yoga: string;
-  /** 今回の総括（100〜150文字程度） */
+  /** 今日の総括（約100文字） */
   closingSummary: string;
   /** 次回確認したいポイント */
   nextCheckPoints: string[];
