@@ -7,10 +7,15 @@ import {
   ChangeEvent,
   DragEvent,
   FormEvent,
+  ReactNode,
   useEffect,
+  useMemo,
   useState,
 } from "react";
+import AnalysisFlow from "@/components/AnalysisFlow";
 import { setPendingAnalysisRequest } from "@/lib/analysis-session";
+
+const MAX_FILES = 8;
 
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
@@ -42,30 +47,93 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function composeMealsSummary(meals: {
+  breakfastTime: string;
+  breakfastContent: string;
+  lunchTime: string;
+  lunchContent: string;
+  dinnerTime: string;
+  dinnerContent: string;
+}): string {
+  const lines: string[] = [];
+
+  if (meals.breakfastTime || meals.breakfastContent) {
+    lines.push(
+      `朝食: ${[meals.breakfastTime, meals.breakfastContent].filter(Boolean).join(" / ")}`,
+    );
+  }
+  if (meals.lunchTime || meals.lunchContent) {
+    lines.push(
+      `昼食: ${[meals.lunchTime, meals.lunchContent].filter(Boolean).join(" / ")}`,
+    );
+  }
+  if (meals.dinnerTime || meals.dinnerContent) {
+    lines.push(
+      `夕食: ${[meals.dinnerTime, meals.dinnerContent].filter(Boolean).join(" / ")}`,
+    );
+  }
+
+  return lines.join("；");
+}
+
+function composeAlcoholSummary(alcohol: {
+  drank: string;
+  type: string;
+  amount: string;
+  endTime: string;
+  notes: string;
+}): string {
+  if (alcohol.drank === "none") return "なし";
+  if (alcohol.drank !== "yes") return "";
+
+  const parts: string[] = ["あり"];
+  if (alcohol.type) parts.push(`種類:${alcohol.type}`);
+  if (alcohol.amount) parts.push(`量:${alcohol.amount}`);
+  if (alcohol.endTime) parts.push(`終了時刻:${alcohol.endTime}`);
+  if (alcohol.notes) parts.push(`補足:${alcohol.notes}`);
+  return parts.join(" / ");
+}
+
 export default function NewAnalysisPage() {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alcoholDrank, setAlcoholDrank] = useState("");
+  const [touchedUpload, setTouchedUpload] = useState(false);
+
+  const previewUrls = useMemo(
+    () => files.map((file) => URL.createObjectURL(file)),
+    [files],
+  );
 
   useEffect(() => {
-    const urls = files.map((file) => URL.createObjectURL(file));
-    setPreviewUrls(urls);
-
     return () => {
-      urls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [files]);
+  }, [previewUrls]);
 
   const addFiles = (selectedFiles: File[]) => {
     const validFiles = selectedFiles.filter((file) =>
       ["image/jpeg", "image/png"].includes(file.type),
     );
 
-    setFiles((currentFiles) => [...currentFiles, ...validFiles]);
+    if (validFiles.length === 0 && selectedFiles.length > 0) {
+      setError("JPG / PNG 形式の画像のみアップロードできます。");
+      return;
+    }
+
+    setFiles((currentFiles) => {
+      const merged = [...currentFiles, ...validFiles];
+      if (merged.length > MAX_FILES) {
+        setError(`画像は最大${MAX_FILES}枚までです。`);
+        return merged.slice(0, MAX_FILES);
+      }
+      return merged;
+    });
     setError(null);
+    setTouchedUpload(true);
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -88,31 +156,78 @@ export default function NewAnalysisPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setTouchedUpload(true);
 
     if (files.length === 0) {
       setError("SOXAI画像を1枚以上アップロードしてください。");
       return;
     }
 
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    const clientName = String(formData.get("clientName") ?? "").trim();
+    const measurementDate = String(formData.get("measurementDate") ?? "");
+
+    if (!clientName || !measurementDate) {
+      setError("対象者名と測定日は必須です。");
+      return;
+    }
 
     setIsSubmitting(true);
 
     try {
       const images = await Promise.all(files.map(fileToDataUrl));
 
+      const breakfastTime = String(formData.get("breakfastTime") ?? "");
+      const breakfastContent = String(formData.get("breakfastContent") ?? "");
+      const lunchTime = String(formData.get("lunchTime") ?? "");
+      const lunchContent = String(formData.get("lunchContent") ?? "");
+      const dinnerTime = String(formData.get("dinnerTime") ?? "");
+      const dinnerContent = String(formData.get("dinnerContent") ?? "");
+
+      const alcoholDrankValue = String(formData.get("alcoholDrank") ?? "");
+      const alcoholType = String(formData.get("alcoholType") ?? "");
+      const alcoholAmount = String(formData.get("alcoholAmount") ?? "");
+      const alcoholEndTime = String(formData.get("alcoholEndTime") ?? "");
+      const alcoholNotes = String(formData.get("alcoholNotes") ?? "");
+
       const lifestyle = {
-        clientName: String(formData.get("clientName") ?? ""),
-        measurementDate: String(formData.get("measurementDate") ?? ""),
+        clientName,
+        measurementDate,
         bedtime: String(formData.get("bedtime") ?? ""),
         wakeTime: String(formData.get("wakeTime") ?? ""),
         exercise: String(formData.get("exercise") ?? ""),
         yoga: String(formData.get("yoga") ?? ""),
         bathing: String(formData.get("bathing") ?? ""),
-        alcohol: String(formData.get("alcohol") ?? ""),
+        alcohol: composeAlcoholSummary({
+          drank: alcoholDrankValue,
+          type: alcoholType,
+          amount: alcoholAmount,
+          endTime: alcoholEndTime,
+          notes: alcoholNotes,
+        }),
+        alcoholDrank: alcoholDrankValue,
+        alcoholType,
+        alcoholAmount,
+        alcoholEndTime,
+        alcoholNotes,
         caffeine: String(formData.get("caffeine") ?? ""),
         stress: String(formData.get("stress") ?? ""),
-        meals: String(formData.get("meals") ?? ""),
+        meals: composeMealsSummary({
+          breakfastTime,
+          breakfastContent,
+          lunchTime,
+          lunchContent,
+          dinnerTime,
+          dinnerContent,
+        }),
+        breakfastTime,
+        breakfastContent,
+        lunchTime,
+        lunchContent,
+        dinnerTime,
+        dinnerContent,
         work: String(formData.get("work") ?? ""),
         condition: String(formData.get("condition") ?? ""),
         nasalCongestion: String(formData.get("nasalCongestion") ?? ""),
@@ -126,6 +241,8 @@ export default function NewAnalysisPage() {
       setIsSubmitting(false);
     }
   };
+
+  const uploadMissing = touchedUpload && files.length === 0;
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -146,27 +263,35 @@ export default function NewAnalysisPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12 lg:py-14">
+        <div className="mb-8 sm:mb-10">
+          <AnalysisFlow current={1} />
+        </div>
+
         <header className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-semibold tracking-[0.32em] text-[#8a6a2d]">
+          <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
             SLEEP WELLNESS ANALYSIS
           </p>
 
-          <h1 className="mt-4 text-[2rem] font-semibold tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl lg:text-5xl">
+          <h1 className="mt-4 text-[1.85rem] font-semibold tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl lg:text-5xl">
             新しい睡眠分析
           </h1>
 
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
+          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
             SOXAIの画面と生活習慣を入力すると、
             Sleep Wellness Report を作成します。
           </p>
         </header>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-8 sm:mt-12 sm:space-y-10">
-          {/* SOXAI Data */}
-          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)] sm:rounded-[32px]">
+        <form
+          onSubmit={handleSubmit}
+          className="mt-10 space-y-8 sm:mt-12 sm:space-y-10"
+          noValidate
+        >
+          {/* 01 SOXAI */}
+          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div>
                   <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                     01 · SOXAI DATA
@@ -174,13 +299,13 @@ export default function NewAnalysisPage() {
                   <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                     SOXAIデータをアップロード
                   </h2>
-                  <p className="mt-2 max-w-xl text-sm leading-7 text-slate-500">
+                  <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm sm:leading-7">
                     睡眠サマリー、心拍・HRV、ストレス、SpO₂などの画面を
                     そのまま撮影・保存してアップロードしてください。
                   </p>
                 </div>
                 <p className="shrink-0 text-xs font-medium text-slate-400">
-                  JPG / PNG · 複数枚可
+                  JPG / PNG · 最大{MAX_FILES}枚 · 必須
                 </p>
               </div>
 
@@ -193,7 +318,7 @@ export default function NewAnalysisPage() {
                     <p className="text-[13px] font-semibold tracking-[-0.02em] text-[#071426] sm:text-sm">
                       {metric.label}
                     </p>
-                    <p className="mt-1 text-[10px] leading-4 text-slate-400 sm:text-[11px]">
+                    <p className="mt-1 text-[11px] leading-4 text-slate-400">
                       {metric.hint}
                     </p>
                   </div>
@@ -207,10 +332,12 @@ export default function NewAnalysisPage() {
                 onDragLeave={() => setIsDragging(false)}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={handleDrop}
-                className={`flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 text-center transition duration-300 sm:min-h-[280px] sm:rounded-[28px] ${
-                  isDragging
-                    ? "border-[#315f68] bg-[#315f68]/5"
-                    : "border-slate-200 bg-[#fafaf8] hover:border-[#315f68]/60 hover:bg-white"
+                className={`flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed px-5 text-center transition duration-300 sm:min-h-[260px] ${
+                  uploadMissing
+                    ? "border-rose-300 bg-rose-50/40"
+                    : isDragging
+                      ? "border-[#315f68] bg-[#315f68]/5"
+                      : "border-slate-200 bg-[#fafaf8] hover:border-[#315f68]/60 hover:bg-white"
                 }`}
               >
                 <input
@@ -238,19 +365,25 @@ export default function NewAnalysisPage() {
                 <p className="mt-5 text-lg font-semibold tracking-[-0.02em] text-[#071426] sm:text-xl">
                   画像を選択またはドロップ
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
+                <p className="mt-2 text-[15px] leading-6 text-slate-500 sm:text-sm">
                   睡眠・心拍・ストレス画面をまとめて追加できます
                 </p>
               </label>
 
+              {uploadMissing && (
+                <p className="mt-3 text-sm font-medium text-rose-600">
+                  画像のアップロードは必須です
+                </p>
+              )}
+
               {previewUrls.length > 0 && (
                 <div className="mt-6">
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-[#071426]">
+                    <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
                       アップロード済み
                     </p>
                     <p className="text-xs text-slate-400">
-                      {previewUrls.length} 枚
+                      {previewUrls.length} / {MAX_FILES} 枚
                     </p>
                   </div>
 
@@ -258,7 +391,7 @@ export default function NewAnalysisPage() {
                     {previewUrls.map((url, index) => (
                       <div
                         key={`${files[index]?.name}-${index}`}
-                        className="group relative aspect-[9/16] overflow-hidden rounded-[18px] border border-slate-200 bg-slate-100 sm:rounded-[20px]"
+                        className="group relative aspect-[9/16] overflow-hidden rounded-[18px] border border-slate-200 bg-slate-100"
                       >
                         <Image
                           src={url}
@@ -270,7 +403,7 @@ export default function NewAnalysisPage() {
                         <button
                           type="button"
                           onClick={() => removeFile(index)}
-                          className="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-full bg-[#071426]/80 text-sm text-white backdrop-blur transition hover:bg-[#071426]"
+                          className="absolute right-2.5 top-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#071426]/80 text-base text-white backdrop-blur transition hover:bg-[#071426]"
                           aria-label={`画像${index + 1}を削除`}
                         >
                           ×
@@ -283,8 +416,8 @@ export default function NewAnalysisPage() {
             </div>
           </section>
 
-          {/* Lifestyle */}
-          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)] sm:rounded-[32px]">
+          {/* 02 Lifestyle */}
+          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
               <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                 02 · LIFESTYLE
@@ -292,19 +425,23 @@ export default function NewAnalysisPage() {
               <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                 生活習慣を入力
               </h2>
-              <p className="mt-2 max-w-xl text-sm leading-7 text-slate-500">
-                数値だけでは分からない背景を、できるだけ具体的に記入してください。
+              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+                上から順に入力してください。必須項目以外は分かる範囲で構いません。
               </p>
             </div>
 
-            <div className="space-y-8 px-5 py-6 sm:space-y-10 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
-              <FormGroup title="基本情報" description="対象者と測定日">
+            <div className="space-y-9 px-5 py-6 sm:space-y-10 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
+              <FormGroup
+                title="基本情報"
+                description="レポートに表示される対象者と測定日です"
+              >
                 <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
                   <Field label="対象者名" required>
                     <input
                       name="clientName"
                       type="text"
                       required
+                      autoComplete="name"
                       className={inputClass}
                       placeholder="例：山田 太郎"
                     />
@@ -321,26 +458,12 @@ export default function NewAnalysisPage() {
               </FormGroup>
 
               <FormGroup
-                title="睡眠リズム"
-                description="入眠・起床は任意入力"
+                title="日常習慣"
+                description="運動・入浴・刺激物など、その日の行動"
               >
-                <p className="mb-4 rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-sm leading-7 text-slate-600">
-                  画像から自動で読み取ります。読み取れない場合のみ入力してください。
-                </p>
                 <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-                  <Field label="入眠時間" optional>
-                    <input name="bedtime" type="time" className={inputClass} />
-                  </Field>
-                  <Field label="起床時間" optional>
-                    <input name="wakeTime" type="time" className={inputClass} />
-                  </Field>
-                </div>
-              </FormGroup>
-
-              <FormGroup title="日常習慣" description="運動・入浴・刺激物など">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-5">
                   <Field label="運動">
-                    <select name="exercise" className={inputClass}>
+                    <select name="exercise" className={inputClass} defaultValue="">
                       <option value="">選択してください</option>
                       <option value="none">なし</option>
                       <option value="light">軽い</option>
@@ -349,7 +472,7 @@ export default function NewAnalysisPage() {
                     </select>
                   </Field>
                   <Field label="ヨガ">
-                    <select name="yoga" className={inputClass}>
+                    <select name="yoga" className={inputClass} defaultValue="">
                       <option value="">選択してください</option>
                       <option value="none">なし</option>
                       <option value="10">10分</option>
@@ -358,24 +481,15 @@ export default function NewAnalysisPage() {
                     </select>
                   </Field>
                   <Field label="入浴">
-                    <select name="bathing" className={inputClass}>
+                    <select name="bathing" className={inputClass} defaultValue="">
                       <option value="">選択してください</option>
                       <option value="none">なし</option>
                       <option value="shower">シャワー</option>
                       <option value="bath">湯船</option>
                     </select>
                   </Field>
-                  <Field label="飲酒">
-                    <select name="alcohol" className={inputClass}>
-                      <option value="">選択してください</option>
-                      <option value="none">なし</option>
-                      <option value="small">少量</option>
-                      <option value="moderate">普通</option>
-                      <option value="high">多い</option>
-                    </select>
-                  </Field>
                   <Field label="カフェイン">
-                    <select name="caffeine" className={inputClass}>
+                    <select name="caffeine" className={inputClass} defaultValue="">
                       <option value="">選択してください</option>
                       <option value="none">なし</option>
                       <option value="morning">午前のみ</option>
@@ -387,10 +501,146 @@ export default function NewAnalysisPage() {
               </FormGroup>
 
               <FormGroup
+                title="食事"
+                description="時間帯と内容が分かると、就寝との関係を見やすくなります"
+              >
+                <div className="space-y-4">
+                  {(
+                    [
+                      ["朝食", "breakfastTime", "breakfastContent", "例：ご飯、味噌汁、卵"],
+                      ["昼食", "lunchTime", "lunchContent", "例：そば、サラダ"],
+                      ["夕食", "dinnerTime", "dinnerContent", "例：焼き魚、野菜、ご飯"],
+                    ] as const
+                  ).map(([label, timeName, contentName, placeholder]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
+                    >
+                      <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                        {label}
+                      </p>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2 sm:gap-5">
+                        <Field label={`${label}時間`} optional>
+                          <input
+                            name={timeName}
+                            type="time"
+                            className={inputClass}
+                          />
+                        </Field>
+                        <Field label={`${label}内容`} optional>
+                          <input
+                            name={contentName}
+                            type="text"
+                            className={inputClass}
+                            placeholder={placeholder}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </FormGroup>
+
+              <FormGroup
+                title="飲酒"
+                description="有無に加えて、種類・量・終了時刻があると精度が上がります"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="飲酒したか" optional>
+                    <select
+                      name="alcoholDrank"
+                      className={inputClass}
+                      value={alcoholDrank}
+                      onChange={(event) => setAlcoholDrank(event.target.value)}
+                    >
+                      <option value="">選択してください</option>
+                      <option value="none">なし</option>
+                      <option value="yes">あり</option>
+                    </select>
+                  </Field>
+                  {alcoholDrank === "yes" && (
+                    <>
+                      <Field label="種類" optional>
+                        <input
+                          name="alcoholType"
+                          type="text"
+                          className={inputClass}
+                          placeholder="例：ビール"
+                        />
+                      </Field>
+                      <Field label="量" optional>
+                        <input
+                          name="alcoholAmount"
+                          type="text"
+                          className={inputClass}
+                          placeholder="例：500ml"
+                        />
+                      </Field>
+                      <Field label="飲み終わった時間" optional>
+                        <input
+                          name="alcoholEndTime"
+                          type="time"
+                          className={inputClass}
+                        />
+                      </Field>
+                      <div className="sm:col-span-2">
+                        <Field label="複数種類の補足" optional>
+                          <textarea
+                            name="alcoholNotes"
+                            rows={2}
+                            className={textareaClass}
+                            placeholder="例：ビール500ml、缶チューハイ350ml"
+                          />
+                        </Field>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </FormGroup>
+
+              <FormGroup
+                title="コンディション"
+                description="体調と生活背景。鼻づまりは呼吸・睡眠の連続性に影響します"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="体調" optional>
+                    <input
+                      name="condition"
+                      type="text"
+                      className={inputClass}
+                      placeholder="疲労感、風邪症状など"
+                    />
+                  </Field>
+                  <Field label="鼻づまり" optional>
+                    <select
+                      name="nasalCongestion"
+                      className={inputClass}
+                      defaultValue=""
+                    >
+                      <option value="">選択してください</option>
+                      <option value="none">なし</option>
+                      <option value="slight">少し</option>
+                      <option value="severe">かなり</option>
+                    </select>
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="仕事・生活リズム" optional>
+                      <textarea
+                        name="work"
+                        rows={3}
+                        className={textareaClass}
+                        placeholder="勤務時間、帰宅時間、生活上の制約など"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </FormGroup>
+
+              <FormGroup
                 title="主観的なストレス・気分"
                 description="測定データとは別に扱う任意の補足"
               >
-                <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-sm leading-7 text-slate-600">
+                <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-slate-600 sm:text-sm">
                   ストレスはSOXAIなどの測定データを参考に分析します。ご自身の体感を補足したい場合のみ入力してください。
                 </p>
                 <Field label="主観的なストレス・気分" optional>
@@ -403,67 +653,49 @@ export default function NewAnalysisPage() {
                 </Field>
               </FormGroup>
 
-              <FormGroup title="コンディション" description="体調と生活背景">
+              <FormGroup
+                title="睡眠リズム（任意）"
+                description="画像から自動読取。読めない場合のみ入力"
+              >
+                <p className="mb-4 rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-[15px] leading-7 text-slate-600 sm:text-sm">
+                  入眠・起床は画像優先で読み取ります。手入力は補助情報です。
+                </p>
                 <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-                  <Field label="体調">
-                    <input
-                      name="condition"
-                      type="text"
-                      className={inputClass}
-                      placeholder="疲労感、風邪症状など"
-                    />
+                  <Field label="入眠時間" optional>
+                    <input name="bedtime" type="time" className={inputClass} />
                   </Field>
-                  <Field label="鼻づまり">
-                    <select name="nasalCongestion" className={inputClass}>
-                      <option value="">選択してください</option>
-                      <option value="none">なし</option>
-                      <option value="slight">少し</option>
-                      <option value="severe">かなり</option>
-                    </select>
+                  <Field label="起床時間" optional>
+                    <input name="wakeTime" type="time" className={inputClass} />
                   </Field>
-                  <div className="sm:col-span-2">
-                    <Field label="食事">
-                      <textarea
-                        name="meals"
-                        rows={3}
-                        className={textareaClass}
-                        placeholder="食事内容や時間帯など"
-                      />
-                    </Field>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Field label="仕事・生活リズム">
-                      <textarea
-                        name="work"
-                        rows={3}
-                        className={textareaClass}
-                        placeholder="勤務時間、帰宅時間、生活上の制約など"
-                      />
-                    </Field>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <Field label="自由記述">
-                      <textarea
-                        name="notes"
-                        rows={5}
-                        className={textareaClass}
-                        placeholder="本人の自覚、睡眠に関する気づきなど"
-                      />
-                    </Field>
-                  </div>
                 </div>
+              </FormGroup>
+
+              <FormGroup
+                title="自由記述"
+                description="本人の自覚や、睡眠に関する気づき"
+              >
+                <Field label="補足メモ" optional>
+                  <textarea
+                    name="notes"
+                    rows={4}
+                    className={textareaClass}
+                    placeholder="本人の自覚、睡眠に関する気づきなど"
+                  />
+                </Field>
               </FormGroup>
             </div>
           </section>
 
           {/* CTA */}
-          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-5 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:rounded-[32px] sm:px-10 sm:py-10">
+          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-5 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:px-10 sm:py-10">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.35),transparent_55%)]" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(216,179,106,0.2),transparent_45%)]" />
 
             <div className="relative z-10">
               {error && (
-                <p className="mb-5 text-sm font-medium text-rose-300">{error}</p>
+                <p className="mb-5 text-[15px] font-medium text-rose-300 sm:text-sm">
+                  {error}
+                </p>
               )}
 
               <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
@@ -472,14 +704,14 @@ export default function NewAnalysisPage() {
               <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
                 AI分析を開始する
               </h2>
-              <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-white/60">
-                SOXAIデータと生活習慣から、Sleep Wellness Report を生成します。
+              <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
+                必須：SOXAI画像・対象者名・測定日。入力後、分析画面へ進みます。
               </p>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="group mt-7 inline-flex w-full items-center justify-center gap-3 rounded-full bg-white px-10 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg"
+                className="group mt-7 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-10 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg"
               >
                 {isSubmitting ? (
                   <>
@@ -515,15 +747,17 @@ function FormGroup({
 }: {
   title: string;
   description: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div>
-      <div className="mb-4 flex items-baseline gap-3 border-b border-slate-100 pb-3">
+      <div className="mb-4 space-y-1 border-b border-slate-100 pb-3">
         <h3 className="text-base font-semibold tracking-[-0.02em] text-[#071426]">
           {title}
         </h3>
-        <p className="text-xs text-slate-400">{description}</p>
+        <p className="text-[13px] leading-6 text-slate-400 sm:text-xs sm:leading-5">
+          {description}
+        </p>
       </div>
       {children}
     </div>
@@ -539,11 +773,11 @@ function Field({
   label: string;
   required?: boolean;
   optional?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-[#071426]">
+      <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
         {label}
         {required && (
           <span className="ml-1.5 text-[11px] font-medium text-[#8a6a2d]">

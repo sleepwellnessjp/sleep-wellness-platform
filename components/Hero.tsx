@@ -72,17 +72,17 @@ export default function Hero() {
             </p>
           </div>
 
-          <div className="mt-12 flex flex-col items-start gap-3.5 sm:mt-14">
+          <div className="mt-12 flex w-full max-w-sm flex-col items-stretch gap-3.5 sm:mt-14 sm:max-w-none sm:items-start">
             <Link
               href="/programs"
-              className="inline-flex items-center justify-center rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)]"
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)]"
             >
               Programsを見る
             </Link>
 
             <Link
               href="/analysis/new"
-              className="inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 px-8 py-4 text-base font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-8 py-4 text-base font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20"
             >
               睡眠分析を始める
             </Link>

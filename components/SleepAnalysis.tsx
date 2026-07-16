@@ -203,15 +203,15 @@ export default function SleepAnalysis() {
               より良い眠りへ導きます。
             </p>
 
-            {/* 5-step horizontal flow */}
-            <div className="mt-12 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="relative min-w-[560px] sm:min-w-0">
+            {/* 5-step flow — wraps on mobile, no horizontal scroll */}
+            <div className="mt-12">
+              <div className="relative">
                 <div
-                  className="absolute left-[10%] right-[10%] top-[28px] h-px bg-gradient-to-r from-[#315f68]/20 via-[#b89242]/45 to-[#315f68]/20"
+                  className="absolute left-[8%] right-[8%] top-[28px] hidden h-px bg-gradient-to-r from-[#315f68]/20 via-[#b89242]/45 to-[#315f68]/20 sm:block"
                   aria-hidden="true"
                 />
 
-                <ol className="relative grid grid-cols-5 gap-2">
+                <ol className="relative grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-5 sm:gap-2">
                   {steps.map((step, index) => (
                     <li
                       key={step.label}
@@ -220,10 +220,10 @@ export default function SleepAnalysis() {
                       <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[#315f68]/15 bg-[#f4f8f8] text-[#315f68] shadow-[0_10px_30px_-18px_rgba(49,95,104,0.45)] transition duration-500 hover:-translate-y-1 hover:border-[#b89242]/40 hover:bg-white hover:text-[#8a6a2d]">
                         {step.icon}
                       </div>
-                      <p className="mt-3 text-[11px] font-semibold leading-4 tracking-[-0.01em] text-[#071426] sm:text-xs">
+                      <p className="mt-3 text-xs font-semibold leading-4 tracking-[-0.01em] text-[#071426] sm:text-xs">
                         {step.label}
                       </p>
-                      <p className="mt-1.5 text-[10px] font-semibold tracking-[0.18em] text-[#8a6a2d]">
+                      <p className="mt-1.5 text-[11px] font-semibold tracking-[0.18em] text-[#8a6a2d]">
                         {String(index + 1).padStart(2, "0")}
                       </p>
                     </li>
@@ -256,9 +256,9 @@ export default function SleepAnalysis() {
             <div className="mt-12 flex flex-col gap-4 sm:flex-row sm:items-center">
               <Link
                 href="/analysis/new"
-                className="group inline-flex items-center justify-center rounded-full bg-[#071426] px-8 py-4 text-sm font-semibold text-white transition-all duration-500 hover:-translate-y-1 hover:bg-[#10223a]"
+                className="group inline-flex min-h-12 items-center justify-center rounded-full bg-[#071426] px-8 py-4 text-base font-semibold text-white transition-all duration-500 hover:-translate-y-1 hover:bg-[#10223a]"
               >
-                分析をはじめる
+                睡眠分析を始める
                 <span className="ml-3 transition-transform duration-500 group-hover:translate-x-1">
                   →
                 </span>
@@ -266,7 +266,7 @@ export default function SleepAnalysis() {
 
               <Link
                 href="#contact"
-                className="inline-flex items-center justify-center gap-3 border-b border-[#0b1b31]/25 pb-2 text-sm font-bold tracking-[0.08em] text-[#0b1b31] transition duration-300 hover:border-[#b89242] hover:text-[#8a6a2d] sm:border-0 sm:pb-0"
+                className="inline-flex min-h-12 items-center justify-center gap-3 border-b border-[#0b1b31]/25 pb-2 text-base font-semibold tracking-[0.04em] text-[#0b1b31] transition duration-300 hover:border-[#b89242] hover:text-[#8a6a2d] sm:border-0 sm:pb-0"
               >
                 法人向けのご相談
                 <span aria-hidden="true">↗</span>

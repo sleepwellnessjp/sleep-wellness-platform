@@ -3,13 +3,22 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --sw-navy: #071426;
+  --sw-gold: #8a6a2d;
+  --sw-gold-light: #d8b36a;
+  --sw-gold-mid: #b89242;
+  --sw-teal: #315f68;
+  --sw-surface: #f7f7f5;
+  --sw-surface-warm: #fafaf8;
+  --sw-border: rgba(7, 20, 38, 0.1);
+  --sw-card-radius: 28px;
+  --sw-card-radius-sm: 12px;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
   --animate-fade-in: fade-in 1.1s ease both;
   --animate-fade-up: fade-up 1s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-scroll-dot: scroll-dot 1.8s ease-in-out infinite;
@@ -103,7 +112,6 @@
     print-color-adjust: exact;
   }
 
-  .print-hidden,
   .no-print {
     display: none !important;
   }
@@ -121,17 +129,29 @@
     box-shadow: none !important;
   }
 
-  .report-article {
+  .report-page {
     display: block !important;
     overflow: visible !important;
     border: none !important;
     box-shadow: none !important;
     border-radius: 0 !important;
     padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .report-page-text {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .report-page-visual {
+    page-break-before: auto;
+    break-before: auto;
   }
 
   .report-header {
-    margin: 0 0 7px !important;
+    margin: 0 0 6px !important;
   }
 
   .report-header .border-b {
@@ -139,17 +159,17 @@
   }
 
   .report-logo {
-    width: 98px !important;
+    width: 96px !important;
   }
 
   .report-title {
-    margin-top: 6px !important;
-    font-size: 16pt !important;
+    margin-top: 5px !important;
+    font-size: 15pt !important;
     line-height: 1.15 !important;
   }
 
   .report-score {
-    font-size: 26pt !important;
+    font-size: 24pt !important;
     line-height: 1 !important;
   }
 
@@ -162,12 +182,54 @@
   }
 
   .report-meta {
-    margin-top: 6px !important;
+    margin-top: 5px !important;
     font-size: 9pt !important;
   }
 
   .report-metrics {
-    margin-top: 8px !important;
+    margin-top: 7px !important;
+  }
+
+  .report-score-breakdown {
+    margin-top: 6px !important;
+  }
+
+  .report-breakdown-list {
+    padding: 5px 8px !important;
+    border-radius: 4px !important;
+  }
+
+  .report-breakdown-row {
+    padding-top: 3px !important;
+    padding-bottom: 3px !important;
+  }
+
+  .report-breakdown-row span {
+    font-size: 8pt !important;
+  }
+
+  .report-stars {
+    letter-spacing: 0.08em !important;
+    font-size: 8.5pt !important;
+  }
+
+  .report-status-chip {
+    display: none !important;
+  }
+
+  .report-status-legend {
+    margin-top: 3px !important;
+    font-size: 6.5pt !important;
+    gap: 8px !important;
+  }
+
+  .report-breakdown-total {
+    padding-top: 4px !important;
+    margin-top: 2px !important;
+  }
+
+  .report-breakdown-total span {
+    font-size: 9pt !important;
   }
 
   .report-metrics > div {
@@ -181,70 +243,105 @@
     border-radius: 4px !important;
   }
 
-  .report-metric p:first-child {
-    font-size: 7pt !important;
+  .report-metric p:first-child,
+  .report-metric span {
+    font-size: 6.5pt !important;
   }
 
   .report-metric p:last-child {
     margin-top: 2px !important;
-    font-size: 9.5pt !important;
+    font-size: 9pt !important;
     line-height: 1.2 !important;
   }
 
   .report-assessment {
-    margin-top: 8px !important;
-    padding: 7px 9px !important;
+    margin-top: 7px !important;
+    padding: 6px 8px !important;
   }
 
   .report-assessment h2 {
     font-size: 9.5pt !important;
   }
 
+  .report-assessment .border-b {
+    padding-bottom: 3px !important;
+  }
+
   .report-summary {
-    margin-top: 5px !important;
-    font-size: 8.5pt !important;
-    line-height: 1.4 !important;
+    margin-top: 0 !important;
+  }
+
+  .report-summary p,
+  .report-summary li {
+    font-size: 8pt !important;
+    line-height: 1.35 !important;
+  }
+
+  .report-summary .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 4px !important;
   }
 
   .report-split {
-    margin-top: 7px !important;
+    margin-top: 6px !important;
     gap: 6px !important;
   }
 
   .report-panel {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 6px 8px !important;
+    padding: 6px 7px !important;
     border-radius: 4px !important;
   }
 
   .report-panel h2,
-  .report-yoga h2 {
+  .report-yoga h2,
+  .report-closing h2,
+  .report-next-checks h2 {
     font-size: 9pt !important;
   }
 
   .report-panel ul {
-    margin-top: 5px !important;
+    margin-top: 3px !important;
   }
 
   .report-panel li,
   .report-panel p,
-  .report-yoga p {
+  .report-yoga p,
+  .report-closing p,
+  .report-next-checks li {
     font-size: 8pt !important;
     line-height: 1.35 !important;
   }
 
   .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]),
-  .report-panel ul.space-y-1\.5 > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 3px !important;
+  .report-panel ul.space-y-1\.5 > :not([hidden]) ~ :not([hidden]),
+  .report-next-checks ul > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 2px !important;
   }
 
-  .report-yoga {
+  .report-yoga,
+  .report-closing,
+  .report-next-checks {
     break-inside: avoid;
     page-break-inside: avoid;
-    margin-top: 7px !important;
-    padding: 6px 8px !important;
+    margin-top: 6px !important;
+    padding: 6px 7px !important;
     border-radius: 4px !important;
+  }
+
+  .report-powered {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 8px !important;
+    padding-top: 6px !important;
+  }
+
+  .report-powered p:first-child {
+    font-size: 6.5pt !important;
+  }
+
+  .report-powered p:last-child {
+    font-size: 8pt !important;
   }
 
   .report-disclaimer {
@@ -259,9 +356,40 @@
   }
 
   .report-disclaimer p {
-    margin-top: 3px !important;
+    margin-top: 2px !important;
     font-size: 6.5pt !important;
     line-height: 1.3 !important;
+  }
+
+  .visual-header {
+    margin-bottom: 8px !important;
+  }
+
+  .visual-header .border-b {
+    padding-bottom: 6px !important;
+  }
+
+  .visual-title {
+    font-size: 14pt !important;
+  }
+
+  .visual-grid {
+    gap: 6px !important;
+  }
+
+  .visual-cell {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-radius: 4px !important;
+  }
+
+  .visual-cell img {
+    object-fit: contain !important;
+  }
+
+  .visual-footer {
+    margin-top: 8px !important;
+    font-size: 7pt !important;
   }
 }
 
