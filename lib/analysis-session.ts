@@ -232,6 +232,23 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
   inFlightAnalysis = null;
 }
 
+export class AnalysisError extends Error {
+  status?: number;
+  errorType?: string;
+  details?: string;
+
+  constructor(
+    message: string,
+    options?: { status?: number; errorType?: string; details?: string },
+  ) {
+    super(message);
+    this.name = "AnalysisError";
+    this.status = options?.status;
+    this.errorType = options?.errorType;
+    this.details = options?.details;
+  }
+}
+
 export function runPendingAnalysis(): Promise<AnalysisResult> {
   if (inFlightAnalysis) {
     return inFlightAnalysis;
@@ -245,25 +262,80 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
   }
 
   inFlightAnalysis = (async () => {
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    let response: Response;
+    try {
+      response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (fetchError) {
+      console.error("Analysis fetch failed:", fetchError);
+      throw new AnalysisError(
+        "AI分析に失敗しました。ネットワークエラーが発生しました。",
+        {
+          errorType: "Fetch Error",
+          details:
+            fetchError instanceof Error
+              ? fetchError.message
+              : String(fetchError),
+        },
+      );
+    }
 
-    const data = (await response.json()) as
-      | AnalysisResult
-      | { error?: string };
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error("Analysis response JSON parse failed:", parseError, {
+        status: response.status,
+      });
+      throw new AnalysisError("AI分析に失敗しました。", {
+        status: response.status,
+        errorType: "JSON Parse Error",
+        details:
+          parseError instanceof Error
+            ? parseError.message
+            : String(parseError),
+      });
+    }
 
     if (!response.ok) {
-      throw new Error(
-        typeof data === "object" &&
-          data &&
-          "error" in data &&
-          typeof data.error === "string"
-          ? data.error
-          : "AI分析に失敗しました。",
-      );
+      const errorPayload =
+        data && typeof data === "object"
+          ? (data as {
+              error?: unknown;
+              errorType?: unknown;
+              details?: unknown;
+            })
+          : {};
+
+      const message =
+        typeof errorPayload.error === "string"
+          ? errorPayload.error
+          : "AI分析に失敗しました。";
+      const errorType =
+        typeof errorPayload.errorType === "string"
+          ? errorPayload.errorType
+          : "OpenAI Error";
+      const details =
+        typeof errorPayload.details === "string"
+          ? errorPayload.details
+          : undefined;
+
+      console.error("Analysis API error:", {
+        status: response.status,
+        errorType,
+        message,
+        details,
+        data,
+      });
+
+      throw new AnalysisError(message, {
+        status: response.status,
+        errorType,
+        details,
+      });
     }
 
     const raw = data as AnalysisResult;
@@ -278,7 +350,8 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
     return result;
   })();
 
-  inFlightAnalysis.catch(() => {
+  inFlightAnalysis.catch((error) => {
+    console.error("Pending analysis failed:", error);
     inFlightAnalysis = null;
   });
 

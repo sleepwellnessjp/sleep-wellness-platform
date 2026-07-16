@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
-import { runPendingAnalysis } from "@/lib/analysis-session";
+import { AnalysisError, runPendingAnalysis } from "@/lib/analysis-session";
 
 const steps = [
   {
@@ -22,10 +22,19 @@ const steps = [
   },
 ];
 
+const isDev = process.env.NODE_ENV === "development";
+
+type AnalysisFailure = {
+  message: string;
+  status?: number;
+  errorType?: string;
+  details?: string;
+};
+
 export default function AnalysisLoadingPage() {
   const router = useRouter();
   const [activeStep, setActiveStep] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AnalysisFailure | null>(null);
   const [progress, setProgress] = useState(8);
 
   useEffect(() => {
@@ -59,11 +68,26 @@ export default function AnalysisLoadingPage() {
       .catch((err: unknown) => {
         if (cancelled) return;
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "AI分析に失敗しました。しばらくしてから再度お試しください。",
-        );
+        console.error("Analysis loading failed:", err);
+
+        if (err instanceof AnalysisError) {
+          setError({
+            message: err.message,
+            status: err.status,
+            errorType: err.errorType,
+            details: err.details,
+          });
+          return;
+        }
+
+        setError({
+          message:
+            err instanceof Error
+              ? err.message
+              : "AI分析に失敗しました。しばらくしてから再度お試しください。",
+          errorType: "Unknown Error",
+          details: err instanceof Error ? err.stack : String(err),
+        });
       });
 
     return () => {
@@ -102,8 +126,25 @@ export default function AnalysisLoadingPage() {
             </h1>
 
             <p className="mt-5 text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8">
-              {error}
+              {error.message}
             </p>
+
+            {isDev && (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-left text-[13px] leading-6 text-amber-950">
+                <p className="font-semibold tracking-wide text-amber-800">
+                  DEV ERROR DETAILS
+                </p>
+                <p className="mt-2">
+                  HTTP Status: {error.status ?? "n/a"}
+                </p>
+                <p>Error Type: {error.errorType ?? "n/a"}</p>
+                {error.details && (
+                  <p className="mt-2 break-words whitespace-pre-wrap">
+                    Details: {error.details}
+                  </p>
+                )}
+              </div>
+            )}
 
             <Link
               href="/analysis/new"
