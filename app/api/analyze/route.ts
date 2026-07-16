@@ -401,6 +401,38 @@ function formatCaffeineType(value: string | undefined): string | undefined {
   return labels[value] ?? value;
 }
 
+/** 画像から読めなかった入眠・起床は、手入力があれば補助値として埋める */
+function applyLifestyleMetricFallbacks(
+  analysis: unknown,
+  lifestyle: LifestyleData,
+): unknown {
+  if (!analysis || typeof analysis !== "object") return analysis;
+
+  const record = analysis as {
+    metrics?: Record<string, unknown>;
+  };
+  const metrics =
+    record.metrics && typeof record.metrics === "object"
+      ? { ...record.metrics }
+      : {};
+
+  const bedtime =
+    typeof metrics.bedtime === "string" ? metrics.bedtime.trim() : "";
+  const wakeTime =
+    typeof metrics.wakeTime === "string" ? metrics.wakeTime.trim() : "";
+  const lifestyleBedtime = lifestyle.bedtime?.trim() ?? "";
+  const lifestyleWakeTime = lifestyle.wakeTime?.trim() ?? "";
+
+  if (!bedtime && lifestyleBedtime) {
+    metrics.bedtime = lifestyleBedtime;
+  }
+  if (!wakeTime && lifestyleWakeTime) {
+    metrics.wakeTime = lifestyleWakeTime;
+  }
+
+  return { ...record, metrics };
+}
+
 function formatLifestyle(lifestyle: LifestyleData): string {
   const alcoholDrankLabel =
     lifestyle.alcoholDrank === "none"
@@ -634,7 +666,9 @@ ${formatLifestyle(lifestyle)}`,
       );
     }
 
-    return NextResponse.json(analysis);
+    return NextResponse.json(
+      applyLifestyleMetricFallbacks(analysis, lifestyle),
+    );
   } catch (error) {
     console.error("OpenAI analysis failed:", error);
     const details = openaiErrorMessage(error);

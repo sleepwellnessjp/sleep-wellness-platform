@@ -331,9 +331,9 @@ function BulletList({ items }: { items: string[] }) {
 
   return (
     <ul className="space-y-2">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <li
-          key={item}
+          key={`${index}-${item.slice(0, 24)}`}
           className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
         >
           <span
