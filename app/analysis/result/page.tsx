@@ -477,7 +477,7 @@ function ResultContent({
               AI ANALYSIS
             </p>
           </div>
-          <AnalysisFlow current={3} />
+          <AnalysisFlow current={4} />
         </div>
 
         {/* ===== PAGE 1: Text Report ===== */}
