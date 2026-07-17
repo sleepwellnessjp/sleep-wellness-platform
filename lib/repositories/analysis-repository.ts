@@ -1,0 +1,18 @@
+export {
+  loadClients,
+  loadClientsSync,
+  getClientById,
+  getClientListItems,
+  getComparableClients,
+  createClient,
+  saveAnalysisToRepository,
+  recordPdfDownload,
+  analysisSleepScore,
+  formatDisplayDate,
+  type ClientListItem,
+  type CreateClientInput,
+  type PdfHistoryEntry,
+  type SavedAnalysisRef,
+  type StoredAnalysis,
+  type StoredClient,
+} from "@/lib/repositories/client-repository";

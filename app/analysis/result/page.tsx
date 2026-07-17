@@ -10,6 +10,8 @@ import {
   loadAnalysisImages,
   loadAnalysisResult,
 } from "@/lib/analysis-session";
+import { loadLastSavedAnalysisRef } from "@/lib/client-store";
+import { recordPdfDownload } from "@/lib/repositories/client-repository";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -690,6 +692,13 @@ export default function AnalysisResultPage() {
               トップページへ戻る
             </Link>
             <Link
+              href="/clients"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
+              style={{ color: NAVY }}
+            >
+              クライアント一覧
+            </Link>
+            <Link
               href="/analysis/new"
               className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
               style={{ backgroundColor: NAVY }}
@@ -1035,12 +1044,30 @@ function ResultContent({
         <div className="no-print mt-8 flex flex-col gap-3 pb-6 sm:mt-10 sm:flex-row sm:flex-wrap sm:justify-center sm:pb-4">
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => {
+              const saved = loadLastSavedAnalysisRef();
+              if (saved) {
+                recordPdfDownload(
+                  saved.clientId,
+                  saved.analysisId,
+                  "PDFダウンロード",
+                );
+              }
+              window.print();
+            }}
             className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
             style={{ backgroundColor: NAVY }}
           >
             PDFダウンロード
           </button>
+
+          <Link
+            href="/clients"
+            className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition hover:bg-slate-50"
+            style={{ color: NAVY }}
+          >
+            クライアント一覧
+          </Link>
 
           <Link
             href="/"

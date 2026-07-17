@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import { AnalysisError, runPendingAnalysis } from "@/lib/analysis-session";
+import { saveAnalysisToRepository } from "@/lib/repositories/client-repository";
 
 const steps = [
   {
@@ -59,11 +60,15 @@ export default function AnalysisLoadingPage() {
     let cancelled = false;
 
     runPendingAnalysis()
-      .then(() => {
-        if (!cancelled) {
-          setProgress(100);
-          router.replace("/analysis/result");
+      .then(async (result) => {
+        if (cancelled) return;
+        try {
+          await saveAnalysisToRepository(result);
+        } catch (saveError) {
+          console.error("Failed to save analysis to client store:", saveError);
         }
+        setProgress(100);
+        router.replace("/analysis/result");
       })
       .catch((err: unknown) => {
         if (cancelled) return;
