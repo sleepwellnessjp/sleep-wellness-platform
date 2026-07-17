@@ -122,7 +122,7 @@ export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ�
 - sleepDebt … 睡眠負債 / Sleep Debt / 負債
 - sleepLatency … 入眠潜時 / Latency / 潜時 / 入眠までにかかった時間
 - circadianRhythm … 体内時計 / Circadian / クロノタイプ / 位相の表示
-- respiratoryRate … 呼吸数 / Respiratory / 呼吸（回/分など）
+- respiratoryRate … 呼吸速度 / 呼吸数 / Respiratory / 呼吸（回/分など）
 - spo2 … 平均SpO₂ / SpO2 / SpO₂ / 血中酸素 / 酸素飽和度
 - restingHeartRate … 安静時心拍数 / RHR / Resting HR / HR
 - hrv … HRV / 心拍変動 / RMSSD / SDNN など

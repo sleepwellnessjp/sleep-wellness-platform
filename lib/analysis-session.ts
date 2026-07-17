@@ -124,6 +124,13 @@ function asString(value: unknown): string {
 export function normalizeMetrics(
   metrics: Partial<AnalysisMetrics> | undefined,
 ): AnalysisMetrics {
+  const legacy = metrics as
+    | (Partial<AnalysisMetrics> & { heartRate?: unknown })
+    | undefined;
+  const restingHeartRate =
+    asString(metrics?.restingHeartRate).trim() ||
+    asString(legacy?.heartRate).trim();
+
   return {
     sleepScore:
       typeof metrics?.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
@@ -146,7 +153,7 @@ export function normalizeMetrics(
     circadianRhythm: asString(metrics?.circadianRhythm),
     respiratoryRate: asString(metrics?.respiratoryRate),
     spo2: asString(metrics?.spo2),
-    restingHeartRate: asString(metrics?.restingHeartRate),
+    restingHeartRate,
     hrv: asString(metrics?.hrv),
     skinTemperature: asString(metrics?.skinTemperature),
     stress: asString(metrics?.stress),

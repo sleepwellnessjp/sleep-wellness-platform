@@ -291,6 +291,56 @@ function CircadianTimeline({
   );
 }
 
+function metricOrDash(value: string | number | null | undefined): string {
+  const display = displayValue(value);
+  return display === "—" ? "確認できませんでした" : display;
+}
+
+/** Medical Report 用の文章化された所見 */
+function buildMedicalNarrative(metrics: AnalysisMetrics): string[] {
+  const awakeningParts = [
+    metrics.awakenings.trim() ? `覚醒時間は${metrics.awakenings.trim()}` : "",
+    metrics.awakeningRate.trim()
+      ? `覚醒率は${metrics.awakeningRate.trim()}`
+      : "",
+  ].filter(Boolean);
+  const awakeningText =
+    awakeningParts.length > 0
+      ? awakeningParts.join("、")
+      : "覚醒指標は確認できませんでした";
+
+  const remText = [
+    metrics.remSleep.trim() || null,
+    metrics.remSleepRate.trim()
+      ? `（割合 ${metrics.remSleepRate.trim()}）`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("");
+  const lightText = [
+    metrics.lightSleep.trim() || null,
+    metrics.lightSleepRate.trim()
+      ? `（割合 ${metrics.lightSleepRate.trim()}）`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("");
+  const deepText = [
+    metrics.deepSleep.trim() || null,
+    metrics.deepSleepRate.trim()
+      ? `（割合 ${metrics.deepSleepRate.trim()}）`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("");
+
+  return [
+    `今回の睡眠スコアは **${metricOrDash(metrics.sleepScore)}** でした。睡眠時間は${metricOrDash(metrics.sleepDuration)}、睡眠効率は${metricOrDash(metrics.sleepEfficiency)}、睡眠負債は${metricOrDash(metrics.sleepDebt)}です。`,
+    `入眠潜時は${metricOrDash(metrics.sleepLatency)}、${awakeningText}でした。睡眠ステージは、レム睡眠 ${remText || "確認できませんでした"}、浅い睡眠 ${lightText || "確認できませんでした"}、深い睡眠 ${deepText || "確認できませんでした"} です。体内時計の指標は${metricOrDash(metrics.circadianRhythm)}でした。`,
+    `生体指標では、呼吸速度 ${metricOrDash(metrics.respiratoryRate)}、平均酸素レベル（SpO₂） ${metricOrDash(metrics.spo2)}、安静時心拍数 ${metricOrDash(metrics.restingHeartRate)}、HRV ${metricOrDash(metrics.hrv)}、皮膚温度 ${metricOrDash(metrics.skinTemperature)}、ストレス ${metricOrDash(metrics.stress)} でした。`,
+  ];
+}
+
 function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
   return [
     {
@@ -771,40 +821,15 @@ function ResultContent({
 
           <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
             <SectionLabel title="睡眠ウェルネス所見" eyebrow="MEDICAL" />
-
-            <div className="mt-3 space-y-2">
-              <p className="text-[15px] leading-7 text-slate-600">
-                睡眠スコアは<strong style={{ color: NAVY }}> {displayValue(result.metrics.sleepScore)}</strong>です。
-              </p>
-              <div className="space-y-1">
-                {[
-                  ["睡眠時間", displayValue(result.metrics.sleepDuration)],
-                  ["睡眠効率", displayValue(result.metrics.sleepEfficiency)],
-                  ["睡眠負債", displayValue(result.metrics.sleepDebt)],
-                  ["入眠潜時", displayValue(result.metrics.sleepLatency)],
-                  ["覚醒", displayValue(result.metrics.awakenings)],
-                  ["レム睡眠", displayValue(result.metrics.remSleep)],
-                  ["浅い睡眠", displayValue(result.metrics.lightSleep)],
-                  ["深い睡眠", displayValue(result.metrics.deepSleep)],
-                  ["体内時計", displayValue(result.metrics.circadianRhythm)],
-                  ["呼吸速度", displayValue(result.metrics.respiratoryRate)],
-                  ["平均酸素レベル（SpO₂）", displayValue(result.metrics.spo2)],
-                  ["安静時心拍数", displayValue(result.metrics.restingHeartRate)],
-                  ["HRV", displayValue(result.metrics.hrv)],
-                  ["皮膚温度", displayValue(result.metrics.skinTemperature)],
-                  ["ストレス", displayValue(result.metrics.stress)],
-                ].map(([label, value]) => (
-                  <p
-                    key={label}
-                    className="text-[13px] leading-6 text-slate-600"
-                  >
-                    <span style={{ color: NAVY, fontWeight: 600 }}>
-                      {label}：
-                    </span>
-                    <span>{value}</span>
-                  </p>
-                ))}
-              </div>
+            <div className="report-summary mt-3 space-y-3">
+              {buildMedicalNarrative(result.metrics).map((paragraph, index) => (
+                <p
+                  key={index}
+                  className="text-[15px] leading-7 text-slate-600 sm:text-[0.95rem] sm:leading-8"
+                >
+                  {renderRichText(paragraph)}
+                </p>
+              ))}
             </div>
           </section>
 

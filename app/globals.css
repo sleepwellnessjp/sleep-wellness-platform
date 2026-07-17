@@ -284,6 +284,10 @@
     line-height: 1.25 !important;
   }
 
+  .report-summary.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 2px !important;
+  }
+
   .report-summary .space-y-2\.5 > :not([hidden]) ~ :not([hidden]),
   .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]) {
     margin-top: 0 !important;
