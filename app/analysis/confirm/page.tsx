@@ -86,9 +86,17 @@ export default function ConfirmExtractionPage() {
               className="h-auto w-[120px] sm:w-[140px]"
             />
           </Link>
-          <p className="text-[10px] font-semibold tracking-[0.22em] text-[#8a6a2d] sm:text-xs sm:tracking-[0.28em]">
-            AI ANALYSIS
-          </p>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link
+              href="/clients"
+              className="text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition hover:text-[#071426] sm:text-xs"
+            >
+              CLIENTS
+            </Link>
+            <p className="text-[10px] font-semibold tracking-[0.22em] text-[#8a6a2d] sm:text-xs sm:tracking-[0.28em]">
+              AI ANALYSIS
+            </p>
+          </div>
         </div>
       </div>
 

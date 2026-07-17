@@ -401,6 +401,97 @@
     margin-top: 3px !important;
     font-size: 6pt !important;
   }
+
+  /* Before / After comparison report */
+  .compare-print-root {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
+
+  .compare-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .compare-header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 0 4mm !important;
+    margin-bottom: 3mm !important;
+  }
+
+  .compare-assessment {
+    margin-top: 3mm !important;
+    padding: 3mm 4mm !important;
+  }
+
+  .compare-assessment p:last-child {
+    font-size: 14pt !important;
+  }
+
+  .compare-section {
+    break-inside: auto;
+    page-break-inside: auto;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 0 3mm !important;
+    margin-bottom: 3mm !important;
+  }
+
+  .compare-section h2 {
+    font-size: 10pt !important;
+  }
+
+  .compare-summary-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 2mm 3mm !important;
+    margin-bottom: 1.5mm !important;
+    border-radius: 2px !important;
+  }
+
+  .compare-summary-row p {
+    font-size: 7pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .compare-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 2mm 3mm !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .compare-comment h3 {
+    font-size: 7.5pt !important;
+  }
+
+  .compare-comment p {
+    font-size: 6.5pt !important;
+    line-height: 1.3 !important;
+  }
+
+  .compare-comments {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 2mm !important;
+  }
+
+  .compare-chart-note {
+    display: none !important;
+  }
+
+  .compare-print-meta {
+    display: block !important;
+    margin-top: 2mm !important;
+    font-size: 7pt !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
