@@ -384,7 +384,7 @@ export default function ClientDetailPage() {
             一覧へ戻る
           </Link>
           <Link
-            href="/analysis/new"
+            href={`/analysis/new?clientId=${encodeURIComponent(client.id)}`}
             className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
             style={{ backgroundColor: NAVY }}
           >

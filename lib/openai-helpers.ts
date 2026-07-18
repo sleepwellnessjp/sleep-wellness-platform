@@ -36,7 +36,7 @@ export function openaiErrorMessage(error: unknown): string {
 export function isImageDataUrl(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^data:image\/(jpeg|jpg|png);base64,/i.test(value)
+    /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(value)
   );
 }
 
@@ -136,8 +136,9 @@ export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ�
 2. 読めない／無い項目は ""、sleepScore は null。
 3. 単位付き・簡潔。時刻は HH:MM 優先（例：23:40、6:20）。
 4. 日付またぎ（23:40→翌6:20）も正しく解釈し、入眠＝bedtime・起床＝wakeTime。
-5. 複数画像は同日の SOXAI 画面として統合。同じ項目が複数ある場合は最も明瞭な値を採用。
+5. 複数画像は同日の SOXAI 画面として統合。同じ項目が複数ある場合は、最も明瞭（信頼度が高い）な値を採用。信頼度が同程度なら、後から提示された画像（新しい画面）の値を優先する。
 6. 「入眠／就寝／睡眠開始」→ bedtime、「起床／覚醒／睡眠終了」→ wakeTime。混同禁止。
 7. 睡眠ステージ（REM / 浅い / 深い / 覚醒）の時間・割合が円グラフやバーにあれば読み取る。
 8. 日本語 UI・英語 UI の両方に対応する。
-9. 出力は指定 JSON スキーマのみ。説明文は不要。`;
+9. 同一項目で画像間の値が明らかに異なる場合は、採用した値を metrics に入れ、conflicts に key / adoptedValue / otherValues を記録する。競合がなければ conflicts は空配列。
+10. 出力は指定 JSON スキーマのみ。説明文は不要。`;

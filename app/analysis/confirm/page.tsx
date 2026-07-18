@@ -10,6 +10,7 @@ import {
   setPendingAnalysisRequest,
   type AnalysisMetrics,
   type ExtractionDraft,
+  type MetricConflict,
 } from "@/lib/analysis-session";
 import {
   metricDisplayValue,
@@ -20,6 +21,9 @@ import {
 
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+
+const inputConflictClass =
+  "mt-2.5 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:px-5 sm:py-4 sm:text-base";
 
 export default function ConfirmExtractionPage() {
   const router = useRouter();
@@ -42,8 +46,20 @@ export default function ConfirmExtractionPage() {
     [draft?.imageKeys],
   );
 
+  const conflictByKey = useMemo(() => {
+    const map = new Map<MetricFieldKey, MetricConflict>();
+    for (const conflict of draft?.conflicts ?? []) {
+      map.set(conflict.key, conflict);
+    }
+    return map;
+  }, [draft?.conflicts]);
+
   const extractedCount = draft?.imageKeys.length ?? 0;
   const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
+  const conflictCount = draft?.conflicts?.length ?? 0;
+  const backHref = draft?.lifestyle.clientId
+    ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
+    : "/analysis/new";
 
   const updateField = (key: MetricFieldKey, value: string) => {
     setMetrics((current) => {
@@ -113,33 +129,62 @@ export default function ConfirmExtractionPage() {
             抽出結果の確認
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            SOXAI画像から読み取った値を確認してください。
-            画像抽出値を含めて全項目を修正でき、修正内容でAI分析を実行します。
+            SOXAI画像から読み取った値を一覧確認できます。必要に応じて修正し、
+            修正後のデータをAI分析へ送ります。
           </p>
         </header>
 
-        <div className="mx-auto mt-8 grid max-w-2xl grid-cols-2 gap-3 sm:mt-10">
-          <div className="rounded-2xl border border-[#315f68]/15 bg-white px-4 py-4 text-center">
-            <p className="text-[11px] font-semibold tracking-[0.18em] text-[#315f68]">
+        <div className="mx-auto mt-8 grid max-w-2xl grid-cols-3 gap-3 sm:mt-10">
+          <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-[#315f68] sm:text-[11px]">
               画像から取得
             </p>
-            <p className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[#071426]">
+            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {extractedCount}
               <span className="ml-1 text-sm font-medium text-slate-400">
                 / {SOXAI_METRIC_FIELDS.length}
               </span>
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center">
-            <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">
+          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center sm:px-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-400 sm:text-[11px]">
               手入力が必要
             </p>
-            <p className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-[#071426]">
+            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {missingCount}
               <span className="ml-1 text-sm font-medium text-slate-400">項目</span>
             </p>
           </div>
+          <div className="rounded-2xl border border-amber-200 bg-[#fffbeb] px-3 py-4 text-center sm:px-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-amber-700 sm:text-[11px]">
+              値の競合
+            </p>
+            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              {conflictCount}
+              <span className="ml-1 text-sm font-medium text-slate-400">項目</span>
+            </p>
+          </div>
         </div>
+
+        {conflictCount > 0 && (
+          <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
+            <p className="font-semibold">複数画像で異なる値が検出されました</p>
+            <p className="mt-1 text-[13px] text-amber-900/80">
+              信頼度が高い値（または新しい画面の値）を仮採用しています。該当項目は黄色で表示され、必要なら修正してください。
+            </p>
+            <ul className="mt-3 space-y-1.5 text-[13px]">
+              {(draft.conflicts ?? []).map((conflict) => (
+                <li key={conflict.key}>
+                  <span className="font-semibold">{conflict.label}</span>
+                  {" ：採用 "}
+                  <span className="font-medium">{conflict.adopted}</span>
+                  {" ／ 他の候補 "}
+                  {conflict.alternatives.join("、")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-8 sm:mt-10">
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
@@ -151,13 +196,14 @@ export default function ConfirmExtractionPage() {
                 睡眠データ
               </h2>
               <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                画像から取得した値を優先しますが、必要に応じてすべて修正できます。
+                全項目を確認・修正できます。空欄は画像から取得できなかった項目です。
               </p>
             </div>
 
             <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8 lg:grid-cols-3">
               {SOXAI_METRIC_FIELDS.map((field) => {
                 const fromImage = imageKeySet.has(field.key);
+                const conflict = conflictByKey.get(field.key);
                 const value = metricDisplayValue(metrics, field.key);
 
                 return (
@@ -166,7 +212,11 @@ export default function ConfirmExtractionPage() {
                       <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
                         {field.label}
                       </span>
-                      {fromImage ? (
+                      {conflict ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800">
+                          競合あり
+                        </span>
+                      ) : fromImage ? (
                         <span className="rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]">
                           画像から取得
                         </span>
@@ -180,16 +230,25 @@ export default function ConfirmExtractionPage() {
                       {field.hint}
                     </span>
                     <input
-                      type={field.inputType === "number" ? "number" : field.inputType}
-                      inputMode={field.inputType === "number" ? "decimal" : undefined}
+                      type={
+                        field.inputType === "number" ? "number" : field.inputType
+                      }
+                      inputMode={
+                        field.inputType === "number" ? "decimal" : undefined
+                      }
                       step={field.inputType === "number" ? "1" : undefined}
                       value={value}
                       onChange={(event) =>
                         updateField(field.key, event.target.value)
                       }
-                      className={inputClass}
+                      className={conflict ? inputConflictClass : inputClass}
                       placeholder={field.placeholder}
                     />
+                    {conflict && (
+                      <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
+                        候補: {[conflict.adopted, ...conflict.alternatives].join(" / ")}
+                      </span>
+                    )}
                   </label>
                 );
               })}
@@ -208,6 +267,7 @@ export default function ConfirmExtractionPage() {
             </p>
             <p className="mt-1 text-sm text-slate-500">
               SOXAI画像 {draft.images.length} 枚 · 生活習慣データ付き
+              {draft.lifestyle.clientId ? " · 既存クライアントに紐づけ" : ""}
             </p>
           </section>
 
@@ -226,7 +286,7 @@ export default function ConfirmExtractionPage() {
 
               <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center">
                 <Link
-                  href="/analysis/new"
+                  href={backHref}
                   className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/25 px-8 py-3.5 text-base font-semibold text-white/85 transition hover:bg-white/10 sm:w-auto"
                 >
                   入力に戻る

@@ -275,7 +275,8 @@ function validateBody(body: unknown): {
   if (!images.every(isImageDataUrl)) {
     return {
       ok: false,
-      message: "画像は JPEG または PNG の data URL で送信してください。",
+      message:
+        "画像は JPEG / PNG / WEBP の data URL で送信してください。",
     };
   }
 
@@ -435,11 +436,12 @@ function formatLifestyle(lifestyle: LifestyleData): string {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY?.trim()) {
     return NextResponse.json(
       {
-        error: "AI分析の設定が完了していません。",
-        errorType: "Validation Error",
+        error:
+          "AI分析APIの設定が完了していません。.env.local に OPENAI_API_KEY を設定し、開発サーバーを再起動してください。",
+        errorType: "Config Error",
         details: isDev ? "OPENAI_API_KEY is missing." : undefined,
       },
       { status: 500 },
@@ -497,7 +499,7 @@ ${formatConfirmedMetrics(confirmedMetrics)}
 抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / REM睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス`;
 
     const response = await client.responses.create({
-      model: "gpt-5.6",
+      model: "gpt-4o",
       instructions: SYSTEM_INSTRUCTIONS,
       input: [
         {

@@ -201,7 +201,7 @@ export default function ClientComparePage() {
               比較には2件以上の分析記録が必要です。
             </p>
             <Link
-              href="/analysis/new"
+              href={`/analysis/new?clientId=${encodeURIComponent(client.id)}`}
               className="no-print mt-6 inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
               style={{ backgroundColor: NAVY }}
             >

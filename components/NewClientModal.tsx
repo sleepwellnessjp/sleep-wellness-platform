@@ -69,7 +69,24 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
       onCreated?.(client.id);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登録に失敗しました。");
+      console.error("[NewClientModal] createClient failed:", err);
+      if (err && typeof err === "object") {
+        console.error("[NewClientModal] error keys:", Object.keys(err as object));
+        console.error(
+          "[NewClientModal] error JSON:",
+          JSON.stringify(err, Object.getOwnPropertyNames(err as object), 2),
+        );
+      }
+      const message =
+        err instanceof Error
+          ? err.message
+          : err &&
+              typeof err === "object" &&
+              "message" in err &&
+              typeof (err as { message: unknown }).message === "string"
+            ? (err as { message: string }).message
+            : "登録に失敗しました。";
+      setError(message || "登録に失敗しました。");
       setSaving(false);
     }
   };
@@ -206,7 +223,17 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
           </label>
 
           {error && (
-            <p className="text-sm font-medium text-rose-600">{error}</p>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-rose-600">{error}</p>
+              {error.includes("schema.sql") && (
+                <a
+                  href="/setup"
+                  className="inline-flex text-sm font-semibold text-[#8a6a2d] underline-offset-2 hover:underline"
+                >
+                  初期設定ページで schema.sql を実行する →
+                </a>
+              )}
+            </div>
           )}
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
