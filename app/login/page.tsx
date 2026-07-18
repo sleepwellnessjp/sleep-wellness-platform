@@ -36,28 +36,41 @@ function LoginForm() {
 
     if (!supabaseEnabled) return;
 
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("メールアドレスとパスワードを入力してください。");
+      return;
+    }
+
     setBusy(true);
-    const supabase = createBrowserClient();
-    if (!supabase) {
-      setError("Supabase の設定を確認してください。");
+    try {
+      const supabase = createBrowserClient();
+      if (!supabase) {
+        setError("Supabase の設定を確認してください。");
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      router.replace(redirectTo);
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "ログインに失敗しました。しばらくしてから再度お試しください。",
+      );
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    setBusy(false);
-
-    if (signInError) {
-      setError(signInError.message);
-      return;
-    }
-
-    router.replace(redirectTo);
-    router.refresh();
   };
 
   const handleSignUp = async () => {
@@ -65,37 +78,71 @@ function LoginForm() {
     setMessage(null);
 
     if (!supabaseEnabled) return;
-    if (!email.trim() || !password) {
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
       setError("メールアドレスとパスワードを入力してください。");
       return;
     }
 
+    if (password.length < 6) {
+      setError("パスワードは6文字以上で入力してください。");
+      return;
+    }
+
     setBusy(true);
-    const supabase = createBrowserClient();
-    if (!supabase) {
-      setError("Supabase の設定を確認してください。");
+    try {
+      const supabase = createBrowserClient();
+      if (!supabase) {
+        setError("Supabase の設定を確認してください。");
+        return;
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+        },
+      });
+
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
+
+      const identities = data.user?.identities ?? [];
+      if (data.user && identities.length === 0) {
+        setError(
+          "このメールアドレスは既に登録されています。ログインするか、パスワード再設定をご利用ください。",
+        );
+        return;
+      }
+
+      if (!data.user) {
+        setError("ユーザーの作成に失敗しました。入力内容を確認して再度お試しください。");
+        return;
+      }
+
+      if (data.session) {
+        setMessage("登録が完了しました。ダッシュボードへ移動します。");
+        router.replace(redirectTo);
+        router.refresh();
+        return;
+      }
+
+      setMessage(
+        "登録を受け付けました。確認メールを送信したので、メール内のリンクから登録を完了してください。",
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "新規登録に失敗しました。しばらくしてから再度お試しください。",
+      );
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-      },
-    });
-
-    setBusy(false);
-
-    if (signUpError) {
-      setError(signUpError.message);
-      return;
-    }
-
-    setMessage(
-      "確認メールを送信しました。メール内のリンクから登録を完了してください。",
-    );
   };
 
   const handleForgotPassword = async () => {
@@ -109,28 +156,35 @@ function LoginForm() {
     }
 
     setBusy(true);
-    const supabase = createBrowserClient();
-    if (!supabase) {
-      setError("Supabase の設定を確認してください。");
+    try {
+      const supabase = createBrowserClient();
+      if (!supabase) {
+        setError("Supabase の設定を確認してください。");
+        return;
+      }
+
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim(),
+        {
+          redirectTo: `${window.location.origin}/auth/callback?redirect=/dashboard`,
+        },
+      );
+
+      if (resetError) {
+        setError(resetError.message);
+        return;
+      }
+
+      setMessage("パスワード再設定メールを送信しました。");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "パスワード再設定メールの送信に失敗しました。",
+      );
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        redirectTo: `${window.location.origin}/auth/callback?redirect=/dashboard`,
-      },
-    );
-
-    setBusy(false);
-
-    if (resetError) {
-      setError(resetError.message);
-      return;
-    }
-
-    setMessage("パスワード再設定メールを送信しました。");
   };
 
   const handleDemoDashboard = () => {
