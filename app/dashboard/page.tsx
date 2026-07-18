@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import AuthStatusBar from "@/components/AuthStatusBar";
 import NewClientModal from "@/components/NewClientModal";
+import SchemaSetupBanner from "@/components/SchemaSetupBanner";
 import { formatDisplayDate, loadClients } from "@/lib/repositories/client-repository";
 import {
   computeDashboardStatsFromClients,
@@ -74,7 +75,8 @@ export default function InstructorDashboardPage() {
     try {
       const clients = await loadClients();
       setStats(computeDashboardStatsFromClients(clients));
-    } catch {
+    } catch (error) {
+      console.error("[dashboard] loadClients failed:", error);
       setStats(emptyStats());
     }
   };
@@ -141,6 +143,7 @@ export default function InstructorDashboardPage() {
 
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
         <AuthStatusBar />
+        <SchemaSetupBanner />
 
         <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">

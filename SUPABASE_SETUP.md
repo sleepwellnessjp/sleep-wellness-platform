@@ -105,6 +105,11 @@ npm run dev
 ## トラブルシューティング
 
 - **ログインできない:** Site URL / Redirect URLs が正しいか確認してください。
+- **「登録に失敗しました」/ クライアント登録できない:**
+  1. ブラウザ Console に `PGRST205` / `Could not find the table 'public.clients'` が出ていないか確認
+  2. 原因は多くの場合 **schema.sql 未実行**（Auth だけ動いてテーブルが無い状態）
+  3. アプリの `/setup` を開くか、Supabase SQL Editor で `supabase/schema.sql` をすべて実行
+  4. RLS が原因の場合は `new row violates row-level security policy` と表示されます（schema.sql の policy を再実行）
 - **データが表示されない:** SQL Editor で `schema.sql` がエラーなく実行されたか確認してください。
 - **ビルドエラー:** `.env.local` がなくても `npm run build` は成功します（デモモード）。
 

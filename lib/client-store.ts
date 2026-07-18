@@ -638,7 +638,7 @@ export type SavedAnalysisRef = {
 
 /**
  * 分析完了時にクライアントへ保存。
- * 同名クライアントがいれば追加、いなければ新規登録。
+ * clientId があればそのクライアントへ紐づけ、なければ同名検索→新規登録。
  */
 export function saveAnalysisToClientStore(
   result: AnalysisResult,
@@ -656,13 +656,15 @@ export function saveAnalysisToClientStore(
       ? metrics.sleepScore
       : null;
 
-  let client = clients.find(
-    (item) => normalizeName(item.name) === normalizeName(name),
-  );
+  let client =
+    (result.clientId
+      ? clients.find((item) => item.id === result.clientId)
+      : undefined) ??
+    clients.find((item) => normalizeName(item.name) === normalizeName(name));
 
   if (!client) {
     client = {
-      id: createId("client"),
+      id: result.clientId?.trim() || createId("client"),
       name,
       registeredAt: createdAt,
       analyses: [],
@@ -681,6 +683,7 @@ export function saveAnalysisToClientStore(
     result: {
       ...result,
       metrics,
+      clientId: client.id,
       clientName: name,
       measurementDate: analysisDate,
     },

@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChangeEvent,
   DragEvent,
   FormEvent,
   ReactNode,
+  Suspense,
   useEffect,
   useMemo,
   useState,
@@ -15,16 +16,26 @@ import {
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   AnalysisError,
-  extractSoxaiMetrics,
+  extractSoxaiMetricsDetailed,
+  formatExtractErrorMessage,
   setExtractionDraft,
 } from "@/lib/analysis-session";
 import {
+  getClientById,
+  getClientListItems,
+  type ClientListItem,
+} from "@/lib/repositories/client-repository";
+import {
   collectedMetricKeys,
-  emptyMetrics,
   SOXAI_METRIC_FIELDS,
 } from "@/lib/soxai-metrics";
 
-const MAX_FILES = 8;
+const MAX_FILES = 10;
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
 
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
@@ -52,6 +63,10 @@ type OtherExerciseEntry = {
   time: string;
   notes: string;
 };
+
+function fileFingerprint(file: File): string {
+  return `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
+}
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -196,7 +211,24 @@ function composeAlcoholSummary(alcohol: {
 }
 
 export default function NewAnalysisPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
+          <p className="text-sm text-slate-500">読み込み中...</p>
+        </main>
+      }
+    >
+      <NewAnalysisPageInner />
+    </Suspense>
+  );
+}
+
+function NewAnalysisPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClientId = searchParams.get("clientId")?.trim() || "";
+
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -213,6 +245,11 @@ export default function NewAnalysisPage() {
   const [lunchEaten, setLunchEaten] = useState("");
   const [dinnerEaten, setDinnerEaten] = useState("");
   const [touchedUpload, setTouchedUpload] = useState(false);
+  const [clientId, setClientId] = useState(queryClientId);
+  const [clientName, setClientName] = useState("");
+  const [clientLocked, setClientLocked] = useState(Boolean(queryClientId));
+  const [clientOptions, setClientOptions] = useState<ClientListItem[]>([]);
+  const [clientsReady, setClientsReady] = useState(false);
 
   const previewUrls = useMemo(
     () => files.map((file) => URL.createObjectURL(file)),
@@ -225,25 +262,75 @@ export default function NewAnalysisPage() {
     };
   }, [previewUrls]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (queryClientId) {
+          const client = await getClientById(queryClientId);
+          if (cancelled) return;
+          if (client) {
+            setClientId(client.id);
+            setClientName(client.name);
+            setClientLocked(true);
+          } else {
+            setClientId("");
+            setClientLocked(false);
+            setError(
+              "指定されたクライアントが見つかりません。一覧から選択してください。",
+            );
+          }
+        }
+
+        const list = await getClientListItems();
+        if (!cancelled) {
+          setClientOptions(list);
+        }
+      } catch (loadError) {
+        console.error("[analysis/new] failed to load clients:", loadError);
+      } finally {
+        if (!cancelled) setClientsReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryClientId]);
+
   const addFiles = (selectedFiles: File[]) => {
     const validFiles = selectedFiles.filter((file) =>
-      ["image/jpeg", "image/png"].includes(file.type),
+      (ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type),
     );
 
     if (validFiles.length === 0 && selectedFiles.length > 0) {
-      setError("JPG / PNG 形式の画像のみアップロードできます。");
+      setError("JPG / JPEG / PNG / WEBP 形式の画像のみアップロードできます。");
       return;
     }
 
     setFiles((currentFiles) => {
-      const merged = [...currentFiles, ...validFiles];
+      const existing = new Set(currentFiles.map(fileFingerprint));
+      const uniqueNew = validFiles.filter((file) => {
+        const key = fileFingerprint(file);
+        if (existing.has(key)) return false;
+        existing.add(key);
+        return true;
+      });
+
+      if (uniqueNew.length < validFiles.length) {
+        setError("同じ画像は重複して追加できません。");
+      } else {
+        setError(null);
+      }
+
+      const merged = [...currentFiles, ...uniqueNew];
       if (merged.length > MAX_FILES) {
         setError(`画像は最大${MAX_FILES}枚までです。`);
         return merged.slice(0, MAX_FILES);
       }
       return merged;
     });
-    setError(null);
     setTouchedUpload(true);
   };
 
@@ -262,6 +349,23 @@ export default function NewAnalysisPage() {
     setFiles((currentFiles) =>
       currentFiles.filter((_, fileIndex) => fileIndex !== index),
     );
+  };
+
+  const clearAllFiles = () => {
+    setFiles([]);
+    setError(null);
+  };
+
+  const handleClientSelect = (value: string) => {
+    if (!value) {
+      setClientId("");
+      setClientName("");
+      return;
+    }
+    const selected = clientOptions.find((item) => item.id === value);
+    if (!selected) return;
+    setClientId(selected.id);
+    setClientName(selected.name);
   };
 
   const updateOtherExercise = (
@@ -302,11 +406,18 @@ export default function NewAnalysisPage() {
     const form = event.currentTarget;
     const formData = new FormData(form);
 
-    const clientName = String(formData.get("clientName") ?? "").trim();
-    const measurementDate = String(formData.get("measurementDate") ?? "");
+    if (files.length > MAX_FILES) {
+      setError(`画像は最大${MAX_FILES}枚までです。`);
+      return;
+    }
 
-    if (!clientName || !measurementDate) {
-      setError("対象者名と測定日は必須です。");
+    const measurementDate = String(formData.get("measurementDate") ?? "");
+    const resolvedClientName = clientName.trim();
+
+    if (!resolvedClientName || !measurementDate) {
+      setError(
+        "対象者名と測定日は必須です。クライアントを選択または入力してください。",
+      );
       return;
     }
 
@@ -417,7 +528,8 @@ export default function NewAnalysisPage() {
       });
 
       const lifestyle = {
-        clientName,
+        clientId: clientId || undefined,
+        clientName: resolvedClientName,
         measurementDate,
         bedtime: "",
         wakeTime: "",
@@ -483,13 +595,15 @@ export default function NewAnalysisPage() {
         notes: String(formData.get("notes") ?? ""),
       };
 
-      let extractedMetrics = emptyMetrics();
-      let imageKeys: ReturnType<typeof collectedMetricKeys> = [];
-      try {
-        extractedMetrics = await extractSoxaiMetrics(images);
-        imageKeys = collectedMetricKeys(extractedMetrics);
-      } catch (extractErr) {
-        console.error("SOXAI extract fallback to manual confirm:", extractErr);
+      const { metrics: extractedMetrics, conflicts } =
+        await extractSoxaiMetricsDetailed(images);
+      const imageKeys = collectedMetricKeys(extractedMetrics);
+
+      if (imageKeys.length === 0) {
+        throw new AnalysisError(
+          "画像から睡眠データを読み取れませんでした。SOXAIのスクリーンショットが鮮明か、対応形式（JPG / JPEG / PNG / WEBP）かを確認してください。",
+          { errorType: "Empty Extraction" },
+        );
       }
 
       setExtractionDraft({
@@ -497,17 +611,12 @@ export default function NewAnalysisPage() {
         images,
         extractedMetrics,
         imageKeys,
+        conflicts,
       });
       router.push("/analysis/confirm");
     } catch (err) {
       console.error("SOXAI extract failed:", err);
-      if (err instanceof AnalysisError) {
-        setError(err.message);
-      } else {
-        setError(
-          "画像の自動解析に失敗しました。もう一度お試しください。",
-        );
-      }
+      setError(formatExtractErrorMessage(err));
       setIsSubmitting(false);
     }
   };
@@ -566,6 +675,87 @@ export default function NewAnalysisPage() {
           className="mt-10 space-y-8 sm:mt-12 sm:space-y-10"
           noValidate
         >
+          {/* 00 CLIENT */}
+          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+              <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                00 · CLIENT
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                {clientLocked ? "対象クライアント" : "クライアントを選択"}
+              </h2>
+              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+                {clientLocked
+                  ? "クライアント詳細から引き継いだ対象です。氏名の再入力は不要です。"
+                  : "ダッシュボードなどから開始した場合は、先に対象クライアントを選んでください。"}
+              </p>
+            </div>
+            <div className="px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+              {clientLocked ? (
+                <div className="rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-4 sm:px-5">
+                  <p className="text-[11px] font-semibold tracking-[0.18em] text-[#315f68]">
+                    SELECTED CLIENT
+                  </p>
+                  <p className="mt-2 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
+                    {clientName || "読み込み中..."}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="登録済みクライアント" optional={clientOptions.length === 0}>
+                    <select
+                      className={inputClass}
+                      value={clientId}
+                      onChange={(event) => handleClientSelect(event.target.value)}
+                      disabled={!clientsReady}
+                    >
+                      <option value="">
+                        {clientsReady
+                          ? clientOptions.length > 0
+                            ? "選択してください"
+                            : "登録クライアントなし"
+                          : "読み込み中..."}
+                      </option>
+                      {clientOptions.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="対象者名" required>
+                    <input
+                      name="clientName"
+                      type="text"
+                      required
+                      autoComplete="name"
+                      className={inputClass}
+                      value={clientName}
+                      onChange={(event) => {
+                        setClientName(event.target.value);
+                        if (clientId) {
+                          const matched = clientOptions.find(
+                            (item) => item.id === clientId,
+                          );
+                          if (
+                            matched &&
+                            matched.name !== event.target.value.trim()
+                          ) {
+                            setClientId("");
+                          }
+                        }
+                      }}
+                      placeholder="例：山田 太郎"
+                    />
+                    <p className="mt-2 text-[12px] text-slate-400">
+                      既存は左で選択。新規のみの場合は氏名を直接入力できます。
+                    </p>
+                  </Field>
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* 01 SOXAI */}
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -583,7 +773,7 @@ export default function NewAnalysisPage() {
                   </p>
                 </div>
                 <p className="shrink-0 text-xs font-medium text-slate-400">
-                  JPG / PNG · 最大{MAX_FILES}枚 · 必須
+                  JPG / JPEG / PNG / WEBP · 最大{MAX_FILES}枚 · 必須
                 </p>
               </div>
 
@@ -624,7 +814,7 @@ export default function NewAnalysisPage() {
                 <input
                   type="file"
                   multiple
-                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={handleFileChange}
                 />
@@ -659,13 +849,22 @@ export default function NewAnalysisPage() {
 
               {previewUrls.length > 0 && (
                 <div className="mt-6">
-                  <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
                       アップロード済み
                     </p>
-                    <p className="text-xs text-slate-400">
-                      {previewUrls.length} / {MAX_FILES} 枚
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs text-slate-400">
+                        {previewUrls.length} / {MAX_FILES} 枚
+                      </p>
+                      <button
+                        type="button"
+                        onClick={clearAllFiles}
+                        className="text-[12px] font-semibold text-slate-500 transition hover:text-rose-600"
+                      >
+                        すべて削除
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -713,20 +912,10 @@ export default function NewAnalysisPage() {
 
             <div className="space-y-9 px-5 py-6 sm:space-y-10 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
               <FormGroup
-                title="基本情報"
-                description="レポートに表示される対象者と測定日です"
+                title="測定日"
+                description="レポートに表示される測定日です。対象者は上のクライアント欄で設定済みです"
               >
                 <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
-                  <Field label="対象者名" required>
-                    <input
-                      name="clientName"
-                      type="text"
-                      required
-                      autoComplete="name"
-                      className={inputClass}
-                      placeholder="例：山田 太郎"
-                    />
-                  </Field>
                   <Field label="測定日" required>
                     <input
                       name="measurementDate"

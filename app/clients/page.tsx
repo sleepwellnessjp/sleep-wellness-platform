@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import NewClientModal from "@/components/NewClientModal";
+import SchemaSetupBanner from "@/components/SchemaSetupBanner";
 import {
   formatDisplayDate,
   getClientListItems,
@@ -20,7 +21,12 @@ export default function ClientsPage() {
 
   useEffect(() => {
     const refresh = async () => {
-      setClients(await getClientListItems());
+      try {
+        setClients(await getClientListItems());
+      } catch (error) {
+        console.error("[clients] getClientListItems failed:", error);
+        setClients([]);
+      }
     };
     void refresh();
     setReady(true);
@@ -41,6 +47,8 @@ export default function ClientsPage() {
       <InstructorNav eyebrow="CLIENTS" />
 
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
+        <SchemaSetupBanner />
+
         <header className="mx-auto flex max-w-2xl flex-col items-center text-center">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
@@ -142,13 +150,22 @@ export default function ClientsPage() {
                   </div>
                 </div>
 
-                <Link
-                  href={`/clients/${client.id}`}
-                  className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full px-7 py-3.5 text-[15px] font-semibold text-white transition duration-300 group-hover:-translate-y-0.5 sm:text-sm"
-                  style={{ backgroundColor: NAVY }}
-                >
-                  詳細を見る
-                </Link>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <Link
+                    href={`/analysis/new?clientId=${encodeURIComponent(client.id)}`}
+                    className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-semibold transition hover:bg-slate-50 sm:text-sm"
+                    style={{ color: NAVY }}
+                  >
+                    新しい分析
+                  </Link>
+                  <Link
+                    href={`/clients/${client.id}`}
+                    className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-full px-7 py-3.5 text-[15px] font-semibold text-white transition duration-300 group-hover:-translate-y-0.5 sm:text-sm"
+                    style={{ backgroundColor: NAVY }}
+                  >
+                    詳細を見る
+                  </Link>
+                </div>
               </article>
             ))
           )}

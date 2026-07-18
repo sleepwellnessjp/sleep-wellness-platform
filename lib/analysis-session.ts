@@ -1,13 +1,18 @@
 import {
   collectedMetricKeys,
   emptyMetrics,
+  normalizeMetrics,
+  SOXAI_METRIC_FIELDS,
   type AnalysisMetrics,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 
 export type { AnalysisMetrics };
+export { normalizeMetrics };
 
 type LifestyleData = {
+  /** 既存クライアントから開始した場合の ID（Supabase / ローカル保存用） */
+  clientId?: string;
   clientName: string;
   measurementDate: string;
   bedtime: string;
@@ -65,6 +70,14 @@ export type AnalysisRequest = {
   metrics?: AnalysisMetrics;
 };
 
+/** 複数画像で同一項目に異なる値があった場合の競合情報 */
+export type MetricConflict = {
+  key: MetricFieldKey;
+  label: string;
+  adopted: string;
+  alternatives: string[];
+};
+
 /** 入力 → 画像抽出確認までの下書き */
 export type ExtractionDraft = {
   lifestyle: LifestyleData;
@@ -72,6 +85,8 @@ export type ExtractionDraft = {
   extractedMetrics: AnalysisMetrics;
   /** 画像から取得できたキー */
   imageKeys: MetricFieldKey[];
+  /** 複数画像間で値が食い違った項目 */
+  conflicts?: MetricConflict[];
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -105,13 +120,14 @@ export type AnalysisResult = {
   tomorrowPlan: string[];
   caution: string;
   disclaimer: string;
+  clientId?: string;
   clientName?: string;
   measurementDate?: string;
 };
 
 const RESULT_KEY = "swij-analysis-result";
 const IMAGES_KEY = "swij-analysis-images";
-const MAX_STORED_IMAGES = 6;
+const MAX_STORED_IMAGES = 10;
 
 let pendingRequest: AnalysisRequest | null = null;
 let extractionDraft: ExtractionDraft | null = null;
@@ -119,45 +135,6 @@ let inFlightAnalysis: Promise<AnalysisResult> | null = null;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-export function normalizeMetrics(
-  metrics: Partial<AnalysisMetrics> | undefined,
-): AnalysisMetrics {
-  const legacy = metrics as
-    | (Partial<AnalysisMetrics> & { heartRate?: unknown })
-    | undefined;
-  const restingHeartRate =
-    asString(metrics?.restingHeartRate).trim() ||
-    asString(legacy?.heartRate).trim();
-
-  return {
-    sleepScore:
-      typeof metrics?.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
-        ? metrics.sleepScore
-        : null,
-    bedtime: asString(metrics?.bedtime),
-    wakeTime: asString(metrics?.wakeTime),
-    sleepDuration: asString(metrics?.sleepDuration),
-    sleepEfficiency: asString(metrics?.sleepEfficiency),
-    awakenings: asString(metrics?.awakenings),
-    awakeningRate: asString(metrics?.awakeningRate),
-    remSleep: asString(metrics?.remSleep),
-    remSleepRate: asString(metrics?.remSleepRate),
-    lightSleep: asString(metrics?.lightSleep),
-    lightSleepRate: asString(metrics?.lightSleepRate),
-    deepSleep: asString(metrics?.deepSleep),
-    deepSleepRate: asString(metrics?.deepSleepRate),
-    sleepDebt: asString(metrics?.sleepDebt),
-    sleepLatency: asString(metrics?.sleepLatency),
-    circadianRhythm: asString(metrics?.circadianRhythm),
-    respiratoryRate: asString(metrics?.respiratoryRate),
-    spo2: asString(metrics?.spo2),
-    restingHeartRate,
-    hrv: asString(metrics?.hrv),
-    skinTemperature: asString(metrics?.skinTemperature),
-    stress: asString(metrics?.stress),
-  };
 }
 
 function clampStars(value: unknown, fallback: ScoreStars): ScoreStars {
@@ -211,7 +188,11 @@ type LegacyAnalysisFields = {
 
 function normalizeAnalysisResult(
   raw: AnalysisResult & LegacyAnalysisFields,
-  extras?: { clientName?: string; measurementDate?: string },
+  extras?: {
+    clientId?: string;
+    clientName?: string;
+    measurementDate?: string;
+  },
 ): AnalysisResult {
   const score =
     typeof raw.score === "number" && Number.isFinite(raw.score)
@@ -248,6 +229,7 @@ function normalizeAnalysisResult(
     tomorrowPlan,
     caution: typeof raw.caution === "string" ? raw.caution.trim() : "",
     disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer.trim() : "",
+    clientId: extras?.clientId ?? raw.clientId,
     clientName: extras?.clientName ?? raw.clientName,
     measurementDate: extras?.measurementDate ?? raw.measurementDate,
   };
@@ -279,6 +261,7 @@ export function setExtractionDraft(draft: ExtractionDraft) {
     ...draft,
     extractedMetrics: normalizeMetrics(draft.extractedMetrics),
     imageKeys: [...draft.imageKeys],
+    conflicts: draft.conflicts ? [...draft.conflicts] : [],
   };
 }
 
@@ -317,9 +300,78 @@ export class AnalysisError extends Error {
   }
 }
 
+/** 画面表示用。APIキー等の秘密情報は含めない */
+export function formatExtractErrorMessage(err: unknown): string {
+  if (err instanceof AnalysisError) {
+    const type = err.errorType ?? "";
+    if (
+      type === "Config Error" ||
+      err.message.includes("設定が完了していません")
+    ) {
+      return "画像解析APIの設定が完了していません。.env.local に OPENAI_API_KEY を設定し、開発サーバーを再起動してください。";
+    }
+    if (type === "Fetch Error") {
+      return "画像の送信に失敗しました。ネットワーク接続を確認して、もう一度お試しください。";
+    }
+    if (type === "Validation Error") {
+      return (
+        err.message ||
+        "画像形式が正しくありません。JPG / JPEG / PNG / WEBP で送信してください。"
+      );
+    }
+    if (type === "JSON Parse Error") {
+      return "画像解析結果のJSON解析に失敗しました。もう一度お試しください。";
+    }
+    if (type === "Empty Extraction") {
+      return err.message;
+    }
+    if (type === "OpenAI Error") {
+      return (
+        err.message ||
+        "画像解析サービスでエラーが発生しました。しばらくしてから再度お試しください。"
+      );
+    }
+    return err.message || "画像の自動解析に失敗しました。";
+  }
+
+  if (err instanceof Error && err.message.trim()) {
+    return err.message;
+  }
+
+  return "画像の自動解析に失敗しました。もう一度お試しください。";
+}
+
+export type ExtractSoxaiResult = {
+  metrics: AnalysisMetrics;
+  conflicts: MetricConflict[];
+};
+
 export async function extractSoxaiMetrics(
   images: string[],
 ): Promise<AnalysisMetrics> {
+  const result = await extractSoxaiMetricsDetailed(images);
+  return result.metrics;
+}
+
+export async function extractSoxaiMetricsDetailed(
+  images: string[],
+): Promise<ExtractSoxaiResult> {
+  if (!Array.isArray(images) || images.length === 0) {
+    throw new AnalysisError("睡眠データ画像が不足しています。", {
+      errorType: "Validation Error",
+    });
+  }
+
+  const payloadBytes = images.reduce((sum, image) => sum + image.length, 0);
+  console.info("[extract] sending images to /api/extract", {
+    count: images.length,
+    approxBytes: payloadBytes,
+    mimeHints: images.map((image) => {
+      const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/i);
+      return match?.[1] ?? "unknown";
+    }),
+  });
+
   let response: Response;
   try {
     response = await fetch("/api/extract", {
@@ -330,7 +382,7 @@ export async function extractSoxaiMetrics(
   } catch (fetchError) {
     console.error("Extract fetch failed:", fetchError);
     throw new AnalysisError(
-      "画像の自動解析に失敗しました。ネットワークエラーが発生しました。",
+      "画像の送信に失敗しました。ネットワークエラーが発生しました。",
       {
         errorType: "Fetch Error",
         details:
@@ -345,14 +397,20 @@ export async function extractSoxaiMetrics(
   try {
     data = await response.json();
   } catch (parseError) {
-    throw new AnalysisError("画像の自動解析に失敗しました。", {
+    console.error("Extract response JSON parse failed:", parseError, {
       status: response.status,
-      errorType: "JSON Parse Error",
-      details:
-        parseError instanceof Error
-          ? parseError.message
-          : String(parseError),
     });
+    throw new AnalysisError(
+      "画像解析結果のJSON解析に失敗しました。",
+      {
+        status: response.status,
+        errorType: "JSON Parse Error",
+        details:
+          parseError instanceof Error
+            ? parseError.message
+            : String(parseError),
+      },
+    );
   }
 
   if (!response.ok) {
@@ -365,22 +423,31 @@ export async function extractSoxaiMetrics(
           })
         : {};
 
-    throw new AnalysisError(
+    const message =
       typeof errorPayload.error === "string"
         ? errorPayload.error
-        : "画像の自動解析に失敗しました。",
-      {
-        status: response.status,
-        errorType:
-          typeof errorPayload.errorType === "string"
-            ? errorPayload.errorType
-            : "OpenAI Error",
-        details:
-          typeof errorPayload.details === "string"
-            ? errorPayload.details
-            : undefined,
-      },
-    );
+        : "画像の自動解析に失敗しました。";
+    const errorType =
+      typeof errorPayload.errorType === "string"
+        ? errorPayload.errorType
+        : "OpenAI Error";
+    const details =
+      typeof errorPayload.details === "string"
+        ? errorPayload.details
+        : undefined;
+
+    console.error("Extract API error:", {
+      status: response.status,
+      errorType,
+      message,
+      details,
+    });
+
+    throw new AnalysisError(message, {
+      status: response.status,
+      errorType,
+      details,
+    });
   }
 
   const metricsRaw =
@@ -388,7 +455,75 @@ export async function extractSoxaiMetrics(
       ? (data as { metrics: Partial<AnalysisMetrics> }).metrics
       : (data as Partial<AnalysisMetrics>);
 
-  return normalizeMetrics(metricsRaw);
+  if (!metricsRaw || typeof metricsRaw !== "object") {
+    console.error("Extract API returned invalid metrics payload:", data);
+    throw new AnalysisError(
+      "画像解析結果の形式が不正です。もう一度お試しください。",
+      { errorType: "JSON Parse Error", status: response.status },
+    );
+  }
+
+  const normalized = normalizeMetrics(metricsRaw);
+  const conflicts = normalizeExtractConflicts(
+    data && typeof data === "object" && "conflicts" in data
+      ? (data as { conflicts: unknown }).conflicts
+      : undefined,
+  );
+
+  console.info("[extract] metrics received", {
+    collected: collectedMetricKeys(normalized).length,
+    keys: collectedMetricKeys(normalized),
+    conflicts: conflicts.length,
+  });
+
+  return { metrics: normalized, conflicts };
+}
+
+function normalizeExtractConflicts(raw: unknown): MetricConflict[] {
+  if (!Array.isArray(raw)) return [];
+
+  const labelByKey = new Map(
+    SOXAI_METRIC_FIELDS.map((field) => [field.key, field.label] as const),
+  );
+  const validKeys = new Set(SOXAI_METRIC_FIELDS.map((field) => field.key));
+
+  return raw
+    .map((item): MetricConflict | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as {
+        key?: unknown;
+        adopted?: unknown;
+        adoptedValue?: unknown;
+        alternatives?: unknown;
+        otherValues?: unknown;
+      };
+      const key =
+        typeof record.key === "string" && validKeys.has(record.key as MetricFieldKey)
+          ? (record.key as MetricFieldKey)
+          : null;
+      if (!key) return null;
+
+      const adopted = asString(record.adopted || record.adoptedValue).trim();
+      const altSource = Array.isArray(record.alternatives)
+        ? record.alternatives
+        : Array.isArray(record.otherValues)
+          ? record.otherValues
+          : [];
+      const alternatives = altSource
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter((value) => value && value !== adopted);
+
+      if (!adopted || alternatives.length === 0) return null;
+
+      return {
+        key,
+        label: labelByKey.get(key) ?? key,
+        adopted,
+        alternatives: [...new Set(alternatives)],
+      };
+    })
+    .filter((item): item is MetricConflict => item !== null);
 }
 
 /** 抽出結果と任意の手入力をマージ（画像で取れた値を優先） */
@@ -516,6 +651,7 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
 
     const raw = data as AnalysisResult;
     const result = normalizeAnalysisResult(raw, {
+      clientId: payload.lifestyle.clientId,
       clientName: payload.lifestyle.clientName,
       measurementDate: payload.lifestyle.measurementDate,
     });

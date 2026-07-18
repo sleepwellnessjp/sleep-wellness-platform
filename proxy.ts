@@ -9,6 +9,7 @@ import {
 const PROTECTED_PREFIXES = [
   "/dashboard",
   "/clients",
+  "/setup",
   "/analysis/new",
   "/analysis/result",
 ];
@@ -86,6 +87,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/clients/:path*",
+    "/setup",
     "/analysis/new",
     "/analysis/result",
   ],

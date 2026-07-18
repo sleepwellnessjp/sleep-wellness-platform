@@ -218,6 +218,56 @@ export function emptyMetrics(): AnalysisMetrics {
   };
 }
 
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** API / OCR 応答を正規化（legacy heartRate → restingHeartRate、文字列 sleepScore も許容） */
+export function normalizeMetrics(
+  metrics: Partial<AnalysisMetrics> | undefined,
+): AnalysisMetrics {
+  const legacy = metrics as
+    | (Partial<AnalysisMetrics> & { heartRate?: unknown })
+    | undefined;
+  const restingHeartRate =
+    asString(metrics?.restingHeartRate).trim() ||
+    asString(legacy?.heartRate).trim();
+
+  let sleepScore: number | null = null;
+  const rawScore = metrics?.sleepScore as unknown;
+  if (typeof rawScore === "number" && Number.isFinite(rawScore)) {
+    sleepScore = rawScore;
+  } else if (typeof rawScore === "string") {
+    const parsed = Number(rawScore.trim().replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(parsed)) sleepScore = parsed;
+  }
+
+  return {
+    sleepScore,
+    bedtime: asString(metrics?.bedtime),
+    wakeTime: asString(metrics?.wakeTime),
+    sleepDuration: asString(metrics?.sleepDuration),
+    sleepEfficiency: asString(metrics?.sleepEfficiency),
+    awakenings: asString(metrics?.awakenings),
+    awakeningRate: asString(metrics?.awakeningRate),
+    remSleep: asString(metrics?.remSleep),
+    remSleepRate: asString(metrics?.remSleepRate),
+    lightSleep: asString(metrics?.lightSleep),
+    lightSleepRate: asString(metrics?.lightSleepRate),
+    deepSleep: asString(metrics?.deepSleep),
+    deepSleepRate: asString(metrics?.deepSleepRate),
+    sleepDebt: asString(metrics?.sleepDebt),
+    sleepLatency: asString(metrics?.sleepLatency),
+    circadianRhythm: asString(metrics?.circadianRhythm),
+    respiratoryRate: asString(metrics?.respiratoryRate),
+    spo2: asString(metrics?.spo2),
+    restingHeartRate,
+    hrv: asString(metrics?.hrv),
+    skinTemperature: asString(metrics?.skinTemperature),
+    stress: asString(metrics?.stress),
+  };
+}
+
 export function isMetricPresent(
   metrics: AnalysisMetrics,
   key: MetricFieldKey,
@@ -253,10 +303,6 @@ export function setMetricValue(
     };
   }
   return { ...metrics, [key]: value };
-}
-
-function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
 }
 
 /** 画像から取得できたキー一覧 */

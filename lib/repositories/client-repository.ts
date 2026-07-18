@@ -17,6 +17,7 @@ import {
 import { normalizeMetrics } from "@/lib/analysis-session";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formatSupabaseError } from "@/lib/supabase/errors";
 
 export type {
   ClientListItem,
@@ -178,7 +179,9 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
     .eq("owner_id", userId)
     .order("updated_at", { ascending: false });
 
-  if (clientError) throw clientError;
+  if (clientError) {
+    throw formatSupabaseError(clientError, "fetchClients:clients");
+  }
 
   const { data: analysisRows, error: analysisError } = await supabase
     .from("analyses")
@@ -186,7 +189,9 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
     .eq("owner_id", userId)
     .order("analyzed_at", { ascending: false });
 
-  if (analysisError) throw analysisError;
+  if (analysisError) {
+    throw formatSupabaseError(analysisError, "fetchClients:analyses");
+  }
 
   const analysesByClient = new Map<string, StoredAnalysis[]>();
   for (const row of (analysisRows ?? []) as DbAnalysisRow[]) {
@@ -263,14 +268,20 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
 
   const { supabase, userId } = auth;
 
-  const { data: existingRows } = await supabase
+  const { data: existingRows, error: existingError } = await supabase
     .from("clients")
     .select("*")
     .eq("owner_id", userId)
     .ilike("name", name);
 
+  if (existingError) {
+    throw formatSupabaseError(existingError, "createClient:select");
+  }
+
   const existing = ((existingRows ?? []) as DbClientRow[]).find(
-    (row) => row.name.trim().replace(/\s+/g, " ").toLowerCase() === name.replace(/\s+/g, " ").toLowerCase(),
+    (row) =>
+      row.name.trim().replace(/\s+/g, " ").toLowerCase() ===
+      name.replace(/\s+/g, " ").toLowerCase(),
   );
 
   if (existing) {
@@ -280,23 +291,34 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
   const registeredAt =
     input.registeredAt?.trim() || new Date().toISOString().slice(0, 10);
 
+  const payload = {
+    owner_id: userId,
+    name,
+    name_kana: input.nameKana?.trim() || null,
+    birth_date: input.birthDate?.trim() || null,
+    gender: input.gender?.trim() || null,
+    email: input.email?.trim() || null,
+    phone: input.phone?.trim() || null,
+    registered_at: registeredAt,
+    memo: input.memo?.trim() || null,
+  };
+
+  console.info("[client-repository] createClient insert payload:", payload);
+
   const { data, error } = await supabase
     .from("clients")
-    .insert({
-      owner_id: userId,
-      name,
-      name_kana: input.nameKana?.trim() || null,
-      birth_date: input.birthDate?.trim() || null,
-      gender: input.gender?.trim() || null,
-      email: input.email?.trim() || null,
-      phone: input.phone?.trim() || null,
-      registered_at: registeredAt,
-      memo: input.memo?.trim() || null,
-    })
+    .insert(payload)
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw formatSupabaseError(error, "createClient:insert");
+  }
+
+  if (!data) {
+    console.error("[client-repository] createClient: insert returned no data");
+    throw new Error("登録結果を取得できませんでした。");
+  }
 
   notifyClientsUpdated();
   return mapDbClient(data as DbClientRow, []);
@@ -318,34 +340,60 @@ export async function saveAnalysisToRepository(
       ? metrics.sleepScore
       : null;
 
-  let clientId: string;
+  let clientId: string | null = null;
 
-  const { data: existingRows } = await supabase
-    .from("clients")
-    .select("id, name")
-    .eq("owner_id", userId);
-
-  const matched = ((existingRows ?? []) as { id: string; name: string }[]).find(
-    (row) =>
-      row.name.trim().replace(/\s+/g, " ").toLowerCase() ===
-      name.replace(/\s+/g, " ").toLowerCase(),
-  );
-
-  if (matched) {
-    clientId = matched.id;
-  } else {
-    const { data: newClient, error: clientError } = await supabase
+  const preferredClientId = result.clientId?.trim();
+  if (preferredClientId) {
+    const { data: ownedClient, error: ownedLookupError } = await supabase
       .from("clients")
-      .insert({
-        owner_id: userId,
-        name,
-        registered_at: analysisDate,
-      })
-      .select("id")
-      .single();
+      .select("id, name")
+      .eq("owner_id", userId)
+      .eq("id", preferredClientId)
+      .maybeSingle();
 
-    if (clientError) throw clientError;
-    clientId = (newClient as { id: string }).id;
+    if (ownedLookupError) {
+      throw formatSupabaseError(ownedLookupError, "saveAnalysis:selectClientById");
+    }
+
+    if (ownedClient && typeof (ownedClient as { id?: string }).id === "string") {
+      clientId = (ownedClient as { id: string }).id;
+    }
+  }
+
+  if (!clientId) {
+    const { data: existingRows, error: existingLookupError } = await supabase
+      .from("clients")
+      .select("id, name")
+      .eq("owner_id", userId);
+
+    if (existingLookupError) {
+      throw formatSupabaseError(existingLookupError, "saveAnalysis:selectClients");
+    }
+
+    const matched = ((existingRows ?? []) as { id: string; name: string }[]).find(
+      (row) =>
+        row.name.trim().replace(/\s+/g, " ").toLowerCase() ===
+        name.replace(/\s+/g, " ").toLowerCase(),
+    );
+
+    if (matched) {
+      clientId = matched.id;
+    } else {
+      const { data: newClient, error: clientError } = await supabase
+        .from("clients")
+        .insert({
+          owner_id: userId,
+          name,
+          registered_at: analysisDate,
+        })
+        .select("id")
+        .single();
+
+      if (clientError) {
+        throw formatSupabaseError(clientError, "saveAnalysis:insertClient");
+      }
+      clientId = (newClient as { id: string }).id;
+    }
   }
 
   const { data: analysisRow, error: analysisError } = await supabase
@@ -364,12 +412,14 @@ export async function saveAnalysisToRepository(
       hrv: parseNumeric(metrics.hrv),
       resting_heart_rate: parseNumeric(metrics.restingHeartRate),
       ocr_data: metrics,
-      ai_result: { ...result, metrics },
+      ai_result: { ...result, metrics, clientId },
     })
     .select("id")
     .single();
 
-  if (analysisError) throw analysisError;
+  if (analysisError) {
+    throw formatSupabaseError(analysisError, "saveAnalysis:insertAnalysis");
+  }
 
   notifyClientsUpdated();
   return {
