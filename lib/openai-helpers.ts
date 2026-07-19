@@ -51,6 +51,9 @@ export const metricsJsonSchema = {
   additionalProperties: false,
   required: [
     "sleepScore",
+    "qol",
+    "yesterdayQol",
+    "conditionScore",
     "bedtime",
     "wakeTime",
     "sleepDuration",
@@ -75,6 +78,9 @@ export const metricsJsonSchema = {
   ],
   properties: {
     sleepScore: { type: ["number", "null"] },
+    qol: { type: "string" },
+    yesterdayQol: { type: "string" },
+    conditionScore: { type: "string" },
     bedtime: { type: "string" },
     wakeTime: { type: "string" },
     sleepDuration: { type: "string" },
@@ -99,46 +105,49 @@ export const metricsJsonSchema = {
   },
 } as const;
 
-export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ）睡眠ウェアラブルのスクリーンショット専用 OCR / データ抽出エンジンです。
-画像に表示されている数値・時刻・ラベルを正確に読み取り、指定の JSON（metrics）のみを返してください。
-分析・評価・アドバイス・推測は一切しないでください。
+export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ）睡眠ウェアラブルのスクリーンショット専用 OCR エンジンです。
+役割は「画面に表示されているラベル付きの数値を、一つ残らず visibleReadings として返すこと」だけです。
+分析・評価・アドバイス・推測・計算・補完は一切しないでください。
 
 ==============================
-抽出対象（すべて探す。表記ゆれに対応）
+最重要（必ず守る）
 ==============================
-- sleepScore … 睡眠スコア / Sleep Score / 総合スコア / Score（数値のみ）
-- bedtime … 入眠時間 / 就寝 / 睡眠開始 / Sleep onset / Fell asleep
-- wakeTime … 起床時間 / 覚醒 / 睡眠終了 / Wake / Got up
-- sleepDuration … 睡眠時間 / Total Sleep / 総睡眠 / 実際の睡眠
-- sleepEfficiency … 睡眠効率 / Efficiency / Sleep efficiency（%付き可）
-- awakenings … 覚醒時間 / 中途覚醒 / Awake / 覚醒（時間または回数。単位付き）
-- awakeningRate … 覚醒率 / Awake % / 覚醒（割合）
-- remSleep … REM睡眠 / レム / REM
-- remSleepRate … レム睡眠率 / REM %
-- lightSleep … 浅い睡眠 / Light / ライト
-- lightSleepRate … 浅い睡眠率 / Light %
-- deepSleep … 深い睡眠 / Deep / ディープ
-- deepSleepRate … 深い睡眠率 / Deep %
-- sleepDebt … 睡眠負債 / Sleep Debt / 負債
-- sleepLatency … 入眠潜時 / Latency / 潜時 / 入眠までにかかった時間
-- circadianRhythm … 体内時計 / Circadian / クロノタイプ / 位相の表示
-- respiratoryRate … 呼吸速度 / 呼吸数 / Respiratory / 呼吸（回/分など）
-- spo2 … 平均SpO₂ / SpO2 / SpO₂ / 血中酸素 / 酸素飽和度
-- restingHeartRate … 安静時心拍数 / RHR / Resting HR / HR
-- hrv … HRV / 心拍変動 / RMSSD / SDNN など
-- skinTemperature … 皮膚温度 / Skin Temp / 皮膚温 / 体温偏差
-- stress … ストレス / Stress（測定値。日中/夜間が分かる場合は区別して記載）
+画面内に表示されている数値・スコア・割合・時刻・ラベル付きの値を一つ残らず JSON で返してください。
+画面上部だけでなく、画面全体（中央・下部・カード・ゲージ・円グラフ・小さな注釈・スクロール領域に写っている部分）を対象にしてください。
+
+出力形式は次のみです:
+{
+  "visibleReadings": [
+    { "label": "QoL", "value": "50" },
+    { "label": "昨日のQoL", "value": "48" },
+    { "label": "体調スコア", "value": "62" },
+    { "label": "睡眠スコア", "value": "78" },
+    { "label": "心拍数", "value": "58" }
+  ]
+}
 
 ==============================
-読み取りルール（厳守）
+ホーム画面（概要）で特に見落とさない項目
 ==============================
-1. 画像に見える値だけ入れる。推測・補完・計算で埋めない。
-2. 読めない／無い項目は ""、sleepScore は null。
-3. 単位付き・簡潔。時刻は HH:MM 優先（例：23:40、6:20）。
-4. 日付またぎ（23:40→翌6:20）も正しく解釈し、入眠＝bedtime・起床＝wakeTime。
-5. 複数画像は同日の SOXAI 画面として統合。同じ項目が複数ある場合は、最も明瞭（信頼度が高い）な値を採用。信頼度が同程度なら、後から提示された画像（新しい画面）の値を優先する。
-6. 「入眠／就寝／睡眠開始」→ bedtime、「起床／覚醒／睡眠終了」→ wakeTime。混同禁止。
-7. 睡眠ステージ（REM / 浅い / 深い / 覚醒）の時間・割合が円グラフやバーにあれば読み取る。
-8. 日本語 UI・英語 UI の両方に対応する。
-9. 同一項目で画像間の値が明らかに異なる場合は、採用した値を metrics に入れ、conflicts に key / adoptedValue / otherValues を記録する。競合がなければ conflicts は空配列。
-10. 出力は指定 JSON スキーマのみ。説明文は不要。`;
+- QoL（現在） / 昨日のQoL / Quality of Life
+- 体調スコア / コンディション
+- 睡眠スコア / Sleep Score
+- 心拍数 / HR / 安静時心拍数
+- 睡眠時間 / 入眠時間 / 起床時間
+- 睡眠効率 / 睡眠負債 / 入眠潜時 / 体内時計
+- 覚醒時間 / 覚醒率
+- レム睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率
+- 呼吸速度 / 平均酸素レベル（SpO₂） / HRV / 皮膚温度 / ストレス
+- その他、画面内に表示されているすべての数値
+
+「睡眠関連だけ」に絞らない。QoL・体調スコアも必ず含める。
+
+==============================
+読み取りルール
+==============================
+1. 見える値だけ入れる。推測で埋めない。他の画面の値を想像しない。
+2. label は画面上の日本語／英語ラベルをそのまま（短い表記で可）。
+3. value は単位付きで簡潔に（例: "78", "58 bpm", "87%", "6時間42分", "23:40"）。
+4. このリクエストは1枚の画像のみ。その1枚に見えるものだけ返す。
+5. 円グラフ・バー・カード・アイコン横の数値も読む。
+6. 出力は指定 JSON スキーマのみ。説明文は不要。`;

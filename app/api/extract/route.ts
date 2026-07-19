@@ -2,44 +2,44 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import {
   isImageDataUrl,
-  metricsJsonSchema,
   normalizeImageDataUrl,
   openaiErrorMessage,
   SOXAI_EXTRACT_INSTRUCTIONS,
 } from "@/lib/openai-helpers";
 import {
-  collectedMetricKeys,
-  normalizeMetrics,
-  SOXAI_METRIC_FIELDS,
-} from "@/lib/soxai-metrics";
+  mergeImageExtractResults,
+  type ImageExtractResult,
+} from "@/lib/soxai-merge";
+import {
+  mapVisibleReadingsToMetricsDetailed,
+  normalizeVisibleReadings,
+  type VisibleReading,
+} from "@/lib/soxai-reading-map";
+import { collectedMetricKeys } from "@/lib/soxai-metrics";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const isDev = process.env.NODE_ENV === "development";
 const MAX_IMAGES = 10;
+/** 並列OCR数（2〜10枚でもレート制限を抑えつつ進める） */
+const OCR_CONCURRENCY = 3;
 
-const metricKeyEnum = SOXAI_METRIC_FIELDS.map((field) => field.key);
-
+/** Vision には visibleReadings だけ返させる（metrics 同時抽出は読み取り漏れの原因） */
 const extractSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["metrics", "conflicts"],
+  required: ["visibleReadings"],
   properties: {
-    metrics: metricsJsonSchema,
-    conflicts: {
+    visibleReadings: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["key", "adoptedValue", "otherValues"],
+        required: ["label", "value"],
         properties: {
-          key: { type: "string", enum: metricKeyEnum },
-          adoptedValue: { type: "string" },
-          otherValues: {
-            type: "array",
-            items: { type: "string" },
-          },
+          label: { type: "string" },
+          value: { type: "string" },
         },
       },
     },
@@ -103,6 +103,93 @@ function validateBody(body: unknown):
   }
 
   return { ok: true, images };
+}
+
+function parseExtractJson(raw: string): unknown {
+  let text = raw.trim();
+
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) {
+    text = fence[1].trim();
+  }
+
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    text = text.slice(start, end + 1);
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    const cleaned = text.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(cleaned) as unknown;
+  }
+}
+
+function singleImagePrompt(imageIndex: number, total: number): string {
+  return `SOXAIスクリーンショットです（${total}枚中 ${imageIndex + 1}枚目。この1枚だけを解析）。
+
+画面内に表示されている数値・スコア・割合・時刻・ラベル付きの値を一つ残らず JSON で返してください。
+画面上部だけでなく画面全体を対象にしてください。
+
+必須で拾う例（画面にあれば）:
+- QoL（現在）
+- 昨日のQoL
+- 体調スコア
+- 睡眠スコア
+- 心拍数 / 安静時心拍数
+- 睡眠時間 / 入眠時間 / 起床時間
+- 睡眠効率 / 睡眠負債 / 入眠潜時 / 体内時計
+- 覚醒時間 / 覚醒率
+- レム睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率
+- 呼吸速度 / SpO₂ / HRV / 皮膚温度 / ストレス
+- その他画面内のすべての数値
+
+出力例:
+{
+  "visibleReadings": [
+    { "label": "睡眠スコア", "value": "78" },
+    { "label": "心拍数", "value": "58" }
+  ]
+}
+
+推測禁止。この1枚に見えるものだけ。他画像の値は想像しない。metrics キーへの変換は不要。`;
+}
+
+function sparseRetryPrompt(count: number): string {
+  return `前回の読み取りが不足しています（${count}件）。同じ1枚の画像を再スキャンしてください。
+
+画面全体（上・中・下、カード、ゲージ、円、小さな文字）を見て、
+ラベルと値のペアを一つ残らず visibleReadings に入れてください。
+QoL / 昨日のQoL / 体調スコア / 睡眠スコア / 心拍数 など、見えるものは必ず含めてください。
+すでに読めたものも再掲し、見落としを追加してください。
+推測は禁止。見える値のみ。`;
+}
+
+async function mapPool<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 export async function POST(request: Request) {
@@ -177,133 +264,207 @@ export async function POST(request: Request) {
       maxRetries: 1,
     });
 
-    const response = await client.responses.create({
-      model: "gpt-4o",
-      instructions: SOXAI_EXTRACT_INSTRUCTIONS,
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: `以下の SOXAI スクリーンショット（${images.length}枚）から、睡眠関連の数値・時刻をすべて抽出してください。
-
-抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / レム睡眠率 / 浅い睡眠率 / 深い睡眠率 / REM睡眠 / 浅い睡眠 / 深い睡眠 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス
-
-推測禁止。画像に無い項目は ""、sleepScore は null。
-複数画像は同日データとして統合し、metrics に最終採用値を入れてください。
-同じ項目で画像間の値が異なる場合は、信頼度が高い値（同程度なら後の画像＝新しい画面）を採用し、conflicts に key / adoptedValue / otherValues を記録してください。競合がなければ conflicts は空配列です。`,
-            },
-            ...images.map((imageUrl) => ({
-              type: "input_image" as const,
-              image_url: imageUrl,
-              detail: "high" as const,
-            })),
-          ],
+    const runVisionOnImage = async (
+      imageUrl: string,
+      userText: string,
+    ): Promise<VisibleReading[]> => {
+      const response = await client.responses.create({
+        model: "gpt-4o",
+        instructions: SOXAI_EXTRACT_INSTRUCTIONS,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: userText },
+              {
+                type: "input_image" as const,
+                image_url: imageUrl,
+                detail: "high" as const,
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "soxai_visible_readings",
+            strict: true,
+            schema: extractSchema,
+          },
         },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "soxai_metrics_extract",
-          strict: true,
-          schema: extractSchema,
-        },
+      });
+
+      const outputText = response.output_text?.trim();
+      if (!outputText) {
+        throw new Error("OpenAI response.output_text was empty.");
+      }
+
+      const parsed = parseExtractJson(outputText);
+      return normalizeVisibleReadings(
+        parsed &&
+          typeof parsed === "object" &&
+          "visibleReadings" in parsed
+          ? (parsed as { visibleReadings: unknown }).visibleReadings
+          : Array.isArray(parsed)
+            ? parsed
+            : [],
+      );
+    };
+
+    const ocrOneImage = async (
+      imageUrl: string,
+      imageIndex: number,
+    ): Promise<{
+      imageIndex: number;
+      readings: VisibleReading[];
+      metrics: ReturnType<
+        typeof mapVisibleReadingsToMetricsDetailed
+      >["metrics"];
+      provenance: ReturnType<
+        typeof mapVisibleReadingsToMetricsDetailed
+      >["provenance"];
+      error?: string;
+    }> => {
+      let readings: VisibleReading[] = [];
+      try {
+        readings = await runVisionOnImage(
+          imageUrl,
+          singleImagePrompt(imageIndex, images.length),
+        );
+
+        // 1枚あたり極端に少ない場合のみリトライ（ホーム画面でも通常数件ある）
+        if (readings.length < 2) {
+          console.warn("[api/extract] sparse readings on image, retrying", {
+            imageIndex,
+            count: readings.length,
+          });
+          try {
+            const retry = await runVisionOnImage(
+              imageUrl,
+              sparseRetryPrompt(readings.length),
+            );
+            if (retry.length > readings.length) {
+              readings = retry;
+            }
+          } catch (retryError) {
+            console.warn(
+              "[api/extract] per-image retry failed",
+              { imageIndex },
+              retryError,
+            );
+          }
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.error("[api/extract] per-image OCR failed", {
+          imageIndex,
+          message,
+        });
+        const empty = mapVisibleReadingsToMetricsDetailed([]);
+        return {
+          imageIndex,
+          readings: [],
+          metrics: empty.metrics,
+          provenance: empty.provenance,
+          error: message,
+        };
+      }
+
+      const mapped = mapVisibleReadingsToMetricsDetailed(readings);
+      console.info("[api/extract] per-image OCR complete", {
+        imageIndex,
+        visibleCount: readings.length,
+        labels: readings.map((r) => r.label),
+        collected: collectedMetricKeys(mapped.metrics),
+        provenance: mapped.provenance,
+      });
+
+      return {
+        imageIndex,
+        readings,
+        metrics: mapped.metrics,
+        provenance: mapped.provenance,
+      };
+    };
+
+    const perImage = await mapPool(
+      images,
+      OCR_CONCURRENCY,
+      (imageUrl, index) => ocrOneImage(imageUrl, index),
+    );
+
+    const failedCount = perImage.filter((item) => item.error).length;
+    const allReadings = perImage.flatMap((item) => item.readings);
+    const extractResults: ImageExtractResult[] = perImage.map((item) => ({
+      imageIndex: item.imageIndex,
+      metrics: item.metrics,
+      visibleReadingCount: item.readings.length,
+      readings: item.readings,
+      provenance: item.provenance,
+    }));
+
+    const { metrics, conflicts } = mergeImageExtractResults(extractResults);
+    const keys = collectedMetricKeys(metrics);
+
+    console.info("[api/extract] merge complete", {
+      imageCount: images.length,
+      failedCount,
+      perImageCounts: perImage.map((item) => ({
+        imageIndex: item.imageIndex,
+        readings: item.readings.length,
+        collected: collectedMetricKeys(item.metrics).length,
+        error: item.error ?? null,
+      })),
+      collected: keys.length,
+      keys,
+      visibleReadingCount: allReadings.length,
+      conflicts: conflicts.length,
+      mappedSample: {
+        sleepScore: metrics.sleepScore,
+        qol: metrics.qol,
+        yesterdayQol: metrics.yesterdayQol,
+        conditionScore: metrics.conditionScore,
+        restingHeartRate: metrics.restingHeartRate,
       },
     });
 
-    const outputText = response.output_text?.trim();
-    if (!outputText) {
-      console.error("[api/extract] empty output_text from OpenAI");
+    // 全画像が失敗、または何も読めなかった場合
+    if (allReadings.length === 0) {
+      const allFailed = failedCount === images.length;
       return NextResponse.json(
         {
-          error: "画像解析結果の取得に失敗しました（空の応答）。",
-          errorType: "OpenAI Error",
+          error: allFailed
+            ? "すべての画像の解析に失敗しました。しばらくしてから再度お試しください。"
+            : "画像から数値を読み取れませんでした。鮮明なSOXAIスクリーンショット（JPG / JPEG / PNG / WEBP）をアップロードしてください。",
+          errorType: allFailed ? "OpenAI Error" : "Empty Extraction",
           details: isDev
-            ? "OpenAI response.output_text was empty."
+            ? JSON.stringify(
+                perImage.map((item) => ({
+                  imageIndex: item.imageIndex,
+                  error: item.error ?? null,
+                  readings: item.readings.length,
+                })),
+              )
             : undefined,
         },
-        { status: 500 },
-      );
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(outputText) as unknown;
-    } catch (parseError) {
-      console.error("[api/extract] Failed to parse OpenAI extract JSON", {
-        parseError,
-        preview: outputText.slice(0, 400),
-      });
-      return NextResponse.json(
-        {
-          error: "画像解析結果のJSON解析に失敗しました。",
-          errorType: "JSON Parse Error",
-          details: isDev
-            ? parseError instanceof Error
-              ? parseError.message
-              : String(parseError)
-            : undefined,
-        },
-        { status: 500 },
-      );
-    }
-
-    const metricsRaw =
-      parsed &&
-      typeof parsed === "object" &&
-      "metrics" in parsed &&
-      (parsed as { metrics: unknown }).metrics &&
-      typeof (parsed as { metrics: unknown }).metrics === "object"
-        ? (parsed as { metrics: Record<string, unknown> }).metrics
-        : parsed;
-
-    if (!metricsRaw || typeof metricsRaw !== "object") {
-      console.error("[api/extract] metrics missing in parsed payload", parsed);
-      return NextResponse.json(
-        {
-          error: "画像解析結果の項目形式が不正です。",
-          errorType: "JSON Parse Error",
-          details: isDev ? "metrics object missing" : undefined,
-        },
-        { status: 500 },
-      );
-    }
-
-    const metrics = normalizeMetrics(
-      metricsRaw as Parameters<typeof normalizeMetrics>[0],
-    );
-    const keys = collectedMetricKeys(metrics);
-    const conflicts =
-      parsed &&
-      typeof parsed === "object" &&
-      "conflicts" in parsed &&
-      Array.isArray((parsed as { conflicts: unknown }).conflicts)
-        ? (parsed as { conflicts: unknown[] }).conflicts
-        : [];
-
-    console.info("[api/extract] extraction complete", {
-      collected: keys.length,
-      keys,
-      conflictCount: conflicts.length,
-    });
-
-    if (keys.length === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "画像から睡眠データを読み取れませんでした。鮮明なSOXAIスクリーンショット（JPG / JPEG / PNG / WEBP）をアップロードしてください。",
-          errorType: "Empty Extraction",
-          details: isDev ? "All metric fields were empty." : undefined,
-        },
-        { status: 422 },
+        { status: allFailed ? 500 : 422 },
       );
     }
 
     return NextResponse.json({
       metrics,
+      visibleReadings: allReadings,
       conflicts,
       collectedCount: keys.length,
+      visibleCount: allReadings.length,
+      imageCount: images.length,
+      perImage: perImage.map((item) => ({
+        imageIndex: item.imageIndex,
+        visibleCount: item.readings.length,
+        collectedCount: collectedMetricKeys(item.metrics).length,
+        error: item.error ?? null,
+      })),
     });
   } catch (error) {
     console.error("[api/extract] OpenAI extract failed:", error);
