@@ -769,7 +769,8 @@ function NewAnalysisPageInner() {
                   </h2>
                   <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm sm:leading-7">
                     睡眠サマリー、心拍・HRV、ストレス、SpO₂などの画面を
-                    そのまま撮影・保存してアップロードしてください。
+                    そのまま撮影・保存してアップロードしてください。最大{MAX_FILES}
+                    枚まで同時に送れます。各画像を個別に読み取り、結果を1つに統合します。
                   </p>
                 </div>
                 <p className="shrink-0 text-xs font-medium text-slate-400">
@@ -793,7 +794,7 @@ function NewAnalysisPageInner() {
                 ))}
               </div>
               <p className="mt-3 text-center text-[12px] text-slate-400 sm:text-left">
-                ほか睡眠効率・覚醒・REM・浅い睡眠・睡眠負債・入眠潜時・体内時計・呼吸・SpO₂・心拍・皮膚温なども自動抽出します
+                順番は問いません。同じ項目が複数画像にある場合は最も信頼できる値を採用し、不足項目は他画像から補完します。
               </p>
             </div>
 
@@ -837,7 +838,7 @@ function NewAnalysisPageInner() {
                   画像を選択またはドロップ
                 </p>
                 <p className="mt-2 text-[15px] leading-6 text-slate-500 sm:text-sm">
-                  睡眠・心拍・ストレス画面をまとめて追加できます
+                  各画面を個別に読み取り、結果を自動で統合します
                 </p>
               </label>
 
@@ -1486,7 +1487,7 @@ function NewAnalysisPageInner() {
                 画像を読み取り、結果を確認する
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                必須：SOXAI画像・対象者名・測定日。抽出後、確認画面へ進みます。
+                必須：SOXAI画像（最大{MAX_FILES}枚）・対象者名・測定日。各画像を個別解析して統合後、確認画面へ進みます。
               </p>
 
               <button

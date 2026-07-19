@@ -170,7 +170,7 @@ export default function ConfirmExtractionPage() {
           <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
             <p className="font-semibold">複数画像で異なる値が検出されました</p>
             <p className="mt-1 text-[13px] text-amber-900/80">
-              信頼度が高い値（または新しい画面の値）を仮採用しています。該当項目は黄色で表示され、必要なら修正してください。
+              各画像を個別にOCRしたうえで、ラベル一致と画面種別で優先した値を仮採用しています。該当項目は黄色で表示され、必要なら修正してください。
             </p>
             <ul className="mt-3 space-y-1.5 text-[13px]">
               {(draft.conflicts ?? []).map((conflict) => (
