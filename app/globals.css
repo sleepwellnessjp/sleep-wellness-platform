@@ -99,7 +99,7 @@
 @media print {
   @page {
     size: A4 portrait;
-    margin: 7mm;
+    margin: 6mm;
   }
 
   html,
@@ -146,9 +146,19 @@
     break-after: page;
   }
 
+  /*
+   * Visual Report must always stay on a single A4 page (PDF page 2).
+   * Avoid per-cell page breaks — those push SCREEN05 onto a 3rd page.
+   */
   .report-page-visual {
     page-break-before: auto;
     break-before: auto;
+    page-break-after: auto;
+    break-after: auto;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden !important;
+    max-height: 278mm;
   }
 
   .report-header {
@@ -326,29 +336,42 @@
   }
 
   .visual-header {
-    margin-bottom: 3px !important;
+    margin-bottom: 2px !important;
   }
 
   .visual-header .border-b {
-    padding-bottom: 3px !important;
+    padding-bottom: 2px !important;
+  }
+
+  .visual-header .mt-4 {
+    margin-top: 2px !important;
+  }
+
+  .visual-header .mt-2 {
+    margin-top: 1px !important;
   }
 
   .visual-title {
-    margin-top: 3px !important;
-    font-size: 12pt !important;
+    margin-top: 2px !important;
+    font-size: 11pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .visual-subtitle {
+    display: none !important;
   }
 
   .visual-panels {
     display: grid !important;
     grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 3px !important;
-    margin-top: 3px !important;
+    gap: 2px !important;
+    margin-top: 2px !important;
   }
 
   .visual-panel {
     break-inside: avoid;
     page-break-inside: avoid;
-    padding: 3px 4px !important;
+    padding: 2px 3px !important;
     border-radius: 2px !important;
   }
 
@@ -356,36 +379,65 @@
   .visual-panel h3,
   .visual-panel dt,
   .visual-panel dd {
-    font-size: 6pt !important;
-    line-height: 1.2 !important;
+    font-size: 5.5pt !important;
+    line-height: 1.15 !important;
   }
 
   .visual-panel h3 {
-    font-size: 7pt !important;
+    font-size: 6.5pt !important;
   }
 
+  /* Tighten meter graphs inside visual panels */
+  .visual-panel .mt-2 {
+    margin-top: 1px !important;
+  }
+
+  .visual-panel .h-2 {
+    height: 3px !important;
+  }
+
+  /*
+   * SCREEN01–05: 3-column grid → max 2 rows, stays on page 2.
+   * Do NOT use page-break-inside:avoid on cells (that creates page 3).
+   */
   .visual-grid {
-    margin-top: 3px !important;
-    gap: 4px !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    margin-top: 2px !important;
+    gap: 2px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .visual-cell {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    page-break-inside: auto;
+    break-inside: auto;
     border-radius: 2px !important;
   }
 
-  /* Cap screenshot height so visual page fits A4 with 8 metric panels */
   .visual-cell > div {
     min-height: 0 !important;
     aspect-ratio: auto !important;
-    height: 52mm !important;
-    max-height: 52mm !important;
+    height: 36mm !important;
+    max-height: 36mm !important;
+  }
+
+  .visual-grid:has(.visual-cell:only-child) {
+    grid-template-columns: 1fr !important;
   }
 
   .visual-grid:has(.visual-cell:only-child) .visual-cell > div {
-    height: 68mm !important;
-    max-height: 68mm !important;
+    height: 58mm !important;
+    max-height: 58mm !important;
+  }
+
+  .visual-grid:has(.visual-cell:nth-child(2):last-child) {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .visual-grid:has(.visual-cell:nth-child(2):last-child) .visual-cell > div {
+    height: 48mm !important;
+    max-height: 48mm !important;
   }
 
   .visual-cell img {
@@ -393,12 +445,18 @@
   }
 
   .visual-cell figcaption {
-    padding: 1px 3px !important;
-    font-size: 5.5pt !important;
+    padding: 0 2px !important;
+    font-size: 5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .report-page-visual .report-powered {
+    margin-top: 2px !important;
+    padding-top: 2px !important;
   }
 
   .visual-footer {
-    margin-top: 3px !important;
+    margin-top: 2px !important;
     font-size: 6pt !important;
   }
 

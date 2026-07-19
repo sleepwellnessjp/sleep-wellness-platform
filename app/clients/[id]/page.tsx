@@ -110,8 +110,11 @@ export default function ClientDetailPage() {
       id: analysis.id,
       date: analysis.analysisDate,
       summary: analysis.result.summary,
-      goodPoints: analysis.result.goodPoints ?? [],
-      improvements: analysis.result.improvements ?? [],
+      highlights: (
+        analysis.result.improvements?.length
+          ? analysis.result.improvements
+          : analysis.result.goodPoints ?? []
+      ).slice(0, 2),
     }));
   }, [client]);
 
@@ -321,9 +324,9 @@ export default function ClientDetailPage() {
                   <p className="mt-2 text-[15px] leading-7 text-slate-600">
                     {item.summary || "—"}
                   </p>
-                  {item.goodPoints.length > 0 && (
+                  {item.highlights.length > 0 && (
                     <ul className="mt-3 space-y-1">
-                      {item.goodPoints.slice(0, 2).map((point) => (
+                      {item.highlights.map((point) => (
                         <li
                           key={point}
                           className="text-[13px] leading-6 text-slate-500"

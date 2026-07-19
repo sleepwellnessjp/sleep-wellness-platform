@@ -6,6 +6,10 @@ import {
   type AnalysisMetrics,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
+import {
+  mergeMetricsFromVisibleReadings,
+  normalizeVisibleReadings,
+} from "@/lib/soxai-reading-map";
 
 export type { AnalysisMetrics };
 export { normalizeMetrics };
@@ -105,24 +109,30 @@ export type ScoreBreakdown = {
 export type AnalysisResult = {
   /** ①総合評価 */
   summary: string;
+  /** ②睡眠の特徴 */
+  sleepCharacteristics: string;
+  /** ③改善ポイント */
+  improvements: string[];
+  /** ④今日から実践する3つの行動 */
+  actionPlan: string[];
+  /** ⑤メラトニンヨガ™の推奨内容 */
+  melatoninYoga: string;
   score: number;
   scoreBreakdown: ScoreBreakdown;
   metrics: AnalysisMetrics;
-  /** ②今回良かった点 */
-  goodPoints: string[];
-  /** ③改善点 */
-  improvements: string[];
-  /** ④睡眠データ考察 */
-  dataInsight: string;
-  /** ⑤生活習慣との関係 */
-  lifestyleRelation: string;
-  /** ⑥Tomorrow Plan */
-  tomorrowPlan: string[];
   caution: string;
   disclaimer: string;
   clientId?: string;
   clientName?: string;
   measurementDate?: string;
+  /** @deprecated 旧スキーマ互換 */
+  goodPoints?: string[];
+  /** @deprecated 旧スキーマ互換 → sleepCharacteristics */
+  dataInsight?: string;
+  /** @deprecated 旧スキーマ互換 */
+  lifestyleRelation?: string;
+  /** @deprecated 旧スキーマ互換 → actionPlan */
+  tomorrowPlan?: string[];
 };
 
 const RESULT_KEY = "swij-analysis-result";
@@ -134,7 +144,9 @@ let extractionDraft: ExtractionDraft | null = null;
 let inFlightAnalysis: Promise<AnalysisResult> | null = null;
 
 function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
 }
 
 function clampStars(value: unknown, fallback: ScoreStars): ScoreStars {
@@ -184,9 +196,12 @@ type LegacyAnalysisFields = {
   actions?: unknown;
   yoga?: unknown;
   closingSummary?: unknown;
+  sleepCharacteristics?: unknown;
+  actionPlan?: unknown;
+  melatoninYoga?: unknown;
 };
 
-function normalizeAnalysisResult(
+export function normalizeAnalysisResult(
   raw: AnalysisResult & LegacyAnalysisFields,
   extras?: {
     clientId?: string;
@@ -199,39 +214,79 @@ function normalizeAnalysisResult(
       ? Math.max(0, Math.min(100, Math.round(raw.score)))
       : 0;
 
-  const dataInsight =
-    typeof raw.dataInsight === "string" && raw.dataInsight.trim()
-      ? raw.dataInsight.trim()
-      : typeof raw.closingSummary === "string"
-        ? raw.closingSummary.trim()
-        : "";
+  const sleepCharacteristics = (() => {
+    if (
+      typeof raw.sleepCharacteristics === "string" &&
+      raw.sleepCharacteristics.trim()
+    ) {
+      return raw.sleepCharacteristics.trim();
+    }
+    if (typeof raw.dataInsight === "string" && raw.dataInsight.trim()) {
+      return raw.dataInsight.trim();
+    }
+    if (typeof raw.closingSummary === "string" && raw.closingSummary.trim()) {
+      return raw.closingSummary.trim();
+    }
+    return "";
+  })();
 
-  const lifestyleRelation =
-    typeof raw.lifestyleRelation === "string" && raw.lifestyleRelation.trim()
-      ? raw.lifestyleRelation.trim()
-      : normalizeStringList(raw.possibleFactors, 3).join(" ");
-
-  const tomorrowPlan = (() => {
-    const plan = normalizeStringList(raw.tomorrowPlan, 3);
+  const actionPlan = (() => {
+    const plan = normalizeStringList(raw.actionPlan, 3);
     if (plan.length > 0) return plan;
+    const legacy = normalizeStringList(raw.tomorrowPlan, 3);
+    if (legacy.length > 0) return legacy;
     return normalizeStringList(raw.actions, 3);
+  })();
+
+  const melatoninYoga = (() => {
+    if (typeof raw.melatoninYoga === "string" && raw.melatoninYoga.trim()) {
+      return raw.melatoninYoga.trim();
+    }
+    if (typeof raw.yoga === "string" && raw.yoga.trim()) {
+      return raw.yoga.trim();
+    }
+    // 空欄禁止：モデル欠落時の最低限フォールバック
+    return [
+      "就寝前10分のメラトニンヨガ™を推奨します。",
+      "前半3分はゆっくりとした動き、次に3:6呼吸を5分、最後に静かな休息を2分行います。",
+      "無理に眠ろうとせず、呼吸と身体感覚を整えることを目的とします。",
+    ].join("\n");
+  })();
+
+  const improvements = normalizeStringList(raw.improvements, 3);
+
+  const ensuredActionPlan = (() => {
+    if (actionPlan.length >= 3) return actionPlan.slice(0, 3);
+    const defaults = [
+      "最優先：就寝60分前からスマートフォンなどの強い光を控え、入眠前の切り替え時間をつくる",
+      "入浴またはぬるめのシャワーを就寝90〜60分前に済ませる",
+      "翌朝同じ時刻に起き、朝の光を数分取り入れる",
+    ];
+    return [...actionPlan, ...defaults].slice(0, 3);
   })();
 
   return {
     summary: typeof raw.summary === "string" ? raw.summary.trim() : "",
+    sleepCharacteristics,
+    improvements,
+    actionPlan: ensuredActionPlan,
+    melatoninYoga,
     score,
     scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
     metrics: normalizeMetrics(raw.metrics),
-    goodPoints: normalizeStringList(raw.goodPoints, 3),
-    improvements: normalizeStringList(raw.improvements, 2),
-    dataInsight,
-    lifestyleRelation,
-    tomorrowPlan,
     caution: typeof raw.caution === "string" ? raw.caution.trim() : "",
     disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer.trim() : "",
     clientId: extras?.clientId ?? raw.clientId,
     clientName: extras?.clientName ?? raw.clientName,
     measurementDate: extras?.measurementDate ?? raw.measurementDate,
+    // 旧UI互換
+    goodPoints: normalizeStringList(raw.goodPoints, 3),
+    dataInsight: sleepCharacteristics,
+    lifestyleRelation:
+      typeof raw.lifestyleRelation === "string"
+        ? raw.lifestyleRelation.trim()
+        : normalizeStringList(raw.possibleFactors, 3).join(" "),
+    tomorrowPlan: ensuredActionPlan,
   };
 }
 
@@ -463,7 +518,17 @@ export async function extractSoxaiMetricsDetailed(
     );
   }
 
-  const normalized = normalizeMetrics(metricsRaw);
+  const visibleReadings = normalizeVisibleReadings(
+    data && typeof data === "object" && "visibleReadings" in data
+      ? (data as { visibleReadings: unknown }).visibleReadings
+      : [],
+  );
+
+  // visibleReadings がある場合は必ず再マッピングして metrics に反映
+  const normalized = mergeMetricsFromVisibleReadings(
+    metricsRaw,
+    visibleReadings,
+  );
   const conflicts = normalizeExtractConflicts(
     data && typeof data === "object" && "conflicts" in data
       ? (data as { conflicts: unknown }).conflicts
@@ -473,6 +538,8 @@ export async function extractSoxaiMetricsDetailed(
   console.info("[extract] metrics received", {
     collected: collectedMetricKeys(normalized).length,
     keys: collectedMetricKeys(normalized),
+    visibleReadingCount: visibleReadings.length,
+    visibleLabels: visibleReadings.map((reading) => reading.label),
     conflicts: conflicts.length,
   });
 
@@ -655,6 +722,12 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       clientName: payload.lifestyle.clientName,
       measurementDate: payload.lifestyle.measurementDate,
     });
+
+    // OCR→確認で確定した confirmedMetrics を単一の数値根拠として強制採用
+    // （Medical / Visual が同じ metrics を参照するための最終ガード）
+    if (payload.metrics) {
+      result.metrics = normalizeMetrics(payload.metrics);
+    }
 
     pendingRequest = null;
     clearExtractionDraft();

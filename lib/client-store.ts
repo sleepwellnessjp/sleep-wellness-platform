@@ -214,6 +214,19 @@ function buildSeedClients(): StoredClient[] {
     summary: string,
   ): AnalysisResult => ({
     summary,
+    sleepCharacteristics:
+      "今回確認できた範囲では、睡眠時間と睡眠効率に数値が取得できています。深い睡眠の時間も確認できました。HRV・SpO₂・体内時計は数値として触れますが、単日のため状態の断定は控え、推移の確認が大切です。",
+    improvements: [
+      "優先1：入眠前の切り替え時間に改善余地があります",
+      "優先2：睡眠効率の数値を踏まえ、就寝前の光・刺激の調整を検討します",
+    ],
+    actionPlan: [
+      "最優先：就寝90分前の照明を落とす",
+      "短い呼吸法を2セット",
+      "夕食終了から入眠まで2時間以上空ける",
+    ],
+    melatoninYoga:
+      "就寝前10分のメラトニンヨガ™を推奨します。前半3分はゆっくりとした動き、次に3:6呼吸を5分、最後に静かな休息を2分行います。無理に眠ろうとせず、呼吸と身体感覚を整えることを目的とします。",
     score,
     scoreBreakdown: {
       sleepDuration: 4,
@@ -225,12 +238,6 @@ function buildSeedClients(): StoredClient[] {
       recovery: 4,
     },
     metrics: sampleMetrics(score),
-    goodPoints: ["深い睡眠の確保ができています", "SpO₂は安定しています"],
-    improvements: ["入眠前の切り替えに改善余地があります"],
-    dataInsight: "睡眠効率とHRVのバランスは良好な傾向です。",
-    lifestyleRelation:
-      "運動と入浴のタイミングが回復に寄与している可能性があります。",
-    tomorrowPlan: ["就寝90分前の照明を落とす", "短い呼吸法を2セット"],
     caution: "単日データのため、数日の推移も確認しましょう。",
     disclaimer:
       "本レポートは睡眠ウェルネス支援であり、医療診断・治療を代替しません。",
