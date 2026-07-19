@@ -1,5 +1,11 @@
 export type AnalysisMetrics = {
   sleepScore: number | null;
+  /** SOXAIホーム：QoL（現在） */
+  qol: string;
+  /** SOXAIホーム：昨日のスコア / 昨日のQoL */
+  yesterdayQol: string;
+  /** SOXAIホーム：体調 / 体調スコア */
+  conditionScore: string;
   bedtime: string;
   wakeTime: string;
   sleepDuration: string;
@@ -38,9 +44,30 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   {
     key: "sleepScore",
     label: "睡眠スコア",
-    hint: "Sleep Score / 総合スコア",
+    hint: "Sleep Score / 睡眠（ホーム）",
     inputType: "number",
     placeholder: "例：78",
+  },
+  {
+    key: "qol",
+    label: "QoL",
+    hint: "Quality of Life / 現在のスコア",
+    inputType: "text",
+    placeholder: "例：50",
+  },
+  {
+    key: "yesterdayQol",
+    label: "昨日のスコア",
+    hint: "昨日のQoL / 昨日のスコア",
+    inputType: "text",
+    placeholder: "例：48",
+  },
+  {
+    key: "conditionScore",
+    label: "体調スコア",
+    hint: "体調 / コンディション",
+    inputType: "text",
+    placeholder: "例：62",
   },
   {
     key: "sleepDuration",
@@ -194,6 +221,9 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
 export function emptyMetrics(): AnalysisMetrics {
   return {
     sleepScore: null,
+    qol: "",
+    yesterdayQol: "",
+    conditionScore: "",
     bedtime: "",
     wakeTime: "",
     sleepDuration: "",
@@ -219,7 +249,9 @@ export function emptyMetrics(): AnalysisMetrics {
 }
 
 function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
 }
 
 /** API / OCR 応答を正規化（legacy heartRate → restingHeartRate、文字列 sleepScore も許容） */
@@ -244,6 +276,9 @@ export function normalizeMetrics(
 
   return {
     sleepScore,
+    qol: asString(metrics?.qol),
+    yesterdayQol: asString(metrics?.yesterdayQol),
+    conditionScore: asString(metrics?.conditionScore),
     bedtime: asString(metrics?.bedtime),
     wakeTime: asString(metrics?.wakeTime),
     sleepDuration: asString(metrics?.sleepDuration),

@@ -14,7 +14,10 @@ import {
   type StoredAnalysis,
   type StoredClient,
 } from "@/lib/client-store";
-import { normalizeMetrics } from "@/lib/analysis-session";
+import {
+  normalizeMetrics,
+  normalizeAnalysisResult,
+} from "@/lib/analysis-session";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
@@ -107,13 +110,17 @@ function parseNumeric(value: string | null | undefined): number | null {
 function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
   const metrics = normalizeMetrics(row.ocr_data ?? undefined);
   const resultRaw = row.ai_result;
-  const result: AnalysisResult = resultRaw
-    ? {
+  const result = resultRaw
+    ? normalizeAnalysisResult({
         ...resultRaw,
         metrics: normalizeMetrics(resultRaw.metrics ?? metrics),
-      }
-    : {
+      })
+    : normalizeAnalysisResult({
         summary: "",
+        sleepCharacteristics: "",
+        improvements: [],
+        actionPlan: [],
+        melatoninYoga: "",
         score: 0,
         scoreBreakdown: {
           sleepDuration: 3,
@@ -125,14 +132,9 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
           recovery: 3,
         },
         metrics,
-        goodPoints: [],
-        improvements: [],
-        dataInsight: "",
-        lifestyleRelation: "",
-        tomorrowPlan: [],
         caution: "",
         disclaimer: "",
-      };
+      });
 
   const sleepScore =
     typeof row.sleep_score === "number" && Number.isFinite(row.sleep_score)

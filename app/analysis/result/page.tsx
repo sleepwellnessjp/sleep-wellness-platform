@@ -76,11 +76,19 @@ function clamp(n: number, min: number, max: number) {
 
 function parsePercent(text: string): number | null {
   if (!text.trim()) return null;
-  const normalized = text.replace(/,/g, "");
-  const match = normalized.match(/(-?\d+(?:\.\d+)?)\s*%/);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? n : null;
+  const normalized = text.replace(/,/g, "").replace(/％/g, "%").trim();
+  const withPct = normalized.match(/(-?\d+(?:\.\d+)?)\s*%/);
+  if (withPct) {
+    const n = Number(withPct[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  // OCR が "22" のように % なしで返す場合も割合として扱う
+  const bare = normalized.match(/^(-?\d+(?:\.\d+)?)$/);
+  if (bare) {
+    const n = Number(bare[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 function parseLeadingNumber(text: string): number | null {
@@ -206,7 +214,7 @@ function StressGauge({ stressText }: { stressText: string }) {
     <div className="mt-2">
       <SimpleMeterBar
         label="測定ストレス"
-        valueText={stressText ? stressText : "—"}
+        valueText={displayValue(stressText)}
         ratio01={ratio01}
         color="#a33a3a"
       />
@@ -293,66 +301,18 @@ function CircadianTimeline({
   );
 }
 
-function metricOrDash(value: string | number | null | undefined): string {
-  const display = displayValue(value);
-  return display === "—" ? "確認できませんでした" : display;
-}
-
-/** Medical Report 用の文章化された所見 */
-function buildMedicalNarrative(metrics: AnalysisMetrics): string[] {
-  const awakeningParts = [
-    metrics.awakenings.trim() ? `覚醒時間は${metrics.awakenings.trim()}` : "",
-    metrics.awakeningRate.trim()
-      ? `覚醒率は${metrics.awakeningRate.trim()}`
-      : "",
-  ].filter(Boolean);
-  const awakeningText =
-    awakeningParts.length > 0
-      ? awakeningParts.join("、")
-      : "覚醒指標は確認できませんでした";
-
-  const remText = [
-    metrics.remSleep.trim() || null,
-    metrics.remSleepRate.trim()
-      ? `（割合 ${metrics.remSleepRate.trim()}）`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("");
-  const lightText = [
-    metrics.lightSleep.trim() || null,
-    metrics.lightSleepRate.trim()
-      ? `（割合 ${metrics.lightSleepRate.trim()}）`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("");
-  const deepText = [
-    metrics.deepSleep.trim() || null,
-    metrics.deepSleepRate.trim()
-      ? `（割合 ${metrics.deepSleepRate.trim()}）`
-      : null,
-  ]
-    .filter(Boolean)
-    .join("");
-
-  return [
-    `今回の睡眠スコアは **${metricOrDash(metrics.sleepScore)}** でした。睡眠時間は${metricOrDash(metrics.sleepDuration)}、睡眠効率は${metricOrDash(metrics.sleepEfficiency)}、睡眠負債は${metricOrDash(metrics.sleepDebt)}です。`,
-    `入眠潜時は${metricOrDash(metrics.sleepLatency)}、${awakeningText}でした。睡眠ステージは、レム睡眠 ${remText || "確認できませんでした"}、浅い睡眠 ${lightText || "確認できませんでした"}、深い睡眠 ${deepText || "確認できませんでした"} です。体内時計の指標は${metricOrDash(metrics.circadianRhythm)}でした。`,
-    `生体指標では、呼吸速度 ${metricOrDash(metrics.respiratoryRate)}、平均酸素レベル（SpO₂） ${metricOrDash(metrics.spo2)}、安静時心拍数 ${metricOrDash(metrics.restingHeartRate)}、HRV ${metricOrDash(metrics.hrv)}、皮膚温度 ${metricOrDash(metrics.skinTemperature)}、ストレス ${metricOrDash(metrics.stress)} でした。`,
-  ];
-}
-
-function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
+/** confirmedMetrics（最終採用値）から Visual パネルを構築 */
+function buildVisualPanels(confirmedMetrics: AnalysisMetrics): VisualPanel[] {
+  const m = confirmedMetrics;
   return [
     {
       id: "stages",
       title: "睡眠ステージ",
       subtitle: "SLEEP STAGES",
       graph: (() => {
-        const remP = parsePercent(metrics.remSleepRate);
-        const lightP = parsePercent(metrics.lightSleepRate);
-        const deepP = parsePercent(metrics.deepSleepRate);
+        const remP = parsePercent(m.remSleepRate);
+        const lightP = parsePercent(m.lightSleepRate);
+        const deepP = parsePercent(m.deepSleepRate);
 
         if (remP != null || lightP != null || deepP != null) {
           return (
@@ -364,9 +324,9 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
           );
         }
 
-        const remM = parseDurationMinutes(metrics.remSleep);
-        const lightM = parseDurationMinutes(metrics.lightSleep);
-        const deepM = parseDurationMinutes(metrics.deepSleep);
+        const remM = parseDurationMinutes(m.remSleep);
+        const lightM = parseDurationMinutes(m.lightSleep);
+        const deepM = parseDurationMinutes(m.deepSleep);
         return (
           <StageSegmentBar
             remRatio={remM ?? 0}
@@ -376,23 +336,12 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
         );
       })(),
       values: [
-        {
-          label: "REM（時間）",
-          value:
-            metrics.remSleep.trim() ? displayValue(metrics.remSleep) : "—",
-        },
-        {
-          label: "浅い睡眠（時間）",
-          value:
-            metrics.lightSleep.trim()
-              ? displayValue(metrics.lightSleep)
-              : "—",
-        },
-        {
-          label: "深い睡眠（時間）",
-          value:
-            metrics.deepSleep.trim() ? displayValue(metrics.deepSleep) : "—",
-        },
+        { label: "REM（時間）", value: displayValue(m.remSleep) },
+        { label: "REM睡眠率", value: displayValue(m.remSleepRate) },
+        { label: "浅い睡眠（時間）", value: displayValue(m.lightSleep) },
+        { label: "浅い睡眠率", value: displayValue(m.lightSleepRate) },
+        { label: "深い睡眠（時間）", value: displayValue(m.deepSleep) },
+        { label: "深い睡眠率", value: displayValue(m.deepSleepRate) },
       ],
     },
     {
@@ -400,21 +349,21 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       title: "睡眠ステージ詳細",
       subtitle: "STAGE DETAIL",
       graph: (() => {
-        const eff = parsePercent(metrics.sleepEfficiency);
-        const awake = parsePercent(metrics.awakeningRate);
+        const eff = parsePercent(m.sleepEfficiency);
+        const awake = parsePercent(m.awakeningRate);
         const effRatio01 = eff == null ? null : clamp(eff / 100, 0, 1);
         const awakeRatio01 = awake == null ? null : clamp(awake / 100, 0, 1);
         return (
           <div className="mt-2 space-y-1">
             <SimpleMeterBar
               label="睡眠効率"
-              valueText={metrics.sleepEfficiency || "—"}
+              valueText={displayValue(m.sleepEfficiency)}
               ratio01={effRatio01}
               color="#315f68"
             />
             <SimpleMeterBar
               label="覚醒率"
-              valueText={metrics.awakeningRate || "—"}
+              valueText={displayValue(m.awakeningRate)}
               ratio01={awakeRatio01}
               color="#8a6a2d"
             />
@@ -422,23 +371,23 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
         );
       })(),
       values: [
-        { label: "睡眠時間", value: displayValue(metrics.sleepDuration) },
-        { label: "睡眠効率", value: displayValue(metrics.sleepEfficiency) },
-        { label: "覚醒時間", value: displayValue(metrics.awakenings) },
-        { label: "覚醒率", value: displayValue(metrics.awakeningRate) },
-        { label: "入眠潜時", value: displayValue(metrics.sleepLatency) },
-        { label: "睡眠負債", value: displayValue(metrics.sleepDebt) },
-        { label: "REM睡眠率", value: displayValue(metrics.remSleepRate) },
-        { label: "浅い睡眠率", value: displayValue(metrics.lightSleepRate) },
-        { label: "深い睡眠率", value: displayValue(metrics.deepSleepRate) },
+        { label: "睡眠時間", value: displayValue(m.sleepDuration) },
+        { label: "睡眠効率", value: displayValue(m.sleepEfficiency) },
+        { label: "覚醒時間", value: displayValue(m.awakenings) },
+        { label: "覚醒率", value: displayValue(m.awakeningRate) },
+        { label: "入眠潜時", value: displayValue(m.sleepLatency) },
+        { label: "睡眠負債", value: displayValue(m.sleepDebt) },
+        { label: "REM睡眠率", value: displayValue(m.remSleepRate) },
+        { label: "浅い睡眠率", value: displayValue(m.lightSleepRate) },
+        { label: "深い睡眠率", value: displayValue(m.deepSleepRate) },
       ],
     },
     {
       id: "stress",
       title: "ストレスモニター",
       subtitle: "STRESS MONITOR",
-      graph: <StressGauge stressText={metrics.stress} />,
-      values: [{ label: "ストレス（測定）", value: displayValue(metrics.stress) }],
+      graph: <StressGauge stressText={m.stress} />,
+      values: [{ label: "ストレス（測定）", value: displayValue(m.stress) }],
     },
     {
       id: "circadian",
@@ -446,13 +395,13 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       subtitle: "CIRCADIAN",
       graph: (
         <CircadianTimeline
-          bedtime={metrics.bedtime}
-          wakeTime={metrics.wakeTime}
-          phaseText={metrics.circadianRhythm}
+          bedtime={m.bedtime}
+          wakeTime={m.wakeTime}
+          phaseText={m.circadianRhythm}
         />
       ),
       values: [
-        { label: "位相", value: displayValue(metrics.circadianRhythm) },
+        { label: "位相", value: displayValue(m.circadianRhythm) },
       ],
     },
     {
@@ -460,21 +409,21 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       title: "睡眠時呼吸",
       subtitle: "SLEEP RESPIRATION",
       graph: (() => {
-        const rr = parseLeadingNumber(metrics.respiratoryRate);
-        const spo2 = parsePercent(metrics.spo2) ?? parseLeadingNumber(metrics.spo2);
+        const rr = parseLeadingNumber(m.respiratoryRate);
+        const spo2 = parsePercent(m.spo2) ?? parseLeadingNumber(m.spo2);
         const rrRatio01 = rr == null ? null : clamp(rr / 30, 0, 1);
         const spo2Ratio01 = spo2 == null ? null : clamp(Number(spo2) / 100, 0, 1);
         return (
           <div className="mt-2 space-y-1">
             <SimpleMeterBar
               label="呼吸速度"
-              valueText={metrics.respiratoryRate || "—"}
+              valueText={displayValue(m.respiratoryRate)}
               ratio01={rrRatio01}
               color="#315f68"
             />
             <SimpleMeterBar
               label="SpO₂"
-              valueText={metrics.spo2 || "—"}
+              valueText={displayValue(m.spo2)}
               ratio01={spo2Ratio01}
               color="#d8b36a"
             />
@@ -482,8 +431,8 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
         );
       })(),
       values: [
-        { label: "呼吸速度", value: displayValue(metrics.respiratoryRate) },
-        { label: "平均SpO₂", value: displayValue(metrics.spo2) },
+        { label: "呼吸速度", value: displayValue(m.respiratoryRate) },
+        { label: "平均SpO₂", value: displayValue(m.spo2) },
       ],
     },
     {
@@ -491,16 +440,16 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       title: "安静時心拍数",
       subtitle: "RESTING HR",
       values: [
-        { label: "安静時心拍数", value: displayValue(metrics.restingHeartRate) },
+        { label: "安静時心拍数", value: displayValue(m.restingHeartRate) },
       ],
       graph: (() => {
-        const rhr = parseLeadingNumber(metrics.restingHeartRate);
+        const rhr = parseLeadingNumber(m.restingHeartRate);
         const ratio01 = rhr == null ? null : clamp((rhr - 40) / 50, 0, 1);
         return (
           <div className="mt-2">
             <SimpleMeterBar
               label="RHR"
-              valueText={metrics.restingHeartRate || "—"}
+              valueText={displayValue(m.restingHeartRate)}
               ratio01={ratio01}
               color="#0f6b5c"
             />
@@ -512,15 +461,15 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       id: "hrv",
       title: "HRV",
       subtitle: "HRV",
-      values: [{ label: "HRV", value: displayValue(metrics.hrv) }],
+      values: [{ label: "HRV", value: displayValue(m.hrv) }],
       graph: (() => {
-        const hrv = parseLeadingNumber(metrics.hrv);
+        const hrv = parseLeadingNumber(m.hrv);
         const ratio01 = hrv == null ? null : clamp((hrv - 10) / 90, 0, 1);
         return (
           <div className="mt-2">
             <SimpleMeterBar
               label="HRV"
-              valueText={metrics.hrv || "—"}
+              valueText={displayValue(m.hrv)}
               ratio01={ratio01}
               color="#8a6a2d"
             />
@@ -533,16 +482,16 @@ function buildVisualPanels(metrics: AnalysisMetrics): VisualPanel[] {
       title: "皮膚温度",
       subtitle: "SKIN TEMP",
       values: [
-        { label: "皮膚温度", value: displayValue(metrics.skinTemperature) },
+        { label: "皮膚温度", value: displayValue(m.skinTemperature) },
       ],
       graph: (() => {
-        const t = parseLeadingNumber(metrics.skinTemperature);
+        const t = parseLeadingNumber(m.skinTemperature);
         const ratio01 = t == null ? null : clamp((t + 1) / 2, 0, 1);
         return (
           <div className="mt-2">
             <SimpleMeterBar
               label="Skin Temp"
-              valueText={metrics.skinTemperature || "—"}
+              valueText={displayValue(m.skinTemperature)}
               ratio01={ratio01}
               color="#b89242"
             />
@@ -721,28 +670,46 @@ function ResultContent({
   result: AnalysisResult;
   images: string[];
 }) {
+  // OCR→統合→確認で確定した単一ソース（Medical / Visual 共通）
+  const confirmedMetrics = result.metrics;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
-  const improvements = takeItems(result.improvements, 2).map((item) =>
-    clampLine(item, 88),
+  const improvements = takeItems(result.improvements, 3).map((item) =>
+    clampLine(item, 140),
   );
-  const { primary: primaryPlan } = splitTomorrowPlan(result.tomorrowPlan);
-  const lifestyleRelationText = clampLine(
-    clampSentences(result.lifestyleRelation, 5),
-    340,
+  const actionPlan = takeItems(
+    result.actionPlan?.length ? result.actionPlan : result.tomorrowPlan,
+    3,
+  ).map((item) => clampLine(item, 140));
+  const { primary: primaryPlan, next: nextPlans } = splitTomorrowPlan(actionPlan);
+  const summaryText = clampLine(clampSentences(result.summary, 8), 560);
+  const characteristicsText = clampLine(
+    clampSentences(
+      result.sleepCharacteristics || result.dataInsight || "",
+      10,
+    ),
+    720,
   );
-  const cautionText = clampLine(result.caution ?? "", 90);
+  const melatoninYogaText = clampLine(
+    clampSentences(result.melatoninYoga || "", 8),
+    520,
+  );
+  const cautionText = clampLine(result.caution ?? "", 120);
   const disclaimerText = clampLine(
     clampSentences(result.disclaimer ?? "", 2),
-    100,
+    120,
   );
-  const visualPanels = buildVisualPanels(result.metrics);
-  const visualSlots = Math.max(images.length, 1);
+  const visualPanels = buildVisualPanels(confirmedMetrics);
+  /** Visual Report は SCREEN01–05 まで（6枚目以降は載せない＝3ページ化防止） */
+  const visualImages = images.slice(0, 5);
+  const visualSlots = Math.max(visualImages.length, 1);
   const visualCols =
     visualSlots === 1
       ? "grid-cols-1"
       : visualSlots === 2
         ? "grid-cols-1 sm:grid-cols-2"
-        : "grid-cols-2";
+        : visualSlots <= 4
+          ? "grid-cols-2"
+          : "grid-cols-2 sm:grid-cols-3";
 
   return (
     <main className="report-print-root min-h-screen bg-[#f7f7f5] py-8 print:bg-white print:py-0 sm:py-12 md:py-16">
@@ -829,32 +796,59 @@ function ResultContent({
           </header>
 
           <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
-            <SectionLabel title="睡眠ウェルネス所見" eyebrow="MEDICAL" />
-            <div className="report-summary mt-3 space-y-3">
-              {buildMedicalNarrative(result.metrics).map((paragraph, index) => (
-                <p
-                  key={index}
-                  className="text-[15px] leading-7 text-slate-600 sm:text-[0.95rem] sm:leading-8"
-                >
-                  {renderRichText(paragraph)}
-                </p>
-              ))}
+            <SectionLabel title="① 総合評価" eyebrow="OVERVIEW" />
+            <div className="report-summary mt-1">
+              <FormattedAiText text={summaryText || "—"} />
             </div>
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="生活習慣を踏まえた改善提案" eyebrow="IMPROVEMENT" />
-            <div className="mt-2">
-              <FormattedAiText text={lifestyleRelationText || "—"} />
-              <div className="mt-3">
-                <BulletList
-                  items={[
-                    ...(primaryPlan ? [clampLine(primaryPlan, 88)] : []),
-                    ...improvements,
-                  ].slice(0, 3)}
-                />
+            <SectionLabel title="② 睡眠の特徴" eyebrow="CHARACTERISTICS" />
+            <FormattedAiText text={characteristicsText || "—"} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="③ 改善ポイント" eyebrow="IMPROVE" />
+            <BulletList items={improvements} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel
+              title="④ 今日から実践する3つの行動"
+              eyebrow="ACTION"
+            />
+            {primaryPlan && (
+              <div
+                className="border-l-[3px] pl-4"
+                style={{ borderColor: GOLD }}
+              >
+                <p
+                  className="text-[10px] font-semibold tracking-[0.18em]"
+                  style={{ color: GOLD }}
+                >
+                  最優先
+                </p>
+                <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
+                  {renderRichText(primaryPlan)}
+                </p>
               </div>
-            </div>
+            )}
+            {nextPlans.length > 0 && (
+              <div className={primaryPlan ? "mt-3.5" : undefined}>
+                <BulletList items={nextPlans} />
+              </div>
+            )}
+            {!primaryPlan && nextPlans.length === 0 && (
+              <p className="text-[15px] leading-7 text-slate-400">—</p>
+            )}
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel
+              title="⑤ メラトニンヨガ™の推奨内容"
+              eyebrow="MELATONIN YOGA"
+            />
+            <FormattedAiText text={melatoninYogaText || "—"} />
           </section>
 
           {(cautionText || disclaimerText) && (
@@ -909,7 +903,7 @@ function ResultContent({
                 >
                   Sleep Wellness Visual Report
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
+                <p className="visual-subtitle mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
                   睡眠ステージ・生体指標の可視化
                 </p>
               </div>
@@ -918,16 +912,17 @@ function ResultContent({
                   className="text-[10px] font-semibold tracking-[0.22em]"
                   style={{ color: GOLD }}
                 >
-                  VISUAL
+                  WELLNESS SCORE
                 </p>
-                {result.metrics.sleepScore != null && (
-                  <p
-                    className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
-                    style={{ color: NAVY }}
-                  >
-                    {result.metrics.sleepScore}
-                  </p>
-                )}
+                <p
+                  className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
+                  style={{ color: NAVY }}
+                >
+                  {score}
+                </p>
+                <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
+                  / 100
+                </p>
               </div>
             </div>
 
@@ -994,25 +989,25 @@ function ResultContent({
             ))}
           </section>
 
-          {images.length > 0 ? (
+          {visualImages.length > 0 ? (
             <div
               className={`visual-grid mt-5 grid gap-3 sm:mt-6 sm:gap-4 ${visualCols}`}
             >
-              {images.map((src, index) => (
+              {visualImages.map((src, index) => (
                 <figure
                   key={`visual-${index}`}
                   className="visual-cell overflow-hidden rounded-xl border border-[#071426]/10 bg-[#f4f4f2]"
                 >
-                  <div className="relative aspect-[3/4] w-full min-h-[220px] sm:min-h-[280px]">
+                  <div className="relative aspect-[3/4] w-full min-h-[180px] sm:min-h-[220px]">
                     <Image
                       src={src}
                       alt={`SOXAI測定画面 ${index + 1}`}
                       fill
                       unoptimized
-                        className="object-cover"
+                      className="object-cover"
                     />
                   </div>
-                  <figcaption className="border-t border-[#071426]/08 px-3 py-2 text-center text-[11px] font-medium tracking-[0.08em] text-slate-400">
+                  <figcaption className="border-t border-[#071426]/08 px-3 py-1.5 text-center text-[11px] font-medium tracking-[0.08em] text-slate-400">
                     SCREEN {String(index + 1).padStart(2, "0")}
                   </figcaption>
                 </figure>
