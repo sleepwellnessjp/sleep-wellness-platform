@@ -4,12 +4,19 @@ import {
   isImageDataUrl,
   normalizeImageDataUrl,
   openaiErrorMessage,
+  graphReadingItemSchema,
   SOXAI_EXTRACT_INSTRUCTIONS,
 } from "@/lib/openai-helpers";
 import {
   mergeImageExtractResults,
   type ImageExtractResult,
 } from "@/lib/soxai-merge";
+import {
+  enrichMetricsFromGraphs,
+  mergeGraphBundles,
+  normalizeGraphReadings,
+  graphPanelCount,
+} from "@/lib/soxai-graphs";
 import {
   mapVisibleReadingsToMetricsDetailed,
   normalizeVisibleReadings,
@@ -25,11 +32,11 @@ const MAX_IMAGES = 10;
 /** 並列OCR数（2〜10枚でもレート制限を抑えつつ進める） */
 const OCR_CONCURRENCY = 3;
 
-/** Vision には visibleReadings だけ返させる（metrics 同時抽出は読み取り漏れの原因） */
+/** Vision には visibleReadings + graphReadings を返させる */
 const extractSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["visibleReadings"],
+  required: ["visibleReadings", "graphReadings"],
   properties: {
     visibleReadings: {
       type: "array",
@@ -42,6 +49,10 @@ const extractSchema = {
           value: { type: "string" },
         },
       },
+    },
+    graphReadings: {
+      type: "array",
+      items: graphReadingItemSchema,
     },
   },
 } as const;
@@ -148,23 +159,63 @@ function singleImagePrompt(imageIndex: number, total: number): string {
     { "label": "睡眠", "value": "78" },
     { "label": "心拍数", "value": "58" },
     { "label": "睡眠効率", "value": "87%" }
+  ],
+  "graphReadings": [
+    {
+      "panel": "stages",
+      "points": [],
+      "segments": [
+        { "stage": "light", "startTime": "23:40", "endTime": "00:15", "ratio": 20 }
+      ],
+      "annotations": []
+    }
   ]
 }
 
-推測禁止。この1枚に見えるものだけ。他画像の値は想像しない。metrics キーへの変換は不要。`;
+推測禁止。この1枚に見えるものだけ。他画像の値は想像しない。`;
 }
 
 function sparseRetryPrompt(count: number): string {
   return `前回の読み取りが不足しています（${count}件）。同じ1枚の画像を徹底再スキャンしてください。
 
-画面全体（上・中・下、カード、ゲージ、円、バー、小さな文字、右上の数値）を見て、
-ラベルと値のペアを一つ残らず visibleReadings に入れてください。
+画面全体（上・中・下、カード、ゲージ、円、バー、折れ線グラフ、hypnogram、小さな文字）を見て、
+ラベルと値のペアを visibleReadings に、グラフの形状を graphReadings に入れてください。
 ホームなら QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数 は特に必須です。
 詳細なら 睡眠時間・効率・負債・潜時・体内時計・入眠・起床 を必須です。
-ステージなら 覚醒・レム・浅い・深い（時間と%）と SpO₂ を必須です。
-バイタルなら 安静時心拍・HRV・呼吸・皮膚温・ストレス を必須です。
+ステージなら hypnogram segments（REM/浅い/深い/覚醒）と SpO₂ を必須です。
+バイタルなら 折れ線 points + 平均/最小/最大 annotations を必須です。
 すでに読めたものも再掲し、見落としを追加してください。
 推測は禁止。見える値のみ。`;
+}
+
+function graphRetryPrompt(): string {
+  return `この画像には睡眠グラフ（折れ線・hypnogram・タイムライン）が含まれています。
+visibleReadings に加え、graphReadings を必ず返してください。
+
+- 睡眠ステージ → panel: "stages", segments に awake/rem/light/deep の帯
+- ストレス → panel: "stress", points に夜間推移（8点以上）
+- 体内時計 → panel: "circadian", points に位相曲線
+- 呼吸 → panel: "respiration", points に呼吸速度/SpO₂（series で区別）
+- 安静時心拍 → panel: "rhr", points + annotations（平均/最小/最大）
+- HRV → panel: "hrv", points + annotations
+- 皮膚温度 → panel: "skin-temp", points
+
+目盛りに沿った x（時刻）と y（数値）を読み取り、推測で補完しない。`;
+}
+
+function looksLikeGraphScreen(readings: VisibleReading[]): boolean {
+  const joined = readings
+    .map((r) => r.label)
+    .join("|")
+    .toLowerCase();
+  return (
+    /睡眠ステージ|レム睡眠|浅い睡眠|深い睡眠|ストレス|体内時計|呼吸|心拍変動|hrv|皮膚温|hypnogram|ステージ/.test(
+      joined,
+    ) ||
+    readings.some((r) =>
+      /平均|最小|最大|avg|min|max/.test(r.label.toLowerCase()),
+    )
+  );
 }
 
 async function mapPool<T, R>(
@@ -267,7 +318,7 @@ export async function POST(request: Request) {
     const runVisionOnImage = async (
       imageUrl: string,
       userText: string,
-    ): Promise<VisibleReading[]> => {
+    ): Promise<{ readings: VisibleReading[]; graphReadings: ReturnType<typeof normalizeGraphReadings> }> => {
       const response = await client.responses.create({
         model: "gpt-4o",
         instructions: SOXAI_EXTRACT_INSTRUCTIONS,
@@ -300,15 +351,17 @@ export async function POST(request: Request) {
       }
 
       const parsed = parseExtractJson(outputText);
-      return normalizeVisibleReadings(
-        parsed &&
-          typeof parsed === "object" &&
-          "visibleReadings" in parsed
-          ? (parsed as { visibleReadings: unknown }).visibleReadings
-          : Array.isArray(parsed)
-            ? parsed
-            : [],
+      const record =
+        parsed && typeof parsed === "object"
+          ? (parsed as { visibleReadings?: unknown; graphReadings?: unknown })
+          : {};
+
+      const readings = normalizeVisibleReadings(
+        "visibleReadings" in record ? record.visibleReadings : Array.isArray(parsed) ? parsed : [],
       );
+      const graphReadings = normalizeGraphReadings(record.graphReadings);
+
+      return { readings, graphReadings };
     };
 
     const ocrOneImage = async (
@@ -317,6 +370,7 @@ export async function POST(request: Request) {
     ): Promise<{
       imageIndex: number;
       readings: VisibleReading[];
+      graphReadings: ReturnType<typeof normalizeGraphReadings>;
       metrics: ReturnType<
         typeof mapVisibleReadingsToMetricsDetailed
       >["metrics"];
@@ -326,16 +380,21 @@ export async function POST(request: Request) {
       error?: string;
     }> => {
       let readings: VisibleReading[] = [];
+      let graphReadings: ReturnType<typeof normalizeGraphReadings> = [];
       try {
-        readings = await runVisionOnImage(
+        const first = await runVisionOnImage(
           imageUrl,
           singleImagePrompt(imageIndex, images.length),
         );
+        readings = first.readings;
+        graphReadings = first.graphReadings.map((g) => ({
+          ...g,
+          sourceImageIndex: imageIndex,
+        }));
 
         const mappedOnce = mapVisibleReadingsToMetricsDetailed(readings);
         const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
 
-        // ホームでも通常4件以上。読み取り不足 or マッピング不能なら再スキャン
         const needsRetry = readings.length < 4 || mappedKeyCount === 0;
         if (needsRetry) {
           console.warn("[api/extract] sparse readings on image, retrying", {
@@ -349,18 +408,52 @@ export async function POST(request: Request) {
               sparseRetryPrompt(readings.length),
             );
             if (
-              retry.length > readings.length ||
+              retry.readings.length > readings.length ||
               collectedMetricKeys(
-                mapVisibleReadingsToMetricsDetailed(retry).metrics,
+                mapVisibleReadingsToMetricsDetailed(retry.readings).metrics,
               ).length > mappedKeyCount
             ) {
-              readings = retry;
+              readings = retry.readings;
+            }
+            if (retry.graphReadings.length > graphReadings.length) {
+              graphReadings = retry.graphReadings.map((g) => ({
+                ...g,
+                sourceImageIndex: imageIndex,
+              }));
             }
           } catch (retryError) {
             console.warn(
               "[api/extract] per-image retry failed",
               { imageIndex },
               retryError,
+            );
+          }
+        }
+
+        // グラフ画面なのに graphReadings が空 → グラフ専用再スキャン
+        if (
+          graphReadings.length === 0 &&
+          looksLikeGraphScreen(readings)
+        ) {
+          try {
+            const graphRetry = await runVisionOnImage(
+              imageUrl,
+              graphRetryPrompt(),
+            );
+            if (graphRetry.graphReadings.length > 0) {
+              graphReadings = graphRetry.graphReadings.map((g) => ({
+                ...g,
+                sourceImageIndex: imageIndex,
+              }));
+            }
+            if (graphRetry.readings.length > readings.length) {
+              readings = graphRetry.readings;
+            }
+          } catch (graphError) {
+            console.warn(
+              "[api/extract] graph retry failed",
+              { imageIndex },
+              graphError,
             );
           }
         }
@@ -375,6 +468,7 @@ export async function POST(request: Request) {
         return {
           imageIndex,
           readings: [],
+          graphReadings: [],
           metrics: empty.metrics,
           provenance: empty.provenance,
           error: message,
@@ -385,6 +479,8 @@ export async function POST(request: Request) {
       console.info("[api/extract] per-image OCR complete", {
         imageIndex,
         visibleCount: readings.length,
+        graphPanelCount: graphReadings.length,
+        graphPanels: graphReadings.map((g) => g.id),
         labels: readings.map((r) => r.label),
         collected: collectedMetricKeys(mapped.metrics),
         provenance: mapped.provenance,
@@ -393,6 +489,7 @@ export async function POST(request: Request) {
       return {
         imageIndex,
         readings,
+        graphReadings,
         metrics: mapped.metrics,
         provenance: mapped.provenance,
       };
@@ -414,8 +511,16 @@ export async function POST(request: Request) {
       provenance: item.provenance,
     }));
 
-    const { metrics, conflicts } = mergeImageExtractResults(extractResults);
+    const { metrics: mergedRaw, conflicts } = mergeImageExtractResults(extractResults);
+    const graphBundle = mergeGraphBundles(
+      perImage.map((item) => ({
+        imageIndex: item.imageIndex,
+        panels: item.graphReadings,
+      })),
+    );
+    const metrics = enrichMetricsFromGraphs(mergedRaw, graphBundle);
     const keys = collectedMetricKeys(metrics);
+    const graphPanels = graphPanelCount(graphBundle);
 
     console.info("[api/extract] merge complete", {
       imageCount: images.length,
@@ -423,11 +528,13 @@ export async function POST(request: Request) {
       perImageCounts: perImage.map((item) => ({
         imageIndex: item.imageIndex,
         readings: item.readings.length,
+        graphPanels: item.graphReadings.map((g) => g.id),
         collected: collectedMetricKeys(item.metrics).length,
         error: item.error ?? null,
       })),
       collected: keys.length,
       keys,
+      graphPanels,
       visibleReadingCount: allReadings.length,
       conflicts: conflicts.length,
       mappedSample: {
@@ -464,14 +571,17 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       metrics,
+      graphs: graphBundle,
       visibleReadings: allReadings,
       conflicts,
       collectedCount: keys.length,
+      graphPanelCount: graphPanels,
       visibleCount: allReadings.length,
       imageCount: images.length,
       perImage: perImage.map((item) => ({
         imageIndex: item.imageIndex,
         visibleCount: item.readings.length,
+        graphPanels: item.graphReadings.map((g) => g.id),
         collectedCount: collectedMetricKeys(item.metrics).length,
         error: item.error ?? null,
       })),

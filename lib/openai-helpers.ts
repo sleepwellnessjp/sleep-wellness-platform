@@ -45,6 +45,55 @@ export function normalizeImageDataUrl(value: string): string {
   return value.replace(/^data:image\/jpg;base64,/i, "data:image/jpeg;base64,");
 }
 
+/** グラフ OCR スキーマ（extract 専用） */
+export const graphReadingItemSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["panel", "points", "segments", "annotations"],
+  properties: {
+    panel: { type: "string" },
+    points: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["x", "y", "series"],
+        properties: {
+          x: { type: "string" },
+          y: { type: "number" },
+          series: { type: "string" },
+        },
+      },
+    },
+    segments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["stage", "startTime", "endTime", "ratio"],
+        properties: {
+          stage: { type: "string" },
+          startTime: { type: "string" },
+          endTime: { type: "string" },
+          ratio: { type: "number" },
+        },
+      },
+    },
+    annotations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "value"],
+        properties: {
+          label: { type: "string" },
+          value: { type: "string" },
+        },
+      },
+    },
+  },
+} as const;
+
 /** metrics JSON schema（抽出・分析で共通） */
 export const metricsJsonSchema = {
   type: "object",
@@ -164,4 +213,50 @@ SOXAIホーム画面で特に見落とさない項目
 4. このリクエストは1枚の画像のみ。その1枚に見えるものだけ返す。
 5. 円グラフ・バー・カード・アイコン横の数値も読む。%と時間の両方があれば両方返す。
 6. 同じラベルが複数ある場合も、見える値はすべて返す（後段で統合する）。
-7. 出力は指定 JSON スキーマのみ。説明文は不要。`;
+7. 出力は指定 JSON スキーマのみ。説明文は不要。
+
+==============================
+グラフ読み取り（graphReadings — 必須で試みる）
+==============================
+画面に折れ線・棒・hypnogram・タイムライン・ゲージ付きグラフがあれば、
+数値ラベル（visibleReadings）に加え graphReadings も返してください。
+
+panel 値（いずれか1つ）:
+- stages … 睡眠ステージ hypnogram（REM/浅い/深い/覚醒の帯）
+- stage-detail … 睡眠ステージ詳細（効率・覚醒の推移）
+- stress … ストレスモニター
+- circadian … 体内時計
+- respiration … 睡眠時呼吸（呼吸速度・SpO₂）
+- rhr … 安静時心拍数
+- hrv … 心拍変動
+- skin-temp … 皮膚温度
+
+graphReadings の各要素:
+- points: X軸の目盛り（時刻 HH:MM）と Y軸数値。折れ線は主要な折れ点を8〜24点。
+  series に系列名（REM/浅い/深い/覚醒/平均 等）を入れる。
+- segments: hypnogram 用。stage は awake|rem|light|deep。
+  startTime/endTime は画面の時刻。ratio はその区間の幅（0–100、合計100前後）。
+- annotations: グラフ上の「平均」「最小」「最大」「現在」等の注釈。
+
+グラフ読み取りルール:
+1. 目盛り・凡例・軸ラベルを手がかりに、見える点だけ返す。推測で補完しない。
+2. グラフが無い画面では graphReadings は空配列。
+3. 同じ画面に数値カードとグラフが両方あれば、visibleReadings と graphReadings の両方に入れる。
+4. 睡眠ステージ画面では segments を最優先。折れ線があれば points も返す。
+5. 安静時心拍・HRV・皮膚温・ストレスは夜間推移の折れ線を points に。
+6. 呼吸画面では呼吸速度と SpO₂ を series で区別して points に。
+
+出力 JSON 形式:
+{
+  "visibleReadings": [ ... ],
+  "graphReadings": [
+    {
+      "panel": "stages",
+      "points": [],
+      "segments": [
+        { "stage": "light", "startTime": "23:45", "endTime": "00:30", "ratio": 15 }
+      ],
+      "annotations": []
+    }
+  ]
+}`;

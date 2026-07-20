@@ -114,6 +114,13 @@ const MAPPING_RULES: MappingRule[] = [
         l,
       ) && !/変動|hrv/.test(l),
   },
+  {
+    key: "hrv",
+    test: (l) =>
+      (/^hrv$|心拍変動|rmssd|sdnn|heart rate variability/.test(l) &&
+        !/最小|最大|min|max/.test(l)) ||
+      (/心拍変動|hrv/.test(l) && /平均|avg|mean/.test(l)),
+  },
   // —— ステージ詳細（睡眠時間より先に判定）——
   {
     key: "awakeningRate",
@@ -213,10 +220,6 @@ const MAPPING_RULES: MappingRule[] = [
     key: "spo2",
     test: (l) =>
       /spo2|spo₂|血中酸素|酸素飽和|酸素レベル|平均酸素|平均spo/.test(l),
-  },
-  {
-    key: "hrv",
-    test: (l) => /^hrv$|心拍変動|rmssd|sdnn|heart rate variability/.test(l),
   },
   {
     key: "skinTemperature",
