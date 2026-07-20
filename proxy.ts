@@ -27,6 +27,10 @@ function isProtectedPath(pathname: string): boolean {
   return false;
 }
 
+function needsSessionRefresh(pathname: string): boolean {
+  return isProtectedPath(pathname) || pathname.startsWith("/api/platform");
+}
+
 export async function proxy(request: NextRequest) {
   if (!isSupabaseConfigured()) {
     return NextResponse.next();
@@ -34,17 +38,7 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  if (
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/auth/") ||
-    pathname.startsWith("/api/") ||
-    pathname.startsWith("/_next/") ||
-    pathname === "/"
-  ) {
-    return NextResponse.next();
-  }
-
-  if (!isProtectedPath(pathname)) {
+  if (!needsSessionRefresh(pathname)) {
     return NextResponse.next();
   }
 
@@ -77,7 +71,8 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  // ページ保護のみリダイレクト。API は各 route が 401 を返す
+  if (!user && isProtectedPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.searchParams.set("redirect", pathname);
@@ -99,5 +94,6 @@ export const config = {
     "/analysis/loading",
     "/analysis/result",
     "/analysis/result/:path*",
+    "/api/platform/:path*",
   ],
 };

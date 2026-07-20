@@ -544,6 +544,10 @@ export type Database = {
         Args: { p_user_id?: string | null };
         Returns: Database["public"]["Tables"]["monthly_credit"]["Row"];
       };
+      ensure_instructor_membership: {
+        Args: { p_certification_type?: string };
+        Returns: Database["public"]["Tables"]["membership"]["Row"];
+      };
       get_credit_balance: {
         Args: { p_user_id?: string | null };
         Returns: Json;

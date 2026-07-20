@@ -24,6 +24,12 @@ on conflict (id) do nothing;
 -- ============================================================
 -- profiles role constraint
 -- ============================================================
+-- 既存データが check 外だと ALTER が失敗してスクリプトが途中停止する
+update public.profiles
+set role = 'instructor'
+where role is null
+   or role not in ('super_admin', 'admin', 'instructor', 'client');
+
 alter table public.profiles
   drop constraint if exists profiles_role_check;
 
@@ -154,7 +160,8 @@ create index if not exists notifications_user_idx
   on public.notifications (user_id, created_at desc);
 
 -- ============================================================
--- Role helpers (SECURITY DEFINER)
+-- Role helpers (SECURITY DEFINER + row_security off)
+-- profiles RLS から呼ばれても profiles 再帰に入らない
 -- ============================================================
 create or replace function public.is_super_admin()
 returns boolean
@@ -162,6 +169,7 @@ language sql
 stable
 security definer
 set search_path = public
+set row_security = off
 as $$
   select coalesce(
     (select role = 'super_admin' from public.profiles where id = auth.uid()),
@@ -175,6 +183,7 @@ language sql
 stable
 security definer
 set search_path = public
+set row_security = off
 as $$
   select coalesce(
     (select role in ('super_admin', 'admin') from public.profiles where id = auth.uid()),
@@ -190,43 +199,52 @@ returns public.monthly_credit
 language plpgsql
 security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   v_user_id uuid := coalesce(p_user_id, auth.uid());
   v_ym text := to_char(timezone('Asia/Tokyo', now()), 'YYYY-MM');
   v_row public.monthly_credit;
+  v_new boolean := false;
 begin
   if v_user_id is null then
     raise exception 'unauthenticated';
   end if;
 
-  if p_user_id is not null
-     and p_user_id <> auth.uid()
+  -- auth.uid() が null の signup/service 経路では管理者チェックしない
+  if auth.uid() is not null
+     and v_user_id <> auth.uid()
      and not public.is_admin_or_above() then
     raise exception 'forbidden';
   end if;
 
+  -- 同一ユーザー・月の二重付与を直列化（トリガー連鎖ではなく advisory lock）
+  perform pg_advisory_xact_lock(
+    hashtext('swij_monthly_credit'),
+    hashtext(v_user_id::text || ':' || v_ym)
+  );
+
   insert into public.monthly_credit (user_id, year_month, granted_amount, used_amount)
   values (v_user_id, v_ym, 30, 0)
-  on conflict (user_id, year_month) do nothing;
+  on conflict (user_id, year_month) do nothing
+  returning * into v_row;
 
-  select * into v_row
-  from public.monthly_credit
-  where user_id = v_user_id and year_month = v_ym;
+  if found then
+    v_new := true;
+  else
+    select * into strict v_row
+    from public.monthly_credit
+    where user_id = v_user_id and year_month = v_ym;
+  end if;
 
-  if not exists (
-    select 1
-    from public.credit_transactions
-    where user_id = v_user_id
-      and type = 'monthly_grant'
-      and description like v_ym || '%'
-  ) then
+  -- 新規行のときだけ月次付与トランザクションを書く（再実行・再帰防止）
+  if v_new then
     insert into public.credit_transactions (
       user_id, type, amount, balance_after, reference_id, description, created_by
     ) values (
       v_user_id,
       'monthly_grant',
-      30,
+      v_row.granted_amount,
       greatest(0, v_row.granted_amount - v_row.used_amount),
       v_row.id,
       v_ym || ' 月次付与',
@@ -243,6 +261,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   v_user_id uuid := coalesce(p_user_id, auth.uid());
@@ -252,8 +271,8 @@ begin
     return jsonb_build_object('ok', false, 'remaining', 0, 'message', 'ログインが必要です。');
   end if;
 
-  if p_user_id is not null
-     and p_user_id <> auth.uid()
+  if auth.uid() is not null
+     and v_user_id <> auth.uid()
      and not public.is_admin_or_above() then
     return jsonb_build_object('ok', false, 'remaining', 0, 'message', '権限がありません。');
   end if;
@@ -281,6 +300,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   v_user_id uuid := auth.uid();
@@ -389,6 +409,7 @@ grant execute on function public.consume_analysis_credit(text, date, numeric, uu
 
 -- ============================================================
 -- Row Level Security
+-- 書き込みは SECURITY DEFINER RPC（row_security=off）経由のみ
 -- ============================================================
 alter table public.roles enable row level security;
 alter table public.membership enable row level security;
@@ -412,35 +433,50 @@ create policy "membership_select_own_or_admin"
   using (auth.uid() = user_id or public.is_admin_or_above());
 
 drop policy if exists "membership_manage_admin" on public.membership;
-create policy "membership_manage_admin"
-  on public.membership for all
+drop policy if exists "membership_insert_admin" on public.membership;
+drop policy if exists "membership_update_admin" on public.membership;
+drop policy if exists "membership_delete_admin" on public.membership;
+
+create policy "membership_insert_admin"
+  on public.membership for insert
+  with check (public.is_super_admin());
+
+create policy "membership_update_admin"
+  on public.membership for update
   using (public.is_super_admin())
   with check (public.is_super_admin());
 
--- monthly_credit: select own; mutations via SECURITY DEFINER RPCs / super_admin
+create policy "membership_delete_admin"
+  on public.membership for delete
+  using (public.is_super_admin());
+
+-- monthly_credit: 本人/管理者は参照のみ。INSERT/UPDATE は RPC（row_security=off）のみ
 drop policy if exists "monthly_credit_select_own_or_admin" on public.monthly_credit;
 create policy "monthly_credit_select_own_or_admin"
   on public.monthly_credit for select
   using (auth.uid() = user_id or public.is_admin_or_above());
 
 drop policy if exists "monthly_credit_manage_admin" on public.monthly_credit;
-create policy "monthly_credit_manage_admin"
-  on public.monthly_credit for all
+drop policy if exists "monthly_credit_insert_own" on public.monthly_credit;
+drop policy if exists "monthly_credit_update_own" on public.monthly_credit;
+drop policy if exists "monthly_credit_insert_admin" on public.monthly_credit;
+drop policy if exists "monthly_credit_update_admin" on public.monthly_credit;
+drop policy if exists "monthly_credit_delete_admin" on public.monthly_credit;
+
+create policy "monthly_credit_insert_admin"
+  on public.monthly_credit for insert
+  with check (public.is_super_admin());
+
+create policy "monthly_credit_update_admin"
+  on public.monthly_credit for update
   using (public.is_super_admin())
   with check (public.is_super_admin());
 
-drop policy if exists "monthly_credit_insert_own" on public.monthly_credit;
-create policy "monthly_credit_insert_own"
-  on public.monthly_credit for insert
-  with check (auth.uid() = user_id);
+create policy "monthly_credit_delete_admin"
+  on public.monthly_credit for delete
+  using (public.is_super_admin());
 
-drop policy if exists "monthly_credit_update_own" on public.monthly_credit;
-create policy "monthly_credit_update_own"
-  on public.monthly_credit for update
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
--- credit_transactions
+-- credit_transactions: 本人/管理者は参照のみ。INSERT は RPC / super_admin
 drop policy if exists "credit_tx_select_own_or_admin" on public.credit_transactions;
 create policy "credit_tx_select_own_or_admin"
   on public.credit_transactions for select
@@ -448,27 +484,42 @@ create policy "credit_tx_select_own_or_admin"
 
 drop policy if exists "credit_tx_insert_own_or_admin" on public.credit_transactions;
 drop policy if exists "credit_tx_insert_admin" on public.credit_transactions;
-create policy "credit_tx_insert_own_or_admin"
+create policy "credit_tx_insert_admin"
   on public.credit_transactions for insert
-  with check (public.is_super_admin() or auth.uid() = user_id);
+  with check (public.is_super_admin());
 
--- analysis_history
+-- analysis_history: 参照は本人/管理者。INSERT は RPC（row_security=off）
 drop policy if exists "analysis_history_select_own_or_admin" on public.analysis_history;
 create policy "analysis_history_select_own_or_admin"
   on public.analysis_history for select
   using (auth.uid() = user_id or public.is_admin_or_above());
 
 drop policy if exists "analysis_history_insert_own" on public.analysis_history;
-create policy "analysis_history_insert_own"
-  on public.analysis_history for insert
-  with check (auth.uid() = user_id);
+-- 直接 INSERT は許可しない（consume_analysis_credit 経由）
 
--- admin_logs
+-- admin_logs（FOR ALL を避け、SELECT/INSERT/UPDATE/DELETE を分離）
 drop policy if exists "admin_logs_super_admin" on public.admin_logs;
-create policy "admin_logs_super_admin"
-  on public.admin_logs for all
+drop policy if exists "admin_logs_select_super_admin" on public.admin_logs;
+drop policy if exists "admin_logs_insert_super_admin" on public.admin_logs;
+drop policy if exists "admin_logs_update_super_admin" on public.admin_logs;
+drop policy if exists "admin_logs_delete_super_admin" on public.admin_logs;
+
+create policy "admin_logs_select_super_admin"
+  on public.admin_logs for select
+  using (public.is_super_admin());
+
+create policy "admin_logs_insert_super_admin"
+  on public.admin_logs for insert
+  with check (public.is_super_admin());
+
+create policy "admin_logs_update_super_admin"
+  on public.admin_logs for update
   using (public.is_super_admin())
   with check (public.is_super_admin());
+
+create policy "admin_logs_delete_super_admin"
+  on public.admin_logs for delete
+  using (public.is_super_admin());
 
 -- notifications
 drop policy if exists "notifications_select_own" on public.notifications;
@@ -487,7 +538,8 @@ create policy "notifications_insert_admin"
   on public.notifications for insert
   with check (public.is_admin_or_above());
 
--- profiles: admin can read all
+-- profiles: admin 全件参照
+-- is_admin_or_above() は row_security=off のため profiles 再帰なし
 drop policy if exists "profiles_select_admin" on public.profiles;
 create policy "profiles_select_admin"
   on public.profiles for select
@@ -495,17 +547,21 @@ create policy "profiles_select_admin"
 
 -- ============================================================
 -- Signup: profile + membership + monthly credit (instructor)
+-- auth.users INSERT → 本関数のみ。profiles / membership / credit への
+-- AFTER/AFTER trigger は置かない（相互呼び出し・再帰防止）
 -- ============================================================
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   assigned_role text;
+  v_cert text;
   v_ym text := to_char(timezone('Asia/Tokyo', now()), 'YYYY-MM');
-  v_credit_id uuid;
+  v_credit public.monthly_credit;
 begin
   assigned_role := coalesce(new.raw_user_meta_data->>'role', 'instructor');
 
@@ -523,6 +579,15 @@ begin
   on conflict (id) do nothing;
 
   if assigned_role = 'instructor' then
+    v_cert := coalesce(new.raw_user_meta_data->>'certification_type', 'navigator');
+    if v_cert not in (
+      'navigator',
+      'melatonin_yoga_instructor',
+      'sleep_wellness_producer'
+    ) then
+      v_cert := 'navigator';
+    end if;
+
     insert into public.membership (
       user_id,
       certification_type,
@@ -532,23 +597,30 @@ begin
     )
     values (
       new.id,
-      coalesce(new.raw_user_meta_data->>'certification_type', 'navigator'),
+      v_cert,
       current_date,
       (current_date + interval '1 year')::date,
       'active'
     )
     on conflict (user_id, certification_type) do nothing;
 
+    -- ensure_monthly_credit は呼ばない（auth.uid() 未設定の signup 経路を単純化）
     insert into public.monthly_credit (user_id, year_month, granted_amount, used_amount)
     values (new.id, v_ym, 30, 0)
     on conflict (user_id, year_month) do nothing
-    returning id into v_credit_id;
+    returning * into v_credit;
 
-    if v_credit_id is not null then
+    if found then
       insert into public.credit_transactions (
         user_id, type, amount, balance_after, reference_id, description, created_by
       ) values (
-        new.id, 'monthly_grant', 30, 30, v_credit_id, v_ym || ' 月次付与', null
+        new.id,
+        'monthly_grant',
+        v_credit.granted_amount,
+        greatest(0, v_credit.granted_amount - v_credit.used_amount),
+        v_credit.id,
+        v_ym || ' 月次付与',
+        null
       );
     end if;
   end if;
