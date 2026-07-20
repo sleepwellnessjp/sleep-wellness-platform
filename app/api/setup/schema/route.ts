@@ -6,14 +6,19 @@ import { isMissingTableError, readSupabaseError } from "@/lib/supabase/errors";
 
 export const runtime = "nodejs";
 
-/** schema.sql の内容を返す（コピー用）＋ clients テーブル存在確認 */
+/** schema.sql / platform-v1.sql の内容を返す（コピー用）＋テーブル存在確認 */
 export async function GET() {
   try {
     const schemaPath = path.join(process.cwd(), "supabase", "schema.sql");
-    const sql = await readFile(schemaPath, "utf8");
+    const platformPath = path.join(process.cwd(), "supabase", "platform-v1.sql");
+    const [sql, platformSql] = await Promise.all([
+      readFile(schemaPath, "utf8"),
+      readFile(platformPath, "utf8"),
+    ]);
 
     const supabase = await createServerSupabaseClient();
     let tableReady = false;
+    let platformReady = false;
     let probeError: string | null = null;
     let probeCode: string | null = null;
 
@@ -27,20 +32,29 @@ export async function GET() {
         probeCode = parsed.code || null;
         console.error("[api/setup/schema] clients probe:", error);
       }
+
+      const { error: platformError } = await supabase
+        .from("monthly_credit")
+        .select("id")
+        .limit(1);
+      platformReady = !platformError;
     }
 
     return NextResponse.json({
       tableReady,
+      platformReady,
       missingTable: probeError
         ? isMissingTableError({ code: probeCode, message: probeError })
         : !tableReady,
       probeError,
       probeCode,
       sql,
+      platformSql,
       instructions: [
         "Supabase Dashboard → SQL Editor → New query を開く",
-        "下記 sql をすべて貼り付けて Run する",
-        "完了後、このアプリで新規クライアント登録を再試行する",
+        "1) schema.sql を貼り付けて Run",
+        "2) platform-v1.sql を貼り付けて Run（クレジット・会員・履歴）",
+        "完了後、このアプリで新規クライアント登録 / 分析を再試行する",
       ],
     });
   } catch (error) {

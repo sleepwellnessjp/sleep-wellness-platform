@@ -18,6 +18,14 @@ export type CreditTransactionType =
   | "admin_grant"
   | "admin_adjustment";
 
+export type RoleRecord = {
+  id: UserRole;
+  label: string;
+  description: string;
+  permissions: Record<string, unknown>;
+  createdAt: string;
+};
+
 export type PlatformProfile = {
   id: string;
   email: string | null;

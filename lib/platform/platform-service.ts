@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import type { Json } from "@/lib/supabase/database.types";
 import {
   ANALYSIS_CREDIT_COST,
   currentYearMonth,
@@ -92,6 +93,13 @@ export async function ensureMonthlyCredit(userId: string) {
   const supabase = await createServerSupabaseClient();
   if (!supabase) return null;
 
+  const { data, error } = await supabase.rpc("ensure_monthly_credit", {
+    p_user_id: userId,
+  });
+
+  if (!error && data) return data;
+
+  // RPC 未適用環境向けフォールバック
   const yearMonth = currentYearMonth();
   const { data: existing } = await supabase
     .from("monthly_credit")
@@ -102,7 +110,7 @@ export async function ensureMonthlyCredit(userId: string) {
 
   if (existing) return existing;
 
-  const { data: created, error } = await supabase
+  const { data: created, error: insertError } = await supabase
     .from("monthly_credit")
     .insert({
       user_id: userId,
@@ -113,7 +121,7 @@ export async function ensureMonthlyCredit(userId: string) {
     .select("*")
     .single();
 
-  if (error) {
+  if (insertError) {
     const { data: retry } = await supabase
       .from("monthly_credit")
       .select("*")
@@ -302,6 +310,73 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
   };
 }
 
+export async function getCreditBalance(userId?: string): Promise<{
+  ok: boolean;
+  remaining: number;
+  granted: number;
+  used: number;
+  yearMonth: string | null;
+  message?: string;
+}> {
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) {
+    return {
+      ok: false,
+      remaining: 0,
+      granted: 0,
+      used: 0,
+      yearMonth: null,
+      message: "データベースに接続できません。",
+    };
+  }
+
+  const { data, error } = await supabase.rpc("get_credit_balance", {
+    p_user_id: userId ?? null,
+  });
+
+  if (!error && data && typeof data === "object") {
+    const row = data as {
+      ok?: boolean;
+      remaining?: number;
+      granted?: number;
+      used?: number;
+      year_month?: string;
+      message?: string;
+    };
+    return {
+      ok: Boolean(row.ok),
+      remaining: Number(row.remaining ?? 0),
+      granted: Number(row.granted ?? 0),
+      used: Number(row.used ?? 0),
+      yearMonth: typeof row.year_month === "string" ? row.year_month : null,
+      message: typeof row.message === "string" ? row.message : undefined,
+    };
+  }
+
+  const targetId = userId ?? (await getCurrentUserId());
+  if (!targetId) {
+    return {
+      ok: false,
+      remaining: 0,
+      granted: 0,
+      used: 0,
+      yearMonth: null,
+      message: "ログインが必要です。",
+    };
+  }
+
+  const monthly = await ensureMonthlyCredit(targetId);
+  const granted = Number(monthly?.granted_amount ?? 0);
+  const used = Number(monthly?.used_amount ?? 0);
+  return {
+    ok: true,
+    remaining: remainingCredits(granted, used),
+    granted,
+    used,
+    yearMonth: monthly ? String(monthly.year_month) : currentYearMonth(),
+  };
+}
+
 export async function consumeAnalysisCredit(input: {
   clientName: string;
   measurementDate?: string;
@@ -328,6 +403,31 @@ export async function consumeAnalysisCredit(input: {
     return { ok: false, message: "データベースに接続できません。" };
   }
 
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "consume_analysis_credit",
+    {
+      p_client_name: input.clientName,
+      p_measurement_date: input.measurementDate ?? null,
+      p_sleep_score: input.sleepScore ?? null,
+      p_client_id: input.clientId ?? null,
+      p_analysis_id: input.analysisId ?? null,
+    },
+  );
+
+  if (!rpcError && rpcData && typeof rpcData === "object") {
+    const result = rpcData as { ok?: boolean; message?: string };
+    return {
+      ok: Boolean(result.ok),
+      message:
+        typeof result.message === "string"
+          ? result.message
+          : result.ok
+            ? "クレジットを消費しました"
+            : "クレジット消費に失敗しました。",
+    };
+  }
+
+  // RPC 未適用環境向けフォールバック
   const monthly = await ensureMonthlyCredit(profile.id);
   if (!monthly) {
     return { ok: false, message: "クレジット情報を取得できません。" };
@@ -493,7 +593,12 @@ export async function updateMembership(input: {
     .eq("user_id", input.targetUserId)
     .maybeSingle();
 
-  const patch: Record<string, unknown> = {
+  const patch: {
+    updated_at: string;
+    status?: MembershipStatus;
+    expires_at?: string | null;
+    admin_memo?: string;
+  } = {
     updated_at: new Date().toISOString(),
   };
   if (input.status) patch.status = input.status;
@@ -518,7 +623,7 @@ export async function updateMembership(input: {
     actor_id: input.actorId,
     target_user_id: input.targetUserId,
     action: "membership_update",
-    payload: patch,
+    payload: patch as Json,
   });
 }
 

@@ -40,18 +40,35 @@ OPENAI_API_KEY=sk-xxxxxxxx
 
 ---
 
-## 4. データベース（schema.sql）を実行する
+## 4. データベース（SQL）を実行する
 
 1. Supabase ダッシュボード → **SQL Editor** → **New query**
-2. リポジトリの `supabase/schema.sql` の内容をすべて貼り付け
-3. **Run** をクリック
+2. 次を **この順** で実行します。
 
-以下が作成されます。
+### 4-1. ベーススキーマ
 
-- `profiles` … インストラクター情報
+`supabase/schema.sql`（または `supabase/migrations/20260716100000_base_schema.sql`）
+
+作成されるもの:
+
+- `profiles` … Auth ユーザー連携プロフィール
 - `clients` … クライアント
 - `analyses` … 分析結果
-- Row Level Security（RLS）… 自分のデータのみ閲覧・編集可能
+- `programs` … 改善プログラム
+- ベース RLS
+
+### 4-2. Platform V1.0（クレジット・会員・履歴）
+
+`supabase/platform-v1.sql`（または `supabase/migrations/20260720100000_platform_v1.sql`）
+
+作成されるもの:
+
+- `roles` / `membership` / `monthly_credit` / `credit_transactions`
+- `analysis_history` / `admin_logs` / `notifications`
+- 月次 30 クレジット・分析 1 消費の RPC（`ensure_monthly_credit` / `get_credit_balance` / `consume_analysis_credit`）
+- Platform RLS（本人＋管理者）
+
+> Auth（メール＋パスワード）は既存のまま利用します。サインアップ時に `profiles`・認定・当月クレジットが自動作成されます。
 
 ---
 
