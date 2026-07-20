@@ -1,9 +1,6 @@
--- Sleep Wellness Platform — Supabase schema
--- Run in Supabase SQL Editor (Dashboard → SQL → New query)
+-- Sleep Wellness Platform — Base schema (clients / analyses / programs)
+-- Migration: 20260716100000_base_schema
 
--- ============================================================
--- Extensions
--- ============================================================
 create extension if not exists "pgcrypto";
 
 -- ============================================================
@@ -111,7 +108,7 @@ before update on public.programs
 for each row execute function public.set_updated_at();
 
 -- ============================================================
--- Auto-create profile on signup
+-- Auto-create profile on signup (extended in platform_v1)
 -- ============================================================
 create or replace function public.handle_new_user()
 returns trigger
@@ -138,14 +135,13 @@ after insert on auth.users
 for each row execute function public.handle_new_user();
 
 -- ============================================================
--- Row Level Security
+-- Row Level Security (base)
 -- ============================================================
 alter table public.profiles enable row level security;
 alter table public.clients enable row level security;
 alter table public.analyses enable row level security;
 alter table public.programs enable row level security;
 
--- profiles: own row only
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own"
   on public.profiles for select
@@ -162,7 +158,6 @@ create policy "profiles_insert_own"
   on public.profiles for insert
   with check (auth.uid() = id);
 
--- clients: owner only
 drop policy if exists "clients_select_own" on public.clients;
 create policy "clients_select_own"
   on public.clients for select
@@ -184,7 +179,6 @@ create policy "clients_delete_own"
   on public.clients for delete
   using (auth.uid() = owner_id);
 
--- analyses: owner only
 drop policy if exists "analyses_select_own" on public.analyses;
 create policy "analyses_select_own"
   on public.analyses for select
@@ -206,7 +200,6 @@ create policy "analyses_delete_own"
   on public.analyses for delete
   using (auth.uid() = owner_id);
 
--- programs: owner only
 drop policy if exists "programs_select_own" on public.programs;
 create policy "programs_select_own"
   on public.programs for select
@@ -229,8 +222,8 @@ create policy "programs_delete_own"
   using (auth.uid() = owner_id);
 
 -- ============================================================
--- Platform V1.0 (see supabase/platform-v1.sql for full migration)
+-- Platform V1.0
 -- ============================================================
--- Run supabase/platform-v1.sql after this file for:
--- roles, membership, monthly_credit, credit_transactions,
--- analysis_history, admin_logs, notifications
+-- After this file, run supabase/platform-v1.sql (or migration 20260720100000_platform_v1.sql)
+-- for: roles, membership, monthly_credit, credit_transactions,
+-- analysis_history, admin_logs, notifications, credit RPCs
