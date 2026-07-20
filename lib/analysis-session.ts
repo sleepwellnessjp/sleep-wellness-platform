@@ -7,11 +7,17 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import {
+  emptyGraphBundle,
+  graphPanelCount,
+  type SoxaiGraphBundle,
+} from "@/lib/soxai-graphs";
+import {
   mergeMetricsFromVisibleReadings,
   normalizeVisibleReadings,
 } from "@/lib/soxai-reading-map";
 
 export type { AnalysisMetrics };
+export type { SoxaiGraphBundle };
 export { normalizeMetrics };
 
 type LifestyleData = {
@@ -72,6 +78,8 @@ export type AnalysisRequest = {
   images: string[];
   /** 確認画面で確定したメトリクス（画像優先＋不足分の手入力） */
   metrics?: AnalysisMetrics;
+  /** OCRで抽出したグラフデータ（Visual Report 用） */
+  graphs?: SoxaiGraphBundle;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -91,6 +99,8 @@ export type ExtractionDraft = {
   imageKeys: MetricFieldKey[];
   /** 複数画像間で値が食い違った項目 */
   conflicts?: MetricConflict[];
+  /** OCRで抽出したグラフ（Visual / PDF 共通） */
+  graphs: SoxaiGraphBundle;
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -120,6 +130,8 @@ export type AnalysisResult = {
   score: number;
   scoreBreakdown: ScoreBreakdown;
   metrics: AnalysisMetrics;
+  /** OCRグラフ（Medical / Visual / PDF 共通） */
+  graphs?: SoxaiGraphBundle;
   caution: string;
   disclaimer: string;
   clientId?: string;
@@ -137,6 +149,7 @@ export type AnalysisResult = {
 
 const RESULT_KEY = "swij-analysis-result";
 const IMAGES_KEY = "swij-analysis-images";
+const GRAPHS_KEY = "swij-analysis-graphs";
 const MAX_STORED_IMAGES = 10;
 
 let pendingRequest: AnalysisRequest | null = null;
@@ -274,6 +287,7 @@ export function normalizeAnalysisResult(
     score,
     scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
     metrics: normalizeMetrics(raw.metrics),
+    graphs: normalizeGraphBundle(raw.graphs ?? emptyGraphBundle()),
     caution: typeof raw.caution === "string" ? raw.caution.trim() : "",
     disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer.trim() : "",
     clientId: extras?.clientId ?? raw.clientId,
@@ -311,14 +325,29 @@ function storeImages(images: string[]) {
   }
 }
 
+function normalizeGraphBundle(raw: unknown): SoxaiGraphBundle {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return emptyGraphBundle();
+  }
+  return raw as SoxaiGraphBundle;
+}
+
+function storeGraphs(graphs: SoxaiGraphBundle) {
+  try {
+    sessionStorage.setItem(GRAPHS_KEY, JSON.stringify(graphs));
+  } catch {
+    sessionStorage.removeItem(GRAPHS_KEY);
+  }
+}
+
 export function setExtractionDraft(draft: ExtractionDraft) {
   const extractedMetrics = normalizeMetrics(draft.extractedMetrics);
   extractionDraft = {
     ...draft,
     extractedMetrics,
-    // OCRで取れたキーは正規化後の metrics から再計算（確認画面へ100%反映）
     imageKeys: collectedMetricKeys(extractedMetrics),
     conflicts: draft.conflicts ? [...draft.conflicts] : [],
+    graphs: normalizeGraphBundle(draft.graphs),
   };
 }
 
@@ -336,6 +365,7 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     metrics: request.metrics
       ? normalizeMetrics(request.metrics)
       : undefined,
+    graphs: normalizeGraphBundle(request.graphs),
   };
   inFlightAnalysis = null;
 }
@@ -401,6 +431,7 @@ export function formatExtractErrorMessage(err: unknown): string {
 export type ExtractSoxaiResult = {
   metrics: AnalysisMetrics;
   conflicts: MetricConflict[];
+  graphs: SoxaiGraphBundle;
 };
 
 export async function extractSoxaiMetrics(
@@ -537,15 +568,22 @@ export async function extractSoxaiMetricsDetailed(
       : undefined,
   );
 
+  const graphs = normalizeGraphBundle(
+    data && typeof data === "object" && "graphs" in data
+      ? (data as { graphs: unknown }).graphs
+      : emptyGraphBundle(),
+  );
+
   console.info("[extract] metrics received", {
     collected: collectedMetricKeys(normalized).length,
     keys: collectedMetricKeys(normalized),
     visibleReadingCount: visibleReadings.length,
     visibleLabels: visibleReadings.map((reading) => reading.label),
+    graphPanelCount: graphPanelCount(graphs),
     conflicts: conflicts.length,
   });
 
-  return { metrics: normalized, conflicts };
+  return { metrics: normalized, conflicts, graphs };
 }
 
 function normalizeExtractConflicts(raw: unknown): MetricConflict[] {
@@ -725,16 +763,23 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       measurementDate: payload.lifestyle.measurementDate,
     });
 
-    // OCR→確認で確定した confirmedMetrics を単一の数値根拠として強制採用
-    // （Medical / Visual が同じ metrics を参照するための最終ガード）
+    // OCR→確認で確定した confirmedMetrics / graphs を単一の数値根拠として強制採用
     if (payload.metrics) {
       result.metrics = normalizeMetrics(payload.metrics);
+    }
+    if (payload.graphs) {
+      result.graphs = normalizeGraphBundle(payload.graphs);
+    } else if (extractionDraft?.graphs) {
+      result.graphs = normalizeGraphBundle(extractionDraft.graphs);
+    } else {
+      result.graphs = emptyGraphBundle();
     }
 
     pendingRequest = null;
     clearExtractionDraft();
     sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
     storeImages(payload.images);
+    storeGraphs(result.graphs);
     return result;
   })();
 
@@ -755,6 +800,16 @@ export function loadAnalysisResult(): AnalysisResult | null {
     return normalizeAnalysisResult(parsed);
   } catch {
     return null;
+  }
+}
+
+export function loadAnalysisGraphs(): SoxaiGraphBundle {
+  const raw = sessionStorage.getItem(GRAPHS_KEY);
+  if (!raw) return emptyGraphBundle();
+  try {
+    return normalizeGraphBundle(JSON.parse(raw));
+  } catch {
+    return emptyGraphBundle();
   }
 }
 

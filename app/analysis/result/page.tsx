@@ -5,31 +5,21 @@ import Link from "next/link";
 import { Fragment, ReactNode, useSyncExternalStore } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
-  AnalysisMetrics,
+  buildVisualPanels,
+  MEDICAL_METRIC_ROWS,
+} from "@/components/SoxaiVisualCharts";
+import {
   AnalysisResult,
+  loadAnalysisGraphs,
   loadAnalysisImages,
   loadAnalysisResult,
 } from "@/lib/analysis-session";
+import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import { recordPdfDownload } from "@/lib/repositories/client-repository";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
-
-type VisualPanel = {
-  id: string;
-  title: string;
-  subtitle: string;
-  graph?: ReactNode;
-  values?: Array<{ label: string; value: string }>;
-};
-
-
-function displayValue(value: string | number | null | undefined): string {
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value === "string" && value.trim()) return value.trim();
-  return "—";
-}
 
 function takeItems(items: string[] | undefined, max: number): string[] {
   if (!items?.length) return [];
@@ -68,438 +58,6 @@ function splitTomorrowPlan(plan: string[]): {
   const limited = takeItems(plan, 3).map((item) => clampLine(item, 90));
   if (limited.length === 0) return { primary: null, next: [] };
   return { primary: limited[0], next: limited.slice(1) };
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function parsePercent(text: string): number | null {
-  if (!text.trim()) return null;
-  const normalized = text.replace(/,/g, "").replace(/％/g, "%").trim();
-  const withPct = normalized.match(/(-?\d+(?:\.\d+)?)\s*%/);
-  if (withPct) {
-    const n = Number(withPct[1]);
-    return Number.isFinite(n) ? n : null;
-  }
-  // OCR が "22" のように % なしで返す場合も割合として扱う
-  const bare = normalized.match(/^(-?\d+(?:\.\d+)?)$/);
-  if (bare) {
-    const n = Number(bare[1]);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function parseLeadingNumber(text: string): number | null {
-  if (!text.trim()) return null;
-  const normalized = text.replace(/,/g, "");
-  const match = normalized.match(/(-?\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  const n = Number(match[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function parseDurationMinutes(text: string): number | null {
-  const t = text.trim();
-  if (!t) return null;
-
-  const hMatch = t.match(/(-?\d+(?:\.\d+)?)\s*時間/);
-  const mMatch = t.match(/(-?\d+(?:\.\d+)?)\s*分/);
-
-  if (hMatch || mMatch) {
-    const hours = hMatch ? Number(hMatch[1]) : 0;
-    const minutes = mMatch ? Number(mMatch[1]) : 0;
-    const total = hours * 60 + minutes;
-    return Number.isFinite(total) ? total : null;
-  }
-
-  // fallback: "42分 / 3回" etc
-  const fallbackMinutes = t.match(/(-?\d+(?:\.\d+)?)\s*min/i);
-  if (fallbackMinutes) {
-    const total = Number(fallbackMinutes[1]);
-    return Number.isFinite(total) ? total : null;
-  }
-
-  return null;
-}
-
-function parseHHMM(text: string): number | null {
-  const t = text.trim();
-  if (!t) return null;
-  const match = t.match(/(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  const hh = Number(match[1]);
-  const mm = Number(match[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-  return hh * 60 + mm;
-}
-
-function StageSegmentBar({
-  remRatio,
-  lightRatio,
-  deepRatio,
-}: {
-  remRatio: number;
-  lightRatio: number;
-  deepRatio: number;
-}) {
-  const total = remRatio + lightRatio + deepRatio;
-  const remW = total > 0 ? (remRatio / total) * 100 : 33.33;
-  const lightW = total > 0 ? (lightRatio / total) * 100 : 33.33;
-  const deepW = total > 0 ? (deepRatio / total) * 100 : 33.34;
-
-  return (
-    <div className="mt-2">
-      <div
-        className="flex h-3 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(7,20,38,0.06)" }}
-        aria-hidden
-      >
-        <div style={{ width: `${remW}%`, backgroundColor: "#0f6b5c" }} />
-        <div style={{ width: `${lightW}%`, backgroundColor: "#b89242" }} />
-        <div style={{ width: `${deepW}%`, backgroundColor: "#315f68" }} />
-      </div>
-      <div className="mt-2 flex justify-between">
-        <p className="text-[11px] font-semibold text-slate-500">REM</p>
-        <p className="text-[11px] font-semibold text-slate-500">浅い</p>
-        <p className="text-[11px] font-semibold text-slate-500">深い</p>
-      </div>
-    </div>
-  );
-}
-
-function SimpleMeterBar({
-  label,
-  valueText,
-  ratio01,
-  color,
-}: {
-  label: string;
-  valueText: string;
-  ratio01: number | null;
-  color: string;
-}) {
-  const safeRatio = ratio01 == null ? null : clamp(ratio01, 0, 1);
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
-        <p className="text-[11px] font-semibold" style={{ color: NAVY }}>
-          {valueText}
-        </p>
-      </div>
-      <div
-        className="mt-1 h-2 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(7,20,38,0.06)" }}
-        aria-hidden
-      >
-        <div
-          className="h-full"
-          style={{
-            width: safeRatio == null ? "0%" : `${safeRatio * 100}%`,
-            backgroundColor: color,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function StressGauge({ stressText }: { stressText: string }) {
-  const stress = parseLeadingNumber(stressText);
-  const ratio01 = stress == null ? null : clamp(stress / 100, 0, 1);
-  return (
-    <div className="mt-2">
-      <SimpleMeterBar
-        label="測定ストレス"
-        valueText={displayValue(stressText)}
-        ratio01={ratio01}
-        color="#a33a3a"
-      />
-    </div>
-  );
-}
-
-function CircadianTimeline({
-  bedtime,
-  wakeTime,
-  phaseText,
-}: {
-  bedtime: string;
-  wakeTime: string;
-  phaseText: string;
-}) {
-  const bed = parseHHMM(bedtime);
-  const wake = parseHHMM(wakeTime);
-
-  if (bed == null || wake == null) {
-    return (
-      <div className="mt-2">
-        <p className="text-[11px] font-semibold text-slate-500">体内時計</p>
-        <p className="mt-1 text-[13px] font-semibold" style={{ color: NAVY }}>
-          {phaseText || "—"}
-        </p>
-      </div>
-    );
-  }
-
-  const start = bed;
-  let end = wake;
-  let crosses = false;
-  if (end <= start) {
-    crosses = true;
-    end += 1440;
-  }
-
-  const startPct = (start / 1440) * 100;
-  const endPctRaw = (end % 1440) / 1440;
-  const endPct = crosses ? endPctRaw * 100 : (end / 1440) * 100;
-
-  const widthPct = crosses ? 100 - startPct : endPct - startPct;
-  const widthPct2 = crosses ? endPct : 0;
-
-  return (
-    <div className="mt-2">
-      <div
-        className="relative h-3 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(7,20,38,0.06)" }}
-        aria-hidden
-      >
-        <div
-          className="absolute h-full"
-          style={{
-            left: `${startPct}%`,
-            width: `${Math.max(0, widthPct)}%`,
-            backgroundColor: "#d8b36a",
-          }}
-        />
-        {crosses && (
-          <div
-            className="absolute h-full"
-            style={{
-              left: "0%",
-              width: `${Math.max(0, widthPct2)}%`,
-              backgroundColor: "#d8b36a",
-            }}
-          />
-        )}
-      </div>
-      <div className="mt-2 flex justify-between">
-        <p className="text-[11px] font-semibold text-slate-500">
-          入眠 {bedtime || "—"}
-        </p>
-        <p className="text-[11px] font-semibold text-slate-500">
-          起床 {wakeTime || "—"}
-        </p>
-      </div>
-      <p className="mt-2 text-[11px] font-semibold" style={{ color: NAVY }}>
-        {phaseText || "—"}
-      </p>
-    </div>
-  );
-}
-
-/** confirmedMetrics（最終採用値）から Visual パネルを構築 */
-function buildVisualPanels(confirmedMetrics: AnalysisMetrics): VisualPanel[] {
-  const m = confirmedMetrics;
-  return [
-    {
-      id: "stages",
-      title: "睡眠ステージ",
-      subtitle: "SLEEP STAGES",
-      graph: (() => {
-        const remP = parsePercent(m.remSleepRate);
-        const lightP = parsePercent(m.lightSleepRate);
-        const deepP = parsePercent(m.deepSleepRate);
-
-        if (remP != null || lightP != null || deepP != null) {
-          return (
-            <StageSegmentBar
-              remRatio={remP ?? 0}
-              lightRatio={lightP ?? 0}
-              deepRatio={deepP ?? 0}
-            />
-          );
-        }
-
-        const remM = parseDurationMinutes(m.remSleep);
-        const lightM = parseDurationMinutes(m.lightSleep);
-        const deepM = parseDurationMinutes(m.deepSleep);
-        return (
-          <StageSegmentBar
-            remRatio={remM ?? 0}
-            lightRatio={lightM ?? 0}
-            deepRatio={deepM ?? 0}
-          />
-        );
-      })(),
-      values: [
-        { label: "REM（時間）", value: displayValue(m.remSleep) },
-        { label: "REM睡眠率", value: displayValue(m.remSleepRate) },
-        { label: "浅い睡眠（時間）", value: displayValue(m.lightSleep) },
-        { label: "浅い睡眠率", value: displayValue(m.lightSleepRate) },
-        { label: "深い睡眠（時間）", value: displayValue(m.deepSleep) },
-        { label: "深い睡眠率", value: displayValue(m.deepSleepRate) },
-      ],
-    },
-    {
-      id: "stage-detail",
-      title: "睡眠ステージ詳細",
-      subtitle: "STAGE DETAIL",
-      graph: (() => {
-        const eff = parsePercent(m.sleepEfficiency);
-        const awake = parsePercent(m.awakeningRate);
-        const effRatio01 = eff == null ? null : clamp(eff / 100, 0, 1);
-        const awakeRatio01 = awake == null ? null : clamp(awake / 100, 0, 1);
-        return (
-          <div className="mt-2 space-y-1">
-            <SimpleMeterBar
-              label="睡眠効率"
-              valueText={displayValue(m.sleepEfficiency)}
-              ratio01={effRatio01}
-              color="#315f68"
-            />
-            <SimpleMeterBar
-              label="覚醒率"
-              valueText={displayValue(m.awakeningRate)}
-              ratio01={awakeRatio01}
-              color="#8a6a2d"
-            />
-          </div>
-        );
-      })(),
-      values: [
-        { label: "睡眠時間", value: displayValue(m.sleepDuration) },
-        { label: "睡眠効率", value: displayValue(m.sleepEfficiency) },
-        { label: "覚醒時間", value: displayValue(m.awakenings) },
-        { label: "覚醒率", value: displayValue(m.awakeningRate) },
-        { label: "入眠潜時", value: displayValue(m.sleepLatency) },
-        { label: "睡眠負債", value: displayValue(m.sleepDebt) },
-        { label: "REM睡眠率", value: displayValue(m.remSleepRate) },
-        { label: "浅い睡眠率", value: displayValue(m.lightSleepRate) },
-        { label: "深い睡眠率", value: displayValue(m.deepSleepRate) },
-      ],
-    },
-    {
-      id: "stress",
-      title: "ストレスモニター",
-      subtitle: "STRESS MONITOR",
-      graph: <StressGauge stressText={m.stress} />,
-      values: [{ label: "ストレス（測定）", value: displayValue(m.stress) }],
-    },
-    {
-      id: "circadian",
-      title: "体内時計",
-      subtitle: "CIRCADIAN",
-      graph: (
-        <CircadianTimeline
-          bedtime={m.bedtime}
-          wakeTime={m.wakeTime}
-          phaseText={m.circadianRhythm}
-        />
-      ),
-      values: [
-        { label: "位相", value: displayValue(m.circadianRhythm) },
-      ],
-    },
-    {
-      id: "respiration",
-      title: "睡眠時呼吸",
-      subtitle: "SLEEP RESPIRATION",
-      graph: (() => {
-        const rr = parseLeadingNumber(m.respiratoryRate);
-        const spo2 = parsePercent(m.spo2) ?? parseLeadingNumber(m.spo2);
-        const rrRatio01 = rr == null ? null : clamp(rr / 30, 0, 1);
-        const spo2Ratio01 = spo2 == null ? null : clamp(Number(spo2) / 100, 0, 1);
-        return (
-          <div className="mt-2 space-y-1">
-            <SimpleMeterBar
-              label="呼吸速度"
-              valueText={displayValue(m.respiratoryRate)}
-              ratio01={rrRatio01}
-              color="#315f68"
-            />
-            <SimpleMeterBar
-              label="SpO₂"
-              valueText={displayValue(m.spo2)}
-              ratio01={spo2Ratio01}
-              color="#d8b36a"
-            />
-          </div>
-        );
-      })(),
-      values: [
-        { label: "呼吸速度", value: displayValue(m.respiratoryRate) },
-        { label: "平均SpO₂", value: displayValue(m.spo2) },
-      ],
-    },
-    {
-      id: "rhr",
-      title: "安静時心拍数",
-      subtitle: "RESTING HR",
-      values: [
-        { label: "安静時心拍数", value: displayValue(m.restingHeartRate) },
-      ],
-      graph: (() => {
-        const rhr = parseLeadingNumber(m.restingHeartRate);
-        const ratio01 = rhr == null ? null : clamp((rhr - 40) / 50, 0, 1);
-        return (
-          <div className="mt-2">
-            <SimpleMeterBar
-              label="RHR"
-              valueText={displayValue(m.restingHeartRate)}
-              ratio01={ratio01}
-              color="#0f6b5c"
-            />
-          </div>
-        );
-      })(),
-    },
-    {
-      id: "hrv",
-      title: "HRV",
-      subtitle: "HRV",
-      values: [{ label: "HRV", value: displayValue(m.hrv) }],
-      graph: (() => {
-        const hrv = parseLeadingNumber(m.hrv);
-        const ratio01 = hrv == null ? null : clamp((hrv - 10) / 90, 0, 1);
-        return (
-          <div className="mt-2">
-            <SimpleMeterBar
-              label="HRV"
-              valueText={displayValue(m.hrv)}
-              ratio01={ratio01}
-              color="#8a6a2d"
-            />
-          </div>
-        );
-      })(),
-    },
-    {
-      id: "skin-temp",
-      title: "皮膚温度",
-      subtitle: "SKIN TEMP",
-      values: [
-        { label: "皮膚温度", value: displayValue(m.skinTemperature) },
-      ],
-      graph: (() => {
-        const t = parseLeadingNumber(m.skinTemperature);
-        const ratio01 = t == null ? null : clamp((t + 1) / 2, 0, 1);
-        return (
-          <div className="mt-2">
-            <SimpleMeterBar
-              label="Skin Temp"
-              valueText={displayValue(m.skinTemperature)}
-              ratio01={ratio01}
-              color="#b89242"
-            />
-          </div>
-        );
-      })(),
-    },
-  ];
 }
 
 /** Markdown風 **太字** を描画 */
@@ -601,6 +159,7 @@ export default function AnalysisResultPage() {
   const isClient = useIsClient();
   const result = isClient ? loadAnalysisResult() : null;
   const images = isClient ? loadAnalysisImages() : [];
+  const graphs = isClient ? loadAnalysisGraphs() : {};
 
   if (!isClient) {
     return (
@@ -660,18 +219,21 @@ export default function AnalysisResultPage() {
     );
   }
 
-  return <ResultContent result={result} images={images} />;
+  return <ResultContent result={result} images={images} graphs={graphs} />;
 }
 
 function ResultContent({
   result,
   images,
+  graphs,
 }: {
   result: AnalysisResult;
   images: string[];
+  graphs: SoxaiGraphBundle;
 }) {
-  // OCR→統合→確認で確定した単一ソース（Medical / Visual 共通）
+  // OCR→統合→確認で確定した単一ソース（Medical / Visual / PDF 共通）
   const confirmedMetrics = result.metrics;
+  const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const improvements = takeItems(result.improvements, 3).map((item) =>
     clampLine(item, 140),
@@ -698,7 +260,7 @@ function ResultContent({
     clampSentences(result.disclaimer ?? "", 2),
     120,
   );
-  const visualPanels = buildVisualPanels(confirmedMetrics);
+  const visualPanels = buildVisualPanels(confirmedMetrics, graphBundle);
   /** Visual Report は SCREEN01–05 まで（6枚目以降は載せない＝3ページ化防止） */
   const visualImages = images.slice(0, 5);
   const visualSlots = Math.max(visualImages.length, 1);
@@ -798,32 +360,7 @@ function ResultContent({
           <section className="report-metrics mt-5 sm:mt-6">
             <SectionLabel title="確認済み睡眠データ" eyebrow="CONFIRMED" />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
-              {(
-                [
-                  ["睡眠スコア", confirmedMetrics.sleepScore],
-                  ["睡眠時間", confirmedMetrics.sleepDuration],
-                  ["入眠時間", confirmedMetrics.bedtime],
-                  ["起床時間", confirmedMetrics.wakeTime],
-                  ["睡眠効率", confirmedMetrics.sleepEfficiency],
-                  ["睡眠負債", confirmedMetrics.sleepDebt],
-                  ["入眠潜時", confirmedMetrics.sleepLatency],
-                  ["体内時計", confirmedMetrics.circadianRhythm],
-                  ["覚醒時間", confirmedMetrics.awakenings],
-                  ["覚醒率", confirmedMetrics.awakeningRate],
-                  ["REM睡眠", confirmedMetrics.remSleep],
-                  ["レム睡眠率", confirmedMetrics.remSleepRate],
-                  ["浅い睡眠", confirmedMetrics.lightSleep],
-                  ["浅い睡眠率", confirmedMetrics.lightSleepRate],
-                  ["深い睡眠", confirmedMetrics.deepSleep],
-                  ["深い睡眠率", confirmedMetrics.deepSleepRate],
-                  ["呼吸速度", confirmedMetrics.respiratoryRate],
-                  ["平均SpO₂", confirmedMetrics.spo2],
-                  ["安静時心拍数", confirmedMetrics.restingHeartRate],
-                  ["HRV", confirmedMetrics.hrv],
-                  ["皮膚温度", confirmedMetrics.skinTemperature],
-                  ["ストレス", confirmedMetrics.stress],
-                ] as const
-              ).map(([label, value]) => (
+              {MEDICAL_METRIC_ROWS.map(({ label, key }) => (
                 <div
                   key={label}
                   className="rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-3.5"
@@ -835,7 +372,7 @@ function ResultContent({
                     className="mt-1 text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
                     style={{ color: NAVY }}
                   >
-                    {displayValue(value)}
+                    {displayValue(confirmedMetrics[key])}
                   </p>
                 </div>
               ))}
@@ -1010,6 +547,11 @@ function ResultContent({
                   style={{ color: NAVY }}
                 >
                   {panel.title}
+                  {panel.fromOcrGraph && (
+                    <span className="ml-1.5 text-[9px] font-medium tracking-wide text-[#315f68]">
+                      OCR
+                    </span>
+                  )}
                 </h3>
                   {panel.graph}
                   {panel.values && panel.values.length > 0 && (

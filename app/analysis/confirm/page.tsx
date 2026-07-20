@@ -13,6 +13,7 @@ import {
   type ExtractionDraft,
   type MetricConflict,
 } from "@/lib/analysis-session";
+import { graphPanelCount } from "@/lib/soxai-graphs";
 import {
   isMetricPresent,
   metricDisplayValue,
@@ -64,6 +65,7 @@ export default function ConfirmExtractionPage() {
   const extractedCount = draft?.imageKeys.length ?? 0;
   const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
   const conflictCount = draft?.conflicts?.length ?? 0;
+  const graphCount = draft ? graphPanelCount(draft.graphs) : 0;
   const backHref = draft?.lifestyle.clientId
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
     : "/analysis/new";
@@ -106,6 +108,7 @@ export default function ConfirmExtractionPage() {
       lifestyle: draft.lifestyle,
       images: draft.images,
       metrics: normalizeMetrics(confirmed),
+      graphs: draft.graphs,
     });
     router.push("/analysis/loading");
   };
@@ -163,7 +166,7 @@ export default function ConfirmExtractionPage() {
           </p>
         </header>
 
-        <div className="mx-auto mt-8 grid max-w-2xl grid-cols-3 gap-3 sm:mt-10">
+        <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-3 sm:mt-10 sm:grid-cols-4">
           <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#315f68] sm:text-[11px]">
               画像から取得
@@ -182,6 +185,15 @@ export default function ConfirmExtractionPage() {
             <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {missingCount}
               <span className="ml-1 text-sm font-medium text-slate-400">項目</span>
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-[#315f68] sm:text-[11px]">
+              グラフ解析
+            </p>
+            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              {graphCount}
+              <span className="ml-1 text-sm font-medium text-slate-400">/ 8</span>
             </p>
           </div>
           <div className="rounded-2xl border border-amber-200 bg-[#fffbeb] px-3 py-4 text-center sm:px-4">
