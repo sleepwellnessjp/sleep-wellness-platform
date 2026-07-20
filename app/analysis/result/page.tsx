@@ -795,6 +795,53 @@ function ResultContent({
             </div>
           </header>
 
+          <section className="report-metrics mt-5 sm:mt-6">
+            <SectionLabel title="確認済み睡眠データ" eyebrow="CONFIRMED" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
+              {(
+                [
+                  ["睡眠スコア", confirmedMetrics.sleepScore],
+                  ["睡眠時間", confirmedMetrics.sleepDuration],
+                  ["入眠時間", confirmedMetrics.bedtime],
+                  ["起床時間", confirmedMetrics.wakeTime],
+                  ["睡眠効率", confirmedMetrics.sleepEfficiency],
+                  ["睡眠負債", confirmedMetrics.sleepDebt],
+                  ["入眠潜時", confirmedMetrics.sleepLatency],
+                  ["体内時計", confirmedMetrics.circadianRhythm],
+                  ["覚醒時間", confirmedMetrics.awakenings],
+                  ["覚醒率", confirmedMetrics.awakeningRate],
+                  ["REM睡眠", confirmedMetrics.remSleep],
+                  ["レム睡眠率", confirmedMetrics.remSleepRate],
+                  ["浅い睡眠", confirmedMetrics.lightSleep],
+                  ["浅い睡眠率", confirmedMetrics.lightSleepRate],
+                  ["深い睡眠", confirmedMetrics.deepSleep],
+                  ["深い睡眠率", confirmedMetrics.deepSleepRate],
+                  ["呼吸速度", confirmedMetrics.respiratoryRate],
+                  ["平均SpO₂", confirmedMetrics.spo2],
+                  ["安静時心拍数", confirmedMetrics.restingHeartRate],
+                  ["HRV", confirmedMetrics.hrv],
+                  ["皮膚温度", confirmedMetrics.skinTemperature],
+                  ["ストレス", confirmedMetrics.stress],
+                ] as const
+              ).map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-3.5"
+                >
+                  <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
+                    {label}
+                  </p>
+                  <p
+                    className="mt-1 text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
+                    style={{ color: NAVY }}
+                  >
+                    {displayValue(value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
             <SectionLabel title="① 総合評価" eyebrow="OVERVIEW" />
             <div className="report-summary mt-1">
@@ -912,16 +959,16 @@ function ResultContent({
                   className="text-[10px] font-semibold tracking-[0.22em]"
                   style={{ color: GOLD }}
                 >
-                  WELLNESS SCORE
+                  SLEEP SCORE
                 </p>
                 <p
                   className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
                   style={{ color: NAVY }}
                 >
-                  {score}
+                  {displayValue(confirmedMetrics.sleepScore)}
                 </p>
                 <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
-                  / 100
+                  SOXAI
                 </p>
               </div>
             </div>

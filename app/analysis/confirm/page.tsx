@@ -7,13 +7,16 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   getExtractionDraft,
+  mergeMetricsPreferImage,
   setPendingAnalysisRequest,
   type AnalysisMetrics,
   type ExtractionDraft,
   type MetricConflict,
 } from "@/lib/analysis-session";
 import {
+  isMetricPresent,
   metricDisplayValue,
+  normalizeMetrics,
   setMetricValue,
   SOXAI_METRIC_FIELDS,
   type MetricFieldKey,
@@ -22,6 +25,9 @@ import {
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
+const inputReadonlyClass =
+  "mt-2.5 w-full rounded-2xl border border-[#315f68]/20 bg-[#f4f7f7] px-4 py-3.5 text-[15px] text-[#071426] sm:px-5 sm:py-4 sm:text-base";
+
 const inputConflictClass =
   "mt-2.5 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:px-5 sm:py-4 sm:text-base";
 
@@ -29,15 +35,16 @@ export default function ConfirmExtractionPage() {
   const router = useRouter();
   const initialDraft = useMemo(() => getExtractionDraft(), []);
   const [draft] = useState<ExtractionDraft | null>(() => initialDraft);
-  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(
-    () => initialDraft?.extractedMetrics ?? null,
+  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(() =>
+    initialDraft
+      ? normalizeMetrics(initialDraft.extractedMetrics)
+      : null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!initialDraft) {
       router.replace("/analysis/new");
-      return;
     }
   }, [router, initialDraft]);
 
@@ -62,6 +69,9 @@ export default function ConfirmExtractionPage() {
     : "/analysis/new";
 
   const updateField = (key: MetricFieldKey, value: string) => {
+    // OCR取得済み（競合なし）は上書き不可
+    if (imageKeySet.has(key) && !conflictByKey.has(key)) return;
+
     setMetrics((current) => {
       if (!current) return current;
       return setMetricValue(current, key, value);
@@ -73,10 +83,29 @@ export default function ConfirmExtractionPage() {
     if (!draft || !metrics) return;
 
     setIsSubmitting(true);
+
+    // OCR取得値を最優先で固定し、未取得項目のみ手入力を反映
+    const locked = mergeMetricsPreferImage(
+      draft.extractedMetrics,
+      metrics,
+    );
+
+    // 競合項目はユーザー選択を優先
+    const confirmed = { ...locked };
+    for (const conflict of draft.conflicts ?? []) {
+      if (isMetricPresent(metrics, conflict.key)) {
+        if (conflict.key === "sleepScore") {
+          confirmed.sleepScore = metrics.sleepScore;
+        } else {
+          confirmed[conflict.key] = metrics[conflict.key];
+        }
+      }
+    }
+
     setPendingAnalysisRequest({
       lifestyle: draft.lifestyle,
       images: draft.images,
-      metrics,
+      metrics: normalizeMetrics(confirmed),
     });
     router.push("/analysis/loading");
   };
@@ -129,8 +158,8 @@ export default function ConfirmExtractionPage() {
             抽出結果の確認
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            SOXAI画像から読み取った値を一覧確認できます。必要に応じて修正し、
-            修正後のデータをAI分析へ送ります。
+            SOXAI画像から読み取った値をすべて表示しています。
+            画像から取得できた項目は固定し、未取得の項目のみ手入力できます。
           </p>
         </header>
 
@@ -170,7 +199,7 @@ export default function ConfirmExtractionPage() {
           <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
             <p className="font-semibold">複数画像で異なる値が検出されました</p>
             <p className="mt-1 text-[13px] text-amber-900/80">
-              各画像を個別にOCRしたうえで、ラベル一致と画面種別で優先した値を仮採用しています。該当項目は黄色で表示され、必要なら修正してください。
+              仮採用値を表示しています。競合項目のみ修正できます。それ以外のOCR取得値は変更できません。
             </p>
             <ul className="mt-3 space-y-1.5 text-[13px]">
               {(draft.conflicts ?? []).map((conflict) => (
@@ -196,7 +225,7 @@ export default function ConfirmExtractionPage() {
                 睡眠データ
               </h2>
               <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                全項目を確認・修正できます。空欄は画像から取得できなかった項目です。
+                「画像から取得」はOCR結果をそのまま反映（編集不可）。空欄のみ手入力してください。
               </p>
             </div>
 
@@ -205,6 +234,8 @@ export default function ConfirmExtractionPage() {
                 const fromImage = imageKeySet.has(field.key);
                 const conflict = conflictByKey.get(field.key);
                 const value = metricDisplayValue(metrics, field.key);
+                const present = isMetricPresent(metrics, field.key);
+                const editable = !fromImage || Boolean(conflict);
 
                 return (
                   <label key={field.key} className="block">
@@ -229,24 +260,41 @@ export default function ConfirmExtractionPage() {
                     <span className="mt-0.5 block text-[11px] text-slate-400">
                       {field.hint}
                     </span>
-                    <input
-                      type={
-                        field.inputType === "number" ? "number" : field.inputType
-                      }
-                      inputMode={
-                        field.inputType === "number" ? "decimal" : undefined
-                      }
-                      step={field.inputType === "number" ? "1" : undefined}
-                      value={value}
-                      onChange={(event) =>
-                        updateField(field.key, event.target.value)
-                      }
-                      className={conflict ? inputConflictClass : inputClass}
-                      placeholder={field.placeholder}
-                    />
+                    {editable ? (
+                      <input
+                        type={
+                          field.inputType === "number"
+                            ? "number"
+                            : field.inputType
+                        }
+                        inputMode={
+                          field.inputType === "number" ? "decimal" : undefined
+                        }
+                        step={field.inputType === "number" ? "1" : undefined}
+                        value={value}
+                        onChange={(event) =>
+                          updateField(field.key, event.target.value)
+                        }
+                        className={
+                          conflict ? inputConflictClass : inputClass
+                        }
+                        placeholder={field.placeholder}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        readOnly
+                        value={present ? value : "—"}
+                        className={inputReadonlyClass}
+                        tabIndex={-1}
+                      />
+                    )}
                     {conflict && (
                       <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
-                        候補: {[conflict.adopted, ...conflict.alternatives].join(" / ")}
+                        候補:{" "}
+                        {[conflict.adopted, ...conflict.alternatives].join(
+                          " / ",
+                        )}
                       </span>
                     )}
                   </label>
@@ -281,7 +329,7 @@ export default function ConfirmExtractionPage() {
                 抽出結果を確認して分析する
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                内容に問題なければ、Sleep Wellness Report の作成を開始します。
+                この確認データが Medical / Visual / PDF の共通データソースになります。
               </p>
 
               <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center">

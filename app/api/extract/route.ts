@@ -131,26 +131,23 @@ function singleImagePrompt(imageIndex: number, total: number): string {
   return `SOXAIスクリーンショットです（${total}枚中 ${imageIndex + 1}枚目。この1枚だけを解析）。
 
 画面内に表示されている数値・スコア・割合・時刻・ラベル付きの値を一つ残らず JSON で返してください。
-画面上部だけでなく画面全体を対象にしてください。
+画面上部だけでなく画面全体（中央・下部・カード・円グラフ・ゲージ・小さな注釈）を対象にしてください。
 
 必須で拾う例（画面にあれば）:
-- QoL（現在）
-- 昨日のQoL
-- 体調スコア
-- 睡眠スコア
-- 心拍数 / 安静時心拍数
-- 睡眠時間 / 入眠時間 / 起床時間
-- 睡眠効率 / 睡眠負債 / 入眠潜時 / 体内時計
-- 覚醒時間 / 覚醒率
-- レム睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率
-- 呼吸速度 / SpO₂ / HRV / 皮膚温度 / ストレス
-- その他画面内のすべての数値
+- ホーム: QoL / 昨日のスコア / 睡眠（＝睡眠スコアの大きな数字） / 体調 / 心拍数
+- 詳細: 睡眠時間 / 全就床時間 / 入眠時間 / 起床時間 / 入眠潜時 / 睡眠効率 / 睡眠負債 / 体内時計
+- ステージ: 覚醒時間・覚醒率 / レム・浅い・深い（時間と%は別） / 平均酸素レベル
+- バイタル: 安静時心拍数（平均/最小/最大） / 心拍変動・HRV / 呼吸速度 / 皮膚温度 / ストレス
+
+ラベルは画面表記どおり（「睡眠」は「睡眠」のまま。「睡眠スコア」に書き換えない）。
+%と時間が両方あれば両方返す。平均・最小・最大も別エントリ。
 
 出力例:
 {
   "visibleReadings": [
-    { "label": "睡眠スコア", "value": "78" },
-    { "label": "心拍数", "value": "58" }
+    { "label": "睡眠", "value": "78" },
+    { "label": "心拍数", "value": "58" },
+    { "label": "睡眠効率", "value": "87%" }
   ]
 }
 
@@ -158,11 +155,14 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 }
 
 function sparseRetryPrompt(count: number): string {
-  return `前回の読み取りが不足しています（${count}件）。同じ1枚の画像を再スキャンしてください。
+  return `前回の読み取りが不足しています（${count}件）。同じ1枚の画像を徹底再スキャンしてください。
 
-画面全体（上・中・下、カード、ゲージ、円、小さな文字）を見て、
+画面全体（上・中・下、カード、ゲージ、円、バー、小さな文字、右上の数値）を見て、
 ラベルと値のペアを一つ残らず visibleReadings に入れてください。
-QoL / 昨日のQoL / 体調スコア / 睡眠スコア / 心拍数 など、見えるものは必ず含めてください。
+ホームなら QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数 は特に必須です。
+詳細なら 睡眠時間・効率・負債・潜時・体内時計・入眠・起床 を必須です。
+ステージなら 覚醒・レム・浅い・深い（時間と%）と SpO₂ を必須です。
+バイタルなら 安静時心拍・HRV・呼吸・皮膚温・ストレス を必須です。
 すでに読めたものも再掲し、見落としを追加してください。
 推測は禁止。見える値のみ。`;
 }
@@ -332,18 +332,28 @@ export async function POST(request: Request) {
           singleImagePrompt(imageIndex, images.length),
         );
 
-        // 1枚あたり極端に少ない場合のみリトライ（ホーム画面でも通常数件ある）
-        if (readings.length < 2) {
+        const mappedOnce = mapVisibleReadingsToMetricsDetailed(readings);
+        const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
+
+        // ホームでも通常4件以上。読み取り不足 or マッピング不能なら再スキャン
+        const needsRetry = readings.length < 4 || mappedKeyCount === 0;
+        if (needsRetry) {
           console.warn("[api/extract] sparse readings on image, retrying", {
             imageIndex,
             count: readings.length,
+            mappedKeyCount,
           });
           try {
             const retry = await runVisionOnImage(
               imageUrl,
               sparseRetryPrompt(readings.length),
             );
-            if (retry.length > readings.length) {
+            if (
+              retry.length > readings.length ||
+              collectedMetricKeys(
+                mapVisibleReadingsToMetricsDetailed(retry).metrics,
+              ).length > mappedKeyCount
+            ) {
               readings = retry;
             }
           } catch (retryError) {
