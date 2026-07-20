@@ -44,7 +44,11 @@ export async function GET() {
         .from("monthly_credit")
         .select("id")
         .limit(1);
-      platformReady = !platformError;
+      const { error: membershipError } = await supabase
+        .from("membership")
+        .select("id")
+        .limit(1);
+      platformReady = !platformError && !membershipError;
 
       const { error: persistError } = await supabase
         .from("analyses")

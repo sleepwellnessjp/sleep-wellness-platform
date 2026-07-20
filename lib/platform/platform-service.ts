@@ -62,40 +62,231 @@ function remainingCredits(granted: number, used: number): number {
   return Math.max(0, granted - used);
 }
 
-export async function getCurrentUserId(): Promise<string | null> {
-  if (!isSupabaseConfigured()) return null;
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) return null;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+type AuthenticatedPlatformContext = {
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>;
+  userId: string;
+  email: string | null;
+  profile: PlatformProfile;
+};
+
+/**
+ * membership 行が無い Instructor 向けに Melatonin Yoga™ Instructor を補完する。
+ * DB 側 RPC（security definer）を呼び、monthly_credit / role は変更しない。
+ */
+async function ensureInstructorMembershipRow(
+  supabase: AuthenticatedPlatformContext["supabase"],
+  profile: PlatformProfile,
+): Promise<MembershipRecord | null> {
+  if (profile.role !== "instructor") return null;
+
+  const { data: existing, error: selectError } = await supabase
+    .from("membership")
+    .select("*")
+    .eq("user_id", profile.id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (selectError) {
+    console.error("[platform] membership select failed", {
+      userId: profile.id,
+      message: selectError.message,
+      code: selectError.code,
+    });
+    return null;
+  }
+
+  if (existing) {
+    const mapped = mapMembership(existing as Record<string, unknown>);
+    if (mapped.status === "active") return mapped;
+  }
+
+  const { data: ensured, error: rpcError } = await supabase.rpc(
+    "ensure_instructor_membership",
+    { p_certification_type: "melatonin_yoga_instructor" },
+  );
+
+  if (rpcError) {
+    console.error("[platform] ensure_instructor_membership failed", {
+      userId: profile.id,
+      message: rpcError.message,
+      code: rpcError.code,
+      details: rpcError.details,
+      hint: rpcError.hint,
+    });
+    return existing
+      ? mapMembership(existing as Record<string, unknown>)
+      : null;
+  }
+
+  if (ensured && typeof ensured === "object") {
+    return mapMembership(ensured as Record<string, unknown>);
+  }
+
+  const { data: refreshed } = await supabase
+    .from("membership")
+    .select("*")
+    .eq("user_id", profile.id)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return refreshed
+    ? mapMembership(refreshed as Record<string, unknown>)
+    : null;
 }
 
-export async function getCurrentProfile(): Promise<PlatformProfile | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+/**
+ * 同一 Supabase クライアント上で getUser → profiles を行う。
+ * クライアントを分けると、トークン refresh 後も 2 つ目が古い JWT のまま
+ * RLS（auth.uid()）で profiles が空になることがある。
+ */
+async function resolveAuthenticatedPlatformContext(): Promise<AuthenticatedPlatformContext | null> {
+  if (!isSupabaseConfigured()) return null;
 
   const supabase = await createServerSupabaseClient();
-  if (!supabase) return null;
+  if (!supabase) {
+    console.error("[platform] resolveAuth: Supabase client is null");
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError) {
+    console.error("[platform] resolveAuth: auth.getUser failed", authError);
+    return null;
+  }
+
+  if (!user) {
+    console.error("[platform] resolveAuth: no authenticated user");
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("profiles")
     .select("id, email, display_name, role, created_at")
-    .eq("id", userId)
+    .eq("id", user.id)
     .maybeSingle();
 
-  if (error || !data) return null;
-  return mapProfile(data as Record<string, unknown>);
+  if (error) {
+    console.error("[platform] resolveAuth: profiles select failed", {
+      userId: user.id,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return null;
+  }
+
+  if (data) {
+    return {
+      supabase,
+      userId: user.id,
+      email: user.email ?? null,
+      profile: mapProfile(data as Record<string, unknown>),
+    };
+  }
+
+  // トリガー前に作成されたユーザー等: profiles が無い場合は本人行を補完
+  console.warn("[platform] resolveAuth: profile missing, bootstrapping", {
+    userId: user.id,
+    email: user.email,
+  });
+
+  const displayName =
+    typeof user.user_metadata?.display_name === "string"
+      ? user.user_metadata.display_name
+      : user.email?.split("@")[0] ?? null;
+
+  const { data: created, error: insertError } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      email: user.email ?? null,
+      display_name: displayName,
+      role: "instructor",
+    })
+    .select("id, email, display_name, role, created_at")
+    .maybeSingle();
+
+  if (insertError) {
+    console.error("[platform] resolveAuth: profile bootstrap failed", {
+      userId: user.id,
+      message: insertError.message,
+      code: insertError.code,
+      details: insertError.details,
+      hint: insertError.hint,
+    });
+
+    const { data: retry, error: retryError } = await supabase
+      .from("profiles")
+      .select("id, email, display_name, role, created_at")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (retryError) {
+      console.error("[platform] resolveAuth: profile retry failed", retryError);
+      return null;
+    }
+    if (!retry) return null;
+
+    return {
+      supabase,
+      userId: user.id,
+      email: user.email ?? null,
+      profile: mapProfile(retry as Record<string, unknown>),
+    };
+  }
+
+  if (!created) {
+    console.error("[platform] resolveAuth: bootstrap returned no row", {
+      userId: user.id,
+    });
+    return null;
+  }
+
+  return {
+    supabase,
+    userId: user.id,
+    email: user.email ?? null,
+    profile: mapProfile(created as Record<string, unknown>),
+  };
 }
 
-export async function ensureMonthlyCredit(userId: string) {
-  const supabase = await createServerSupabaseClient();
+export async function getCurrentUserId(): Promise<string | null> {
+  const ctx = await resolveAuthenticatedPlatformContext();
+  return ctx?.userId ?? null;
+}
+
+export async function getCurrentProfile(): Promise<PlatformProfile | null> {
+  const ctx = await resolveAuthenticatedPlatformContext();
+  return ctx?.profile ?? null;
+}
+
+export async function ensureMonthlyCredit(
+  userId: string,
+  client?: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+) {
+  const supabase = client ?? (await createServerSupabaseClient());
   if (!supabase) return null;
 
   const { data, error } = await supabase.rpc("ensure_monthly_credit", {
     p_user_id: userId,
   });
+
+  if (error) {
+    console.error("[platform] ensureMonthlyCredit: RPC failed", {
+      userId,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+  }
 
   if (!error && data) return data;
 
@@ -122,6 +313,13 @@ export async function ensureMonthlyCredit(userId: string) {
     .single();
 
   if (insertError) {
+    console.error("[platform] ensureMonthlyCredit: insert fallback failed", {
+      userId,
+      message: insertError.message,
+      code: insertError.code,
+      details: insertError.details,
+      hint: insertError.hint,
+    });
     const { data: retry } = await supabase
       .from("monthly_credit")
       .select("*")
@@ -170,17 +368,7 @@ export async function buildAccessStatus(
     };
   }
 
-  const { data: membershipRow } = await supabase
-    .from("membership")
-    .select("*")
-    .eq("user_id", profile.id)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const membership = membershipRow
-    ? mapMembership(membershipRow as Record<string, unknown>)
-    : null;
+  const membership = await ensureInstructorMembershipRow(supabase, profile);
 
   const monthly = await ensureMonthlyCredit(profile.id);
   const granted = Number(monthly?.granted_amount ?? 0);
@@ -221,24 +409,25 @@ export async function buildAccessStatus(
 }
 
 export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
-  const profile = await getCurrentProfile();
-  if (!profile) return null;
+  const ctx = await resolveAuthenticatedPlatformContext();
+  if (!ctx) {
+    console.error("[platform] getPlatformMe: auth/profile unavailable");
+    return null;
+  }
 
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) return null;
-
+  const { supabase, profile } = ctx;
   const yearMonth = currentYearMonth();
-  const monthly = await ensureMonthlyCredit(profile.id);
+  const monthly = await ensureMonthlyCredit(profile.id, supabase);
+  if (!monthly) {
+    console.warn("[platform] getPlatformMe: monthly_credit unavailable", {
+      userId: profile.id,
+      yearMonth,
+    });
+  }
 
-  const [{ data: membershipRow }, { data: historyRows }, { data: notifications }] =
+  const [membership, historyResult, notificationsResult, countResult] =
     await Promise.all([
-      supabase
-        .from("membership")
-        .select("*")
-        .eq("user_id", profile.id)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      ensureInstructorMembershipRow(supabase, profile),
       supabase
         .from("analysis_history")
         .select("*")
@@ -251,25 +440,52 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
         .eq("user_id", profile.id)
         .order("created_at", { ascending: false })
         .limit(5),
+      supabase
+        .from("analysis_history")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", profile.id)
+        .gte("created_at", `${yearMonth}-01T00:00:00.000Z`),
     ]);
+
+  if (historyResult.error) {
+    console.error("[platform] getPlatformMe: analysis_history select failed", {
+      userId: profile.id,
+      message: historyResult.error.message,
+      code: historyResult.error.code,
+      details: historyResult.error.details,
+      hint: historyResult.error.hint,
+    });
+  }
+  if (notificationsResult.error) {
+    console.error("[platform] getPlatformMe: notifications select failed", {
+      userId: profile.id,
+      message: notificationsResult.error.message,
+      code: notificationsResult.error.code,
+      details: notificationsResult.error.details,
+      hint: notificationsResult.error.hint,
+    });
+  }
+  if (countResult.error) {
+    console.error("[platform] getPlatformMe: analysis_history count failed", {
+      userId: profile.id,
+      message: countResult.error.message,
+      code: countResult.error.code,
+    });
+  }
+
+  const historyRows = historyResult.data;
+  const notifications = notificationsResult.data;
+  const analysesThisMonth = countResult.count;
 
   const granted = Number(monthly?.granted_amount ?? 0);
   const used = Number(monthly?.used_amount ?? 0);
   const remaining = remainingCredits(granted, used);
 
-  const { count: analysesThisMonth } = await supabase
-    .from("analysis_history")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", profile.id)
-    .gte("created_at", `${yearMonth}-01T00:00:00.000Z`);
-
   const access = await buildAccessStatus(profile);
 
   return {
     profile,
-    membership: membershipRow
-      ? mapMembership(membershipRow as Record<string, unknown>)
-      : null,
+    membership,
     monthlyCredit: monthly
       ? {
           id: String(monthly.id),
@@ -607,6 +823,7 @@ export async function updateMembership(input: {
     .from("membership")
     .select("id")
     .eq("user_id", input.targetUserId)
+    .eq("certification_type", "melatonin_yoga_instructor")
     .maybeSingle();
 
   const patch: {
@@ -624,12 +841,16 @@ export async function updateMembership(input: {
   if (existing) {
     await supabase.from("membership").update(patch).eq("id", existing.id);
   } else {
+    const today = new Date().toISOString().slice(0, 10);
+    const expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
     await supabase.from("membership").insert({
       user_id: input.targetUserId,
-      certification_type: "navigator",
-      certified_at: new Date().toISOString().slice(0, 10),
+      certification_type: "melatonin_yoga_instructor",
+      certified_at: today,
       status: input.status ?? "active",
-      expires_at: input.expiresAt ?? null,
+      expires_at:
+        input.expiresAt ?? expires.toISOString().slice(0, 10),
       admin_memo: input.adminMemo ?? "",
       continuing_education: {},
     });

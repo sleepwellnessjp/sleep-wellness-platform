@@ -74,13 +74,16 @@ OPENAI_API_KEY=sk-xxxxxxxx
 
 `supabase/analysis-persist-v1.sql`（または `supabase/migrations/20260720120000_analysis_persist_v1.sql`）
 
+**platform-v1.sql の次に必ず実行してください。**
+
 追加されるもの:
 
 - `analyses.confirmed_metrics` / `report_payload` / `credits_consumed` / `updated_at`
-- `analysis_history.updated_at` と `analysis_id` 一意制約
-- `consume_analysis_credit` の同一分析二重消費防止
+- `analysis_history.updated_at` と `(user_id, analysis_id)` 一意制約
+- `consume_analysis_credit` の同一分析二重消費防止（`row_security = off` 維持）
 
 > 既に Platform V1 を適用済みのプロジェクトでも、この SQL を追加実行してください。
+> `/setup` 画面で「3. 分析永続化」が Ready になるまで再確認してください。
 ---
 
 ## 5. メール認証の設定

@@ -1,6 +1,6 @@
 -- Sleep Wellness Platform V1.0 — analysis persistence + idempotent credits
 -- Migration: 20260720120000_analysis_persist_v1
--- Prerequisites: 20260720100000_platform_v1
+-- Prerequisites: 20260720100000_platform_v1 (platform-v1.sql 実行済み)
 
 -- ============================================================
 -- analyses: store OCR / confirmed / report payload explicitly
@@ -28,12 +28,30 @@ create trigger analysis_history_set_updated_at
 before update on public.analysis_history
 for each row execute function public.set_updated_at();
 
+-- 既存の重複 analysis_id があると UNIQUE INDEX が失敗して途中停止する
+-- 同一 user_id + analysis_id は最新1件を残し、それ以外を削除
+with ranked as (
+  select
+    id,
+    row_number() over (
+      partition by user_id, analysis_id
+      order by created_at desc nulls last, id desc
+    ) as rn
+  from public.analysis_history
+  where analysis_id is not null
+)
+delete from public.analysis_history ah
+using ranked r
+where ah.id = r.id
+  and r.rn > 1;
+
 create unique index if not exists analysis_history_analysis_id_unique
-  on public.analysis_history (analysis_id)
+  on public.analysis_history (user_id, analysis_id)
   where analysis_id is not null;
 
 -- ============================================================
--- consume_analysis_credit: skip double charge for same analysis_id
+-- consume_analysis_credit: 同一 analysis_id 二重消費防止
+-- platform-v1 の row_security=off を維持（再定義で落とさない）
 -- ============================================================
 create or replace function public.consume_analysis_credit(
   p_client_name text,
@@ -46,6 +64,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
+set row_security = off
 as $$
 declare
   v_user_id uuid := auth.uid();
@@ -69,8 +88,13 @@ begin
     return jsonb_build_object('ok', true, 'message', '管理者は消費対象外', 'remaining', 999);
   end if;
 
-  -- 同一 analysis_id への二重消費を防止
+  -- 同一 analysis_id への二重消費を防止（並行リクエストも直列化）
   if p_analysis_id is not null then
+    perform pg_advisory_xact_lock(
+      hashtext('swij_consume_credit'),
+      hashtext(v_user_id::text || ':' || p_analysis_id::text)
+    );
+
     select id into v_existing_id
     from public.analysis_history
     where user_id = v_user_id
