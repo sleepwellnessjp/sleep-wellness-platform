@@ -78,6 +78,8 @@ export type AnalysisRequest = {
   images: string[];
   /** 確認画面で確定したメトリクス（画像優先＋不足分の手入力） */
   metrics?: AnalysisMetrics;
+  /** OCR生データ（確認前）。保存用 */
+  extractedMetrics?: AnalysisMetrics;
   /** OCRで抽出したグラフデータ（Visual Report 用） */
   graphs?: SoxaiGraphBundle;
 };
@@ -132,11 +134,15 @@ export type AnalysisResult = {
   metrics: AnalysisMetrics;
   /** OCRグラフ（Medical / Visual / PDF 共通） */
   graphs?: SoxaiGraphBundle;
+  /** OCR抽出時点の値（保存・履歴用。分析本文には使わない） */
+  extractedMetrics?: AnalysisMetrics;
   caution: string;
   disclaimer: string;
   clientId?: string;
   clientName?: string;
   measurementDate?: string;
+  /** 保存済み分析の再表示用 ID */
+  analysisId?: string;
   /** @deprecated 旧スキーマ互換 */
   goodPoints?: string[];
   /** @deprecated 旧スキーマ互換 → sleepCharacteristics */
@@ -288,11 +294,15 @@ export function normalizeAnalysisResult(
     scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
     metrics: normalizeMetrics(raw.metrics),
     graphs: normalizeGraphBundle(raw.graphs ?? emptyGraphBundle()),
+    extractedMetrics: raw.extractedMetrics
+      ? normalizeMetrics(raw.extractedMetrics)
+      : undefined,
     caution: typeof raw.caution === "string" ? raw.caution.trim() : "",
     disclaimer: typeof raw.disclaimer === "string" ? raw.disclaimer.trim() : "",
     clientId: extras?.clientId ?? raw.clientId,
     clientName: extras?.clientName ?? raw.clientName,
     measurementDate: extras?.measurementDate ?? raw.measurementDate,
+    analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
     // 旧UI互換
     goodPoints: normalizeStringList(raw.goodPoints, 3),
     dataInsight: sleepCharacteristics,
@@ -364,6 +374,9 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     ...request,
     metrics: request.metrics
       ? normalizeMetrics(request.metrics)
+      : undefined,
+    extractedMetrics: request.extractedMetrics
+      ? normalizeMetrics(request.extractedMetrics)
       : undefined,
     graphs: normalizeGraphBundle(request.graphs),
   };
@@ -767,6 +780,13 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
     if (payload.metrics) {
       result.metrics = normalizeMetrics(payload.metrics);
     }
+    if (payload.extractedMetrics) {
+      result.extractedMetrics = normalizeMetrics(payload.extractedMetrics);
+    } else if (extractionDraft?.extractedMetrics) {
+      result.extractedMetrics = normalizeMetrics(
+        extractionDraft.extractedMetrics,
+      );
+    }
     if (payload.graphs) {
       result.graphs = normalizeGraphBundle(payload.graphs);
     } else if (extractionDraft?.graphs) {
@@ -827,4 +847,20 @@ export function loadAnalysisImages(): string[] {
   } catch {
     return [];
   }
+}
+
+/** 保存済み分析を結果画面で再表示できるよう sessionStorage に書き戻す */
+export function hydrateAnalysisSession(
+  result: AnalysisResult,
+  options?: { images?: string[] },
+): AnalysisResult {
+  const normalized = normalizeAnalysisResult(result);
+  sessionStorage.setItem(RESULT_KEY, JSON.stringify(normalized));
+  storeGraphs(normalizeGraphBundle(normalized.graphs));
+  if (options?.images && options.images.length > 0) {
+    storeImages(options.images);
+  } else {
+    sessionStorage.removeItem(IMAGES_KEY);
+  }
+  return normalized;
 }

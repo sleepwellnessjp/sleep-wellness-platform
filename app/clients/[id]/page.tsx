@@ -228,9 +228,18 @@ export default function ClientDetailPage() {
                     </span>
                   </p>
                 </div>
-                <p className="text-sm text-slate-500">
-                  Wellness {latest.wellnessScore}
-                </p>
+                <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                  <p className="text-sm text-slate-500">
+                    Wellness {latest.wellnessScore}
+                  </p>
+                  <Link
+                    href={`/analysis/result?analysisId=${encodeURIComponent(latest.id)}`}
+                    className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-semibold text-white"
+                    style={{ backgroundColor: NAVY }}
+                  >
+                    レポートを開く
+                  </Link>
+                </div>
               </div>
               <p className="text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8">
                 {latest.result.summary || "—"}
@@ -278,26 +287,41 @@ export default function ClientDetailPage() {
               {client.analyses.map((analysis) => (
                 <li
                   key={analysis.id}
-                  className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold" style={{ color: NAVY }}>
                       {formatDisplayDate(analysis.analysisDate)}
                     </p>
                     <p className="mt-1 line-clamp-2 text-[13px] leading-6 text-slate-500">
                       {analysis.result.summary || "分析コメントなし"}
                     </p>
+                    <p className="mt-2 text-sm text-slate-500 sm:hidden">
+                      睡眠スコア{" "}
+                      <span className="font-semibold" style={{ color: NAVY }}>
+                        {scoreLabel(analysis)}
+                      </span>
+                    </p>
                   </div>
-                  <div className="shrink-0 text-left sm:text-right">
-                    <p
-                      className="text-2xl font-semibold tracking-[-0.04em]"
-                      style={{ color: NAVY }}
+                  <div className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end sm:gap-2">
+                    <div className="hidden text-right sm:block">
+                      <p
+                        className="text-2xl font-semibold tracking-[-0.04em]"
+                        style={{ color: NAVY }}
+                      >
+                        {scoreLabel(analysis)}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Wellness {analysis.wellnessScore}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/analysis/result?analysisId=${encodeURIComponent(analysis.id)}`}
+                      className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-semibold text-white"
+                      style={{ backgroundColor: NAVY }}
                     >
-                      {scoreLabel(analysis)}
-                    </p>
-                    <p className="text-[11px] text-slate-400">
-                      Wellness {analysis.wellnessScore}
-                    </p>
+                      詳細を見る
+                    </Link>
                   </div>
                 </li>
               ))}

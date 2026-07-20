@@ -11,14 +11,21 @@ export async function GET() {
   try {
     const schemaPath = path.join(process.cwd(), "supabase", "schema.sql");
     const platformPath = path.join(process.cwd(), "supabase", "platform-v1.sql");
-    const [sql, platformSql] = await Promise.all([
+    const persistPath = path.join(
+      process.cwd(),
+      "supabase",
+      "analysis-persist-v1.sql",
+    );
+    const [sql, platformSql, persistSql] = await Promise.all([
       readFile(schemaPath, "utf8"),
       readFile(platformPath, "utf8"),
+      readFile(persistPath, "utf8"),
     ]);
 
     const supabase = await createServerSupabaseClient();
     let tableReady = false;
     let platformReady = false;
+    let persistReady = false;
     let probeError: string | null = null;
     let probeCode: string | null = null;
 
@@ -38,11 +45,18 @@ export async function GET() {
         .select("id")
         .limit(1);
       platformReady = !platformError;
+
+      const { error: persistError } = await supabase
+        .from("analyses")
+        .select("id, confirmed_metrics, report_payload, credits_consumed")
+        .limit(1);
+      persistReady = !persistError;
     }
 
     return NextResponse.json({
       tableReady,
       platformReady,
+      persistReady,
       missingTable: probeError
         ? isMissingTableError({ code: probeCode, message: probeError })
         : !tableReady,
@@ -50,10 +64,12 @@ export async function GET() {
       probeCode,
       sql,
       platformSql,
+      persistSql,
       instructions: [
         "Supabase Dashboard → SQL Editor → New query を開く",
         "1) schema.sql を貼り付けて Run",
         "2) platform-v1.sql を貼り付けて Run（クレジット・会員・履歴）",
+        "3) analysis-persist-v1.sql を貼り付けて Run（保存強化・二重消費防止）",
         "完了後、このアプリで新規クライアント登録 / 分析を再試行する",
       ],
     });

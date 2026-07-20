@@ -470,11 +470,11 @@ export default function InstructorDashboardPage() {
                             </td>
                             <td className="py-4">
                               <Link
-                                href={`/clients/${item.clientId}`}
+                                href={`/analysis/result?analysisId=${encodeURIComponent(item.analysisId)}`}
                                 className="text-[13px] font-semibold underline-offset-4 transition hover:underline"
                                 style={{ color: GOLD }}
                               >
-                                詳細
+                                詳細を見る
                               </Link>
                             </td>
                           </tr>
@@ -511,11 +511,11 @@ export default function InstructorDashboardPage() {
                         <div className="mt-3 flex items-center justify-between gap-3">
                           <TrendGlyph item={item} />
                           <Link
-                            href={`/clients/${item.clientId}`}
+                            href={`/analysis/result?analysisId=${encodeURIComponent(item.analysisId)}`}
                             className="text-[13px] font-semibold"
                             style={{ color: GOLD }}
                           >
-                            詳細 →
+                            詳細を見る →
                           </Link>
                         </div>
                         <p className="mt-3 text-sm leading-6 text-slate-500">

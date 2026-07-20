@@ -131,6 +131,7 @@ export default function ConfirmExtractionPage() {
       lifestyle: draft.lifestyle,
       images: draft.images,
       metrics: normalizeMetrics(confirmed),
+      extractedMetrics: draft.extractedMetrics,
       graphs: draft.graphs,
     });
     router.push("/analysis/loading");

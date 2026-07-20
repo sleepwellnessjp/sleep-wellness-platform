@@ -2,7 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Fragment, ReactNode, useSyncExternalStore } from "react";
+import {
+  Fragment,
+  ReactNode,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   buildVisualPanels,
@@ -10,13 +16,17 @@ import {
 } from "@/components/SoxaiVisualCharts";
 import {
   AnalysisResult,
+  hydrateAnalysisSession,
   loadAnalysisGraphs,
   loadAnalysisImages,
   loadAnalysisResult,
 } from "@/lib/analysis-session";
 import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
-import { recordPdfDownload } from "@/lib/repositories/client-repository";
+import {
+  getAnalysisById,
+  recordPdfDownload,
+} from "@/lib/repositories/client-repository";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -157,11 +167,73 @@ function useIsClient() {
 
 export default function AnalysisResultPage() {
   const isClient = useIsClient();
-  const result = isClient ? loadAnalysisResult() : null;
-  const images = isClient ? loadAnalysisImages() : [];
-  const graphs = isClient ? loadAnalysisGraphs() : {};
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [images, setImages] = useState<string[]>([]);
+  const [graphs, setGraphs] = useState<SoxaiGraphBundle | Record<string, never>>(
+    {},
+  );
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  if (!isClient) {
+  useEffect(() => {
+    if (!isClient) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const analysisId = params.get("analysisId")?.trim();
+
+    if (!analysisId) {
+      setResult(loadAnalysisResult());
+      setImages(loadAnalysisImages());
+      setGraphs(loadAnalysisGraphs());
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingSaved(true);
+    setLoadError(null);
+
+    void getAnalysisById(analysisId)
+      .then((found) => {
+        if (cancelled) return;
+        if (!found) {
+          setLoadError("保存済みの分析結果が見つかりません。");
+          setResult(null);
+          return;
+        }
+
+        const hydrated = hydrateAnalysisSession({
+          ...found.analysis.result,
+          analysisId: found.analysis.id,
+          clientId: found.client.id,
+          clientName: found.client.name,
+          measurementDate: found.analysis.analysisDate,
+          metrics: found.analysis.metrics,
+          graphs: found.analysis.result.graphs,
+        });
+        setResult(hydrated);
+        setImages(loadAnalysisImages());
+        setGraphs(loadAnalysisGraphs());
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        console.error("Failed to load saved analysis:", error);
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "保存済み分析の読み込みに失敗しました。",
+        );
+        setResult(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSaved(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isClient]);
+
+  if (!isClient || loadingSaved) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
         <p className="text-base text-slate-400">読み込み中...</p>
@@ -188,16 +260,16 @@ export default function AnalysisResultPage() {
           </h1>
 
           <p className="mt-5 text-[15px] leading-7 text-slate-500 sm:text-base sm:leading-8">
-            新しい分析を開始してください。
+            {loadError ?? "新しい分析を開始してください。"}
           </p>
 
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link
-              href="/"
+              href="/portal"
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
               style={{ color: NAVY }}
             >
-              トップページへ戻る
+              分析履歴へ
             </Link>
             <Link
               href="/clients"

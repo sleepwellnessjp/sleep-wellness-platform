@@ -70,9 +70,13 @@ type DbAnalysisRow = {
   spo2: number | null;
   hrv: number | null;
   resting_heart_rate: number | null;
-  ocr_data: AnalysisMetrics | null;
+  ocr_data: unknown;
+  confirmed_metrics?: AnalysisMetrics | null;
+  report_payload?: unknown;
   ai_result: AnalysisResult | null;
+  credits_consumed?: number | null;
   created_at: string;
+  updated_at?: string;
 };
 
 async function getSupabaseAuth(): Promise<SupabaseAuth | null> {
@@ -107,13 +111,45 @@ function parseNumeric(value: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseOcrPayload(ocrData: unknown): {
+  extracted: AnalysisMetrics;
+  confirmed: AnalysisMetrics | null;
+} {
+  if (!ocrData || typeof ocrData !== "object" || Array.isArray(ocrData)) {
+    return { extracted: normalizeMetrics(undefined), confirmed: null };
+  }
+
+  const record = ocrData as Record<string, unknown>;
+  if ("confirmed" in record || "extracted" in record) {
+    return {
+      extracted: normalizeMetrics(
+        (record.extracted as Partial<AnalysisMetrics> | undefined) ?? undefined,
+      ),
+      confirmed: record.confirmed
+        ? normalizeMetrics(record.confirmed as Partial<AnalysisMetrics>)
+        : null,
+    };
+  }
+
+  return {
+    extracted: normalizeMetrics(ocrData as Partial<AnalysisMetrics>),
+    confirmed: null,
+  };
+}
+
 function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
-  const metrics = normalizeMetrics(row.ocr_data ?? undefined);
+  const ocr = parseOcrPayload(row.ocr_data);
+  const metrics = normalizeMetrics(
+    row.confirmed_metrics ?? ocr.confirmed ?? ocr.extracted,
+  );
   const resultRaw = row.ai_result;
   const result = resultRaw
     ? normalizeAnalysisResult({
         ...resultRaw,
         metrics: normalizeMetrics(resultRaw.metrics ?? metrics),
+        extractedMetrics: resultRaw.extractedMetrics ?? ocr.extracted,
+        analysisId: row.id,
+        clientId: row.client_id,
       })
     : normalizeAnalysisResult({
         summary: "",
@@ -132,8 +168,11 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
           recovery: 3,
         },
         metrics,
+        extractedMetrics: ocr.extracted,
         caution: "",
         disclaimer: "",
+        analysisId: row.id,
+        clientId: row.client_id,
       });
 
   const sleepScore =
@@ -245,6 +284,50 @@ export async function getClientById(id: string): Promise<StoredClient | null> {
   return clients.find((client) => client.id === id) ?? null;
 }
 
+export async function getAnalysisById(
+  analysisId: string,
+): Promise<{ client: StoredClient; analysis: StoredAnalysis } | null> {
+  const auth = await getSupabaseAuth();
+  if (!auth) {
+    const clients = loadLocalClients();
+    for (const client of clients) {
+      const analysis = client.analyses.find((item) => item.id === analysisId);
+      if (analysis) return { client, analysis };
+    }
+    return null;
+  }
+
+  const { supabase, userId } = auth;
+  const { data: analysisRow, error: analysisError } = await supabase
+    .from("analyses")
+    .select("*")
+    .eq("owner_id", userId)
+    .eq("id", analysisId)
+    .maybeSingle();
+
+  if (analysisError) {
+    throw formatSupabaseError(analysisError, "getAnalysisById:analysis");
+  }
+  if (!analysisRow) return null;
+
+  const row = analysisRow as DbAnalysisRow;
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("owner_id", userId)
+    .eq("id", row.client_id)
+    .maybeSingle();
+
+  if (clientError) {
+    throw formatSupabaseError(clientError, "getAnalysisById:client");
+  }
+  if (!clientRow) return null;
+
+  const analysis = mapDbAnalysis(row);
+  const client = mapDbClient(clientRow as DbClientRow, [analysis]);
+  return { client, analysis };
+}
+
 export async function getClientListItems(): Promise<ClientListItem[]> {
   const clients = await loadClients();
   return toClientListItems(clients);
@@ -337,6 +420,9 @@ export async function saveAnalysisToRepository(
   const analysisDate =
     result.measurementDate?.trim() || new Date().toISOString().slice(0, 10);
   const metrics = normalizeMetrics(result.metrics);
+  const extractedMetrics = normalizeMetrics(
+    result.extractedMetrics ?? result.metrics,
+  );
   const sleepScore =
     typeof metrics.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
       ? metrics.sleepScore
@@ -398,28 +484,109 @@ export async function saveAnalysisToRepository(
     }
   }
 
+  const reportPayload = {
+    medical: {
+      summary: result.summary,
+      sleepCharacteristics: result.sleepCharacteristics,
+      improvements: result.improvements,
+      actionPlan: result.actionPlan,
+      melatoninYoga: result.melatoninYoga,
+      score: result.score,
+      scoreBreakdown: result.scoreBreakdown,
+      metrics,
+      caution: result.caution,
+      disclaimer: result.disclaimer,
+    },
+    visual: {
+      metrics,
+      graphs: result.graphs ?? null,
+    },
+    clientName: name,
+    measurementDate: analysisDate,
+  };
+
+  const aiResultPayload: AnalysisResult = {
+    ...result,
+    metrics,
+    extractedMetrics,
+    graphs: result.graphs,
+    clientId,
+    clientName: name,
+    measurementDate: analysisDate,
+  };
+
+  const insertPayload = {
+    client_id: clientId,
+    owner_id: userId,
+    analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
+    sleep_score: sleepScore,
+    sleep_duration: parseNumeric(metrics.sleepDuration),
+    sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
+    deep_sleep: parseNumeric(metrics.deepSleep),
+    awakenings: parseNumeric(metrics.awakenings),
+    sleep_latency: parseNumeric(metrics.sleepLatency),
+    spo2: parseNumeric(metrics.spo2),
+    hrv: parseNumeric(metrics.hrv),
+    resting_heart_rate: parseNumeric(metrics.restingHeartRate),
+    ocr_data: {
+      extracted: extractedMetrics,
+      confirmed: metrics,
+    },
+    confirmed_metrics: metrics,
+    report_payload: reportPayload,
+    ai_result: aiResultPayload,
+    credits_consumed: 0,
+  };
+
   const { data: analysisRow, error: analysisError } = await supabase
     .from("analyses")
-    .insert({
-      client_id: clientId,
-      owner_id: userId,
-      analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
-      sleep_score: sleepScore,
-      sleep_duration: parseNumeric(metrics.sleepDuration),
-      sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
-      deep_sleep: parseNumeric(metrics.deepSleep),
-      awakenings: parseNumeric(metrics.awakenings),
-      sleep_latency: parseNumeric(metrics.sleepLatency),
-      spo2: parseNumeric(metrics.spo2),
-      hrv: parseNumeric(metrics.hrv),
-      resting_heart_rate: parseNumeric(metrics.restingHeartRate),
-      ocr_data: metrics,
-      ai_result: { ...result, metrics, clientId },
-    })
+    .insert(insertPayload as never)
     .select("id")
     .single();
 
   if (analysisError) {
+    // confirmed_metrics / report_payload 未適用環境向けフォールバック
+    const message = analysisError.message ?? "";
+    if (
+      message.includes("confirmed_metrics") ||
+      message.includes("report_payload") ||
+      message.includes("credits_consumed")
+    ) {
+      const { data: fallbackRow, error: fallbackError } = await supabase
+        .from("analyses")
+        .insert({
+          client_id: clientId,
+          owner_id: userId,
+          analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
+          sleep_score: sleepScore,
+          sleep_duration: parseNumeric(metrics.sleepDuration),
+          sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
+          deep_sleep: parseNumeric(metrics.deepSleep),
+          awakenings: parseNumeric(metrics.awakenings),
+          sleep_latency: parseNumeric(metrics.sleepLatency),
+          spo2: parseNumeric(metrics.spo2),
+          hrv: parseNumeric(metrics.hrv),
+          resting_heart_rate: parseNumeric(metrics.restingHeartRate),
+          ocr_data: {
+            extracted: extractedMetrics,
+            confirmed: metrics,
+          },
+          ai_result: aiResultPayload,
+        })
+        .select("id")
+        .single();
+
+      if (fallbackError) {
+        throw formatSupabaseError(fallbackError, "saveAnalysis:insertAnalysisFallback");
+      }
+
+      notifyClientsUpdated();
+      return {
+        clientId,
+        analysisId: (fallbackRow as { id: string }).id,
+      };
+    }
+
     throw formatSupabaseError(analysisError, "saveAnalysis:insertAnalysis");
   }
 

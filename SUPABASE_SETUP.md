@@ -70,6 +70,17 @@ OPENAI_API_KEY=sk-xxxxxxxx
 
 > Auth（メール＋パスワード）は既存のまま利用します。サインアップ時に `profiles`・認定・当月クレジットが自動作成されます。
 
+### 4-3. 分析永続化・二重消費防止（必須・追加）
+
+`supabase/analysis-persist-v1.sql`（または `supabase/migrations/20260720120000_analysis_persist_v1.sql`）
+
+追加されるもの:
+
+- `analyses.confirmed_metrics` / `report_payload` / `credits_consumed` / `updated_at`
+- `analysis_history.updated_at` と `analysis_id` 一意制約
+- `consume_analysis_credit` の同一分析二重消費防止
+
+> 既に Platform V1 を適用済みのプロジェクトでも、この SQL を追加実行してください。
 ---
 
 ## 5. メール認証の設定
