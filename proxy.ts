@@ -8,6 +8,8 @@ import {
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
+  "/portal",
+  "/admin",
   "/clients",
   "/setup",
   "/analysis/new",
@@ -86,6 +88,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/portal/:path*",
+    "/admin/:path*",
     "/clients/:path*",
     "/setup",
     "/analysis/new",

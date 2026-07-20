@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
+import AnalysisAccessBanner from "@/components/AnalysisAccessBanner";
 import {
   getExtractionDraft,
   mergeMetricsPreferImage,
@@ -42,6 +43,7 @@ export default function ConfirmExtractionPage() {
       : null,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialDraft) {
@@ -80,11 +82,32 @@ export default function ConfirmExtractionPage() {
     });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft || !metrics) return;
 
+    setAccessError(null);
     setIsSubmitting(true);
+
+    try {
+      const accessResponse = await fetch("/api/platform/analysis-access", {
+        cache: "no-store",
+      });
+      const access = (await accessResponse.json()) as {
+        allowed?: boolean;
+        message?: string;
+      };
+      if (!access.allowed) {
+        setAccessError(
+          access.message ??
+            "認定資格の更新が必要です。Sleep Wellness Institute Japan までお問い合わせください。",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+    } catch {
+      // デモ/オフライン時は分析を継続
+    }
 
     // OCR取得値を最優先で固定し、未取得項目のみ手入力を反映
     const locked = mergeMetricsPreferImage(
@@ -165,6 +188,14 @@ export default function ConfirmExtractionPage() {
             画像から取得できた項目は固定し、未取得の項目のみ手入力できます。
           </p>
         </header>
+
+        <AnalysisAccessBanner />
+
+        {accessError && (
+          <p className="mx-auto mt-6 max-w-3xl rounded-2xl border border-[#a33a3a]/25 bg-[#a33a3a]/06 px-4 py-4 text-sm leading-7 text-[#a33a3a]">
+            {accessError}
+          </p>
+        )}
 
         <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-3 sm:mt-10 sm:grid-cols-4">
           <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">

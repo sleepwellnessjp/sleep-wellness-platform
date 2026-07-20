@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import AuthStatusBar from "@/components/AuthStatusBar";
 import NewClientModal from "@/components/NewClientModal";
+import PlatformStatusCard from "@/components/PlatformStatusCard";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
+import { usePlatformMe } from "@/lib/platform/use-platform-me";
 import { formatDisplayDate, loadClients } from "@/lib/repositories/client-repository";
 import {
   computeDashboardStatsFromClients,
@@ -70,6 +72,7 @@ export default function InstructorDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [ready, setReady] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const { data: platformMe } = usePlatformMe();
 
   const refresh = async () => {
     try {
@@ -204,7 +207,13 @@ export default function InstructorDashboardPage() {
           </p>
         ) : (
           <>
-            <section className="mt-10 grid grid-cols-2 gap-3 sm:mt-12 sm:gap-4 lg:grid-cols-5">
+            {platformMe && (
+              <section className="mt-10 sm:mt-12">
+                <PlatformStatusCard data={platformMe} compact />
+              </section>
+            )}
+
+            <section className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:gap-4 lg:grid-cols-5">
               {summaryCards.map((card) => (
                 <div
                   key={card.label}

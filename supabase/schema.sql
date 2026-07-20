@@ -227,3 +227,10 @@ drop policy if exists "programs_delete_own" on public.programs;
 create policy "programs_delete_own"
   on public.programs for delete
   using (auth.uid() = owner_id);
+
+-- ============================================================
+-- Platform V1.0 (see supabase/platform-v1.sql for full migration)
+-- ============================================================
+-- Run supabase/platform-v1.sql after this file for:
+-- roles, membership, monthly_credit, credit_transactions,
+-- analysis_history, admin_logs, notifications
