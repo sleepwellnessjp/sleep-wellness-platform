@@ -32,7 +32,16 @@ function normalizeLabel(label: string): string {
     .normalize("NFKC")
     .trim()
     .toLowerCase()
-    .replace(/[\s　_\-：:（）()【】\[\]「」『』]/g, "");
+    .replace(/[\s　_\-－—–：:（）()【】\[\]「」『』・･./／]/g, "");
+}
+
+function normalizeValue(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/％/g, "%")
+    .replace(/：/g, ":");
 }
 
 function looksPercent(value: string): boolean {
@@ -68,7 +77,7 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "sleepScore",
     test: (l) =>
-      /睡眠スコア|sleepscore|総合スコア/.test(l) ||
+      /睡眠スコア|sleepscore|総合スコア|昨夜のスコア|本日の睡眠/.test(l) ||
       /^睡眠$/.test(l) ||
       (/^スコア$|^score$/.test(l) &&
         !/qol|昨日|体調|コンディション|condition/.test(l)),
@@ -78,14 +87,13 @@ const MAPPING_RULES: MappingRule[] = [
     key: "qol",
     test: (l) =>
       /^qol$/.test(l) ||
-      /qualityoflife|現在のqol|きょうのqol|今日のqol/.test(l) ||
-      /^現在のスコア$/.test(l),
+      /qualityoflife|現在のqol|きょうのqol|今日のqol|現在のスコア/.test(l),
     valueHint: "score",
   },
   {
     key: "yesterdayQol",
     test: (l) =>
-      /昨日のqol|昨日のスコア|きのうのスコア|yesterdayqol|yesterdayscore/.test(
+      /昨日のqol|昨日のスコア|きのうのスコア|きのうのqol|yesterdayqol|yesterdayscore/.test(
         l,
       ),
     valueHint: "score",
@@ -102,54 +110,57 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "restingHeartRate",
     test: (l) =>
-      /安静時心拍|心拍数|^心拍$|^hr$|^rhr$|restinghr|restingheartrate|heartrate/.test(
+      /安静時心拍|心拍数|^心拍$|^hr$|^rhr$|restinghr|restingheartrate|heartrate|平均心拍/.test(
         l,
       ) && !/変動|hrv/.test(l),
   },
   // —— ステージ詳細（睡眠時間より先に判定）——
   {
     key: "awakeningRate",
-    test: (l) => /覚醒率|awake%|awakepercent/.test(l),
+    test: (l) => /覚醒率|awake%|awakepercent|覚醒割合/.test(l),
     valueHint: "percent",
   },
   {
     key: "awakenings",
-    test: (l) => /覚醒時間|中途覚醒|^覚醒$|^awake$|awaketime/.test(l),
+    test: (l) =>
+      /覚醒時間|中途覚醒|覚醒の時間|^覚醒$|^awake$|awaketime|中途覚醒時間/.test(
+        l,
+      ),
   },
   {
     key: "remSleepRate",
-    test: (l) => /レム睡眠率|rem率|rem%|rempercent/.test(l),
+    test: (l) => /レム睡眠率|レム率|rem率|rem%|rempercent|レム割合/.test(l),
     valueHint: "percent",
   },
   {
     key: "remSleep",
     test: (l) =>
       /レム睡眠時間|レム時間|rem時間|レム睡眠|^レム$|^rem$|remsleep/.test(l) &&
-      !/率|%|percent/.test(l),
+      !/率|%|percent|割合/.test(l),
     valueHint: "duration",
   },
   {
     key: "lightSleepRate",
-    test: (l) => /浅い睡眠率|light%|lightpercent/.test(l),
+    test: (l) => /浅い睡眠率|light%|lightpercent|浅い割合/.test(l),
     valueHint: "percent",
   },
   {
     key: "lightSleep",
     test: (l) =>
       /浅い睡眠時間|浅い時間|light時間|浅い睡眠|^light$|lightsleep/.test(l) &&
-      !/率|%|percent/.test(l),
+      !/率|%|percent|割合/.test(l),
     valueHint: "duration",
   },
   {
     key: "deepSleepRate",
-    test: (l) => /深い睡眠率|deep%|deeppercent/.test(l),
+    test: (l) => /深い睡眠率|deep%|deeppercent|深い割合/.test(l),
     valueHint: "percent",
   },
   {
     key: "deepSleep",
     test: (l) =>
       /深い睡眠時間|深い時間|deep時間|深い睡眠|^deep$|deepsleep/.test(l) &&
-      !/率|%|percent/.test(l),
+      !/率|%|percent|割合/.test(l),
     valueHint: "duration",
   },
   // —— 総睡眠（レム/浅い/深い を除外）——
@@ -158,18 +169,19 @@ const MAPPING_RULES: MappingRule[] = [
     test: (l) =>
       (/睡眠時間|総睡眠|totalsleep|実際の睡眠|^睡眠$/.test(l) ||
         (/sleep/.test(l) && /duration|total/.test(l))) &&
-      !/レム|rem|浅い|light|深い|deep|負債|効率|スコア|潜時/.test(l),
+      !/レム|rem|浅い|light|深い|deep|負債|効率|スコア|潜時|全就床|就床/.test(l),
     valueHint: "duration",
   },
-  // —— 入眠潜時を入眠より先に ——
   {
     key: "sleepLatency",
-    test: (l) => /入眠潜時|潜時|latency|sleeplatency/.test(l),
+    test: (l) => /入眠潜時|潜時|latency|sleeplatency|入眠までの時間/.test(l),
   },
   {
     key: "bedtime",
     test: (l) =>
-      (/入眠時間|就寝|睡眠開始|fellasleep|sleeponset|^入眠$/.test(l) ||
+      (/入眠時間|就寝時刻|就寝時間|就寝|睡眠開始|fellasleep|sleeponset|^入眠$/.test(
+        l,
+      ) ||
         (/bedtime|sleepstart/.test(l) && !/latency|潜時/.test(l))) &&
       !/潜時|latency/.test(l),
     valueHint: "time",
@@ -177,41 +189,43 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "wakeTime",
     test: (l) =>
-      /起床時間|起床|睡眠終了|gotup|^wake$|waketime/.test(l) &&
+      /起床時間|起床時刻|起床|睡眠終了|gotup|^wake$|waketime/.test(l) &&
       !/覚醒時間|中途|awake/.test(l),
     valueHint: "time",
   },
   {
     key: "sleepEfficiency",
-    test: (l) => /睡眠効率|efficiency/.test(l),
+    test: (l) => /睡眠効率|sleepefficiency|efficiency/.test(l),
   },
   {
     key: "sleepDebt",
-    test: (l) => /睡眠負債|sleepdebt|^負債$/.test(l),
+    test: (l) => /睡眠負債|sleepdebt|^負債$|睡眠の負債/.test(l),
   },
   {
     key: "circadianRhythm",
-    test: (l) => /体内時計|circadian|クロノ/.test(l),
+    test: (l) => /体内時計|circadian|クロノ|位相/.test(l),
   },
   {
     key: "respiratoryRate",
-    test: (l) => /呼吸速度|呼吸数|respiratory|respiration/.test(l),
+    test: (l) => /呼吸速度|呼吸数|respiratory|respiration|平均呼吸/.test(l),
   },
   {
     key: "spo2",
-    test: (l) => /spo2|spo₂|血中酸素|酸素飽和|酸素レベル|平均酸素/.test(l),
+    test: (l) =>
+      /spo2|spo₂|血中酸素|酸素飽和|酸素レベル|平均酸素|平均spo/.test(l),
   },
   {
     key: "hrv",
-    test: (l) => /^hrv$|心拍変動|rmssd|sdnn/.test(l),
+    test: (l) => /^hrv$|心拍変動|rmssd|sdnn|heart rate variability/.test(l),
   },
   {
     key: "skinTemperature",
-    test: (l) => /皮膚温|skintemp|体温/.test(l),
+    test: (l) => /皮膚温|skintemp|体温偏差|皮膚温度/.test(l),
   },
   {
     key: "stress",
-    test: (l) => /^ストレス$|^stress$|ストレスレベル|ストレス指数/.test(l),
+    test: (l) =>
+      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア/.test(l),
   },
 ];
 
@@ -456,7 +470,7 @@ export function mapVisibleReadingsToMetricsDetailed(
 
   for (const reading of readings) {
     const label = reading.label?.trim() ?? "";
-    const value = reading.value?.trim() ?? "";
+    const value = normalizeValue(reading.value ?? "");
     if (!label || !value) continue;
 
     const key = matchKey(label, value);

@@ -312,10 +312,12 @@ function storeImages(images: string[]) {
 }
 
 export function setExtractionDraft(draft: ExtractionDraft) {
+  const extractedMetrics = normalizeMetrics(draft.extractedMetrics);
   extractionDraft = {
     ...draft,
-    extractedMetrics: normalizeMetrics(draft.extractedMetrics),
-    imageKeys: [...draft.imageKeys],
+    extractedMetrics,
+    // OCRで取れたキーは正規化後の metrics から再計算（確認画面へ100%反映）
+    imageKeys: collectedMetricKeys(extractedMetrics),
     conflicts: draft.conflicts ? [...draft.conflicts] : [],
   };
 }
