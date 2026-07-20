@@ -131,8 +131,12 @@ export type Database = {
           hrv: number | null;
           resting_heart_rate: number | null;
           ocr_data: Json | null;
+          confirmed_metrics: Json | null;
+          report_payload: Json | null;
           ai_result: Json | null;
+          credits_consumed: number;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -149,8 +153,12 @@ export type Database = {
           hrv?: number | null;
           resting_heart_rate?: number | null;
           ocr_data?: Json | null;
+          confirmed_metrics?: Json | null;
+          report_payload?: Json | null;
           ai_result?: Json | null;
+          credits_consumed?: number;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -167,8 +175,12 @@ export type Database = {
           hrv?: number | null;
           resting_heart_rate?: number | null;
           ocr_data?: Json | null;
+          confirmed_metrics?: Json | null;
+          report_payload?: Json | null;
           ai_result?: Json | null;
+          credits_consumed?: number;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -398,6 +410,7 @@ export type Database = {
           credits_consumed: number;
           status: string;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
@@ -410,6 +423,7 @@ export type Database = {
           credits_consumed?: number;
           status?: string;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
@@ -422,6 +436,7 @@ export type Database = {
           credits_consumed?: number;
           status?: string;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [
           {

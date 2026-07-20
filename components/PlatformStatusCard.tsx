@@ -66,11 +66,21 @@ export default function PlatformStatusCard({
           hint="今月"
         />
         <Stat
-          label="今月利用数"
-          value={String(data.analysesThisMonth)}
-          hint="分析"
+          label="有効期限"
+          value={membership?.expiresAt ?? "—"}
+          hint={compact ? undefined : "認定"}
         />
       </div>
+
+      {!compact && (
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat
+            label="今月利用数"
+            value={String(data.analysesThisMonth)}
+            hint="分析"
+          />
+        </div>
+      )}
 
       {!compact && membership && (
         <dl className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
@@ -81,9 +91,9 @@ export default function PlatformStatusCard({
             </dd>
           </div>
           <div className="flex justify-between gap-3 rounded-xl bg-[#fafaf8] px-3 py-2.5">
-            <dt>有効期限</dt>
+            <dt>今月利用数</dt>
             <dd className="font-semibold" style={{ color: NAVY }}>
-              {membership.expiresAt ?? "—"}
+              {data.analysesThisMonth} 回
             </dd>
           </div>
         </dl>

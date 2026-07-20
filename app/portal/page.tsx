@@ -112,26 +112,43 @@ export default function InstructorPortalPage() {
                   {data.recentAnalyses.map((item) => (
                     <li
                       key={item.id}
-                      className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <p className="font-semibold" style={{ color: NAVY }}>
                           {item.clientName}
                         </p>
                         <p className="mt-1 text-[12px] text-slate-400">
                           {item.measurementDate ?? item.createdAt.slice(0, 10)}
                         </p>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm">
-                        <span className="text-slate-500">
-                          スコア{" "}
+                        <p className="mt-2 text-sm text-slate-500">
+                          睡眠スコア{" "}
                           <strong style={{ color: NAVY }}>
                             {item.sleepScore ?? "—"}
                           </strong>
-                        </span>
-                        <span className="text-slate-400">
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                        <span className="text-[12px] text-slate-400">
                           -{item.creditsConsumed} cr
                         </span>
+                        {item.analysisId ? (
+                          <Link
+                            href={`/analysis/result?analysisId=${encodeURIComponent(item.analysisId)}`}
+                            className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-semibold text-white"
+                            style={{ backgroundColor: NAVY }}
+                          >
+                            詳細を見る
+                          </Link>
+                        ) : item.clientId ? (
+                          <Link
+                            href={`/clients/${item.clientId}`}
+                            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-[13px] font-semibold"
+                            style={{ color: NAVY }}
+                          >
+                            詳細を見る
+                          </Link>
+                        ) : null}
                       </div>
                     </li>
                   ))}

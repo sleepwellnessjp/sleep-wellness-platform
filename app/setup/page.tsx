@@ -9,19 +9,26 @@ const GOLD = "#8a6a2d";
 
 type SchemaResponse = {
   tableReady?: boolean;
+  platformReady?: boolean;
+  persistReady?: boolean;
   missingTable?: boolean;
   probeError?: string | null;
   probeCode?: string | null;
   sql?: string;
+  platformSql?: string;
+  persistSql?: string;
   instructions?: string[];
   error?: string;
 };
 
+type SqlKind = "schema" | "platform" | "persist";
+
 export default function SetupPage() {
   const [data, setData] = useState<SchemaResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<SqlKind | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [preview, setPreview] = useState<SqlKind>("schema");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -43,18 +50,34 @@ export default function SetupPage() {
     void refresh();
   }, [refresh]);
 
-  const copySql = async () => {
-    if (!data?.sql) return;
+  const sqlFor = (kind: SqlKind): string | undefined => {
+    if (kind === "schema") return data?.sql;
+    if (kind === "platform") return data?.platformSql;
+    return data?.persistSql;
+  };
+
+  const labelFor = (kind: SqlKind): string => {
+    if (kind === "schema") return "schema.sql";
+    if (kind === "platform") return "platform-v1.sql";
+    return "analysis-persist-v1.sql";
+  };
+
+  const copySql = async (kind: SqlKind) => {
+    const sql = sqlFor(kind);
+    if (!sql) return;
     try {
-      await navigator.clipboard.writeText(data.sql);
-      setCopied(true);
-      setMessage("schema.sql をクリップボードにコピーしました。");
-      window.setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(sql);
+      setCopied(kind);
+      setPreview(kind);
+      setMessage(`${labelFor(kind)} をクリップボードにコピーしました。`);
+      window.setTimeout(() => setCopied(null), 2000);
     } catch (error) {
       console.error("[setup] clipboard failed:", error);
       setMessage("コピーに失敗しました。下の SQL を手動で選択してください。");
     }
   };
+
+  const previewSql = sqlFor(preview);
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -73,11 +96,8 @@ export default function SetupPage() {
           データベース初期設定
         </h1>
         <p className="mt-3 text-[15px] leading-7 text-slate-600">
-          ログインは Auth のみで動作しますが、クライアント登録には
-          <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 text-[13px]">
-            public.clients
-          </code>
-          テーブルが必要です。未作成の場合は schema.sql を実行してください。
+          第一期卒業生が分析を保存・履歴確認するには、以下 3 つの SQL を
+          この順で実行してください。
         </p>
 
         <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)]">
@@ -86,23 +106,31 @@ export default function SetupPage() {
           </h2>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">確認中...</p>
-          ) : data?.tableReady ? (
-            <p className="mt-3 text-sm font-medium text-[#0f6b5c]">
-              clients テーブルは利用可能です。新規クライアント登録ができます。
-            </p>
           ) : (
+            <ul className="mt-4 space-y-2 text-sm">
+              <StatusRow
+                label="1. ベーススキーマ (clients / analyses)"
+                ready={Boolean(data?.tableReady)}
+              />
+              <StatusRow
+                label="2. Platform V1 (クレジット・会員・履歴)"
+                ready={Boolean(data?.platformReady)}
+              />
+              <StatusRow
+                label="3. 分析永続化 (二重消費防止・レポート保存)"
+                ready={Boolean(data?.persistReady)}
+              />
+            </ul>
+          )}
+
+          {!loading && data?.probeError && !data.tableReady && (
             <div className="mt-3 space-y-2 text-sm text-rose-700">
-              <p className="font-medium">
-                clients テーブルが見つかりません（登録失敗の原因）。
-              </p>
-              {data?.probeCode && (
+              {data.probeCode && (
                 <p className="font-mono text-[13px]">code: {data.probeCode}</p>
               )}
-              {data?.probeError && (
-                <p className="break-words font-mono text-[13px]">
-                  {data.probeError}
-                </p>
-              )}
+              <p className="break-words font-mono text-[13px]">
+                {data.probeError}
+              </p>
             </div>
           )}
 
@@ -131,25 +159,29 @@ export default function SetupPage() {
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-[15px] leading-7 text-slate-600">
             {(data?.instructions ?? [
               "Supabase Dashboard → SQL Editor → New query",
-              "schema.sql を貼り付けて Run",
-              "このページで再確認 → 新規登録を試す",
+              "1) schema.sql を貼り付けて Run",
+              "2) platform-v1.sql を貼り付けて Run",
+              "3) analysis-persist-v1.sql を貼り付けて Run",
             ]).map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void copySql()}
-              disabled={!data?.sql}
-              className="inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: NAVY }}
-            >
-              {copied ? "コピーしました" : "schema.sql をコピー"}
-            </button>
+            {(["schema", "platform", "persist"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => void copySql(kind)}
+                disabled={!sqlFor(kind)}
+                className="inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                style={{ backgroundColor: NAVY }}
+              >
+                {copied === kind ? "コピーしました" : `${labelFor(kind)} をコピー`}
+              </button>
+            ))}
             <a
-              href="https://supabase.com/dashboard/project/cqfclbyzdmxfgktkbbsz/sql/new"
+              href="https://supabase.com/dashboard/project/_/sql/new"
               target="_blank"
               rel="noreferrer"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -158,17 +190,49 @@ export default function SetupPage() {
             </a>
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2">
+            {(["schema", "platform", "persist"] as const).map((kind) => (
+              <button
+                key={`preview-${kind}`}
+                type="button"
+                onClick={() => setPreview(kind)}
+                className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold ${
+                  preview === kind
+                    ? "bg-[#071426] text-white"
+                    : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {labelFor(kind)}
+              </button>
+            ))}
+          </div>
+
           {message && (
             <p className="mt-4 text-sm font-medium text-slate-600">{message}</p>
           )}
 
-          {data?.sql && (
+          {previewSql && (
             <pre className="mt-5 max-h-[420px] overflow-auto rounded-2xl bg-[#0b1220] p-4 text-[12px] leading-5 text-slate-200">
-              {data.sql}
+              {previewSql}
             </pre>
           )}
         </section>
       </div>
     </main>
+  );
+}
+
+function StatusRow({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-xl bg-[#fafaf8] px-4 py-3">
+      <span className="text-slate-700">{label}</span>
+      <span
+        className={`shrink-0 font-semibold ${
+          ready ? "text-[#0f6b5c]" : "text-[#a33a3a]"
+        }`}
+      >
+        {ready ? "OK" : "未適用"}
+      </span>
+    </li>
   );
 }

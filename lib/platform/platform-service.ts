@@ -428,6 +428,22 @@ export async function consumeAnalysisCredit(input: {
   }
 
   // RPC 未適用環境向けフォールバック
+  if (input.analysisId) {
+    const { data: existingHistory } = await supabase
+      .from("analysis_history")
+      .select("id")
+      .eq("user_id", profile.id)
+      .eq("analysis_id", input.analysisId)
+      .maybeSingle();
+
+    if (existingHistory) {
+      return {
+        ok: true,
+        message: "already_consumed",
+      };
+    }
+  }
+
   const monthly = await ensureMonthlyCredit(profile.id);
   if (!monthly) {
     return { ok: false, message: "クレジット情報を取得できません。" };

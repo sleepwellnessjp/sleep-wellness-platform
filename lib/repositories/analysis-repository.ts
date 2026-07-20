@@ -2,6 +2,7 @@ export {
   loadClients,
   loadClientsSync,
   getClientById,
+  getAnalysisById,
   getClientListItems,
   getComparableClients,
   createClient,

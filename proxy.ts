@@ -13,6 +13,8 @@ const PROTECTED_PREFIXES = [
   "/clients",
   "/setup",
   "/analysis/new",
+  "/analysis/confirm",
+  "/analysis/loading",
   "/analysis/result",
 ];
 
@@ -21,7 +23,7 @@ function isProtectedPath(pathname: string): boolean {
     return true;
   }
   if (pathname.startsWith("/clients/")) return true;
-  if (pathname === "/analysis/result") return true;
+  if (pathname.startsWith("/analysis/")) return true;
   return false;
 }
 
@@ -93,6 +95,9 @@ export const config = {
     "/clients/:path*",
     "/setup",
     "/analysis/new",
+    "/analysis/confirm",
+    "/analysis/loading",
     "/analysis/result",
+    "/analysis/result/:path*",
   ],
 };
