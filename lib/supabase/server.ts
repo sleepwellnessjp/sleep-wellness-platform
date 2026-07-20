@@ -6,9 +6,10 @@ import {
   getSupabaseUrl,
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
+import type { Database } from "@/lib/supabase/database.types";
 
 /** Server Component / Route Handler 用。未設定時は null。 */
-export async function createServerSupabaseClient(): Promise<SupabaseClient | null> {
+export async function createServerSupabaseClient(): Promise<SupabaseClient<Database> | null> {
   if (!isSupabaseConfigured()) return null;
 
   const url = getSupabaseUrl();
@@ -17,7 +18,7 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient | nul
 
   const cookieStore = await cookies();
 
-  return createServerClient(url, key, {
+  return createServerClient<Database>(url, key, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
