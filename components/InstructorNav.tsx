@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth/use-auth";
 
 const NAVY = "#071426";
@@ -10,6 +11,7 @@ const GOLD = "#8a6a2d";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "ダッシュボード", match: "/dashboard" },
+  { href: "/portal", label: "マイポータル", match: "/portal" },
   { href: "/clients", label: "クライアント", match: "/clients" },
   { href: "/programs", label: "改善プログラム", match: "/programs" },
   { href: "/analysis/new", label: "新規分析", match: "/analysis" },
@@ -39,6 +41,24 @@ export default function InstructorNav({
   const router = useRouter();
   const { loading, supabaseEnabled, isAuthenticated, isDemoMode, signOut } =
     useAuth();
+  const [showAdmin, setShowAdmin] = useState(false);
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setShowAdmin(true);
+      return;
+    }
+    void fetch("/api/platform/me", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { profile?: { role?: string } } | null) => {
+        if (json?.profile?.role === "super_admin") {
+          setShowAdmin(true);
+        }
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, [isDemoMode]);
 
   const showLogout =
     !loading && ((supabaseEnabled && isAuthenticated) || isDemoMode);
@@ -103,6 +123,23 @@ export default function InstructorNav({
               </Link>
             );
           })}
+          {showAdmin && (
+            <Link
+              href="/admin"
+              className={`rounded-full px-3.5 py-2 text-[12px] font-semibold tracking-[-0.01em] transition sm:px-4 sm:text-[13px] ${
+                pathname.startsWith("/admin")
+                  ? "text-white"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-[#071426]"
+              }`}
+              style={
+                pathname.startsWith("/admin")
+                  ? { backgroundColor: GOLD }
+                  : undefined
+              }
+            >
+              管理
+            </Link>
+          )}
           {showLogout && (
             <button
               type="button"

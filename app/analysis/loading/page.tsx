@@ -67,6 +67,24 @@ export default function AnalysisLoadingPage() {
         } catch (saveError) {
           console.error("Failed to save analysis to client store:", saveError);
         }
+
+        try {
+          await fetch("/api/platform/consume-credit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clientName: result.clientName ?? "睡眠分析",
+              measurementDate: result.measurementDate,
+              sleepScore:
+                typeof result.metrics?.sleepScore === "number"
+                  ? result.metrics.sleepScore
+                  : result.score,
+            }),
+          });
+        } catch (creditError) {
+          console.error("Failed to consume analysis credit:", creditError);
+        }
+
         setProgress(100);
         router.replace("/analysis/result");
       })
