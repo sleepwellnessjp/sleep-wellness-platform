@@ -56,6 +56,7 @@ export const SCREEN_PRIMARY_METRICS: Record<
 > = {
   home: [
     "sleepScore",
+    "sleepDuration",
     "qol",
     "yesterdayQol",
     "conditionScore",
@@ -92,6 +93,22 @@ export const SCREEN_PRIMARY_METRICS: Record<
   other: [],
 };
 
+/**
+ * ホーム画面の代表値。ホームから取れたら他画面より絶対優先し、
+ * 他画面との差は競合にしない。
+ */
+export const HOME_AUTHORITATIVE_KEYS: readonly MetricFieldKey[] = [
+  "sleepScore",
+  "sleepDuration",
+  "qol",
+  "yesterdayQol",
+  "conditionScore",
+] as const;
+
+export function isHomeAuthoritativeKey(key: MetricFieldKey): boolean {
+  return (HOME_AUTHORITATIVE_KEYS as readonly string[]).includes(key);
+}
+
 /** 各メトリクスの画面優先順位（先頭が最優先） */
 export const METRIC_SCREEN_PRIORITY: Partial<
   Record<MetricFieldKey, readonly SoxaiScreenType[]>
@@ -101,7 +118,8 @@ export const METRIC_SCREEN_PRIORITY: Partial<
   skinTemperature: ["skin_temp", "sleep_detail"],
   stress: ["stress", "sleep_detail"],
   sleepLatency: ["sleep_detail", "bed_wake"],
-  sleepDuration: ["sleep_detail", "sleep_overview", "home"],
+  // ホームに睡眠時間があれば最優先。無い場合は詳細・概要へフォールバック
+  sleepDuration: ["home", "sleep_detail", "sleep_overview"],
   sleepEfficiency: ["sleep_detail"],
   sleepDebt: ["sleep_detail"],
   circadianRhythm: ["circadian", "sleep_detail"],
@@ -117,7 +135,8 @@ export const METRIC_SCREEN_PRIORITY: Partial<
   respiratoryRate: ["respiration"],
   restingHeartRate: ["rhr", "home"],
   hrv: ["hrv"],
-  sleepScore: ["sleep_overview", "home", "sleep_detail"],
+  // ホーム「睡眠」カードを他画面の睡眠スコアより優先
+  sleepScore: ["home", "sleep_overview", "sleep_detail"],
   qol: ["home"],
   yesterdayQol: ["home"],
   conditionScore: ["home"],
@@ -209,6 +228,11 @@ export function screenAffinityScore(
   screen: SoxaiScreenType,
   key: MetricFieldKey,
 ): number {
+  // ホーム代表値はホーム画面から取れた時点で他画面を上回る
+  if (screen === "home" && isHomeAuthoritativeKey(key)) {
+    return 120;
+  }
+
   if (isPrimaryMetricForScreen(screen, key)) {
     // 重点4項目は特に高く
     if (

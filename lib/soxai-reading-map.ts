@@ -588,18 +588,23 @@ export function screenTypeScore(
   if (isVitalsDetail) score = 90;
   if (isChartFragment) score = 15;
 
-  // キー別の画面適合
+  // キー別の画面適合（ホーム代表値はホームを最優先）
   if (key === "sleepScore") {
-    if (labels.some((l) => /睡眠スコア|sleepscore/.test(l)) && !isChartFragment)
+    if (isHomeOverview && labels.some((l) => /^睡眠$|睡眠スコア/.test(l))) {
+      score += 80;
+    } else if (
+      labels.some((l) => /睡眠スコア|sleepscore/.test(l)) &&
+      !isChartFragment
+    ) {
       score += 40;
-    if (isHomeOverview && labels.some((l) => /^睡眠$/.test(l))) score += 25;
+    }
     if (isChartFragment) score -= 50;
   }
 
   if (key === "sleepDuration") {
+    if (isHomeOverview) score += 50;
     if (isSleepDetail) score += 35;
     if (isStageDetail) score -= 25; // ステージ画面の「○睡眠時間」は総睡眠ではない
-    if (isHomeOverview) score += 5;
   }
 
   if (key === "restingHeartRate") {
