@@ -527,6 +527,34 @@ export async function saveAnalysisToRepository(
   if (!auth) return saveLocalAnalysis(result);
 
   const { supabase, userId } = auth;
+
+  // 同一結果の再保存を防ぐ（Strict Mode / 二重呼び出し対策）
+  const existingAnalysisId = result.analysisId?.trim();
+  if (existingAnalysisId) {
+    const { data: existingAnalysis, error: existingError } = await supabase
+      .from("analyses")
+      .select("id, client_id")
+      .eq("owner_id", userId)
+      .eq("id", existingAnalysisId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw formatSupabaseError(
+        existingError,
+        "saveAnalysis:selectExistingAnalysis",
+      );
+    }
+
+    if (existingAnalysis) {
+      const existingRef = {
+        clientId: String((existingAnalysis as { client_id: string }).client_id),
+        analysisId: String((existingAnalysis as { id: string }).id),
+      };
+      rememberLastSavedAnalysisRef(existingRef);
+      return existingRef;
+    }
+  }
+
   const name = result.clientName?.trim() || "未設定";
   const analysisDate =
     result.measurementDate?.trim() || new Date().toISOString().slice(0, 10);

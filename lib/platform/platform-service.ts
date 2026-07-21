@@ -5,6 +5,7 @@ import {
   ANALYSIS_CREDIT_COST,
   currentYearMonth,
   MONTHLY_CREDIT_ALLOWANCE,
+  yearMonthStartIso,
 } from "./constants";
 import type {
   AdminLogRecord,
@@ -504,7 +505,7 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
     .from("analyses")
     .select("id", { count: "exact", head: true })
     .eq("owner_id", profile.id)
-    .gte("created_at", `${yearMonth}-01T00:00:00.000Z`);
+    .gte("created_at", yearMonthStartIso(yearMonth));
 
   if (countError) {
     console.error("[platform] getPlatformMe: analyses count failed", {
@@ -719,6 +720,12 @@ export async function consumeAnalysisCredit(input: {
       .maybeSingle();
 
     if (existingHistory) {
+      await supabase
+        .from("analyses")
+        .update({ credits_consumed: ANALYSIS_CREDIT_COST })
+        .eq("id", input.analysisId)
+        .eq("owner_id", profile.id);
+
       return {
         ok: true,
         message: "already_consumed",
@@ -778,6 +785,14 @@ export async function consumeAnalysisCredit(input: {
     created_by: profile.id,
   });
 
+  if (input.analysisId) {
+    await supabase
+      .from("analyses")
+      .update({ credits_consumed: ANALYSIS_CREDIT_COST })
+      .eq("id", input.analysisId)
+      .eq("owner_id", profile.id);
+  }
+
   return { ok: true, message: "クレジットを消費しました" };
 }
 
@@ -809,7 +824,7 @@ export async function listInstructorSummaries(): Promise<InstructorSummary[]> {
       .from("analyses")
       .select("id", { count: "exact", head: true })
       .eq("owner_id", profile.id)
-      .gte("created_at", `${yearMonth}-01T00:00:00.000Z`);
+      .gte("created_at", yearMonthStartIso(yearMonth));
 
     summaries.push({
       profile,

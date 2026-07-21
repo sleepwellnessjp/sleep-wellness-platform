@@ -32,9 +32,20 @@ export const CREDIT_BLOCK_MESSAGE =
   "クレジットが不足しています。管理者にお問い合わせください。";
 
 export function currentYearMonth(date = new Date()): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
+  // ポータルの「今月」は Asia/Tokyo 基準
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const y = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const m = parts.find((part) => part.type === "month")?.value ?? "01";
   return `${y}-${m}`;
+}
+
+/** 指定 YYYY-MM（Asia/Tokyo）の月初を UTC ISO で返す */
+export function yearMonthStartIso(yearMonth: string): string {
+  return new Date(`${yearMonth}-01T00:00:00+09:00`).toISOString();
 }
 
 export function isAdminRole(role: UserRole): boolean {
