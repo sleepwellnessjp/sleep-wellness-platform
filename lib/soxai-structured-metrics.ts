@@ -85,7 +85,8 @@ export function parseSkinTemperature(raw: string): {
   }
 
   const unit = /°f|℉|fahrenheit/i.test(text) ? "°F" : "℃";
-  const deltaMatch = text.match(/^([+-])\s*(\d+(?:\.\d+)?)/);
+  const normalized = text.replace(/°\s*[cｃ]/gi, "℃");
+  const deltaMatch = normalized.match(/^([+-])\s*(\d+(?:\.\d+)?)/);
   if (deltaMatch) {
     const sign = deltaMatch[1];
     const num = deltaMatch[2];
@@ -98,7 +99,7 @@ export function parseSkinTemperature(raw: string): {
     };
   }
 
-  const absMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:℃|°c|°|度)?/i);
+  const absMatch = normalized.match(/(\d+(?:\.\d+)?)\s*(?:℃|°c|°|度)?/i);
   if (absMatch) {
     const value = absMatch[1];
     return {

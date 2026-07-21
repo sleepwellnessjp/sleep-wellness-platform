@@ -28,6 +28,8 @@ import {
   inferScreenTypeFromReadings,
   isCriticalOcrKey,
   normalizeScreenType,
+  screenCriticalLabels,
+  SCREEN_PRIMARY_METRICS,
   type SoxaiScreenType,
 } from "@/lib/soxai-screen";
 
@@ -165,34 +167,54 @@ function parseExtractJson(raw: string): unknown {
 function singleImagePrompt(imageIndex: number, total: number): string {
   return `SOXAIスクリーンショットです（${total}枚中 ${imageIndex + 1}枚目。この1枚だけを解析）。
 
-まず screenType を判定し、続いて画面内の数値をすべて JSON で返してください。
+手順:
+1) screenType を判定する
+2) その画面種別に対応する項目だけを重点的に読む
+3) visibleReadings / graphReadings を返す
+
 画面全体（上・中・下、カード、円、ゲージ、小さな注釈）を対象にしてください。
 
-【最優先・見逃し禁止】画面にあれば必ず visibleReadings に入れる:
-- 入眠時間 / 入眠 / 睡眠開始（HH:mm）。入眠潜時・就床と混同しない
-- 起床時間 / 起床 / 睡眠終了（HH:mm）。覚醒時間・中途覚醒と混同しない
-- 皮膚温度（絶対値 36.2℃ または差分 +0.3℃）。無い数値は作らない
-- ストレス / 平均ストレス / ストレスレベル。無い平均は捏造しない
+【画面 → 取得項目】
+- home: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数
+- sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 効率 / 負債 / 潜時
+- sleep_stages: 覚醒・レム・浅い・深い（時間と%）/ SpO₂ ※端点時刻を入眠・起床にしない
+- skin_temp: 皮膚温度 / 皮膚温 / 平均 / 偏差（+0.2℃ や単位なし +0.2 も）
+- stress: ストレス / 平均ストレス / ストレスレベル
+- rhr / hrv / respiration / circadian: 各画面の平均・代表値
 
-その他の例:
-- ホーム: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数
-- 詳細: 睡眠時間 / 全就床 / 入眠潜時 / 睡眠効率 / 睡眠負債 / 体内時計
-- ステージ: 覚醒・レム・浅い・深い（時間と%は別） / SpO₂
-- バイタル: 安静時心拍 / HRV / 呼吸速度
+【最優先・見逃し禁止】
+- 入眠時間 ≠ 入眠潜時 ≠ 就床
+- 起床時間 ≠ 覚醒時間 ≠ 中途覚醒
+- 皮膚温度（絶対値または ±差分）
+- ストレス（明示数値のみ。平均の捏造禁止）
 
 ラベルは画面表記どおり。推測禁止。この1枚に見えるものだけ。`;
 }
 
-function criticalFieldsRetryPrompt(): string {
-  return `同じ1枚を再スキャンしてください。特に次の4項目を徹底探索します。
+function criticalFieldsRetryPrompt(screenType: SoxaiScreenType): string {
+  const focus = screenCriticalLabels(screenType);
+  return `同じ1枚を再スキャンしてください。screenType は「${screenType}」です。
 
+この画面で特に探す項目: ${focus}
+
+共通の4重点（画面にあれば必ず返す）:
 1. 入眠時間（入眠 / 入眠時間 / 睡眠開始）→ HH:mm。潜時・就床と混同しない
 2. 起床時間（起床 / 起床時間 / 睡眠終了）→ HH:mm。覚醒時間と混同しない
-3. 皮膚温度（皮膚温度 / 皮膚温）→ 絶対値または ±差分。明示数値のみ
-4. ストレス（ストレス / 平均ストレス / ストレスレベル）→ 明示数値・レベルのみ。平均の捏造禁止
+3. 皮膚温度（皮膚温度 / 皮膚温 / 平均 / 偏差）→ 絶対値または ±差分。単位なし +0.2 も可
+4. ストレス（ストレス / 平均ストレス / ストレスレベル）→ 明示数値のみ
 
 見つかったものは visibleReadings に再掲し、見落としを追加してください。
 screenType も再判定してください。`;
+}
+
+function screenSpecificRetryPrompt(screenType: SoxaiScreenType): string {
+  const keys = SCREEN_PRIMARY_METRICS[screenType];
+  const focus = screenCriticalLabels(screenType);
+  return `screenType「${screenType}」の一次項目が不足しています。
+同じ1枚を再スキャンし、次を必ず探してください: ${focus}
+
+一次項目キー: ${keys.join(", ") || "(general)"}
+推測禁止。見える値のみ visibleReadings に追加。`;
 }
 
 function sparseRetryPrompt(count: number): string {
@@ -243,6 +265,15 @@ function CRITICAL_KEYS_MISSING(
 ): string[] {
   const keys = ["bedtime", "wakeTime", "skinTemperature", "stress"] as const;
   return keys.filter((key) => !isMetricPresent(metrics, key));
+}
+
+function primaryKeysMissing(
+  screenType: SoxaiScreenType,
+  metrics: ReturnType<typeof mapVisibleReadingsToMetricsDetailed>["metrics"],
+): string[] {
+  return SCREEN_PRIMARY_METRICS[screenType].filter(
+    (key) => !isMetricPresent(metrics, key),
+  );
 }
 
 async function mapPool<T, R>(
@@ -438,7 +469,9 @@ export async function POST(request: Request) {
           sourceImageIndex: imageIndex,
         }));
 
-        const mappedOnce = mapVisibleReadingsToMetricsDetailed(readings);
+        const mappedOnce = mapVisibleReadingsToMetricsDetailed(readings, {
+          screenType,
+        });
         const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
         const missingCritical = CRITICAL_KEYS_MISSING(mappedOnce.metrics);
 
@@ -448,6 +481,7 @@ export async function POST(request: Request) {
             imageIndex,
             count: readings.length,
             mappedKeyCount,
+            screenType,
           });
           try {
             const retry = await runVisionOnImage(
@@ -457,7 +491,9 @@ export async function POST(request: Request) {
             if (
               retry.readings.length > readings.length ||
               collectedMetricKeys(
-                mapVisibleReadingsToMetricsDetailed(retry.readings).metrics,
+                mapVisibleReadingsToMetricsDetailed(retry.readings, {
+                  screenType: retry.screenType,
+                }).metrics,
               ).length > mappedKeyCount
             ) {
               readings = retry.readings;
@@ -478,13 +514,74 @@ export async function POST(request: Request) {
           }
         }
 
+        // 画面種別の一次項目が欠けている場合は画面専用再スキャン
+        let afterSparse = mapVisibleReadingsToMetricsDetailed(readings, {
+          screenType,
+        });
+        const missingPrimary = primaryKeysMissing(
+          screenType,
+          afterSparse.metrics,
+        );
+        if (
+          missingPrimary.length > 0 &&
+          screenType !== "other" &&
+          SCREEN_PRIMARY_METRICS[screenType].length > 0
+        ) {
+          try {
+            const screenRetry = await runVisionOnImage(
+              imageUrl,
+              screenSpecificRetryPrompt(screenType),
+            );
+            const mergedReadings = [...readings];
+            for (const reading of screenRetry.readings) {
+              const dedupe = `${reading.label}::${reading.value}`;
+              if (
+                !mergedReadings.some(
+                  (r) => `${r.label}::${r.value}` === dedupe,
+                )
+              ) {
+                mergedReadings.push(reading);
+              }
+            }
+            const remapped = mapVisibleReadingsToMetricsDetailed(
+              mergedReadings,
+              { screenType: screenRetry.screenType || screenType },
+            );
+            if (
+              collectedMetricKeys(remapped.metrics).length >
+                collectedMetricKeys(afterSparse.metrics).length ||
+              screenRetry.readings.length > readings.length
+            ) {
+              readings = mergedReadings;
+              if (screenRetry.screenType !== "other") {
+                screenType = screenRetry.screenType;
+              }
+              afterSparse = remapped;
+            }
+            if (screenRetry.graphReadings.length > graphReadings.length) {
+              graphReadings = screenRetry.graphReadings.map((g) => ({
+                ...g,
+                sourceImageIndex: imageIndex,
+              }));
+            }
+          } catch (screenError) {
+            console.warn(
+              "[api/extract] screen-specific retry failed",
+              { imageIndex, screenType, missingPrimary },
+              screenError,
+            );
+          }
+        }
+
         // 4重点項目が欠けている場合は専用再スキャン
-        const afterSparse = mapVisibleReadingsToMetricsDetailed(readings);
+        afterSparse = mapVisibleReadingsToMetricsDetailed(readings, {
+          screenType,
+        });
         if (CRITICAL_KEYS_MISSING(afterSparse.metrics).length > 0) {
           try {
             const criticalRetry = await runVisionOnImage(
               imageUrl,
-              criticalFieldsRetryPrompt(),
+              criticalFieldsRetryPrompt(screenType),
             );
             const beforeKeys = new Set(
               collectedMetricKeys(afterSparse.metrics),
@@ -500,8 +597,10 @@ export async function POST(request: Request) {
                 mergedReadings.push(reading);
               }
             }
-            const remapped =
-              mapVisibleReadingsToMetricsDetailed(mergedReadings);
+            const remapped = mapVisibleReadingsToMetricsDetailed(
+              mergedReadings,
+              { screenType: criticalRetry.screenType || screenType },
+            );
             const gained = collectedMetricKeys(remapped.metrics).filter(
               (k) => !beforeKeys.has(k) && isCriticalOcrKey(k),
             );
@@ -582,7 +681,9 @@ export async function POST(request: Request) {
         screenType = inferScreenTypeFromReadings(readings);
       }
 
-      const mapped = mapVisibleReadingsToMetricsDetailed(readings);
+      const mapped = mapVisibleReadingsToMetricsDetailed(readings, {
+        screenType,
+      });
       console.info("[api/extract] per-image OCR complete", {
         imageIndex,
         screenType,

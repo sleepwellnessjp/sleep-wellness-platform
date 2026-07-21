@@ -285,11 +285,28 @@ export function enrichMetricsFromGraphs(
 
   applyAnnotation("rhr", "restingHeartRate", /平均|avg|mean/i);
   applyAnnotation("hrv", "hrv", /平均|avg|mean/i);
-  applyAnnotation("stress", "stress", /平均|avg|mean|現在/i);
+  applyAnnotation("stress", "stress", /平均|avg|mean|現在|ストレス/i);
   applyAnnotation("respiration", "respiratoryRate", /呼吸|respiratory|平均/i);
   applyAnnotation("respiration", "spo2", /spo|酸素/i);
-  applyAnnotation("skin-temp", "skinTemperature", /平均|avg|mean|皮膚/i);
+  applyAnnotation(
+    "skin-temp",
+    "skinTemperature",
+    /平均|avg|mean|皮膚|体表|偏差|温度|delta|現在/i,
+  );
   applyAnnotation("circadian", "circadianRhythm", /位相|体内|circadian/i);
+
+  // 皮膚温度パネル: annotations が弱い場合、±値っぽい最初の注釈を拾う
+  if (!String(next.skinTemperature ?? "").trim()) {
+    const panel = bundle["skin-temp"];
+    if (panel?.annotations.length) {
+      const deltaLike = panel.annotations.find((a) =>
+        /^[+-]?\s*\d+(\.\d+)?/.test(a.value.normalize("NFKC").trim()),
+      );
+      if (deltaLike?.value.trim()) {
+        next.skinTemperature = deltaLike.value.trim();
+      }
+    }
+  }
 
   // segments から stage rates を補完
   const stages = bundle.stages;
