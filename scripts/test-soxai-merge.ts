@@ -100,6 +100,7 @@ function shuffle<T>(items: T[]): T[] {
   const five: ImageExtractResult[] = [
     {
       imageIndex: 0,
+      screenType: "home",
       metrics: home.metrics,
       readings: [
         { label: "QoL", value: "50" },
@@ -113,6 +114,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
+      screenType: "sleep_detail",
       metrics: sleepDetail.metrics,
       readings: [
         { label: "睡眠", value: "5時間32分" },
@@ -182,11 +184,12 @@ function shuffle<T>(items: T[]): T[] {
   assert(merged.sleepLatency === "12分", "5枚実ログ: 入眠潜時を保持");
 }
 
-// —— 睡眠スコア明記画面（チャートでない）をホーム「睡眠」より優先 ——
+// —— ホーム「睡眠」を他画面の睡眠スコアより優先（競合にしない）——
 {
   const results: ImageExtractResult[] = [
     {
       imageIndex: 0,
+      screenType: "home",
       visibleReadingCount: 5,
       readings: [
         { label: "QoL", value: "50" },
@@ -200,6 +203,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
+      screenType: "sleep_detail",
       visibleReadingCount: 3,
       readings: [
         { label: "睡眠スコア", value: "78" },
@@ -214,10 +218,18 @@ function shuffle<T>(items: T[]): T[] {
       }),
     },
   ];
-  const { metrics: merged } = mergeImageExtractResults(results);
+  const { metrics: merged, conflicts } = mergeImageExtractResults(results);
   assert(
-    merged.sleepScore === 78,
-    "詳細の「睡眠スコア」ラベルをホーム「睡眠」より優先",
+    merged.sleepScore === 71,
+    "ホーム「睡眠」を他画面の「睡眠スコア」より優先",
+  );
+  assert(
+    !conflicts.some((c) => c.key === "sleepScore"),
+    "ホーム採用時は sleepScore を競合にしない",
+  );
+  assert(
+    merged.sleepDuration === "6時間10分",
+    "ホームに無い睡眠時間は詳細画面から補完",
   );
 }
 
@@ -254,11 +266,12 @@ function shuffle<T>(items: T[]): T[] {
   );
 }
 
-// —— 2枚: 補完 + 詳細画面の sleepScore ——
+// —— 2枚: ホーム優先 + 不足項目の補完（ホーム採用は競合にしない）——
 {
   const twoImages: ImageExtractResult[] = [
     {
       imageIndex: 0,
+      screenType: "home",
       visibleReadingCount: 4,
       readings: [
         { label: "QoL", value: "50" },
@@ -279,6 +292,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
+      screenType: "sleep_detail",
       visibleReadingCount: 8,
       readings: [
         { label: "睡眠スコア", value: "82" },
@@ -304,7 +318,7 @@ function shuffle<T>(items: T[]): T[] {
   ];
 
   const { metrics: merged, conflicts } = mergeImageExtractResults(twoImages);
-  assert(merged.sleepScore === 82, "2枚: 「睡眠スコア」明記側を採用");
+  assert(merged.sleepScore === 78, "2枚: ホーム「睡眠」を採用");
   assert(
     merged.restingHeartRate === "58 bpm",
     "2枚: 不足項目を他画像から補完 (RHR)",
@@ -315,8 +329,8 @@ function shuffle<T>(items: T[]): T[] {
   );
   assert(merged.qol === "50", "2枚: QoL を保持");
   assert(
-    conflicts.some((c) => c.key === "sleepScore"),
-    "2枚: sleepScore 競合を記録",
+    !conflicts.some((c) => c.key === "sleepScore"),
+    "2枚: ホーム採用の sleepScore は競合にしない",
   );
 
   const a = mergeImageExtractResults(twoImages).metrics;

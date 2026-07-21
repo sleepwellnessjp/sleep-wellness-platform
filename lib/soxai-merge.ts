@@ -16,7 +16,9 @@ import {
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
 import {
+  inferScreenTypeFromReadings,
   isCriticalOcrKey,
+  isHomeAuthoritativeKey,
   isPrimaryMetricForScreen,
   metricScreenRank,
   screenAffinityScore,
@@ -252,6 +254,7 @@ function confidenceFromCandidateForKey(
 
 /**
  * 採用ゲート: 画面種別＋ラベル一致が弱い候補を除外。
+ * ホーム代表値はホーム候補があれば他画面を捨てる。
  * より良い一次画面候補がある場合は誤画面を捨てる。
  */
 function filterCandidatesForKey(
@@ -259,6 +262,12 @@ function filterCandidatesForKey(
   candidates: Candidate[],
 ): Candidate[] {
   if (candidates.length === 0) return candidates;
+
+  // ホーム画面の代表値: ホームから取れたら他画面は無視（競合にもしない）
+  if (isHomeAuthoritativeKey(key)) {
+    const homeOnly = candidates.filter((c) => c.screenType === "home");
+    if (homeOnly.length > 0) return homeOnly;
+  }
 
   const hasPrimary = candidates.some((c) =>
     isPrimaryMetricForScreen(c.screenType, key),
@@ -311,6 +320,39 @@ function filterCandidatesForKey(
   return filtered;
 }
 
+/**
+ * 競合として残すか。ホーム代表値でホーム採用できた場合は他画面差を競合にしない。
+ * 本当に判断できない（同格候補が複数値）ときだけ true。
+ */
+function shouldRecordConflict(
+  key: MetricFieldKey,
+  adopted: Candidate,
+  uniqueValueCount: number,
+): boolean {
+  if (uniqueValueCount <= 1) return false;
+
+  if (isHomeAuthoritativeKey(key) && adopted.screenType === "home") {
+    return false;
+  }
+
+  // 明確な一次画面から採用できた場合も、二次画面の差は競合にしない
+  if (isPrimaryMetricForScreen(adopted.screenType, key)) {
+    const rank = metricScreenRank(key, adopted.screenType);
+    if (rank === 0) return false;
+  }
+
+  return true;
+}
+
+function resolveEffectiveScreenType(
+  result: ImageExtractResult,
+): SoxaiScreenType {
+  if (result.screenType && result.screenType !== "other") {
+    return result.screenType;
+  }
+  return inferScreenTypeFromReadings(result.readings ?? []);
+}
+
 function resolveSourceLabel(
   result: ImageExtractResult,
   key: MetricFieldKey,
@@ -334,8 +376,9 @@ function resolveSourceLabel(
 /**
  * 複数画像の個別OCR結果を1つの AnalysisMetrics に統合する。
  * - 不足項目は他画像から補完
+ * - ホーム代表値はホーム画面を最優先（他画面との差は競合にしない）
  * - 同一項目の競合は「画面種別優先 → ラベル一致 → 値形式」で採用
- * - OCR信頼度だけでは決めない（画面種別＋ラベル一致率を必須条件に含む）
+ * - 競合表示は本当に判断できない場合のみ
  * - 画像の順番は結果に影響しない
  */
 export function mergeImageExtractResults(
@@ -371,7 +414,7 @@ export function mergeImageExtractResults(
 
       const readings = result.readings ?? [];
       const sourceLabel = resolveSourceLabel(result, key);
-      const screenType = result.screenType ?? "other";
+      const screenType = resolveEffectiveScreenType(result);
       let labelScore = labelMatchScore(key, sourceLabel);
       let screenScore = screenTypeScore(readings, key);
       screenScore += screenAffinityScore(screenType, key);
@@ -430,7 +473,7 @@ export function mergeImageExtractResults(
 
     confidence[key] = confidenceFromCandidateForKey(key, adopted, byNorm.size);
 
-    if (byNorm.size > 1) {
+    if (shouldRecordConflict(key, adopted, byNorm.size)) {
       const alternatives = [...byNorm.entries()]
         .filter(([norm]) => norm !== normalizeComparable(adopted.value))
         .map(([, group]) => pickBestCandidateForKey(key, group).value);
