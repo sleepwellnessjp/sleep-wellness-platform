@@ -5,6 +5,7 @@ import {
   type AnalysisMetrics,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
+import type { SoxaiScreenType } from "@/lib/soxai-screen";
 
 export type VisibleReading = {
   label: string;
@@ -24,7 +25,11 @@ type MappingRule = {
   /** ラベル正規化後にマッチ */
   test: (label: string) => boolean;
   /** 値の形状でさらに絞る（任意） */
-  valueHint?: "percent" | "duration" | "time" | "score" | "any";
+  valueHint?: "percent" | "duration" | "time" | "score" | "temp" | "any";
+};
+
+export type MapReadingsOptions = {
+  screenType?: SoxaiScreenType;
 };
 
 function normalizeLabel(label: string): string {
@@ -59,6 +64,32 @@ function looksTime(value: string): boolean {
 function looksScore(value: string): boolean {
   const n = Number(String(value).replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) && n >= 0 && n <= 100;
+}
+
+/** 皮膚温度（絶対値 36.x℃ または差分 ±0.x） */
+export function looksSkinTemperature(value: string): boolean {
+  const v = normalizeSkinTemperatureValue(value);
+  if (!v) return false;
+  if (/^[+-]\s*\d+(\.\d+)?\s*℃?$/i.test(v)) return true;
+  if (/\d+(\.\d+)?\s*℃/i.test(v)) return true;
+  // SOXAIは単位なしの +0.2 / -0.1 を出すことがある
+  if (/^[+-]\s*\d+(\.\d+)?$/.test(v)) {
+    const n = Math.abs(Number(v.replace(/[^\d.-]/g, "")));
+    return Number.isFinite(n) && n <= 5;
+  }
+  // 絶対値（単位なし）36〜38 付近
+  const abs = Number(v.replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(abs) && abs >= 34 && abs <= 39) return true;
+  return false;
+}
+
+/** NFKC で ℃ → °C に分解されるため、表示単位を ℃ に戻す */
+export function normalizeSkinTemperatureValue(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/°\s*[cｃ]/gi, "℃")
+    .replace(/\s+/g, " ");
 }
 
 function parseSleepScore(value: string): number | null {
@@ -181,26 +212,29 @@ const MAPPING_RULES: MappingRule[] = [
   },
   {
     key: "sleepLatency",
-    test: (l) => /入眠潜時|潜時|latency|sleeplatency|入眠までの時間/.test(l),
+    test: (l) =>
+      /入眠潜時|潜時|latency|sleeplatency|入眠までの時間|入眠にかかった時間/.test(
+        l,
+      ),
   },
   {
     key: "bedtime",
     test: (l) =>
-      (/入眠時間|入眠時刻|睡眠開始時刻|睡眠開始|fellasleep|sleeponset|^入眠$/.test(
+      (/入眠時間|入眠時刻|入眠した時刻|睡眠開始時刻|睡眠開始時間|睡眠開始|fellasleep|sleeponset|sleepstart|^入眠$/.test(
         l,
       ) ||
-        (/bedtime/.test(l) && !/latency|潜時/.test(l))) &&
-      !/潜時|latency|就床|全就床|就寝|起床|覚醒/.test(l),
+        (/bedtime|sleeponset/.test(l) && !/latency|潜時/.test(l))) &&
+      !/潜時|latency|就床|全就床|就寝予定|起床|覚醒|中途/.test(l),
     valueHint: "time",
   },
   {
     key: "wakeTime",
     test: (l) =>
-      (/起床時間|起床時刻|^起床$|睡眠終了|睡眠終了時刻|gotup|waketime|wakeuptime/.test(
+      (/起床時間|起床時刻|起床した時刻|^起床$|睡眠終了|睡眠終了時刻|睡眠終了時間|gotup|waketime|wakeuptime/.test(
         l,
       ) ||
-        (/^wake$/.test(l) && !/awake|覚醒/.test(l))) &&
-      !/覚醒時間|中途覚醒|awake time|覚醒率/.test(l),
+        (/^wake$|wakeup/.test(l) && !/awake|覚醒/.test(l))) &&
+      !/覚醒時間|中途覚醒|awake|覚醒率|覚醒の/.test(l),
     valueHint: "time",
   },
   {
@@ -227,16 +261,17 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "skinTemperature",
     test: (l) =>
-      /皮膚温|skintemp|skin temperature|体温偏差|皮膚温度|温度偏差|Δ温度|delta/.test(
+      /皮膚温度|皮膚温|体表温|体表温度|skintemperature|skintemp|体温偏差|皮膚温度偏差|温度偏差|delta温度|温度delta|ベースライン偏差|baseline偏差/.test(
         l,
-      ) && !/環境|室温/.test(l),
+      ) && !/環境|室温|気温|天候/.test(l),
+    valueHint: "temp",
   },
   {
     key: "stress",
     test: (l) =>
-      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア|ストレス平均|平均ストレス|現在のストレス|stresslevel|stressscore|stressindex/.test(
+      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア|ストレス値|ストレス平均|平均ストレス|現在のストレス|夜間ストレス|ストレスモニター|stresslevel|stressscore|stressindex|stressavg|averagestress/.test(
         l,
-      ) && !/モニター|グラフ/.test(l),
+      ),
   },
 ];
 
@@ -301,6 +336,10 @@ function matchKey(label: string, value: string): MetricFieldKey | null {
     ) {
       continue;
     }
+    if (rule.valueHint === "temp" && !looksSkinTemperature(value)) {
+      // ラベルが皮膚温でも値が見えない場合はスキップ
+      continue;
+    }
 
     return rule.key;
   }
@@ -363,29 +402,36 @@ export function labelMatchScore(key: MetricFieldKey, label: string): number {
       return 20;
 
     case "bedtime":
-      if (/入眠時間|入眠時刻|睡眠開始時刻|sleeponset|fellasleep/.test(l))
+      if (/入眠時間|入眠時刻|睡眠開始時刻|sleeponset|fellasleep|入眠した時刻/.test(l))
         return 110;
       if (/^入眠$|睡眠開始/.test(l)) return 95;
-      if (/就寝|bedtime/.test(l)) return 40;
-      if (/就床|全就床/.test(l)) return 10;
+      if (/bedtime/.test(l) && !/latency|潜時/.test(l)) return 70;
+      if (/就寝/.test(l) && !/予定|目標/.test(l)) return 25;
+      if (/就床|全就床/.test(l)) return 5;
       return 20;
 
     case "wakeTime":
-      if (/起床時間|起床時刻|睡眠終了|waketime|gotup/.test(l)) return 110;
-      if (/^起床$|^wake$/.test(l)) return 90;
+      if (/起床時間|起床時刻|睡眠終了|waketime|gotup|起床した時刻/.test(l))
+        return 110;
+      if (/^起床$|^wake$|wakeup/.test(l) && !/awake|覚醒/.test(l)) return 90;
+      if (/覚醒時間|中途覚醒|awake/.test(l)) return 5;
       return 20;
 
     case "skinTemperature":
-      if (/皮膚温度|皮膚温|skintemp/.test(l) && /平均|avg|mean/.test(l))
-        return 110;
-      if (/皮膚温度|皮膚温|skintemp|体温偏差/.test(l)) return 100;
-      if (/偏差|delta|Δ/.test(l)) return 85;
+      if (/皮膚温度|皮膚温|体表温|skintemp/.test(l) && /平均|avg|mean/.test(l))
+        return 115;
+      if (/皮膚温度|皮膚温|体表温|skintemperature|skintemp/.test(l)) return 110;
+      if (/体温偏差|温度偏差|ベースライン偏差/.test(l)) return 100;
+      if (/^平均$|^現在$|^偏差$|^avg$/.test(l)) return 55;
       return 20;
 
     case "stress":
-      if (/ストレス平均|平均ストレス|stress.*avg|avg.*stress/.test(l)) return 110;
-      if (/ストレスレベル|stresslevel/.test(l)) return 95;
-      if (/^ストレス$|^stress$|ストレス指数/.test(l)) return 90;
+      if (/ストレス平均|平均ストレス|stress.*avg|avg.*stress/.test(l)) return 115;
+      if (/ストレスレベル|stresslevel/.test(l)) return 100;
+      if (/^ストレス$|^stress$|ストレス指数|ストレス値|ストレススコア/.test(l))
+        return 95;
+      if (/ストレスモニター/.test(l)) return 70;
+      if (/^平均$|^現在$|^avg$/.test(l)) return 50;
       return 20;
 
     case "hrv":
@@ -477,18 +523,118 @@ export function screenTypeScore(
     key === "sleepEfficiency" ||
     key === "sleepDebt" ||
     key === "sleepLatency" ||
-    key === "circadianRhythm" ||
-    key === "bedtime" ||
-    key === "wakeTime"
+    key === "circadianRhythm"
   ) {
     if (isSleepDetail) score += 30;
   }
 
-  if (key === "skinTemperature" && isVitalsDetail) score += 35;
-  if (key === "stress" && (isVitalsDetail || /ストレスモニター/.test(joined)))
-    score += 35;
+  if (key === "bedtime" || key === "wakeTime") {
+    if (isSleepDetail) score += 40;
+    if (/入眠時間|起床時間|睡眠開始|睡眠終了/.test(joined)) score += 35;
+    if (isStageDetail) score -= 35; // hypnogram端点と混同しやすい
+    if (isHomeOverview) score -= 20;
+    if (isChartFragment) score -= 40;
+  }
+
+  if (key === "skinTemperature") {
+    if (/皮膚温|体表温|体温偏差|温度偏差/.test(joined)) score += 50;
+    if (isVitalsDetail) score += 25;
+    if (isHomeOverview) score -= 20;
+  }
+
+  if (key === "stress") {
+    if (/ストレス/.test(joined)) score += 45;
+    if (isVitalsDetail || /ストレスモニター/.test(joined)) score += 25;
+    if (isHomeOverview) score -= 15;
+  }
 
   return score;
+}
+
+/**
+ * 画面種別コンテキストでの追加マッピング（辞書に載らない「平均」「偏差」など）
+ */
+function applyScreenContextFallbacks(
+  readings: VisibleReading[],
+  screenType: SoxaiScreenType | undefined,
+  next: AnalysisMetrics,
+  provenance: MetricProvenance,
+  bestLabelScore: Partial<Record<MetricFieldKey, number>>,
+): void {
+  if (!screenType || screenType === "other") return;
+
+  const trySet = (
+    key: MetricFieldKey,
+    label: string,
+    value: string,
+    score: number,
+  ) => {
+    const prev = bestLabelScore[key] ?? -1;
+    if (score <= prev) return;
+    if (key === "sleepScore") return;
+    next[key] =
+      key === "skinTemperature" ? normalizeSkinTemperatureValue(value) : value;
+    provenance[key] = label;
+    bestLabelScore[key] = score;
+  };
+
+  if (screenType === "skin_temp" && !String(next.skinTemperature).trim()) {
+    for (const reading of readings) {
+      const label = reading.label?.trim() ?? "";
+      const value = normalizeValue(reading.value ?? "");
+      if (!label || !value || !looksSkinTemperature(value)) continue;
+      const l = normalizeLabel(label);
+      // 画面が皮膚温度専用なら、平均/現在/偏差/+値 を採用
+      if (
+        /皮膚|体表|温度|偏差|平均|現在|avg|mean|delta|temp/.test(l) ||
+        /^[+-]/.test(value)
+      ) {
+        trySet("skinTemperature", label, value, labelMatchScore("skinTemperature", label) || 60);
+        break;
+      }
+    }
+  }
+
+  if (screenType === "stress" && !String(next.stress).trim()) {
+    for (const reading of readings) {
+      const label = reading.label?.trim() ?? "";
+      const value = normalizeValue(reading.value ?? "");
+      if (!label || !value) continue;
+      const l = normalizeLabel(label);
+      if (/ストレス|stress|平均|現在|レベル|avg|mean/.test(l)) {
+        // 時刻だけの値は除外
+        if (looksTime(value) && !looksScore(value)) continue;
+        trySet("stress", label, value, labelMatchScore("stress", label) || 55);
+        break;
+      }
+    }
+  }
+
+  if (
+    (screenType === "bed_wake" || screenType === "sleep_detail") &&
+    (!String(next.bedtime).trim() || !String(next.wakeTime).trim())
+  ) {
+    for (const reading of readings) {
+      const label = reading.label?.trim() ?? "";
+      const value = normalizeValue(reading.value ?? "");
+      if (!label || !value || !looksTime(value)) continue;
+      const l = normalizeLabel(label);
+      if (
+        !next.bedtime.trim() &&
+        /入眠|睡眠開始|onset|fellasleep|bedtime/.test(l) &&
+        !/潜時|latency|就床|覚醒/.test(l)
+      ) {
+        trySet("bedtime", label, value, labelMatchScore("bedtime", label));
+      }
+      if (
+        !next.wakeTime.trim() &&
+        /起床|睡眠終了|gotup|wakeup|waketime/.test(l) &&
+        !/覚醒時間|中途|awake|率/.test(l)
+      ) {
+        trySet("wakeTime", label, value, labelMatchScore("wakeTime", label));
+      }
+    }
+  }
 }
 
 /**
@@ -497,12 +643,14 @@ export function screenTypeScore(
  */
 export function mapVisibleReadingsToMetricsDetailed(
   readings: VisibleReading[],
+  options?: MapReadingsOptions,
 ): MappedImageReadings {
   const next = emptyMetrics();
   const provenance: MetricProvenance = {};
   const bestLabelScore: Partial<Record<MetricFieldKey, number>> = {};
   const mappedLabels: string[] = [];
   const skippedLabels: string[] = [];
+  const screenType = options?.screenType;
 
   for (const reading of readings) {
     const label = reading.label?.trim() ?? "";
@@ -513,6 +661,30 @@ export function mapVisibleReadingsToMetricsDetailed(
     if (!key) {
       skippedLabels.push(label);
       continue;
+    }
+
+    // ステージ画面の端点時刻を入眠・起床に誤マップしない
+    if (
+      screenType === "sleep_stages" &&
+      (key === "bedtime" || key === "wakeTime")
+    ) {
+      const l = normalizeLabel(label);
+      if (!/入眠時間|入眠時刻|起床時間|起床時刻|睡眠開始|睡眠終了/.test(l)) {
+        skippedLabels.push(`${label}(blocked:${screenType})`);
+        continue;
+      }
+    }
+
+    // ホーム画面から皮膚温・ストレスを取らない（専用画面を待つ）
+    if (
+      screenType === "home" &&
+      (key === "skinTemperature" || key === "stress")
+    ) {
+      const score = labelMatchScore(key, label);
+      if (score < 90) {
+        skippedLabels.push(`${label}(blocked:home)`);
+        continue;
+      }
     }
 
     const matchScore = labelMatchScore(key, label);
@@ -535,15 +707,27 @@ export function mapVisibleReadingsToMetricsDetailed(
 
     const prev = bestLabelScore[key] ?? -1;
     if (matchScore > prev || (matchScore === prev && !next[key]?.trim())) {
-      next[key] = value;
+      next[key] =
+        key === "skinTemperature"
+          ? normalizeSkinTemperatureValue(value)
+          : value;
       provenance[key] = label;
       bestLabelScore[key] = matchScore;
       mappedLabels.push(`${label}→${key}`);
     }
   }
 
+  applyScreenContextFallbacks(
+    readings,
+    screenType,
+    next,
+    provenance,
+    bestLabelScore,
+  );
+
   if (process.env.NODE_ENV === "development") {
     console.info("[soxai-reading-map] mapped", {
+      screenType: screenType ?? null,
       input: readings.length,
       mapped: mappedLabels,
       skipped: skippedLabels,

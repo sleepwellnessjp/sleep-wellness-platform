@@ -46,13 +46,89 @@ const SCREEN_ENUM = [
   "other",
 ] as const;
 
+/**
+ * 画面種別ごとに「この画面から取る」項目を固定。
+ * ここに無い項目は、その画面からの採用を大幅に下げる（他画面に正しい値がある場合は捨てる）。
+ */
+export const SCREEN_PRIMARY_METRICS: Record<
+  SoxaiScreenType,
+  readonly MetricFieldKey[]
+> = {
+  home: [
+    "sleepScore",
+    "qol",
+    "yesterdayQol",
+    "conditionScore",
+    "restingHeartRate",
+  ],
+  sleep_overview: ["sleepScore", "sleepDuration"],
+  sleep_detail: [
+    "sleepDuration",
+    "bedtime",
+    "wakeTime",
+    "sleepEfficiency",
+    "sleepDebt",
+    "sleepLatency",
+    "circadianRhythm",
+  ],
+  bed_wake: ["bedtime", "wakeTime", "sleepLatency"],
+  sleep_stages: [
+    "awakenings",
+    "awakeningRate",
+    "remSleep",
+    "remSleepRate",
+    "lightSleep",
+    "lightSleepRate",
+    "deepSleep",
+    "deepSleepRate",
+    "spo2",
+  ],
+  circadian: ["circadianRhythm"],
+  stress: ["stress"],
+  skin_temp: ["skinTemperature"],
+  respiration: ["respiratoryRate", "spo2"],
+  rhr: ["restingHeartRate"],
+  hrv: ["hrv"],
+  other: [],
+};
+
+/** 各メトリクスの画面優先順位（先頭が最優先） */
+export const METRIC_SCREEN_PRIORITY: Partial<
+  Record<MetricFieldKey, readonly SoxaiScreenType[]>
+> = {
+  bedtime: ["bed_wake", "sleep_detail", "circadian", "sleep_overview"],
+  wakeTime: ["bed_wake", "sleep_detail", "circadian", "sleep_overview"],
+  skinTemperature: ["skin_temp", "sleep_detail"],
+  stress: ["stress", "sleep_detail"],
+  sleepLatency: ["sleep_detail", "bed_wake"],
+  sleepDuration: ["sleep_detail", "sleep_overview", "home"],
+  sleepEfficiency: ["sleep_detail"],
+  sleepDebt: ["sleep_detail"],
+  circadianRhythm: ["circadian", "sleep_detail"],
+  remSleep: ["sleep_stages"],
+  remSleepRate: ["sleep_stages"],
+  lightSleep: ["sleep_stages"],
+  lightSleepRate: ["sleep_stages"],
+  deepSleep: ["sleep_stages"],
+  deepSleepRate: ["sleep_stages"],
+  awakenings: ["sleep_stages", "sleep_detail"],
+  awakeningRate: ["sleep_stages"],
+  spo2: ["respiration", "sleep_stages"],
+  respiratoryRate: ["respiration"],
+  restingHeartRate: ["rhr", "home"],
+  hrv: ["hrv"],
+  sleepScore: ["sleep_overview", "home", "sleep_detail"],
+  qol: ["home"],
+  yesterdayQol: ["home"],
+  conditionScore: ["home"],
+};
+
 export function normalizeScreenType(raw: unknown): SoxaiScreenType {
   if (typeof raw !== "string") return "other";
   const v = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
   if ((SCREEN_ENUM as readonly string[]).includes(v)) {
     return v as SoxaiScreenType;
   }
-  // 日本語・表記ゆれ
   if (/睡眠概要|overview|summary/.test(v)) return "sleep_overview";
   if (/ステージ|stage|hypnogram/.test(v)) return "sleep_stages";
   if (/睡眠詳細|detail/.test(v)) return "sleep_detail";
@@ -62,7 +138,7 @@ export function normalizeScreenType(raw: unknown): SoxaiScreenType {
   if (/呼吸|respirat|spo2|spo₂/.test(v)) return "respiration";
   if (/安静時|resting|rhr/.test(v)) return "rhr";
   if (/hrv|心拍変動/.test(v)) return "hrv";
-  if (/皮膚温|skin.?temp/.test(v)) return "skin_temp";
+  if (/皮膚温|skin.?temp|体表温/.test(v)) return "skin_temp";
   if (/ホーム|home|qol/.test(v)) return "home";
   return "other";
 }
@@ -75,12 +151,22 @@ export function inferScreenTypeFromReadings(
     .map((r) => r.label.normalize("NFKC").toLowerCase())
     .join("|");
 
-  if (/入眠時間|起床時間|睡眠開始|睡眠終了/.test(joined) && readings.length <= 8) {
-    return "bed_wake";
+  // 皮膚温度・ストレスは単独画面が多いので先に判定
+  if (/皮膚温|体表温|skintemp|体温偏差|温度偏差/.test(joined)) {
+    return "skin_temp";
   }
-  if (/皮膚温/.test(joined)) return "skin_temp";
-  if (/ストレス/.test(joined) && !/睡眠効率|睡眠負債/.test(joined)) {
+  if (
+    /ストレス/.test(joined) &&
+    !/睡眠効率|睡眠負債|入眠潜時|レム睡眠|浅い睡眠/.test(joined)
+  ) {
     return "stress";
+  }
+  if (
+    /入眠時間|起床時間|睡眠開始|睡眠終了/.test(joined) &&
+    readings.length <= 8 &&
+    !/睡眠効率|睡眠負債|レム睡眠/.test(joined)
+  ) {
+    return "bed_wake";
   }
   if (/体内時計|circadian/.test(joined)) return "circadian";
   if (/心拍変動|^hrv$|rmssd/.test(joined)) return "hrv";
@@ -97,59 +183,76 @@ export function inferScreenTypeFromReadings(
   return "other";
 }
 
+export function isPrimaryMetricForScreen(
+  screen: SoxaiScreenType,
+  key: MetricFieldKey,
+): boolean {
+  return SCREEN_PRIMARY_METRICS[screen]?.includes(key) ?? false;
+}
+
+/** 画面優先リスト上の順位（0=最優先、大きいほど低い。未掲載は 99） */
+export function metricScreenRank(
+  key: MetricFieldKey,
+  screen: SoxaiScreenType,
+): number {
+  const list = METRIC_SCREEN_PRIORITY[key];
+  if (!list) return screen === "other" ? 50 : 40;
+  const idx = list.indexOf(screen);
+  return idx >= 0 ? idx : 80;
+}
+
 /**
  * 画面種別 × メトリクス適合スコア（高いほどその画面の値を優先）
+ * 一次画面: +70〜90 / 二次: +20〜40 / 対象外: 0 または負
  */
 export function screenAffinityScore(
   screen: SoxaiScreenType,
   key: MetricFieldKey,
 ): number {
-  const table: Partial<Record<SoxaiScreenType, Partial<Record<MetricFieldKey, number>>>> = {
-    bed_wake: { bedtime: 50, wakeTime: 50, sleepLatency: 20 },
-    sleep_detail: {
-      bedtime: 45,
-      wakeTime: 45,
-      sleepDuration: 40,
-      sleepEfficiency: 40,
-      sleepDebt: 40,
-      sleepLatency: 40,
-      circadianRhythm: 25,
-    },
-    sleep_stages: {
-      remSleep: 45,
-      remSleepRate: 45,
-      lightSleep: 45,
-      lightSleepRate: 45,
-      deepSleep: 45,
-      deepSleepRate: 45,
-      awakenings: 45,
-      awakeningRate: 45,
-      spo2: 30,
-      bedtime: 15,
-      wakeTime: 15,
-    },
-    sleep_overview: {
-      sleepScore: 40,
-      sleepDuration: 20,
-      bedtime: 10,
-      wakeTime: 10,
-    },
-    circadian: { circadianRhythm: 50, bedtime: 20, wakeTime: 20 },
-    stress: { stress: 55 },
-    skin_temp: { skinTemperature: 55 },
-    rhr: { restingHeartRate: 50 },
-    hrv: { hrv: 50 },
-    respiration: { respiratoryRate: 50, spo2: 45 },
-    home: {
-      sleepScore: 35,
-      qol: 40,
-      yesterdayQol: 40,
-      conditionScore: 40,
-      restingHeartRate: 25,
-    },
-  };
+  if (isPrimaryMetricForScreen(screen, key)) {
+    // 重点4項目は特に高く
+    if (
+      key === "bedtime" ||
+      key === "wakeTime" ||
+      key === "skinTemperature" ||
+      key === "stress"
+    ) {
+      return screen === "bed_wake" ||
+        screen === "skin_temp" ||
+        screen === "stress"
+        ? 90
+        : 75;
+    }
+    return 70;
+  }
 
-  return table[screen]?.[key] ?? 0;
+  const rank = metricScreenRank(key, screen);
+  if (rank <= 1) return 40;
+  if (rank <= 3) return 15;
+
+  // 誤画面からの採用を強く抑制（入眠・起床の混同防止）
+  if (key === "bedtime" || key === "wakeTime") {
+    if (
+      screen === "sleep_stages" ||
+      screen === "stress" ||
+      screen === "skin_temp" ||
+      screen === "home" ||
+      screen === "rhr" ||
+      screen === "hrv" ||
+      screen === "respiration"
+    ) {
+      return -40;
+    }
+  }
+
+  if (key === "skinTemperature" && screen !== "skin_temp" && screen !== "other") {
+    return -20;
+  }
+  if (key === "stress" && screen !== "stress" && screen !== "other") {
+    return -15;
+  }
+
+  return 0;
 }
 
 /** 4重点項目 */
@@ -162,4 +265,31 @@ export const CRITICAL_OCR_KEYS: MetricFieldKey[] = [
 
 export function isCriticalOcrKey(key: MetricFieldKey): boolean {
   return CRITICAL_OCR_KEYS.includes(key);
+}
+
+/** 画面種別に応じた Vision 再スキャン用の必須ラベル文言 */
+export function screenCriticalLabels(screen: SoxaiScreenType): string {
+  switch (screen) {
+    case "skin_temp":
+      return "皮膚温度 / 皮膚温 / 平均 / 偏差 / ±0.x℃（明示数値のみ）";
+    case "stress":
+      return "ストレス / 平均ストレス / ストレスレベル（明示数値のみ。平均の捏造禁止）";
+    case "bed_wake":
+    case "sleep_detail":
+      return "入眠時間 / 起床時間（HH:mm）。潜時・就床・覚醒時間と混同しない";
+    case "sleep_stages":
+      return "覚醒・レム・浅い・深い（時間と%は別） / SpO₂";
+    case "home":
+      return "QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数";
+    case "rhr":
+      return "安静時心拍数（平均を優先。最小・最大は別）";
+    case "hrv":
+      return "HRV / 心拍変動（平均）";
+    case "respiration":
+      return "呼吸速度 / 平均酸素レベル（SpO₂）";
+    case "circadian":
+      return "体内時計 / 位相";
+    default:
+      return "入眠時間 / 起床時間 / 皮膚温度 / ストレス";
+  }
 }

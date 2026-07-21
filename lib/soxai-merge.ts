@@ -16,6 +16,9 @@ import {
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
 import {
+  isCriticalOcrKey,
+  isPrimaryMetricForScreen,
+  metricScreenRank,
   screenAffinityScore,
   type SoxaiScreenType,
 } from "@/lib/soxai-screen";
@@ -49,6 +52,11 @@ export type MergedExtractResult = {
 
 /** 0–1。確認画面で「低信頼度」判定に使う閾値 */
 export const OCR_LOW_CONFIDENCE_THRESHOLD = 0.55;
+
+/** 重点項目の最低ラベル一致スコア（これ未満は画面適合が無い限り捨てる） */
+const MIN_CRITICAL_LABEL_SCORE = 55;
+/** 一般項目の最低ラベル一致スコア */
+const MIN_LABEL_SCORE = 20;
 
 function normalizeComparable(value: string): string {
   return value
@@ -138,7 +146,16 @@ export function scoreValueReliability(
   }
 
   if (key === "skinTemperature") {
-    if (/℃|°c|°|度/i.test(v)) score += 4;
+    if (/℃|°c|°|度/i.test(v)) score += 8;
+    if (/^[+-]/.test(v.trim())) score += 6;
+    const n = Math.abs(Number(v.replace(/[^\d.-]/g, "")));
+    if (Number.isFinite(n) && n <= 5) score += 4;
+  }
+
+  if (key === "stress") {
+    const n = Number(v.replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(n) && n >= 0 && n <= 100) score += 6;
+    if (/低|中|高|レベル|level/i.test(v)) score += 3;
   }
 
   score += Math.min(v.length, 24) * 0.1;
@@ -182,35 +199,109 @@ type Candidate = {
   /** 値形式（副） */
   reliability: number;
   sourceLabel: string;
+  screenType: SoxaiScreenType;
 };
 
-function candidateRank(c: Candidate): number {
-  // ラベル一致と画面種別が主。信頼度はタイブレーカーのみ。
-  return c.labelScore * 100 + c.screenScore * 40 + c.reliability;
+/** キーを知った上でのランク比較（画面種別 → ラベル一致 → 値形式） */
+function candidateRankForKey(key: MetricFieldKey, c: Candidate): number {
+  const rank = metricScreenRank(key, c.screenType);
+  const rankBonus = Math.max(0, 80 - rank * 20);
+  const primaryBonus = isPrimaryMetricForScreen(c.screenType, key) ? 30 : 0;
+  return (
+    c.screenScore * 50 +
+    c.labelScore * 100 +
+    c.reliability +
+    rankBonus * 10 +
+    primaryBonus * 40
+  );
 }
 
-function confidenceFromCandidate(
+function pickBestCandidateForKey(
+  key: MetricFieldKey,
+  candidates: Candidate[],
+): Candidate {
+  return [...candidates].sort((a, b) => {
+    const diff = candidateRankForKey(key, b) - candidateRankForKey(key, a);
+    if (diff !== 0) return diff;
+    return a.imageIndex - b.imageIndex;
+  })[0];
+}
+
+function confidenceFromCandidateForKey(
+  key: MetricFieldKey,
   candidate: Candidate,
   uniqueValueCount: number,
 ): number {
-  // labelScore 最大 ~110、screenScore 最大 ~140 → 正規化
-  const labelPart = Math.min(1, Math.max(0, candidate.labelScore / 110));
-  const screenPart = Math.min(1, Math.max(0, candidate.screenScore / 140));
+  const labelPart = Math.min(1, Math.max(0, candidate.labelScore / 115));
+  const screenPart = Math.min(1, Math.max(0, candidate.screenScore / 180));
   const reliabilityPart = Math.min(
     1,
     Math.max(0, (candidate.reliability + 5) / 40),
   );
-  let score = labelPart * 0.5 + screenPart * 0.35 + reliabilityPart * 0.15;
-  if (uniqueValueCount > 1) score *= 0.72; // 競合で信頼度を下げる
+  // 画面種別 40% + ラベル一致 45% + 値形式 15%（OCR信頼度単独では決めない）
+  let score = screenPart * 0.4 + labelPart * 0.45 + reliabilityPart * 0.15;
+  if (uniqueValueCount > 1) score *= 0.72;
+  if (isCriticalOcrKey(key) && candidate.labelScore < MIN_CRITICAL_LABEL_SCORE) {
+    score *= 0.8;
+  }
+  if (isPrimaryMetricForScreen(candidate.screenType, key)) {
+    score = Math.min(0.99, score + 0.08);
+  }
   return Math.round(Math.min(0.99, Math.max(0.05, score)) * 100) / 100;
 }
 
-function pickBestCandidate(candidates: Candidate[]): Candidate {
-  return [...candidates].sort((a, b) => {
-    const diff = candidateRank(b) - candidateRank(a);
-    if (diff !== 0) return diff;
-    return a.imageIndex - b.imageIndex;
-  })[0];
+/**
+ * 採用ゲート: 画面種別＋ラベル一致が弱い候補を除外。
+ * より良い一次画面候補がある場合は誤画面を捨てる。
+ */
+function filterCandidatesForKey(
+  key: MetricFieldKey,
+  candidates: Candidate[],
+): Candidate[] {
+  if (candidates.length === 0) return candidates;
+
+  const hasPrimary = candidates.some((c) =>
+    isPrimaryMetricForScreen(c.screenType, key),
+  );
+  const hasStrongLabel = candidates.some(
+    (c) =>
+      c.labelScore >=
+      (isCriticalOcrKey(key) ? MIN_CRITICAL_LABEL_SCORE : MIN_LABEL_SCORE),
+  );
+
+  let filtered = candidates.filter((c) => {
+    const minLabel = isCriticalOcrKey(key)
+      ? MIN_CRITICAL_LABEL_SCORE
+      : MIN_LABEL_SCORE;
+
+    if (isPrimaryMetricForScreen(c.screenType, key)) {
+      return c.labelScore >= Math.min(40, minLabel) || c.screenScore >= 50;
+    }
+
+    if (hasPrimary && c.screenScore < 20) return false;
+
+    if (isCriticalOcrKey(key) && c.labelScore < minLabel && c.screenScore < 40) {
+      return false;
+    }
+
+    return c.labelScore >= minLabel || c.screenScore >= 40;
+  });
+
+  if (filtered.length === 0) {
+    const best = [...candidates].sort((a, b) => b.labelScore - a.labelScore)[0];
+    filtered = best ? [best] : candidates;
+  }
+
+  if (hasPrimary && hasStrongLabel) {
+    const primaryOnly = filtered.filter(
+      (c) =>
+        isPrimaryMetricForScreen(c.screenType, key) ||
+        c.labelScore >= (isCriticalOcrKey(key) ? 95 : 80),
+    );
+    if (primaryOnly.length > 0) filtered = primaryOnly;
+  }
+
+  return filtered;
 }
 
 function resolveSourceLabel(
@@ -236,8 +327,8 @@ function resolveSourceLabel(
 /**
  * 複数画像の個別OCR結果を1つの AnalysisMetrics に統合する。
  * - 不足項目は他画像から補完
- * - 同一項目の競合は「ラベル一致 → 画面種別 → 値形式」の順で採用
- * - 概要より詳細、単独数値よりラベル付きを優先
+ * - 同一項目の競合は「画面種別優先 → ラベル一致 → 値形式」で採用
+ * - OCR信頼度だけでは決めない（画面種別＋ラベル一致率を必須条件に含む）
  * - 画像の順番は結果に影響しない
  */
 export function mergeImageExtractResults(
@@ -273,17 +364,14 @@ export function mergeImageExtractResults(
 
       const readings = result.readings ?? [];
       const sourceLabel = resolveSourceLabel(result, key);
+      const screenType = result.screenType ?? "other";
       let labelScore = labelMatchScore(key, sourceLabel);
       let screenScore = screenTypeScore(readings, key);
-      if (result.screenType) {
-        screenScore += screenAffinityScore(result.screenType, key);
-      }
+      screenScore += screenAffinityScore(screenType, key);
 
-      // 平均/最大チャート断片の「睡眠スコア」は誤ペアが多いので大幅に下げる
       if (key === "sleepScore" && isLikelyChartFragment(readings)) {
         labelScore = Math.min(labelScore, 25);
       }
-      // 安静時心拍数の最小/最大は代表値にしない
       if (
         key === "restingHeartRate" &&
         /最小|最大|min|max/i.test(sourceLabel) &&
@@ -299,13 +387,16 @@ export function mergeImageExtractResults(
         screenScore,
         reliability: scoreValueReliability(key, value),
         sourceLabel,
+        screenType,
       });
     }
 
     if (candidates.length === 0) continue;
 
+    const gated = filterCandidatesForKey(key, candidates);
+
     const byNorm = new Map<string, Candidate[]>();
-    for (const candidate of candidates) {
+    for (const candidate of gated) {
       const norm = normalizeComparable(candidate.value);
       const list = byNorm.get(norm) ?? [];
       list.push(candidate);
@@ -314,7 +405,7 @@ export function mergeImageExtractResults(
 
     const scored: Candidate[] = [];
     for (const group of byNorm.values()) {
-      const bestInGroup = pickBestCandidate(group);
+      const bestInGroup = pickBestCandidateForKey(key, group);
       scored.push({
         ...bestInGroup,
         reliability:
@@ -322,7 +413,7 @@ export function mergeImageExtractResults(
       });
     }
 
-    const adopted = pickBestCandidate(scored);
+    const adopted = pickBestCandidateForKey(key, scored);
     if (key === "sleepScore") {
       const n = Number(adopted.value.replace(/[^\d.-]/g, ""));
       merged.sleepScore = Number.isFinite(n) ? n : null;
@@ -330,12 +421,12 @@ export function mergeImageExtractResults(
       merged[key] = adopted.value;
     }
 
-    confidence[key] = confidenceFromCandidate(adopted, byNorm.size);
+    confidence[key] = confidenceFromCandidateForKey(key, adopted, byNorm.size);
 
     if (byNorm.size > 1) {
       const alternatives = [...byNorm.entries()]
         .filter(([norm]) => norm !== normalizeComparable(adopted.value))
-        .map(([, group]) => pickBestCandidate(group).value);
+        .map(([, group]) => pickBestCandidateForKey(key, group).value);
 
       if (alternatives.length > 0) {
         conflicts.push({

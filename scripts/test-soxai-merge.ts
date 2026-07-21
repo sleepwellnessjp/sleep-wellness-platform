@@ -386,6 +386,140 @@ function shuffle<T>(items: T[]): T[] {
   assert(merged.awakeningRate === "8%", "5枚補完: awakeningRate");
 }
 
+// —— 皮膚温度: skin_temp 画面の「平均 +0.2」を取得 ——
+{
+  const mapped = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "平均", value: "+0.2" },
+      { label: "最大", value: "+0.5" },
+    ],
+    { screenType: "skin_temp" },
+  );
+  assert(
+    mapped.metrics.skinTemperature === "+0.2",
+    "map: skin_temp 画面の平均 → skinTemperature",
+  );
+
+  const explicit = mapVisibleReadingsToMetricsDetailed([
+    { label: "皮膚温度", value: "+0.3℃" },
+  ]);
+  assert(
+    explicit.metrics.skinTemperature === "+0.3℃",
+    "map: 皮膚温度ラベル → skinTemperature",
+  );
+}
+
+// —— 入眠・起床: 詳細画面をステージ画面より優先 ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "sleep_stages",
+      visibleReadingCount: 4,
+      readings: [
+        { label: "開始", value: "22:10" },
+        { label: "終了", value: "07:50" },
+        { label: "レム睡眠", value: "20%" },
+        { label: "深い睡眠", value: "15%" },
+      ],
+      provenance: { bedtime: "開始", wakeTime: "終了" },
+      metrics: metrics({ bedtime: "22:10", wakeTime: "07:50", remSleepRate: "20%" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 4,
+      readings: [
+        { label: "入眠時間", value: "23:40" },
+        { label: "起床時間", value: "06:20" },
+        { label: "睡眠効率", value: "88%" },
+        { label: "入眠潜時", value: "14分" },
+      ],
+      provenance: {
+        bedtime: "入眠時間",
+        wakeTime: "起床時間",
+        sleepEfficiency: "睡眠効率",
+        sleepLatency: "入眠潜時",
+      },
+      metrics: metrics({
+        bedtime: "23:40",
+        wakeTime: "06:20",
+        sleepEfficiency: "88%",
+        sleepLatency: "14分",
+      }),
+    },
+  ];
+
+  for (const order of [results, [...results].reverse()]) {
+    const { metrics: merged } = mergeImageExtractResults(order);
+    assert(
+      merged.bedtime === "23:40",
+      "入眠: sleep_detail を stages 端点より優先",
+    );
+    assert(
+      merged.wakeTime === "06:20",
+      "起床: sleep_detail を stages 端点より優先",
+    );
+  }
+}
+
+// —— ストレス: stress 画面を優先 ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "home",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "QoL", value: "50" },
+        { label: "ストレス", value: "10" },
+      ],
+      provenance: { stress: "ストレス" },
+      metrics: metrics({ stress: "10", qol: "50" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "stress",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "平均ストレス", value: "32" },
+        { label: "ストレスレベル", value: "低め" },
+      ],
+      provenance: { stress: "平均ストレス" },
+      metrics: metrics({ stress: "32" }),
+    },
+  ];
+  const { metrics: merged } = mergeImageExtractResults(results);
+  assert(merged.stress === "32", "ストレス: stress 画面の平均を優先");
+}
+
+// —— 皮膚温度: skin_temp 画面を他画面より優先 ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "sleep_detail",
+      visibleReadingCount: 1,
+      readings: [{ label: "皮膚温", value: "+0.1℃" }],
+      provenance: { skinTemperature: "皮膚温" },
+      metrics: metrics({ skinTemperature: "+0.1℃" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "skin_temp",
+      visibleReadingCount: 1,
+      readings: [{ label: "皮膚温度", value: "+0.4℃" }],
+      provenance: { skinTemperature: "皮膚温度" },
+      metrics: metrics({ skinTemperature: "+0.4℃" }),
+    },
+  ];
+  const { metrics: merged } = mergeImageExtractResults(shuffle(results));
+  assert(
+    merged.skinTemperature === "+0.4℃",
+    "皮膚温度: skin_temp 画面を優先",
+  );
+}
+
 if (process.exitCode) {
   console.error("\nSome merge tests failed.");
 } else {
