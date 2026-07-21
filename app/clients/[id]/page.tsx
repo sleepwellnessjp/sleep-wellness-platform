@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import InstructorNav from "@/components/InstructorNav";
+import ClientLongTermTrends from "@/components/ClientLongTermTrends";
 import SleepScoreChart from "@/components/SleepScoreChart";
 import {
   formatDisplayDate,
@@ -275,7 +276,11 @@ export default function ClientDetailPage() {
           )}
         </Section>
 
-        <Section eyebrow="TREND" title="睡眠スコア推移">
+        <Section eyebrow="TREND" title="長期推移">
+          <ClientLongTermTrends analyses={client.analyses} />
+        </Section>
+
+        <Section eyebrow="SCORE" title="睡眠スコア推移">
           <SleepScoreChart points={chartPoints} />
         </Section>
 

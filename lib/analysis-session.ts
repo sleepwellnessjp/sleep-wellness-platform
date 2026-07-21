@@ -15,9 +15,11 @@ import {
   mergeMetricsFromVisibleReadings,
   normalizeVisibleReadings,
 } from "@/lib/soxai-reading-map";
+import type { MetricConfidenceMap } from "@/lib/soxai-merge";
 
 export type { AnalysisMetrics };
 export type { SoxaiGraphBundle };
+export type { MetricConfidenceMap };
 export { normalizeMetrics };
 
 type LifestyleData = {
@@ -82,6 +84,8 @@ export type AnalysisRequest = {
   extractedMetrics?: AnalysisMetrics;
   /** OCRで抽出したグラフデータ（Visual Report 用） */
   graphs?: SoxaiGraphBundle;
+  /** 項目別 OCR 信頼度 0–1 */
+  ocrConfidence?: MetricConfidenceMap;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -101,6 +105,8 @@ export type ExtractionDraft = {
   imageKeys: MetricFieldKey[];
   /** 複数画像間で値が食い違った項目 */
   conflicts?: MetricConflict[];
+  /** 項目別 OCR 信頼度 0–1 */
+  ocrConfidence?: MetricConfidenceMap;
   /** OCRで抽出したグラフ（Visual / PDF 共通） */
   graphs: SoxaiGraphBundle;
 };
@@ -143,6 +149,8 @@ export type AnalysisResult = {
   measurementDate?: string;
   /** 保存済み分析の再表示用 ID */
   analysisId?: string;
+  /** 項目別 OCR 信頼度（保存用） */
+  ocrConfidence?: MetricConfidenceMap;
   /** @deprecated 旧スキーマ互換 */
   goodPoints?: string[];
   /** @deprecated 旧スキーマ互換 → sleepCharacteristics */
@@ -357,6 +365,9 @@ export function setExtractionDraft(draft: ExtractionDraft) {
     extractedMetrics,
     imageKeys: collectedMetricKeys(extractedMetrics),
     conflicts: draft.conflicts ? [...draft.conflicts] : [],
+    ocrConfidence: draft.ocrConfidence
+      ? { ...draft.ocrConfidence }
+      : undefined,
     graphs: normalizeGraphBundle(draft.graphs),
   };
 }
@@ -379,6 +390,9 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
       ? normalizeMetrics(request.extractedMetrics)
       : undefined,
     graphs: normalizeGraphBundle(request.graphs),
+    ocrConfidence: request.ocrConfidence
+      ? { ...request.ocrConfidence }
+      : undefined,
   };
   inFlightAnalysis = null;
 }
@@ -445,6 +459,7 @@ export type ExtractSoxaiResult = {
   metrics: AnalysisMetrics;
   conflicts: MetricConflict[];
   graphs: SoxaiGraphBundle;
+  confidence: MetricConfidenceMap;
 };
 
 export async function extractSoxaiMetrics(
@@ -587,6 +602,12 @@ export async function extractSoxaiMetricsDetailed(
       : emptyGraphBundle(),
   );
 
+  const confidence = normalizeConfidenceMap(
+    data && typeof data === "object" && "confidence" in data
+      ? (data as { confidence: unknown }).confidence
+      : undefined,
+  );
+
   console.info("[extract] metrics received", {
     collected: collectedMetricKeys(normalized).length,
     keys: collectedMetricKeys(normalized),
@@ -594,9 +615,26 @@ export async function extractSoxaiMetricsDetailed(
     visibleLabels: visibleReadings.map((reading) => reading.label),
     graphPanelCount: graphPanelCount(graphs),
     conflicts: conflicts.length,
+    critical: {
+      bedtime: normalized.bedtime,
+      wakeTime: normalized.wakeTime,
+      skinTemperature: normalized.skinTemperature,
+      stress: normalized.stress,
+    },
   });
 
-  return { metrics: normalized, conflicts, graphs };
+  return { metrics: normalized, conflicts, graphs, confidence };
+}
+
+function normalizeConfidenceMap(raw: unknown): MetricConfidenceMap {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: MetricConfidenceMap = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[key as MetricFieldKey] = Math.min(1, Math.max(0, value));
+    }
+  }
+  return out;
 }
 
 function normalizeExtractConflicts(raw: unknown): MetricConflict[] {
@@ -794,6 +832,11 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
     } else {
       result.graphs = emptyGraphBundle();
     }
+
+    result.ocrConfidence =
+      payload.ocrConfidence ??
+      extractionDraft?.ocrConfidence ??
+      undefined;
 
     pendingRequest = null;
     clearExtractionDraft();

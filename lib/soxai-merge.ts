@@ -14,6 +14,11 @@ import {
   type AnalysisMetrics,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
+import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
+import {
+  screenAffinityScore,
+  type SoxaiScreenType,
+} from "@/lib/soxai-screen";
 
 export type ImageExtractResult = {
   imageIndex: number;
@@ -23,6 +28,8 @@ export type ImageExtractResult = {
   readings?: VisibleReading[];
   /** 各メトリクスの出典ラベル */
   provenance?: MetricProvenance;
+  /** SOXAI画面種別 */
+  screenType?: SoxaiScreenType;
 };
 
 export type MergedMetricConflict = {
@@ -32,10 +39,16 @@ export type MergedMetricConflict = {
   alternatives: string[];
 };
 
+export type MetricConfidenceMap = Partial<Record<MetricFieldKey, number>>;
+
 export type MergedExtractResult = {
   metrics: AnalysisMetrics;
   conflicts: MergedMetricConflict[];
+  confidence: MetricConfidenceMap;
 };
+
+/** 0–1。確認画面で「低信頼度」判定に使う閾値 */
+export const OCR_LOW_CONFIDENCE_THRESHOLD = 0.55;
 
 function normalizeComparable(value: string): string {
   return value
@@ -176,6 +189,22 @@ function candidateRank(c: Candidate): number {
   return c.labelScore * 100 + c.screenScore * 40 + c.reliability;
 }
 
+function confidenceFromCandidate(
+  candidate: Candidate,
+  uniqueValueCount: number,
+): number {
+  // labelScore 最大 ~110、screenScore 最大 ~140 → 正規化
+  const labelPart = Math.min(1, Math.max(0, candidate.labelScore / 110));
+  const screenPart = Math.min(1, Math.max(0, candidate.screenScore / 140));
+  const reliabilityPart = Math.min(
+    1,
+    Math.max(0, (candidate.reliability + 5) / 40),
+  );
+  let score = labelPart * 0.5 + screenPart * 0.35 + reliabilityPart * 0.15;
+  if (uniqueValueCount > 1) score *= 0.72; // 競合で信頼度を下げる
+  return Math.round(Math.min(0.99, Math.max(0.05, score)) * 100) / 100;
+}
+
 function pickBestCandidate(candidates: Candidate[]): Candidate {
   return [...candidates].sort((a, b) => {
     const diff = candidateRank(b) - candidateRank(a);
@@ -223,7 +252,7 @@ export function mergeImageExtractResults(
   );
 
   if (valid.length === 0) {
-    return { metrics: emptyMetrics(), conflicts: [] };
+    return { metrics: emptyMetrics(), conflicts: [], confidence: {} };
   }
 
   const labelByKey = new Map(
@@ -231,6 +260,7 @@ export function mergeImageExtractResults(
   );
   const merged = emptyMetrics();
   const conflicts: MergedMetricConflict[] = [];
+  const confidence: MetricConfidenceMap = {};
 
   for (const field of SOXAI_METRIC_FIELDS) {
     const key = field.key;
@@ -244,7 +274,10 @@ export function mergeImageExtractResults(
       const readings = result.readings ?? [];
       const sourceLabel = resolveSourceLabel(result, key);
       let labelScore = labelMatchScore(key, sourceLabel);
-      const screenScore = screenTypeScore(readings, key);
+      let screenScore = screenTypeScore(readings, key);
+      if (result.screenType) {
+        screenScore += screenAffinityScore(result.screenType, key);
+      }
 
       // 平均/最大チャート断片の「睡眠スコア」は誤ペアが多いので大幅に下げる
       if (key === "sleepScore" && isLikelyChartFragment(readings)) {
@@ -297,6 +330,8 @@ export function mergeImageExtractResults(
       merged[key] = adopted.value;
     }
 
+    confidence[key] = confidenceFromCandidate(adopted, byNorm.size);
+
     if (byNorm.size > 1) {
       const alternatives = [...byNorm.entries()]
         .filter(([norm]) => norm !== normalizeComparable(adopted.value))
@@ -313,8 +348,17 @@ export function mergeImageExtractResults(
     }
   }
 
+  const normalized = normalizeMetrics(merged);
+  if (normalized.bedtime.trim()) {
+    normalized.bedtime = normalizeTimeToHHMM(normalized.bedtime);
+  }
+  if (normalized.wakeTime.trim()) {
+    normalized.wakeTime = normalizeTimeToHHMM(normalized.wakeTime);
+  }
+
   return {
-    metrics: normalizeMetrics(merged),
+    metrics: normalized,
     conflicts,
+    confidence,
   };
 }

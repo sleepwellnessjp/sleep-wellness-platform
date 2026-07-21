@@ -22,7 +22,14 @@ import {
   normalizeVisibleReadings,
   type VisibleReading,
 } from "@/lib/soxai-reading-map";
-import { collectedMetricKeys } from "@/lib/soxai-metrics";
+import { collectedMetricKeys, isMetricPresent } from "@/lib/soxai-metrics";
+import { normalizeOcrMetrics } from "@/lib/soxai-structured-metrics";
+import {
+  inferScreenTypeFromReadings,
+  isCriticalOcrKey,
+  normalizeScreenType,
+  type SoxaiScreenType,
+} from "@/lib/soxai-screen";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,12 +39,29 @@ const MAX_IMAGES = 10;
 /** 並列OCR数（2〜10枚でもレート制限を抑えつつ進める） */
 const OCR_CONCURRENCY = 3;
 
-/** Vision には visibleReadings + graphReadings を返させる */
+/** Vision には screenType + visibleReadings + graphReadings を返させる */
 const extractSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["visibleReadings", "graphReadings"],
+  required: ["screenType", "visibleReadings", "graphReadings"],
   properties: {
+    screenType: {
+      type: "string",
+      enum: [
+        "sleep_overview",
+        "sleep_stages",
+        "sleep_detail",
+        "bed_wake",
+        "circadian",
+        "stress",
+        "respiration",
+        "rhr",
+        "hrv",
+        "skin_temp",
+        "home",
+        "other",
+      ],
+    },
     visibleReadings: {
       type: "array",
       items: {
@@ -141,38 +165,34 @@ function parseExtractJson(raw: string): unknown {
 function singleImagePrompt(imageIndex: number, total: number): string {
   return `SOXAIスクリーンショットです（${total}枚中 ${imageIndex + 1}枚目。この1枚だけを解析）。
 
-画面内に表示されている数値・スコア・割合・時刻・ラベル付きの値を一つ残らず JSON で返してください。
-画面上部だけでなく画面全体（中央・下部・カード・円グラフ・ゲージ・小さな注釈）を対象にしてください。
+まず screenType を判定し、続いて画面内の数値をすべて JSON で返してください。
+画面全体（上・中・下、カード、円、ゲージ、小さな注釈）を対象にしてください。
 
-必須で拾う例（画面にあれば）:
-- ホーム: QoL / 昨日のスコア / 睡眠（＝睡眠スコアの大きな数字） / 体調 / 心拍数
-- 詳細: 睡眠時間 / 全就床時間 / 入眠時間 / 起床時間 / 入眠潜時 / 睡眠効率 / 睡眠負債 / 体内時計
-- ステージ: 覚醒時間・覚醒率 / レム・浅い・深い（時間と%は別） / 平均酸素レベル
-- バイタル: 安静時心拍数（平均/最小/最大） / 心拍変動・HRV / 呼吸速度 / 皮膚温度 / ストレス
+【最優先・見逃し禁止】画面にあれば必ず visibleReadings に入れる:
+- 入眠時間 / 入眠 / 睡眠開始（HH:mm）。入眠潜時・就床と混同しない
+- 起床時間 / 起床 / 睡眠終了（HH:mm）。覚醒時間・中途覚醒と混同しない
+- 皮膚温度（絶対値 36.2℃ または差分 +0.3℃）。無い数値は作らない
+- ストレス / 平均ストレス / ストレスレベル。無い平均は捏造しない
 
-ラベルは画面表記どおり（「睡眠」は「睡眠」のまま。「睡眠スコア」に書き換えない）。
-%と時間が両方あれば両方返す。平均・最小・最大も別エントリ。
+その他の例:
+- ホーム: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数
+- 詳細: 睡眠時間 / 全就床 / 入眠潜時 / 睡眠効率 / 睡眠負債 / 体内時計
+- ステージ: 覚醒・レム・浅い・深い（時間と%は別） / SpO₂
+- バイタル: 安静時心拍 / HRV / 呼吸速度
 
-出力例:
-{
-  "visibleReadings": [
-    { "label": "睡眠", "value": "78" },
-    { "label": "心拍数", "value": "58" },
-    { "label": "睡眠効率", "value": "87%" }
-  ],
-  "graphReadings": [
-    {
-      "panel": "stages",
-      "points": [],
-      "segments": [
-        { "stage": "light", "startTime": "23:40", "endTime": "00:15", "ratio": 20 }
-      ],
-      "annotations": []
-    }
-  ]
+ラベルは画面表記どおり。推測禁止。この1枚に見えるものだけ。`;
 }
 
-推測禁止。この1枚に見えるものだけ。他画像の値は想像しない。`;
+function criticalFieldsRetryPrompt(): string {
+  return `同じ1枚を再スキャンしてください。特に次の4項目を徹底探索します。
+
+1. 入眠時間（入眠 / 入眠時間 / 睡眠開始）→ HH:mm。潜時・就床と混同しない
+2. 起床時間（起床 / 起床時間 / 睡眠終了）→ HH:mm。覚醒時間と混同しない
+3. 皮膚温度（皮膚温度 / 皮膚温）→ 絶対値または ±差分。明示数値のみ
+4. ストレス（ストレス / 平均ストレス / ストレスレベル）→ 明示数値・レベルのみ。平均の捏造禁止
+
+見つかったものは visibleReadings に再掲し、見落としを追加してください。
+screenType も再判定してください。`;
 }
 
 function sparseRetryPrompt(count: number): string {
@@ -216,6 +236,13 @@ function looksLikeGraphScreen(readings: VisibleReading[]): boolean {
       /平均|最小|最大|avg|min|max/.test(r.label.toLowerCase()),
     )
   );
+}
+
+function CRITICAL_KEYS_MISSING(
+  metrics: ReturnType<typeof mapVisibleReadingsToMetricsDetailed>["metrics"],
+): string[] {
+  const keys = ["bedtime", "wakeTime", "skinTemperature", "stress"] as const;
+  return keys.filter((key) => !isMetricPresent(metrics, key));
 }
 
 async function mapPool<T, R>(
@@ -318,7 +345,11 @@ export async function POST(request: Request) {
     const runVisionOnImage = async (
       imageUrl: string,
       userText: string,
-    ): Promise<{ readings: VisibleReading[]; graphReadings: ReturnType<typeof normalizeGraphReadings> }> => {
+    ): Promise<{
+      screenType: SoxaiScreenType;
+      readings: VisibleReading[];
+      graphReadings: ReturnType<typeof normalizeGraphReadings>;
+    }> => {
       const response = await client.responses.create({
         model: "gpt-4o",
         instructions: SOXAI_EXTRACT_INSTRUCTIONS,
@@ -353,15 +384,27 @@ export async function POST(request: Request) {
       const parsed = parseExtractJson(outputText);
       const record =
         parsed && typeof parsed === "object"
-          ? (parsed as { visibleReadings?: unknown; graphReadings?: unknown })
+          ? (parsed as {
+              screenType?: unknown;
+              visibleReadings?: unknown;
+              graphReadings?: unknown;
+            })
           : {};
 
       const readings = normalizeVisibleReadings(
-        "visibleReadings" in record ? record.visibleReadings : Array.isArray(parsed) ? parsed : [],
+        "visibleReadings" in record
+          ? record.visibleReadings
+          : Array.isArray(parsed)
+            ? parsed
+            : [],
       );
       const graphReadings = normalizeGraphReadings(record.graphReadings);
+      const screenType =
+        normalizeScreenType(record.screenType) !== "other"
+          ? normalizeScreenType(record.screenType)
+          : inferScreenTypeFromReadings(readings);
 
-      return { readings, graphReadings };
+      return { screenType, readings, graphReadings };
     };
 
     const ocrOneImage = async (
@@ -369,6 +412,7 @@ export async function POST(request: Request) {
       imageIndex: number,
     ): Promise<{
       imageIndex: number;
+      screenType: SoxaiScreenType;
       readings: VisibleReading[];
       graphReadings: ReturnType<typeof normalizeGraphReadings>;
       metrics: ReturnType<
@@ -381,12 +425,14 @@ export async function POST(request: Request) {
     }> => {
       let readings: VisibleReading[] = [];
       let graphReadings: ReturnType<typeof normalizeGraphReadings> = [];
+      let screenType: SoxaiScreenType = "other";
       try {
         const first = await runVisionOnImage(
           imageUrl,
           singleImagePrompt(imageIndex, images.length),
         );
         readings = first.readings;
+        screenType = first.screenType;
         graphReadings = first.graphReadings.map((g) => ({
           ...g,
           sourceImageIndex: imageIndex,
@@ -394,6 +440,7 @@ export async function POST(request: Request) {
 
         const mappedOnce = mapVisibleReadingsToMetricsDetailed(readings);
         const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
+        const missingCritical = CRITICAL_KEYS_MISSING(mappedOnce.metrics);
 
         const needsRetry = readings.length < 4 || mappedKeyCount === 0;
         if (needsRetry) {
@@ -414,6 +461,7 @@ export async function POST(request: Request) {
               ).length > mappedKeyCount
             ) {
               readings = retry.readings;
+              screenType = retry.screenType;
             }
             if (retry.graphReadings.length > graphReadings.length) {
               graphReadings = retry.graphReadings.map((g) => ({
@@ -426,6 +474,57 @@ export async function POST(request: Request) {
               "[api/extract] per-image retry failed",
               { imageIndex },
               retryError,
+            );
+          }
+        }
+
+        // 4重点項目が欠けている場合は専用再スキャン
+        const afterSparse = mapVisibleReadingsToMetricsDetailed(readings);
+        if (CRITICAL_KEYS_MISSING(afterSparse.metrics).length > 0) {
+          try {
+            const criticalRetry = await runVisionOnImage(
+              imageUrl,
+              criticalFieldsRetryPrompt(),
+            );
+            const beforeKeys = new Set(
+              collectedMetricKeys(afterSparse.metrics),
+            );
+            const mergedReadings = [...readings];
+            for (const reading of criticalRetry.readings) {
+              const dedupe = `${reading.label}::${reading.value}`;
+              if (
+                !mergedReadings.some(
+                  (r) => `${r.label}::${r.value}` === dedupe,
+                )
+              ) {
+                mergedReadings.push(reading);
+              }
+            }
+            const remapped =
+              mapVisibleReadingsToMetricsDetailed(mergedReadings);
+            const gained = collectedMetricKeys(remapped.metrics).filter(
+              (k) => !beforeKeys.has(k) && isCriticalOcrKey(k),
+            );
+            if (
+              gained.length > 0 ||
+              criticalRetry.readings.length > readings.length
+            ) {
+              readings = mergedReadings;
+              if (criticalRetry.screenType !== "other") {
+                screenType = criticalRetry.screenType;
+              }
+            }
+            if (criticalRetry.graphReadings.length > graphReadings.length) {
+              graphReadings = criticalRetry.graphReadings.map((g) => ({
+                ...g,
+                sourceImageIndex: imageIndex,
+              }));
+            }
+          } catch (criticalError) {
+            console.warn(
+              "[api/extract] critical-fields retry failed",
+              { imageIndex, missing: missingCritical },
+              criticalError,
             );
           }
         }
@@ -449,6 +548,9 @@ export async function POST(request: Request) {
             if (graphRetry.readings.length > readings.length) {
               readings = graphRetry.readings;
             }
+            if (graphRetry.screenType !== "other") {
+              screenType = graphRetry.screenType;
+            }
           } catch (graphError) {
             console.warn(
               "[api/extract] graph retry failed",
@@ -467,6 +569,7 @@ export async function POST(request: Request) {
         const empty = mapVisibleReadingsToMetricsDetailed([]);
         return {
           imageIndex,
+          screenType: "other",
           readings: [],
           graphReadings: [],
           metrics: empty.metrics,
@@ -475,19 +578,31 @@ export async function POST(request: Request) {
         };
       }
 
+      if (screenType === "other") {
+        screenType = inferScreenTypeFromReadings(readings);
+      }
+
       const mapped = mapVisibleReadingsToMetricsDetailed(readings);
       console.info("[api/extract] per-image OCR complete", {
         imageIndex,
+        screenType,
         visibleCount: readings.length,
         graphPanelCount: graphReadings.length,
         graphPanels: graphReadings.map((g) => g.id),
         labels: readings.map((r) => r.label),
         collected: collectedMetricKeys(mapped.metrics),
+        critical: {
+          bedtime: mapped.metrics.bedtime,
+          wakeTime: mapped.metrics.wakeTime,
+          skinTemperature: mapped.metrics.skinTemperature,
+          stress: mapped.metrics.stress,
+        },
         provenance: mapped.provenance,
       });
 
       return {
         imageIndex,
+        screenType,
         readings,
         graphReadings,
         metrics: mapped.metrics,
@@ -509,16 +624,21 @@ export async function POST(request: Request) {
       visibleReadingCount: item.readings.length,
       readings: item.readings,
       provenance: item.provenance,
+      screenType: item.screenType,
     }));
 
-    const { metrics: mergedRaw, conflicts } = mergeImageExtractResults(extractResults);
+    const { metrics: mergedRaw, conflicts, confidence } =
+      mergeImageExtractResults(extractResults);
     const graphBundle = mergeGraphBundles(
       perImage.map((item) => ({
         imageIndex: item.imageIndex,
         panels: item.graphReadings,
       })),
     );
-    const metrics = enrichMetricsFromGraphs(mergedRaw, graphBundle);
+    const metrics = normalizeOcrMetrics(
+      enrichMetricsFromGraphs(mergedRaw, graphBundle),
+      graphBundle,
+    );
     const keys = collectedMetricKeys(metrics);
     const graphPanels = graphPanelCount(graphBundle);
 
@@ -527,6 +647,7 @@ export async function POST(request: Request) {
       failedCount,
       perImageCounts: perImage.map((item) => ({
         imageIndex: item.imageIndex,
+        screenType: item.screenType,
         readings: item.readings.length,
         graphPanels: item.graphReadings.map((g) => g.id),
         collected: collectedMetricKeys(item.metrics).length,
@@ -537,6 +658,18 @@ export async function POST(request: Request) {
       graphPanels,
       visibleReadingCount: allReadings.length,
       conflicts: conflicts.length,
+      critical: {
+        bedtime: metrics.bedtime,
+        wakeTime: metrics.wakeTime,
+        skinTemperature: metrics.skinTemperature,
+        stress: metrics.stress,
+        confidence: {
+          bedtime: confidence.bedtime ?? null,
+          wakeTime: confidence.wakeTime ?? null,
+          skinTemperature: confidence.skinTemperature ?? null,
+          stress: confidence.stress ?? null,
+        },
+      },
       mappedSample: {
         sleepScore: metrics.sleepScore,
         qol: metrics.qol,
@@ -574,12 +707,14 @@ export async function POST(request: Request) {
       graphs: graphBundle,
       visibleReadings: allReadings,
       conflicts,
+      confidence,
       collectedCount: keys.length,
       graphPanelCount: graphPanels,
       visibleCount: allReadings.length,
       imageCount: images.length,
       perImage: perImage.map((item) => ({
         imageIndex: item.imageIndex,
+        screenType: item.screenType,
         visibleCount: item.readings.length,
         graphPanels: item.graphReadings.map((g) => g.id),
         collectedCount: collectedMetricKeys(item.metrics).length,

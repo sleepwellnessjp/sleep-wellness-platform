@@ -15,6 +15,7 @@ import {
   type MetricConflict,
 } from "@/lib/analysis-session";
 import { graphPanelCount } from "@/lib/soxai-graphs";
+import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
 import {
   isMetricPresent,
   metricDisplayValue,
@@ -23,6 +24,7 @@ import {
   SOXAI_METRIC_FIELDS,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
+import { CRITICAL_OCR_KEYS, isCriticalOcrKey } from "@/lib/soxai-screen";
 
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
@@ -32,6 +34,72 @@ const inputReadonlyClass =
 
 const inputConflictClass =
   "mt-2.5 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:px-5 sm:py-4 sm:text-base";
+
+const inputLowConfidenceClass =
+  "mt-2.5 w-full rounded-2xl border border-[#8a6a2d]/35 bg-[#fbf7ef] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#8a6a2d] focus:bg-white focus:ring-4 focus:ring-[#8a6a2d]/15 sm:px-5 sm:py-4 sm:text-base";
+
+type FieldStatus =
+  | "from_image"
+  | "low_confidence"
+  | "conflict"
+  | "no_explicit"
+  | "manual_needed";
+
+function fieldStatus(
+  key: MetricFieldKey,
+  fromImage: boolean,
+  conflict: MetricConflict | undefined,
+  confidence: number | undefined,
+  present: boolean,
+): FieldStatus {
+  if (conflict) return "conflict";
+  if (fromImage && present) {
+    if (
+      typeof confidence === "number" &&
+      confidence < OCR_LOW_CONFIDENCE_THRESHOLD
+    ) {
+      return "low_confidence";
+    }
+    return "from_image";
+  }
+  if (!present) return "no_explicit";
+  return "manual_needed";
+}
+
+function statusBadge(status: FieldStatus) {
+  switch (status) {
+    case "from_image":
+      return {
+        label: "画像から取得",
+        className:
+          "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]",
+      };
+    case "low_confidence":
+      return {
+        label: "OCR信頼度が低い",
+        className:
+          "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]",
+      };
+    case "conflict":
+      return {
+        label: "複数画像で競合",
+        className:
+          "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800",
+      };
+    case "no_explicit":
+      return {
+        label: "画像に明示値なし",
+        className:
+          "rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500",
+      };
+    case "manual_needed":
+      return {
+        label: "手入力が必要",
+        className:
+          "rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500",
+      };
+  }
+}
 
 export default function ConfirmExtractionPage() {
   const router = useRouter();
@@ -64,6 +132,8 @@ export default function ConfirmExtractionPage() {
     return map;
   }, [draft?.conflicts]);
 
+  const confidenceMap = draft?.ocrConfidence ?? {};
+
   const extractedCount = draft?.imageKeys.length ?? 0;
   const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
   const conflictCount = draft?.conflicts?.length ?? 0;
@@ -72,9 +142,23 @@ export default function ConfirmExtractionPage() {
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
     : "/analysis/new";
 
+  const isEditable = (key: MetricFieldKey) => {
+    const fromImage = imageKeySet.has(key);
+    const conflict = conflictByKey.get(key);
+    const confidence = confidenceMap[key];
+    if (conflict) return true;
+    if (
+      fromImage &&
+      typeof confidence === "number" &&
+      confidence < OCR_LOW_CONFIDENCE_THRESHOLD
+    ) {
+      return true;
+    }
+    return !fromImage;
+  };
+
   const updateField = (key: MetricFieldKey, value: string) => {
-    // OCR取得済み（競合なし）は上書き不可
-    if (imageKeySet.has(key) && !conflictByKey.has(key)) return;
+    if (!isEditable(key)) return;
 
     setMetrics((current) => {
       if (!current) return current;
@@ -109,20 +193,20 @@ export default function ConfirmExtractionPage() {
       // デモ/オフライン時は分析を継続
     }
 
-    // OCR取得値を最優先で固定し、未取得項目のみ手入力を反映
+    // OCR高信頼度の値を固定し、未取得・低信頼度・競合のみ手入力を反映
     const locked = mergeMetricsPreferImage(
       draft.extractedMetrics,
       metrics,
     );
 
-    // 競合項目はユーザー選択を優先
     const confirmed = { ...locked };
-    for (const conflict of draft.conflicts ?? []) {
-      if (isMetricPresent(metrics, conflict.key)) {
-        if (conflict.key === "sleepScore") {
+    for (const key of Object.keys(confirmed) as MetricFieldKey[]) {
+      if (!isEditable(key)) continue;
+      if (isMetricPresent(metrics, key)) {
+        if (key === "sleepScore") {
           confirmed.sleepScore = metrics.sleepScore;
         } else {
-          confirmed[conflict.key] = metrics[conflict.key];
+          confirmed[key] = metrics[key];
         }
       }
     }
@@ -133,6 +217,7 @@ export default function ConfirmExtractionPage() {
       metrics: normalizeMetrics(confirmed),
       extractedMetrics: draft.extractedMetrics,
       graphs: draft.graphs,
+      ocrConfidence: draft.ocrConfidence,
     });
     router.push("/analysis/loading");
   };
@@ -144,6 +229,94 @@ export default function ConfirmExtractionPage() {
       </main>
     );
   }
+
+  const renderField = (field: (typeof SOXAI_METRIC_FIELDS)[number]) => {
+    const fromImage = imageKeySet.has(field.key);
+    const conflict = conflictByKey.get(field.key);
+    const value = metricDisplayValue(metrics, field.key);
+    const present = isMetricPresent(metrics, field.key);
+    const confidence = confidenceMap[field.key];
+    const status = fieldStatus(
+      field.key,
+      fromImage,
+      conflict,
+      confidence,
+      present,
+    );
+    const badge = statusBadge(status);
+    const editable = isEditable(field.key);
+    const critical = isCriticalOcrKey(field.key);
+
+    return (
+      <label
+        key={field.key}
+        className={`block ${
+          critical
+            ? "rounded-2xl border border-[#315f68]/15 bg-[#f7fafb] px-3 py-3 sm:px-4"
+            : ""
+        }`}
+      >
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+            {field.label}
+          </span>
+          <span className={badge.className}>{badge.label}</span>
+          {typeof confidence === "number" && fromImage && (
+            <span className="text-[10px] text-slate-400">
+              信頼度 {Math.round(confidence * 100)}%
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 block text-[11px] text-slate-400">
+          {field.hint}
+        </span>
+        {editable ? (
+          <input
+            type={
+              field.inputType === "number" ? "number" : field.inputType
+            }
+            inputMode={
+              field.inputType === "number" ? "decimal" : undefined
+            }
+            step={field.inputType === "number" ? "1" : undefined}
+            value={value}
+            onChange={(event) =>
+              updateField(field.key, event.target.value)
+            }
+            className={
+              conflict
+                ? inputConflictClass
+                : status === "low_confidence"
+                  ? inputLowConfidenceClass
+                  : inputClass
+            }
+            placeholder={field.placeholder}
+          />
+        ) : (
+          <input
+            type="text"
+            readOnly
+            value={present ? value : "データ未取得"}
+            className={inputReadonlyClass}
+            tabIndex={-1}
+          />
+        )}
+        {conflict && (
+          <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
+            候補:{" "}
+            {[conflict.adopted, ...conflict.alternatives].join(" / ")}
+          </span>
+        )}
+      </label>
+    );
+  };
+
+  const criticalFields = SOXAI_METRIC_FIELDS.filter((f) =>
+    CRITICAL_OCR_KEYS.includes(f.key),
+  );
+  const otherFields = SOXAI_METRIC_FIELDS.filter(
+    (f) => !CRITICAL_OCR_KEYS.includes(f.key),
+  );
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -185,8 +358,8 @@ export default function ConfirmExtractionPage() {
             抽出結果の確認
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            SOXAI画像から読み取った値をすべて表示しています。
-            画像から取得できた項目は固定し、未取得の項目のみ手入力できます。
+            入眠・起床・皮膚温度・ストレスは画像からの自動取得を最優先しています。
+            高信頼度の値は固定し、競合・低信頼度・未取得のみ修正できます。
           </p>
         </header>
 
@@ -243,7 +416,7 @@ export default function ConfirmExtractionPage() {
           <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
             <p className="font-semibold">複数画像で異なる値が検出されました</p>
             <p className="mt-1 text-[13px] text-amber-900/80">
-              仮採用値を表示しています。競合項目のみ修正できます。それ以外のOCR取得値は変更できません。
+              仮採用値を表示しています。競合・低信頼度の項目のみ修正できます。
             </p>
             <ul className="mt-3 space-y-1.5 text-[13px]">
               {(draft.conflicts ?? []).map((conflict) => (
@@ -259,91 +432,46 @@ export default function ConfirmExtractionPage() {
           </div>
         )}
 
+        {!draft.lifestyle.measurementDate?.trim() && (
+          <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950">
+            分析日（測定日）が未入力です。入力画面に戻り、測定日を確認してください。
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="mt-8 space-y-8 sm:mt-10">
+          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8">
+              <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                PRIORITY · BEDTIME / WAKE / SKIN / STRESS
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                重点4項目の確認
+              </h2>
+              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+                入眠時間・起床時間・皮膚温度・ストレスは SOXAI 画像に表示される前提で
+                OCR を優先しています。
+              </p>
+            </div>
+            <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
+              {criticalFields.map(renderField)}
+            </div>
+          </section>
+
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
             <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8">
               <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                 CONFIRMED METRICS
               </p>
               <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                睡眠データ
+                その他の睡眠データ
               </h2>
               <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                「画像から取得」はOCR結果をそのまま反映（編集不可）。空欄のみ手入力してください。
+                「画像から取得」は編集不可。競合・低信頼度・未取得のみ入力できます。
               </p>
             </div>
 
             <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8 lg:grid-cols-3">
-              {SOXAI_METRIC_FIELDS.map((field) => {
-                const fromImage = imageKeySet.has(field.key);
-                const conflict = conflictByKey.get(field.key);
-                const value = metricDisplayValue(metrics, field.key);
-                const present = isMetricPresent(metrics, field.key);
-                const editable = !fromImage || Boolean(conflict);
-
-                return (
-                  <label key={field.key} className="block">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
-                        {field.label}
-                      </span>
-                      {conflict ? (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800">
-                          競合あり
-                        </span>
-                      ) : fromImage ? (
-                        <span className="rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]">
-                          画像から取得
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500">
-                          手入力可
-                        </span>
-                      )}
-                    </span>
-                    <span className="mt-0.5 block text-[11px] text-slate-400">
-                      {field.hint}
-                    </span>
-                    {editable ? (
-                      <input
-                        type={
-                          field.inputType === "number"
-                            ? "number"
-                            : field.inputType
-                        }
-                        inputMode={
-                          field.inputType === "number" ? "decimal" : undefined
-                        }
-                        step={field.inputType === "number" ? "1" : undefined}
-                        value={value}
-                        onChange={(event) =>
-                          updateField(field.key, event.target.value)
-                        }
-                        className={
-                          conflict ? inputConflictClass : inputClass
-                        }
-                        placeholder={field.placeholder}
-                      />
-                    ) : (
-                      <input
-                        type="text"
-                        readOnly
-                        value={present ? value : "—"}
-                        className={inputReadonlyClass}
-                        tabIndex={-1}
-                      />
-                    )}
-                    {conflict && (
-                      <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
-                        候補:{" "}
-                        {[conflict.adopted, ...conflict.alternatives].join(
-                          " / ",
-                        )}
-                      </span>
-                    )}
-                  </label>
-                );
-              })}
+              {otherFields.map(renderField)}
             </div>
           </section>
 
@@ -354,7 +482,7 @@ export default function ConfirmExtractionPage() {
             <p className="mt-2 text-base font-semibold text-[#071426]">
               {draft.lifestyle.clientName}
               <span className="ml-3 text-sm font-medium text-slate-400">
-                {draft.lifestyle.measurementDate}
+                {draft.lifestyle.measurementDate || "測定日未設定"}
               </span>
             </p>
             <p className="mt-1 text-sm text-slate-500">
@@ -373,7 +501,7 @@ export default function ConfirmExtractionPage() {
                 抽出結果を確認して分析する
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                この確認データが Medical / Visual / PDF の共通データソースになります。
+                この確認データが Medical / Visual / PDF / 長期推移の共通データソースになります。
               </p>
 
               <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center">
