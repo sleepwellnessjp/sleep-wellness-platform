@@ -6,6 +6,7 @@ import {
   getComparableClients as getLocalComparableClients,
   loadClients as loadLocalClients,
   recordPdfDownload as recordLocalPdfDownload,
+  rememberLastSavedAnalysisRef,
   saveAnalysisToClientStore as saveLocalAnalysis,
   type ClientListItem,
   type CreateClientInput,
@@ -204,11 +205,121 @@ function mapDbClient(row: DbClientRow, analyses: StoredAnalysis[]): StoredClient
     phone: row.phone ?? undefined,
     memo: row.memo ?? undefined,
     analyses: [...analyses].sort((a, b) => {
-      const byDate = b.analysisDate.localeCompare(a.analysisDate);
-      if (byDate !== 0) return byDate;
-      return b.createdAt.localeCompare(a.createdAt);
+      const byCreated = b.createdAt.localeCompare(a.createdAt);
+      if (byCreated !== 0) return byCreated;
+      return b.analysisDate.localeCompare(a.analysisDate);
     }),
   };
+}
+
+export type AnalysisHistoryListItem = {
+  analysisId: string;
+  clientId: string;
+  clientName: string;
+  measurementDate: string | null;
+  sleepScore: number | null;
+  createdAt: string;
+  creditsConsumed: number;
+};
+
+/** 保存済み分析を新しい順（created_at desc）で一覧取得 */
+export async function listAnalysisHistory(
+  limit = 50,
+): Promise<AnalysisHistoryListItem[]> {
+  const auth = await getSupabaseAuth();
+  if (!auth) {
+    const clients = loadLocalClients();
+    const flat: AnalysisHistoryListItem[] = [];
+    for (const client of clients) {
+      for (const analysis of client.analyses) {
+        flat.push({
+          analysisId: analysis.id,
+          clientId: client.id,
+          clientName: client.name,
+          measurementDate: analysis.analysisDate,
+          sleepScore: analysis.sleepScore,
+          createdAt: analysis.createdAt,
+          creditsConsumed: 1,
+        });
+      }
+    }
+    return flat
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  const { supabase, userId } = auth;
+  const { data: analysisRows, error: analysisError } = await supabase
+    .from("analyses")
+    .select(
+      "id, client_id, sleep_score, created_at, analyzed_at, credits_consumed, ai_result",
+    )
+    .eq("owner_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (analysisError) {
+    throw formatSupabaseError(analysisError, "listAnalysisHistory:analyses");
+  }
+
+  const rows = (analysisRows ?? []) as Array<{
+    id: string;
+    client_id: string;
+    sleep_score: number | null;
+    created_at: string;
+    analyzed_at: string;
+    credits_consumed: number | null;
+    ai_result: AnalysisResult | null;
+  }>;
+
+  if (rows.length === 0) return [];
+
+  const clientIds = [...new Set(rows.map((row) => row.client_id))];
+  const { data: clientRows, error: clientError } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("owner_id", userId)
+    .in("id", clientIds);
+
+  if (clientError) {
+    throw formatSupabaseError(clientError, "listAnalysisHistory:clients");
+  }
+
+  const nameById = new Map(
+    ((clientRows ?? []) as Array<{ id: string; name: string }>).map((row) => [
+      row.id,
+      row.name,
+    ]),
+  );
+
+  return rows.map((row) => {
+    const aiResult = row.ai_result;
+    const measurementDate =
+      (typeof aiResult?.measurementDate === "string" &&
+      aiResult.measurementDate.trim()
+        ? aiResult.measurementDate.trim()
+        : null) ?? row.analyzed_at.slice(0, 10);
+
+    const sleepScore =
+      typeof row.sleep_score === "number" && Number.isFinite(row.sleep_score)
+        ? row.sleep_score
+        : typeof aiResult?.metrics?.sleepScore === "number"
+          ? aiResult.metrics.sleepScore
+          : null;
+
+    return {
+      analysisId: row.id,
+      clientId: row.client_id,
+      clientName:
+        nameById.get(row.client_id) ??
+        aiResult?.clientName?.trim() ??
+        "未設定",
+      measurementDate,
+      sleepScore,
+      createdAt: row.created_at,
+      creditsConsumed: Number(row.credits_consumed ?? 0),
+    };
+  });
 }
 
 async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClient[]> {
@@ -228,7 +339,7 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
     .from("analyses")
     .select("*")
     .eq("owner_id", userId)
-    .order("analyzed_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (analysisError) {
     throw formatSupabaseError(analysisError, "fetchClients:analyses");
@@ -581,20 +692,24 @@ export async function saveAnalysisToRepository(
       }
 
       notifyClientsUpdated();
-      return {
+      const fallbackRef = {
         clientId,
         analysisId: (fallbackRow as { id: string }).id,
       };
+      rememberLastSavedAnalysisRef(fallbackRef);
+      return fallbackRef;
     }
 
     throw formatSupabaseError(analysisError, "saveAnalysis:insertAnalysis");
   }
 
   notifyClientsUpdated();
-  return {
+  const savedRef = {
     clientId,
     analysisId: (analysisRow as { id: string }).id,
   };
+  rememberLastSavedAnalysisRef(savedRef);
+  return savedRef;
 }
 
 export async function recordPdfDownload(

@@ -26,6 +26,8 @@ export type RecentAnalysisItem = {
   delta: number | null;
   trend: "improved" | "worsened" | "unchanged" | "none";
   summary: string;
+  /** 保存日時（新しい順ソート用） */
+  createdAt?: string;
 };
 
 export type ImprovementStats = {
@@ -235,7 +237,7 @@ export function computeDashboardStatsFromClients(
 
   for (const client of clients) {
     for (const analysis of client.analyses) {
-      if (analysis.analysisDate.startsWith(monthPrefix)) {
+      if (analysis.createdAt.startsWith(monthPrefix)) {
         analysesThisMonth += 1;
       }
     }
@@ -261,26 +263,32 @@ export function computeDashboardStatsFromClients(
       });
     }
 
-    const prevScore = previous ? analysisSleepScore(previous) : null;
-    let delta: number | null = null;
-    let trend: RecentAnalysisItem["trend"] = "none";
-    if (latestScore != null && prevScore != null) {
-      delta = latestScore - prevScore;
-      if (delta > 0) trend = "improved";
-      else if (delta < 0) trend = "worsened";
-      else trend = "unchanged";
-    }
+    for (let index = 0; index < client.analyses.length; index += 1) {
+      const analysis = client.analyses[index];
+      const score = analysisSleepScore(analysis);
+      const older = client.analyses[index + 1];
+      const prevScore = older ? analysisSleepScore(older) : null;
+      let delta: number | null = null;
+      let trend: RecentAnalysisItem["trend"] = "none";
+      if (score != null && prevScore != null) {
+        delta = score - prevScore;
+        if (delta > 0) trend = "improved";
+        else if (delta < 0) trend = "worsened";
+        else trend = "unchanged";
+      }
 
-    recentCandidates.push({
-      clientId: client.id,
-      analysisId: latest.id,
-      name: client.name,
-      analysisDate: latest.analysisDate,
-      sleepScore: latestScore,
-      delta,
-      trend,
-      summary: clampSummary(latest.result?.summary ?? ""),
-    });
+      recentCandidates.push({
+        clientId: client.id,
+        analysisId: analysis.id,
+        name: client.name,
+        analysisDate: analysis.analysisDate,
+        sleepScore: score,
+        delta,
+        trend,
+        summary: clampSummary(analysis.result?.summary ?? ""),
+        createdAt: analysis.createdAt,
+      });
+    }
   }
 
   followUps.sort((a, b) => {
@@ -291,7 +299,7 @@ export function computeDashboardStatsFromClients(
   });
 
   recentCandidates.sort((a, b) =>
-    b.analysisDate.localeCompare(a.analysisDate),
+    (b.createdAt ?? b.analysisDate).localeCompare(a.createdAt ?? a.analysisDate),
   );
 
   const averageSleepScore =

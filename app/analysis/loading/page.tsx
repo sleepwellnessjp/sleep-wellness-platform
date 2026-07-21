@@ -128,7 +128,13 @@ export default function AnalysisLoadingPage() {
 
         if (cancelled) return;
         setProgress(100);
-        router.replace("/analysis/result");
+        if (savedRef?.analysisId) {
+          router.replace(
+            `/analysis/result?analysisId=${encodeURIComponent(savedRef.analysisId)}`,
+          );
+        } else {
+          router.replace("/analysis/result");
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;

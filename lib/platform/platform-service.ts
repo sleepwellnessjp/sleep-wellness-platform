@@ -425,35 +425,31 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
     });
   }
 
-  const [membership, historyResult, notificationsResult, countResult] =
-    await Promise.all([
-      ensureInstructorMembershipRow(supabase, profile),
-      supabase
-        .from("analysis_history")
-        .select("*")
-        .eq("user_id", profile.id)
-        .order("created_at", { ascending: false })
-        .limit(10),
-      supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", profile.id)
-        .order("created_at", { ascending: false })
-        .limit(5),
-      supabase
-        .from("analysis_history")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", profile.id)
-        .gte("created_at", `${yearMonth}-01T00:00:00.000Z`),
-    ]);
+  const [membership, analysesResult, notificationsResult] = await Promise.all([
+    ensureInstructorMembershipRow(supabase, profile),
+    supabase
+      .from("analyses")
+      .select(
+        "id, client_id, sleep_score, created_at, analyzed_at, credits_consumed, ai_result",
+      )
+      .eq("owner_id", profile.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", profile.id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
 
-  if (historyResult.error) {
-    console.error("[platform] getPlatformMe: analysis_history select failed", {
+  if (analysesResult.error) {
+    console.error("[platform] getPlatformMe: analyses select failed", {
       userId: profile.id,
-      message: historyResult.error.message,
-      code: historyResult.error.code,
-      details: historyResult.error.details,
-      hint: historyResult.error.hint,
+      message: analysesResult.error.message,
+      code: analysesResult.error.code,
+      details: analysesResult.error.details,
+      hint: analysesResult.error.hint,
     });
   }
   if (notificationsResult.error) {
@@ -465,17 +461,65 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
       hint: notificationsResult.error.hint,
     });
   }
-  if (countResult.error) {
-    console.error("[platform] getPlatformMe: analysis_history count failed", {
+
+  const analysisRows = (analysesResult.data ?? []) as Array<{
+    id: string;
+    client_id: string;
+    sleep_score: number | null;
+    created_at: string;
+    analyzed_at: string;
+    credits_consumed: number | null;
+    ai_result: Record<string, unknown> | null;
+  }>;
+  const notifications = notificationsResult.data;
+
+  const clientIds = [
+    ...new Set(analysisRows.map((row) => row.client_id).filter(Boolean)),
+  ];
+  const clientNameById = new Map<string, string>();
+  if (clientIds.length > 0) {
+    const { data: clientRows, error: clientError } = await supabase
+      .from("clients")
+      .select("id, name")
+      .eq("owner_id", profile.id)
+      .in("id", clientIds);
+
+    if (clientError) {
+      console.error("[platform] getPlatformMe: clients select failed", {
+        userId: profile.id,
+        message: clientError.message,
+        code: clientError.code,
+      });
+    } else {
+      for (const row of (clientRows ?? []) as Array<{
+        id: string;
+        name: string;
+      }>) {
+        clientNameById.set(row.id, row.name);
+      }
+    }
+  }
+
+  const { count: monthCount, error: countError } = await supabase
+    .from("analyses")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", profile.id)
+    .gte("created_at", `${yearMonth}-01T00:00:00.000Z`);
+
+  if (countError) {
+    console.error("[platform] getPlatformMe: analyses count failed", {
       userId: profile.id,
-      message: countResult.error.message,
-      code: countResult.error.code,
+      message: countError.message,
+      code: countError.code,
     });
   }
 
-  const historyRows = historyResult.data;
-  const notifications = notificationsResult.data;
-  const analysesThisMonth = countResult.count;
+  const analysesThisMonthCount =
+    typeof monthCount === "number"
+      ? monthCount
+      : analysisRows.filter((row) =>
+          String(row.created_at).startsWith(`${yearMonth}-`),
+        ).length;
 
   const granted = Number(monthly?.granted_amount ?? 0);
   const used = Number(monthly?.used_amount ?? 0);
@@ -497,22 +541,44 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
         }
       : null,
     remainingCredits: remaining,
-    analysesThisMonth: analysesThisMonth ?? 0,
-    recentAnalyses: (historyRows ?? []).map((row) => ({
-      id: String(row.id),
-      userId: String(row.user_id),
-      clientId: row.client_id ? String(row.client_id) : null,
-      analysisId: row.analysis_id ? String(row.analysis_id) : null,
-      clientName: String(row.client_name ?? ""),
-      measurementDate: row.measurement_date
-        ? String(row.measurement_date).slice(0, 10)
-        : null,
-      sleepScore:
-        typeof row.sleep_score === "number" ? row.sleep_score : null,
-      creditsConsumed: Number(row.credits_consumed ?? 1),
-      status: String(row.status ?? "completed"),
-      createdAt: String(row.created_at),
-    })),
+    analysesThisMonth: analysesThisMonthCount,
+    recentAnalyses: analysisRows.slice(0, 10).map((row) => {
+      const aiResult = row.ai_result;
+      const measurementDate =
+        typeof aiResult?.measurementDate === "string" &&
+        aiResult.measurementDate.trim()
+          ? String(aiResult.measurementDate).slice(0, 10)
+          : row.analyzed_at
+            ? String(row.analyzed_at).slice(0, 10)
+            : null;
+      const clientNameFromAi =
+        typeof aiResult?.clientName === "string"
+          ? aiResult.clientName.trim()
+          : "";
+      const sleepFromAi =
+        aiResult?.metrics &&
+        typeof aiResult.metrics === "object" &&
+        typeof (aiResult.metrics as { sleepScore?: unknown }).sleepScore ===
+          "number"
+          ? (aiResult.metrics as { sleepScore: number }).sleepScore
+          : null;
+
+      return {
+        id: String(row.id),
+        userId: profile.id,
+        clientId: row.client_id ? String(row.client_id) : null,
+        analysisId: String(row.id),
+        clientName:
+          clientNameById.get(row.client_id) ??
+          (clientNameFromAi || "未設定"),
+        measurementDate,
+        sleepScore:
+          typeof row.sleep_score === "number" ? row.sleep_score : sleepFromAi,
+        creditsConsumed: Number(row.credits_consumed ?? 0),
+        status: "completed",
+        createdAt: String(row.created_at),
+      };
+    }),
     notifications: (notifications ?? []).map((row) => ({
       id: String(row.id),
       userId: String(row.user_id),
@@ -740,9 +806,9 @@ export async function listInstructorSummaries(): Promise<InstructorSummary[]> {
       .maybeSingle();
 
     const { count } = await supabase
-      .from("analysis_history")
+      .from("analyses")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", profile.id)
+      .eq("owner_id", profile.id)
       .gte("created_at", `${yearMonth}-01T00:00:00.000Z`);
 
     summaries.push({
