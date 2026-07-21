@@ -20,9 +20,11 @@ import {
 import {
   mapVisibleReadingsToMetricsDetailed,
   normalizeVisibleReadings,
+  recoverCriticalMetricsFromReadings,
   type VisibleReading,
 } from "@/lib/soxai-reading-map";
 import { collectedMetricKeys, isMetricPresent } from "@/lib/soxai-metrics";
+import { CRITICAL_METRIC_KEYS } from "@/lib/soxai-ocr-dictionary";
 import { normalizeOcrMetrics } from "@/lib/soxai-structured-metrics";
 import {
   inferScreenTypeFromReadings,
@@ -183,10 +185,11 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 - rhr / hrv / respiration / circadian: 各画面の平均・代表値
 
 【最優先・見逃し禁止】
-- 入眠時間 ≠ 入眠潜時 ≠ 就床
-- 起床時間 ≠ 覚醒時間 ≠ 中途覚醒
-- 皮膚温度（絶対値または ±差分）
-- ストレス（明示数値のみ。平均の捏造禁止）
+- 入眠時間 ≠ 入眠潜時 ≠ 就床（見出し: 入眠/入眠時間/睡眠開始/就寝/Bedtime）
+- 起床時間 ≠ 覚醒時間 ≠ 中途覚醒（見出し: 起床/起床時間/睡眠終了/Wake）
+- 皮膚温度（見出し: 皮膚温度/皮膚温/平均/偏差。絶対値または ±差分）
+- ストレス（見出し: ストレス/平均ストレス/レベル。明示数値のみ。平均の捏造禁止）
+- 必ずラベル（見出し）と値をペアで返す。数値だけの返却は禁止。
 
 ラベルは画面表記どおり。推測禁止。この1枚に見えるものだけ。`;
 }
@@ -197,14 +200,48 @@ function criticalFieldsRetryPrompt(screenType: SoxaiScreenType): string {
 
 この画面で特に探す項目: ${focus}
 
-共通の4重点（画面にあれば必ず返す）:
-1. 入眠時間（入眠 / 入眠時間 / 睡眠開始）→ HH:mm。潜時・就床と混同しない
-2. 起床時間（起床 / 起床時間 / 睡眠終了）→ HH:mm。覚醒時間と混同しない
-3. 皮膚温度（皮膚温度 / 皮膚温 / 平均 / 偏差）→ 絶対値または ±差分。単位なし +0.2 も可
-4. ストレス（ストレス / 平均ストレス / ストレスレベル）→ 明示数値のみ
+【最優先・見出しラベル必須】次の4項目をラベル（見出し）と値のペアで返してください。
+数値が小さくても、カード端・注釈・タイムライン上にあれば必ず拾うこと。
 
-見つかったものは visibleReadings に再掲し、見落としを追加してください。
+1. 入眠時間
+   見出し例: 入眠 / 入眠時間 / 入眠時刻 / 睡眠開始 / 就寝 / Fell asleep / Sleep onset / Bedtime
+   値: HH:mm または 23時40分。入眠潜時・就床・全就床と混同禁止。
+
+2. 起床時間
+   見出し例: 起床 / 起床時間 / 起床時刻 / 睡眠終了 / Got up / Wake time
+   値: HH:mm。覚醒時間・中途覚醒・覚醒率と混同禁止。
+
+3. 皮膚温度
+   見出し例: 皮膚温度 / 皮膚温 / 体表温 / Skin Temp / 体温偏差 / 温度偏差 / 平均（皮膚温画面）
+   値: 36.2℃ または +0.2℃ / -0.1 / +0.2（単位なし可）
+
+4. ストレス
+   見出し例: ストレス / 平均ストレス / ストレスレベル / Stress / 平均（ストレス画面）
+   値: 明示数値のみ。平均の捏造禁止。
+
+見つかったものは visibleReadings に {label, value} で再掲し、見落としを追加してください。
 screenType も再判定してください。`;
+}
+
+function criticalOnlyScreenPrompt(
+  missing: string[],
+  screenType: SoxaiScreenType,
+): string {
+  const focus = screenCriticalLabels(screenType);
+  return `この画像は screenType「${screenType}」の候補です。
+画像全体ではなく、この画面の見出しと数値だけを再OCRしてください。
+
+不足している重点項目: ${missing.join(", ")}
+この画面で探す見出し: ${focus}
+
+ルール:
+- ラベル（見出し）と値を必ずペアで visibleReadings に入れる
+- 入眠≠入眠潜時≠就床 / 起床≠覚醒時間
+- 皮膚温度は絶対値または ±差分（単位なし +0.2 も可）
+- ストレスは明示数値のみ（平均の捏造禁止）
+- 見えない項目は作らない
+
+screenType も再判定して返してください。`;
 }
 
 function screenSpecificRetryPrompt(screenType: SoxaiScreenType): string {
@@ -728,18 +765,182 @@ export async function POST(request: Request) {
       screenType: item.screenType,
     }));
 
-    const { metrics: mergedRaw, conflicts, confidence } =
+    const { metrics: mergedRaw, conflicts, confidence: confidenceRaw } =
       mergeImageExtractResults(extractResults);
+    const confidence = { ...confidenceRaw };
     const graphBundle = mergeGraphBundles(
       perImage.map((item) => ({
         imageIndex: item.imageIndex,
         panels: item.graphReadings,
       })),
     );
-    const metrics = normalizeOcrMetrics(
+    let metrics = normalizeOcrMetrics(
       enrichMetricsFromGraphs(mergedRaw, graphBundle),
       graphBundle,
     );
+
+    // —— 重点4項目の不足を、全画像 readings からラベル再マッピングで補完 ——
+    const missingAfterMerge = CRITICAL_METRIC_KEYS.filter(
+      (key) => !isMetricPresent(metrics, key),
+    );
+    if (missingAfterMerge.length > 0) {
+      const recovered = recoverCriticalMetricsFromReadings(
+        allReadings,
+        perImage.map((item) => item.screenType),
+      );
+      for (const key of missingAfterMerge) {
+        if (!isMetricPresent(metrics, key) && isMetricPresent(recovered, key)) {
+          if (key === "sleepScore") continue;
+          metrics = { ...metrics, [key]: recovered[key] };
+          if (confidence[key] == null) confidence[key] = 0.72;
+          console.info("[api/extract] critical recovered from all readings", {
+            key,
+            value: recovered[key],
+          });
+        }
+      }
+    }
+
+    // —— それでも空なら、画面種別ごとに対象画像だけ再OCR ——
+    const stillMissing = CRITICAL_METRIC_KEYS.filter(
+      (key) => !isMetricPresent(metrics, key),
+    );
+    if (stillMissing.length > 0) {
+      const screenForKey: Record<string, SoxaiScreenType[]> = {
+        bedtime: ["bed_wake", "sleep_detail", "circadian", "other"],
+        wakeTime: ["bed_wake", "sleep_detail", "circadian", "other"],
+        skinTemperature: ["skin_temp", "other", "sleep_detail"],
+        stress: ["stress", "other", "sleep_detail"],
+      };
+
+      const candidateIndexes = new Set<number>();
+      for (const key of stillMissing) {
+        const allowed = screenForKey[key] ?? ["other"];
+        for (const item of perImage) {
+          if (item.error) continue;
+          if (
+            allowed.includes(item.screenType) ||
+            item.screenType === "other" ||
+            item.readings.length === 0
+          ) {
+            candidateIndexes.add(item.imageIndex);
+          }
+        }
+      }
+
+      // 候補が無ければ全画像を対象（画面誤判定時の救済）
+      const indexes =
+        candidateIndexes.size > 0
+          ? [...candidateIndexes]
+          : perImage.map((item) => item.imageIndex);
+
+      console.info("[api/extract] screen-specific critical re-OCR", {
+        stillMissing,
+        indexes,
+      });
+
+      for (const imageIndex of indexes) {
+        const remaining = CRITICAL_METRIC_KEYS.filter(
+          (key) => !isMetricPresent(metrics, key),
+        );
+        if (remaining.length === 0) break;
+
+        const item = perImage[imageIndex];
+        if (!item || item.error) continue;
+
+        const targetScreen =
+          item.screenType !== "other"
+            ? item.screenType
+            : remaining.includes("skinTemperature")
+              ? "skin_temp"
+              : remaining.includes("stress")
+                ? "stress"
+                : remaining.includes("bedtime") || remaining.includes("wakeTime")
+                  ? "bed_wake"
+                  : "sleep_detail";
+
+        try {
+          const retry = await runVisionOnImage(
+            images[imageIndex],
+            criticalOnlyScreenPrompt(remaining, targetScreen),
+          );
+          const mergedReadings = [...item.readings];
+          for (const reading of retry.readings) {
+            const dedupe = `${reading.label}::${reading.value}`;
+            if (
+              !mergedReadings.some((r) => `${r.label}::${r.value}` === dedupe)
+            ) {
+              mergedReadings.push(reading);
+            }
+          }
+
+          const remapped = mapVisibleReadingsToMetricsDetailed(mergedReadings, {
+            screenType: retry.screenType !== "other" ? retry.screenType : targetScreen,
+          });
+
+          let gained = false;
+          for (const key of remaining) {
+            if (
+              !isMetricPresent(metrics, key) &&
+              isMetricPresent(remapped.metrics, key)
+            ) {
+              metrics = {
+                ...metrics,
+                [key]: remapped.metrics[key],
+              };
+              if (confidence[key] == null) confidence[key] = 0.78;
+              gained = true;
+            }
+          }
+
+          // 全 readings からも再補完
+          if (!gained) {
+            const fromAll = recoverCriticalMetricsFromReadings([
+              ...allReadings,
+              ...retry.readings,
+            ]);
+            for (const key of remaining) {
+              if (
+                !isMetricPresent(metrics, key) &&
+                isMetricPresent(fromAll, key)
+              ) {
+                metrics = { ...metrics, [key]: fromAll[key] };
+                if (confidence[key] == null) confidence[key] = 0.7;
+                gained = true;
+              }
+            }
+          }
+
+          if (gained) {
+            item.readings = mergedReadings;
+            if (retry.screenType !== "other") item.screenType = retry.screenType;
+            console.info("[api/extract] critical re-OCR gained", {
+              imageIndex,
+              targetScreen,
+              critical: {
+                bedtime: metrics.bedtime,
+                wakeTime: metrics.wakeTime,
+                skinTemperature: metrics.skinTemperature,
+                stress: metrics.stress,
+              },
+            });
+          }
+        } catch (reOcrError) {
+          console.warn(
+            "[api/extract] screen-specific critical re-OCR failed",
+            { imageIndex, remaining },
+            reOcrError,
+          );
+        }
+      }
+
+      // 再OCR後にグラフ注釈も再適用
+      metrics = normalizeOcrMetrics(
+        enrichMetricsFromGraphs(metrics, graphBundle),
+        graphBundle,
+      );
+    }
+
     const keys = collectedMetricKeys(metrics);
     const graphPanels = graphPanelCount(graphBundle);
 

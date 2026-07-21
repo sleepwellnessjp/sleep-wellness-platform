@@ -288,6 +288,13 @@ function filterCandidatesForKey(
   });
 
   if (filtered.length === 0) {
+    // 重点項目は候補が1つでも値形式が妥当なら採用（取りこぼし防止）
+    if (isCriticalOcrKey(key) && candidates.length === 1) {
+      const only = candidates[0];
+      if (only.reliability >= 8 || only.labelScore >= 40) {
+        return [only];
+      }
+    }
     const best = [...candidates].sort((a, b) => b.labelScore - a.labelScore)[0];
     filtered = best ? [best] : candidates;
   }

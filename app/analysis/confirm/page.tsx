@@ -358,8 +358,8 @@ export default function ConfirmExtractionPage() {
             抽出結果の確認
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            入眠・起床・皮膚温度・ストレスは画像からの自動取得を最優先しています。
-            高信頼度の値は固定し、競合・低信頼度・未取得のみ修正できます。
+            入眠・起床・皮膚温度・ストレスは見出しラベル付きで画像から優先取得します。
+            画像に本当に無い項目だけ手入力してください。
           </p>
         </header>
 
@@ -385,7 +385,7 @@ export default function ConfirmExtractionPage() {
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center sm:px-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-400 sm:text-[11px]">
-              手入力が必要
+              画像に無し
             </p>
             <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {missingCount}
@@ -448,8 +448,8 @@ export default function ConfirmExtractionPage() {
                 重点4項目の確認
               </h2>
               <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                入眠時間・起床時間・皮膚温度・ストレスは SOXAI 画像に表示される前提で
-                OCR を優先しています。
+                入眠時間・起床時間・皮膚温度・ストレスは SOXAI の見出しと数値から
+                自動取得します。手入力は画像に明示値がない場合のみです。
               </p>
             </div>
             <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
