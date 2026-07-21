@@ -80,11 +80,12 @@ function asOptionalString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+/** 新しい順（保存日時 createdAt 優先、同日時は測定日） */
 function sortAnalyses(analyses: StoredAnalysis[]): StoredAnalysis[] {
   return [...analyses].sort((a, b) => {
-    const byDate = b.analysisDate.localeCompare(a.analysisDate);
-    if (byDate !== 0) return byDate;
-    return b.createdAt.localeCompare(a.createdAt);
+    const byCreated = b.createdAt.localeCompare(a.createdAt);
+    if (byCreated !== 0) return byCreated;
+    return b.analysisDate.localeCompare(a.analysisDate);
   });
 }
 
@@ -715,13 +716,18 @@ export function saveAnalysisToClientStore(
     clientId: client.id,
     analysisId,
   };
+  rememberLastSavedAnalysisRef(ref);
+
+  return ref;
+}
+
+export function rememberLastSavedAnalysisRef(ref: SavedAnalysisRef): void {
+  if (!canUseStorage()) return;
   try {
     sessionStorage.setItem(LAST_SAVE_KEY, JSON.stringify(ref));
   } catch {
     // ignore quota / private mode
   }
-
-  return ref;
 }
 
 export function loadLastSavedAnalysisRef(): SavedAnalysisRef | null {

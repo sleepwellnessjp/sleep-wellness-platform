@@ -130,7 +130,9 @@ export default function InstructorPortalPage() {
                       </div>
                       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                         <span className="text-[12px] text-slate-400">
-                          -{item.creditsConsumed} cr
+                          {item.creditsConsumed > 0
+                            ? `-${item.creditsConsumed} cr`
+                            : "保存済み"}
                         </span>
                         {item.analysisId ? (
                           <Link
