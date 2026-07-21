@@ -71,6 +71,7 @@ export const SCREEN_PRIMARY_METRICS: Record<
     "sleepDebt",
     "sleepLatency",
     "circadianRhythm",
+    "restingHeartRate",
   ],
   bed_wake: ["bedtime", "wakeTime", "sleepLatency"],
   sleep_stages: [
@@ -163,7 +164,8 @@ export const METRIC_SCREEN_PRIORITY: Partial<
   awakeningRate: ["sleep_stages"],
   spo2: ["respiration", "sleep_stages"],
   respiratoryRate: ["respiration"],
-  restingHeartRate: ["rhr", "home"],
+  // 安静時心拍: 専用画面 ＞ 睡眠詳細 ＞ ホーム（異常値の別画面取り込みを防ぐ）
+  restingHeartRate: ["sleep_detail", "rhr", "home"],
   hrv: ["hrv"],
   // 正: ホーム → 睡眠概要。詳細画面のスコアでは上書きしない
   sleepScore: ["home", "sleep_overview"],
@@ -218,8 +220,9 @@ export function inferScreenTypeFromReadings(
     return "bed_wake";
   }
   if (/体内時計|circadian/.test(joined)) return "circadian";
-  if (/心拍変動|^hrv$|rmssd/.test(joined)) return "hrv";
+  // 安静時心拍と HRV が同一画面に並ぶことがある → 安静時を先に判定
   if (/安静時心拍/.test(joined)) return "rhr";
+  if (/心拍変動|^hrv$|rmssd/.test(joined)) return "hrv";
   if (/呼吸速度|平均酸素|spo2|spo₂/.test(joined)) return "respiration";
   if (/レム睡眠|浅い睡眠|深い睡眠|覚醒時間|覚醒率/.test(joined)) {
     return "sleep_stages";
@@ -271,6 +274,14 @@ export function screenAffinityScore(
   // ホーム代表値はホーム画面から取れた時点で他画面を上回る
   if (screen === "home" && isHomeAuthoritativeKey(key)) {
     return 120;
+  }
+
+  // 安静時心拍: 詳細画面はホームより優先（ユーザー指定: 詳細 ＞ ホーム ＞ その他）
+  if (key === "restingHeartRate") {
+    if (screen === "sleep_detail") return 90;
+    if (screen === "rhr") return 80;
+    if (screen === "home") return 40;
+    return -10;
   }
 
   if (isPrimaryMetricForScreen(screen, key)) {
