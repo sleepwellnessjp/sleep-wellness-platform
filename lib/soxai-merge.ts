@@ -26,6 +26,7 @@ import {
   screenAffinityScore,
   type SoxaiScreenType,
 } from "@/lib/soxai-screen";
+import { normalizeComparableValue } from "@/lib/soxai-value-normalize";
 
 export type ImageExtractResult = {
   imageIndex: number;
@@ -62,14 +63,9 @@ const MIN_CRITICAL_LABEL_SCORE = 55;
 /** 一般項目の最低ラベル一致スコア */
 const MIN_LABEL_SCORE = 20;
 
-function normalizeComparable(value: string): string {
-  return value
-    .normalize("NFKC")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "")
-    .replace(/％/g, "%")
-    .replace(/：/g, ":");
+/** キー別の比較正規化（表記ゆれは同一キー） */
+function normalizeComparable(key: MetricFieldKey, value: string): string {
+  return normalizeComparableValue(key, value);
 }
 
 function looksPercent(value: string): boolean {
@@ -138,7 +134,9 @@ export function scoreValueReliability(
   if (key === "restingHeartRate") {
     if (/bpm|回\/?分/i.test(v)) score += 5;
     const n = Number(v.replace(/[^\d.-]/g, ""));
-    if (Number.isFinite(n) && n >= 30 && n <= 140) score += 6;
+    if (Number.isFinite(n) && n >= 35 && n <= 100) score += 10;
+    // 日中活動寄りの高値は睡眠時安静心拍として弱い
+    if (Number.isFinite(n) && (n < 35 || n > 100)) score -= 12;
   }
 
   if (key === "hrv") {
@@ -295,6 +293,18 @@ function filterCandidatesForKey(
     if (homeOnly.length > 0) return homeOnly;
   }
 
+  // 安静時心拍数: 睡眠詳細 ＞ 専用(rhr) ＞ その他（ホームの「心拍数」より強いラベルを優先）
+  // 表記ゆれは正規化で同一扱い。異常値は別画面由来として優先順位で捨てる。
+  if (key === "restingHeartRate") {
+    const detailOnly = candidates.filter((c) => c.screenType === "sleep_detail");
+    if (detailOnly.length > 0) return detailOnly;
+    const rhrOnly = candidates.filter((c) => c.screenType === "rhr");
+    if (rhrOnly.length > 0) return rhrOnly;
+    // ホーム以外に強い「安静時心拍数」ラベルがあればそちらを優先
+    const strongLabel = candidates.filter((c) => c.labelScore >= 90);
+    if (strongLabel.length > 0) return strongLabel;
+  }
+
   const hasPrimary = candidates.some((c) =>
     isPrimaryMetricForScreen(c.screenType, key),
   );
@@ -375,6 +385,21 @@ function shouldRecordConflict(
     if (rank === 0) return false;
   }
 
+  // 安静時心拍数: 優先画面から採用できていれば他画面差は競合にしない
+  if (key === "restingHeartRate") {
+    if (
+      adopted.screenType === "sleep_detail" ||
+      adopted.screenType === "rhr" ||
+      adopted.labelScore >= 90
+    ) {
+      return false;
+    }
+    // ホーム採用でも、他候補が正規化後に同一なら競合しない（uniqueValueCount で除外済み）
+    if (adopted.screenType === "home") {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -410,10 +435,13 @@ function resolveSourceLabel(
 /**
  * 複数画像の個別OCR結果を1つの AnalysisMetrics に統合する。
  * - 不足項目は他画像から補完
+ * - 比較前に値を正規化（6:22 ≡ 6時間22分、49 ≡ 49 bpm、33 ≡ 33標準）
  * - ホーム代表値はホーム画面を最優先（他画面との差は競合にしない）
+ * - sleepScore はホームがあれば必ずホーム優先
+ * - restingHeartRate は 睡眠詳細 ＞ rhr ＞ ホーム（異常値の別画面取り込みを防ぐ）
  * - sleepScore / bedtime / wakeTime は正しい画面をロック採用し、別画面で上書きしない
  * - 同一項目の競合は「画面種別優先 → ラベル一致 → 値形式」で採用
- * - 競合表示は本当に判断できない場合のみ
+ * - 競合表示は本当に違う値のときだけ（表記ゆれは競合にしない）
  * - 画像の順番は結果に影響しない
  */
 export function mergeImageExtractResults(
@@ -482,7 +510,7 @@ export function mergeImageExtractResults(
 
     const byNorm = new Map<string, Candidate[]>();
     for (const candidate of gated) {
-      const norm = normalizeComparable(candidate.value);
+      const norm = normalizeComparable(key, candidate.value);
       const list = byNorm.get(norm) ?? [];
       list.push(candidate);
       byNorm.set(norm, list);
@@ -506,11 +534,18 @@ export function mergeImageExtractResults(
       merged[key] = adopted.value;
     }
 
-    confidence[key] = confidenceFromCandidateForKey(key, adopted, byNorm.size);
+    // 表記ゆれのみの差は unique=1 扱い（競合にしない）
+    const uniqueValueCount = byNorm.size;
+    confidence[key] = confidenceFromCandidateForKey(
+      key,
+      adopted,
+      uniqueValueCount,
+    );
 
-    if (shouldRecordConflict(key, adopted, byNorm.size)) {
+    if (shouldRecordConflict(key, adopted, uniqueValueCount)) {
+      const adoptedNorm = normalizeComparable(key, adopted.value);
       const alternatives = [...byNorm.entries()]
-        .filter(([norm]) => norm !== normalizeComparable(adopted.value))
+        .filter(([norm]) => norm !== adoptedNorm)
         .map(([, group]) => pickBestCandidateForKey(key, group).value);
 
       if (alternatives.length > 0) {

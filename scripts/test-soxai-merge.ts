@@ -743,6 +743,157 @@ function shuffle<T>(items: T[]): T[] {
   assert(mapped.metrics.bedtime === "23:00", "map: sleep_detail の入眠は採る");
 }
 
+// —— 表記ゆれは競合にしない（睡眠時間 / RHR / ストレス）——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "home",
+      visibleReadingCount: 3,
+      readings: [
+        { label: "QoL", value: "50" },
+        { label: "睡眠", value: "71" },
+        { label: "心拍数", value: "49" },
+      ],
+      provenance: {
+        sleepScore: "睡眠",
+        restingHeartRate: "心拍数",
+        sleepDuration: "睡眠時間",
+      },
+      metrics: metrics({
+        sleepScore: 71,
+        sleepDuration: "6:22",
+        restingHeartRate: "49",
+        stress: "33",
+      }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 4,
+      readings: [
+        { label: "睡眠時間", value: "6時間22分" },
+        { label: "安静時心拍数", value: "49 bpm" },
+        { label: "ストレス", value: "33標準" },
+        { label: "睡眠効率", value: "88%" },
+      ],
+      provenance: {
+        sleepDuration: "睡眠時間",
+        restingHeartRate: "安静時心拍数",
+        stress: "ストレス",
+        sleepEfficiency: "睡眠効率",
+      },
+      metrics: metrics({
+        sleepDuration: "6時間22分",
+        restingHeartRate: "49 bpm",
+        stress: "33標準",
+        sleepEfficiency: "88%",
+      }),
+    },
+  ];
+
+  const { metrics: merged, conflicts } = mergeImageExtractResults(results);
+  assert(
+    merged.sleepDuration === "6時間22分" || merged.sleepDuration === "6:22",
+    "表記ゆれ: 睡眠時間は同一値として採用",
+  );
+  assert(
+    !conflicts.some((c) => c.key === "sleepDuration"),
+    "表記ゆれ: 6:22 と 6時間22分 は競合にしない",
+  );
+  assert(
+    merged.restingHeartRate === "49 bpm" || merged.restingHeartRate === "49",
+    "表記ゆれ: RHR は同一値として採用",
+  );
+  assert(
+    !conflicts.some((c) => c.key === "restingHeartRate"),
+    "表記ゆれ: 49 と 49 bpm は競合にしない",
+  );
+  assert(
+    !conflicts.some((c) => c.key === "stress"),
+    "表記ゆれ: 33 と 33標準 は競合にしない",
+  );
+  assert(merged.sleepScore === 71, "表記ゆれケースでもホーム睡眠スコア優先");
+}
+
+// —— 安静時心拍: 異常値は画面優先（詳細 ＞ ホーム）、競合にしない ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "home",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "QoL", value: "50" },
+        { label: "心拍数", value: "95" },
+      ],
+      provenance: { restingHeartRate: "心拍数" },
+      metrics: metrics({ restingHeartRate: "95" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "安静時心拍数", value: "49 bpm" },
+        { label: "睡眠時間", value: "5時間32分" },
+      ],
+      provenance: {
+        restingHeartRate: "安静時心拍数",
+        sleepDuration: "睡眠時間",
+      },
+      metrics: metrics({
+        restingHeartRate: "49 bpm",
+        sleepDuration: "5時間32分",
+      }),
+    },
+  ];
+
+  for (const order of [results, [...results].reverse()]) {
+    const { metrics: merged, conflicts } = mergeImageExtractResults(order);
+    assert(
+      merged.restingHeartRate === "49 bpm" ||
+        merged.restingHeartRate === "49",
+      "RHR優先: 睡眠詳細の49をホーム95より優先",
+    );
+    assert(
+      !conflicts.some((c) => c.key === "restingHeartRate"),
+      "RHR優先: 画面優先で決まる場合は競合にしない",
+    );
+  }
+}
+
+// —— 睡眠時間: 5:32 と 5時間32分 は同一 ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "home",
+      visibleReadingCount: 1,
+      readings: [{ label: "睡眠時間", value: "5:32" }],
+      provenance: { sleepDuration: "睡眠時間" },
+      metrics: metrics({ sleepDuration: "5:32" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 1,
+      readings: [{ label: "睡眠時間", value: "5時間32分" }],
+      provenance: { sleepDuration: "睡眠時間" },
+      metrics: metrics({ sleepDuration: "5時間32分" }),
+    },
+  ];
+  const { metrics: merged, conflicts } = mergeImageExtractResults(results);
+  assert(
+    merged.sleepDuration === "5時間32分" || merged.sleepDuration === "5:32",
+    "睡眠時間: 5:32 / 5時間32分 を同一採用",
+  );
+  assert(
+    !conflicts.some((c) => c.key === "sleepDuration"),
+    "睡眠時間: 表記ゆれは競合0",
+  );
+}
+
 if (process.exitCode) {
   console.error("\nSome merge tests failed.");
 } else {
