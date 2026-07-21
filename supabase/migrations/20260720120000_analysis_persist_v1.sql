@@ -103,6 +103,13 @@ begin
 
     if v_existing_id is not null then
       v_row := public.ensure_monthly_credit(v_user_id);
+      if p_analysis_id is not null then
+        update public.analyses
+        set credits_consumed = greatest(coalesce(credits_consumed, 0), 1),
+            updated_at = now()
+        where id = p_analysis_id
+          and owner_id = v_user_id;
+      end if;
       return jsonb_build_object(
         'ok', true,
         'message', 'already_consumed',

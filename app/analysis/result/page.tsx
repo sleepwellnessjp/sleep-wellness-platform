@@ -212,7 +212,7 @@ export default function AnalysisResultPage() {
         });
         setResult(hydrated);
         setImages(loadAnalysisImages());
-        setGraphs(loadAnalysisGraphs());
+        setGraphs(hydrated.graphs ?? loadAnalysisGraphs());
       })
       .catch((error: unknown) => {
         if (cancelled) return;

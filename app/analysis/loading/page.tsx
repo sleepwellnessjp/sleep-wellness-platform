@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   AnalysisError,
@@ -37,12 +37,81 @@ type AnalysisFailure = {
   details?: string;
 };
 
+type LoadingFlowResult = {
+  analysisId?: string;
+};
+
+/**
+ * React Strict Mode の remount でも保存・クレジット消費が二重に走らないよう、
+ * モジュールスコープで実行を共有する。
+ */
+let sharedLoadingFlow: Promise<LoadingFlowResult> | null = null;
+
+async function runAnalysisLoadingFlow(): Promise<LoadingFlowResult> {
+  const result = await runPendingAnalysis();
+
+  let savedRef: { clientId: string; analysisId: string } | null = null;
+  try {
+    savedRef = await saveAnalysisToRepository(result);
+  } catch (saveError) {
+    console.error("Failed to save analysis:", saveError);
+    if (isSupabaseConfigured()) {
+      throw new AnalysisError(
+        saveError instanceof Error
+          ? `分析結果の保存に失敗しました。クレジットは消費していません。${saveError.message}`
+          : "分析結果の保存に失敗しました。クレジットは消費していません。",
+        {
+          errorType: "Save Error",
+          details:
+            saveError instanceof Error
+              ? saveError.message
+              : String(saveError),
+        },
+      );
+    }
+  }
+
+  if (savedRef) {
+    result.clientId = savedRef.clientId;
+    result.analysisId = savedRef.analysisId;
+    hydrateAnalysisSession(result);
+
+    try {
+      const creditResponse = await fetch("/api/platform/consume-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: result.clientName ?? "睡眠分析",
+          measurementDate: result.measurementDate,
+          sleepScore:
+            typeof result.metrics?.sleepScore === "number"
+              ? result.metrics.sleepScore
+              : result.score,
+          clientId: savedRef.clientId,
+          analysisId: savedRef.analysisId,
+        }),
+      });
+
+      if (!creditResponse.ok) {
+        const payload = (await creditResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        console.error("Credit consume failed:", payload);
+        // 保存成功後のクレジット失敗でも結果は表示する（再実行での二重保存を避ける）
+      }
+    } catch (creditError) {
+      console.error("Failed to consume analysis credit:", creditError);
+    }
+  }
+
+  return { analysisId: savedRef?.analysisId };
+}
+
 export default function AnalysisLoadingPage() {
   const router = useRouter();
   const [activeStep, setActiveStep] = useState(0);
   const [error, setError] = useState<AnalysisFailure | null>(null);
   const [progress, setProgress] = useState(8);
-  const startedRef = useRef(false);
 
   useEffect(() => {
     const stepTimer = window.setInterval(() => {
@@ -63,74 +132,24 @@ export default function AnalysisLoadingPage() {
   }, []);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
     let cancelled = false;
 
-    runPendingAnalysis()
-      .then(async (result) => {
-        if (cancelled) return;
+    if (!sharedLoadingFlow) {
+      sharedLoadingFlow = runAnalysisLoadingFlow().finally(() => {
+        // 完了後も短時間は共有し、Strict Mode remount の二重実行を防ぐ
+        window.setTimeout(() => {
+          sharedLoadingFlow = null;
+        }, 5_000);
+      });
+    }
 
-        let savedRef: { clientId: string; analysisId: string } | null = null;
-        try {
-          savedRef = await saveAnalysisToRepository(result);
-        } catch (saveError) {
-          console.error("Failed to save analysis:", saveError);
-          if (isSupabaseConfigured()) {
-            throw new AnalysisError(
-              saveError instanceof Error
-                ? `分析結果の保存に失敗しました。クレジットは消費していません。${saveError.message}`
-                : "分析結果の保存に失敗しました。クレジットは消費していません。",
-              {
-                errorType: "Save Error",
-                details:
-                  saveError instanceof Error
-                    ? saveError.message
-                    : String(saveError),
-              },
-            );
-          }
-        }
-
-        if (savedRef) {
-          result.clientId = savedRef.clientId;
-          result.analysisId = savedRef.analysisId;
-          hydrateAnalysisSession(result);
-
-          try {
-            const creditResponse = await fetch("/api/platform/consume-credit", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                clientName: result.clientName ?? "睡眠分析",
-                measurementDate: result.measurementDate,
-                sleepScore:
-                  typeof result.metrics?.sleepScore === "number"
-                    ? result.metrics.sleepScore
-                    : result.score,
-                clientId: savedRef.clientId,
-                analysisId: savedRef.analysisId,
-              }),
-            });
-
-            if (!creditResponse.ok) {
-              const payload = (await creditResponse.json().catch(() => null)) as {
-                error?: string;
-              } | null;
-              console.error("Credit consume failed:", payload);
-              // 保存成功後のクレジット失敗は結果表示は許可（履歴は analyses に残る）
-            }
-          } catch (creditError) {
-            console.error("Failed to consume analysis credit:", creditError);
-          }
-        }
-
+    sharedLoadingFlow
+      .then((flowResult) => {
         if (cancelled) return;
         setProgress(100);
-        if (savedRef?.analysisId) {
+        if (flowResult.analysisId) {
           router.replace(
-            `/analysis/result?analysisId=${encodeURIComponent(savedRef.analysisId)}`,
+            `/analysis/result?analysisId=${encodeURIComponent(flowResult.analysisId)}`,
           );
         } else {
           router.replace("/analysis/result");

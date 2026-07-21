@@ -654,6 +654,23 @@ export function saveAnalysisToClientStore(
   if (!canUseStorage()) return null;
 
   const clients = loadClients();
+  const existingAnalysisId = result.analysisId?.trim();
+  if (existingAnalysisId) {
+    for (const client of clients) {
+      const existing = client.analyses.find(
+        (analysis) => analysis.id === existingAnalysisId,
+      );
+      if (existing) {
+        const ref: SavedAnalysisRef = {
+          clientId: client.id,
+          analysisId: existing.id,
+        };
+        rememberLastSavedAnalysisRef(ref);
+        return ref;
+      }
+    }
+  }
+
   const name = result.clientName?.trim() || "未設定";
   const analysisDate =
     result.measurementDate?.trim() || new Date().toISOString().slice(0, 10);
@@ -694,6 +711,7 @@ export function saveAnalysisToClientStore(
       clientId: client.id,
       clientName: name,
       measurementDate: analysisDate,
+      analysisId,
     },
     pdfHistory: [
       {

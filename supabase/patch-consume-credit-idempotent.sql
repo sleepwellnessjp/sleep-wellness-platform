@@ -1,58 +1,7 @@
--- Sleep Wellness Platform V1.0 — analysis persistence + idempotent credits
--- Migration: 20260720120000_analysis_persist_v1
--- Prerequisites: 20260720100000_platform_v1 (platform-v1.sql 実行済み)
+-- Patch: already_consumed 時も analyses.credits_consumed を同期
+-- Supabase SQL Editor で Run（既存の consume_analysis_credit を置き換え）
+-- Prerequisites: analysis-persist-v1 適用済み
 
--- ============================================================
--- analyses: store OCR / confirmed / report payload explicitly
--- ============================================================
-alter table public.analyses
-  add column if not exists confirmed_metrics jsonb,
-  add column if not exists report_payload jsonb,
-  add column if not exists credits_consumed integer not null default 0
-    check (credits_consumed >= 0),
-  add column if not exists updated_at timestamptz not null default now();
-
-drop trigger if exists analyses_set_updated_at on public.analyses;
-create trigger analyses_set_updated_at
-before update on public.analyses
-for each row execute function public.set_updated_at();
-
--- ============================================================
--- analysis_history: updated_at + unique analysis_id (idempotent)
--- ============================================================
-alter table public.analysis_history
-  add column if not exists updated_at timestamptz not null default now();
-
-drop trigger if exists analysis_history_set_updated_at on public.analysis_history;
-create trigger analysis_history_set_updated_at
-before update on public.analysis_history
-for each row execute function public.set_updated_at();
-
--- 既存の重複 analysis_id があると UNIQUE INDEX が失敗して途中停止する
--- 同一 user_id + analysis_id は最新1件を残し、それ以外を削除
-with ranked as (
-  select
-    id,
-    row_number() over (
-      partition by user_id, analysis_id
-      order by created_at desc nulls last, id desc
-    ) as rn
-  from public.analysis_history
-  where analysis_id is not null
-)
-delete from public.analysis_history ah
-using ranked r
-where ah.id = r.id
-  and r.rn > 1;
-
-create unique index if not exists analysis_history_analysis_id_unique
-  on public.analysis_history (user_id, analysis_id)
-  where analysis_id is not null;
-
--- ============================================================
--- consume_analysis_credit: 同一 analysis_id 二重消費防止
--- platform-v1 の row_security=off を維持（再定義で落とさない）
--- ============================================================
 create or replace function public.consume_analysis_credit(
   p_client_name text,
   p_measurement_date date default null,
@@ -88,7 +37,6 @@ begin
     return jsonb_build_object('ok', true, 'message', '管理者は消費対象外', 'remaining', 999);
   end if;
 
-  -- 同一 analysis_id への二重消費を防止（並行リクエストも直列化）
   if p_analysis_id is not null then
     perform pg_advisory_xact_lock(
       hashtext('swij_consume_credit'),
@@ -103,13 +51,11 @@ begin
 
     if v_existing_id is not null then
       v_row := public.ensure_monthly_credit(v_user_id);
-      if p_analysis_id is not null then
-        update public.analyses
-        set credits_consumed = greatest(coalesce(credits_consumed, 0), 1),
-            updated_at = now()
-        where id = p_analysis_id
-          and owner_id = v_user_id;
-      end if;
+      update public.analyses
+      set credits_consumed = greatest(coalesce(credits_consumed, 0), 1),
+          updated_at = now()
+      where id = p_analysis_id
+        and owner_id = v_user_id;
       return jsonb_build_object(
         'ok', true,
         'message', 'already_consumed',
