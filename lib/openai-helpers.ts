@@ -168,12 +168,14 @@ export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ�
 
 screenType の値:
 - home … ホーム（QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数）
-  ※睡眠スコア・睡眠時間などホーム代表値は、統合時にホームを最優先する
-- sleep_overview … 睡眠概要（睡眠スコア中心）
+  ※睡眠スコアの正はホーム。統合時にホーム／睡眠概要以外では上書きしない
+- sleep_overview … 睡眠概要（睡眠スコア中心）。ホームが無いときのみ睡眠スコアの正
 - sleep_detail … 睡眠詳細（時間・効率・負債・潜時・入眠・起床）
+  ※入眠・起床の正の一つ。睡眠スコアはここから採用しない
 - sleep_stages … 睡眠ステージ（覚醒/レム/浅い/深い・SpO₂）
-- bed_wake … 入眠／起床時刻が主
-- circadian … 体内時計
+  ※端点時刻を入眠・起床にしない。睡眠スコアも採らない
+- bed_wake … 入眠／起床時刻が主。入眠・起床の最優先画面
+- circadian … 体内時計（入眠・起床のフォールバックには使わない想定）
 - stress … ストレス
 - skin_temp … 皮膚温度
 - respiration … 睡眠時呼吸
@@ -181,15 +183,21 @@ screenType の値:
 - hrv … HRV
 - other … その他
 
+【統合時の画面ロック（Visionは1枚のみだが判定を正確に）】
+- sleepScore → home > sleep_overview のみ（sleep_detail / stages 等では返さない）
+- bedtime / wakeTime → bed_wake > sleep_detail のみ（stages 端点・circadian では返さない）
+
 ==============================
 画面種別ごと取得項目（固定）
 ==============================
 - home → QoL / 昨日のスコア / 睡眠（スコア） / 体調 / 心拍数。睡眠時間があれば必ず返す
-- sleep_overview → 睡眠スコア / 睡眠時間
+- sleep_overview → 睡眠スコア / 睡眠時間（ホームが無いときの睡眠スコア正）
 - sleep_detail → 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 入眠潜時 / 体内時計
+  ※睡眠スコアは返さない（ホーム／概要を正とする）
 - bed_wake → 入眠時間 / 起床時間 / 入眠潜時
 - sleep_stages → 覚醒時間 / 覚醒率 / レム / 浅い / 深い（時間と%は別） / SpO₂
-- circadian → 体内時計
+  ※入眠・起床・睡眠スコアは返さない
+- circadian → 体内時計（入眠・起床は返さない）
 - stress → ストレス / 平均ストレス / ストレスレベル
 - skin_temp → 皮膚温度 / 皮膚温 / 平均 / 偏差（±℃）
 - respiration → 呼吸速度 / 平均酸素レベル

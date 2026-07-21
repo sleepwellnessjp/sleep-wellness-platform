@@ -177,12 +177,15 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 画面全体（上・中・下、カード、円、ゲージ、小さな注釈）を対象にしてください。
 
 【画面 → 取得項目】
-- home: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数
+- home: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数（睡眠スコアの正）
+- sleep_overview: 睡眠スコア / 睡眠時間（ホームが無いときの睡眠スコア正）
 - sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 効率 / 負債 / 潜時
-- sleep_stages: 覚醒・レム・浅い・深い（時間と%）/ SpO₂ ※端点時刻を入眠・起床にしない
+  ※sleep_detail から睡眠スコアは返さない。入眠・起床の正
+- sleep_stages: 覚醒・レム・浅い・深い（時間と%）/ SpO₂ ※端点時刻を入眠・起床にしない。睡眠スコアも返さない
+- circadian: 体内時計のみ（入眠・起床は返さない）
 - skin_temp: 皮膚温度 / 皮膚温 / 平均 / 偏差（+0.2℃ や単位なし +0.2 も）
 - stress: ストレス / 平均ストレス / ストレスレベル
-- rhr / hrv / respiration / circadian: 各画面の平均・代表値
+- rhr / hrv / respiration: 各画面の平均・代表値
 
 【最優先・見逃し禁止】
 - 入眠時間 ≠ 入眠潜時 ≠ 就床（見出し: 入眠/入眠時間/睡眠開始/就寝/Bedtime）

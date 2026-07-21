@@ -590,6 +590,159 @@ function shuffle<T>(items: T[]): T[] {
   assert(stressAvg.metrics.stress === "34", "map: stress画面の平均 → stress");
 }
 
+// —— ロック: ホーム睡眠スコアを詳細画面で上書きしない ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "home",
+      visibleReadingCount: 3,
+      readings: [
+        { label: "QoL", value: "50" },
+        { label: "睡眠", value: "71" },
+        { label: "体調", value: "75" },
+      ],
+      provenance: { sleepScore: "睡眠" },
+      metrics: metrics({ sleepScore: 71 }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "睡眠スコア", value: "92" },
+        { label: "入眠時間", value: "23:40" },
+      ],
+      provenance: { sleepScore: "睡眠スコア", bedtime: "入眠時間" },
+      metrics: metrics({ sleepScore: 92, bedtime: "23:40" }),
+    },
+  ];
+  for (const order of [results, [...results].reverse()]) {
+    const { metrics: merged, conflicts } = mergeImageExtractResults(order);
+    assert(
+      merged.sleepScore === 71,
+      "ロック: ホーム睡眠スコアを詳細の92で上書きしない",
+    );
+    assert(
+      merged.bedtime === "23:40",
+      "ロック: 入眠は詳細画面から補完",
+    );
+    assert(
+      !conflicts.some((c) => c.key === "sleepScore"),
+      "ロック: sleepScore を競合にしない",
+    );
+  }
+}
+
+// —— ロック: bed_wake 入眠を circadian / stages で上書きしない ——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "bed_wake",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "入眠時間", value: "23:15" },
+        { label: "起床時間", value: "06:05" },
+      ],
+      provenance: { bedtime: "入眠時間", wakeTime: "起床時間" },
+      metrics: metrics({ bedtime: "23:15", wakeTime: "06:05" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "circadian",
+      visibleReadingCount: 3,
+      readings: [
+        { label: "体内時計", value: "やや遅れ" },
+        { label: "入眠", value: "22:00" },
+        { label: "起床", value: "07:00" },
+      ],
+      provenance: {
+        circadianRhythm: "体内時計",
+        bedtime: "入眠",
+        wakeTime: "起床",
+      },
+      metrics: metrics({
+        circadianRhythm: "やや遅れ",
+        bedtime: "22:00",
+        wakeTime: "07:00",
+      }),
+    },
+    {
+      imageIndex: 2,
+      screenType: "sleep_stages",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "開始", value: "21:50" },
+        { label: "終了", value: "07:40" },
+      ],
+      provenance: { bedtime: "開始", wakeTime: "終了" },
+      metrics: metrics({ bedtime: "21:50", wakeTime: "07:40" }),
+    },
+  ];
+  for (const order of [results, [...results].reverse()]) {
+    const { metrics: merged } = mergeImageExtractResults(order);
+    assert(
+      merged.bedtime === "23:15",
+      "ロック: bed_wake 入眠を他画面で上書きしない",
+    );
+    assert(
+      merged.wakeTime === "06:05",
+      "ロック: bed_wake 起床を他画面で上書きしない",
+    );
+  }
+}
+
+// —— ロック: 概要の睡眠スコアを詳細で上書きしない（ホーム無し）——
+{
+  const results: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      screenType: "sleep_overview",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "睡眠スコア", value: "68" },
+        { label: "睡眠時間", value: "6時間20分" },
+      ],
+      provenance: { sleepScore: "睡眠スコア", sleepDuration: "睡眠時間" },
+      metrics: metrics({ sleepScore: 68, sleepDuration: "6時間20分" }),
+    },
+    {
+      imageIndex: 1,
+      screenType: "sleep_detail",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "睡眠スコア", value: "85" },
+        { label: "睡眠効率", value: "91%" },
+      ],
+      provenance: { sleepScore: "睡眠スコア", sleepEfficiency: "睡眠効率" },
+      metrics: metrics({ sleepScore: 85, sleepEfficiency: "91%" }),
+    },
+  ];
+  const { metrics: merged } = mergeImageExtractResults(results);
+  assert(
+    merged.sleepScore === 68,
+    "ロック: 概要の睡眠スコアを詳細で上書きしない",
+  );
+  assert(merged.sleepEfficiency === "91%", "詳細の効率は補完する");
+}
+
+// —— map: 詳細画面から睡眠スコアを採らない ——
+{
+  const mapped = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "睡眠スコア", value: "88" },
+      { label: "入眠時間", value: "23:00" },
+    ],
+    { screenType: "sleep_detail" },
+  );
+  assert(
+    mapped.metrics.sleepScore == null,
+    "map: sleep_detail から sleepScore を採らない",
+  );
+  assert(mapped.metrics.bedtime === "23:00", "map: sleep_detail の入眠は採る");
+}
+
 if (process.exitCode) {
   console.error("\nSome merge tests failed.");
 } else {
