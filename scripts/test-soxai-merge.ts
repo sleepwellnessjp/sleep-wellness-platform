@@ -520,6 +520,62 @@ function shuffle<T>(items: T[]): T[] {
   );
 }
 
+// —— 日本語時刻・複合テキスト・辞書強化 ——
+{
+  const jpBed = mapVisibleReadingsToMetricsDetailed([
+    { label: "入眠時間", value: "23時40分" },
+    { label: "起床時間", value: "午前6:20" },
+  ]);
+  assert(jpBed.metrics.bedtime === "23:40", "map: 23時40分 → bedtime");
+  assert(jpBed.metrics.wakeTime === "06:20", "map: 午前6:20 → wakeTime");
+
+  const compound = mapVisibleReadingsToMetricsDetailed([
+    { label: "睡眠時間帯", value: "入眠 23:40 / 起床 06:20" },
+  ]);
+  assert(
+    compound.metrics.bedtime === "23:40",
+    "map: 複合テキストから bedtime",
+  );
+  assert(
+    compound.metrics.wakeTime === "06:20",
+    "map: 複合テキストから wakeTime",
+  );
+
+  const shushin = mapVisibleReadingsToMetricsDetailed([
+    { label: "就寝", value: "0:15" },
+    { label: "起床", value: "7:05" },
+  ]);
+  assert(shushin.metrics.bedtime === "00:15", "map: 就寝 → bedtime");
+  assert(shushin.metrics.wakeTime === "07:05", "map: 起床 → wakeTime");
+
+  // 入眠潜時は bedtime にしない
+  const latency = mapVisibleReadingsToMetricsDetailed([
+    { label: "入眠潜時", value: "18分" },
+    { label: "入眠時間", value: "23:10" },
+  ]);
+  assert(latency.metrics.sleepLatency === "18分", "map: 入眠潜時は latency");
+  assert(latency.metrics.bedtime === "23:10", "map: 入眠時間は bedtime");
+
+  // 弱ラベルでも兄弟に皮膚温があれば取得
+  const weakSkin = mapVisibleReadingsToMetricsDetailed([
+    { label: "皮膚温", value: "—" },
+    { label: "平均", value: "+0.25" },
+  ]);
+  assert(
+    weakSkin.metrics.skinTemperature === "+0.25",
+    "map: 兄弟ラベル付き平均 → skinTemperature",
+  );
+
+  const stressAvg = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "平均", value: "34" },
+      { label: "最大", value: "60" },
+    ],
+    { screenType: "stress" },
+  );
+  assert(stressAvg.metrics.stress === "34", "map: stress画面の平均 → stress");
+}
+
 if (process.exitCode) {
   console.error("\nSome merge tests failed.");
 } else {
