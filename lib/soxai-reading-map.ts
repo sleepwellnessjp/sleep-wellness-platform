@@ -783,9 +783,7 @@ function applyScreenContextFallbacks(
   }
 
   if (
-    (screenType === "bed_wake" ||
-      screenType === "sleep_detail" ||
-      screenType === "circadian") &&
+    (screenType === "bed_wake" || screenType === "sleep_detail") &&
     (!String(next.bedtime).trim() || !String(next.wakeTime).trim())
   ) {
     for (const reading of readings) {
@@ -844,11 +842,36 @@ export function mapVisibleReadingsToMetricsDetailed(
       screenType === "sleep_stages" &&
       (key === "bedtime" || key === "wakeTime")
     ) {
-      const l = normalizeLabel(label);
-      if (!/入眠時間|入眠時刻|起床時間|起床時刻|睡眠開始|睡眠終了/.test(l)) {
-        skippedLabels.push(`${label}(blocked:${screenType})`);
-        continue;
-      }
+      skippedLabels.push(`${label}(blocked:${screenType})`);
+      continue;
+    }
+
+    // 体内時計・概要・ホームから入眠・起床を採らない（bed_wake / sleep_detail を正とする）
+    if (
+      (key === "bedtime" || key === "wakeTime") &&
+      (screenType === "circadian" ||
+        screenType === "sleep_overview" ||
+        screenType === "home" ||
+        screenType === "stress" ||
+        screenType === "skin_temp" ||
+        screenType === "rhr" ||
+        screenType === "hrv" ||
+        screenType === "respiration")
+    ) {
+      skippedLabels.push(`${label}(blocked:${screenType})`);
+      continue;
+    }
+
+    // 睡眠スコアはホーム／睡眠概要のみ（詳細・ステージ等では採らない）
+    if (
+      key === "sleepScore" &&
+      screenType !== "home" &&
+      screenType !== "sleep_overview" &&
+      screenType !== "other" &&
+      screenType != null
+    ) {
+      skippedLabels.push(`${label}(blocked:${screenType}:sleepScore)`);
+      continue;
     }
 
     // ホーム画面から皮膚温・ストレスを取らない（専用画面を待つ）

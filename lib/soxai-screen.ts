@@ -109,12 +109,42 @@ export function isHomeAuthoritativeKey(key: MetricFieldKey): boolean {
   return (HOME_AUTHORITATIVE_KEYS as readonly string[]).includes(key);
 }
 
+/**
+ * 正しい画面から取れたら、別画面の値で絶対に上書きしないキー。
+ * （ラベル一致が強くても二次画面は採用しない）
+ *
+ * - sleepScore … ホーム「睡眠」→ 睡眠概要。詳細・ステージ等では上書きしない
+ * - bedtime / wakeTime … 入眠／起床画面 or 睡眠詳細。ステージ端点・体内時計等では上書きしない
+ */
+export const LOCKED_SCREEN_KEYS: Partial<
+  Record<MetricFieldKey, readonly SoxaiScreenType[]>
+> = {
+  sleepScore: ["home", "sleep_overview"],
+  bedtime: ["bed_wake", "sleep_detail"],
+  wakeTime: ["bed_wake", "sleep_detail"],
+};
+
+export function lockedScreensForKey(
+  key: MetricFieldKey,
+): readonly SoxaiScreenType[] | null {
+  return LOCKED_SCREEN_KEYS[key] ?? null;
+}
+
+export function isLockedAuthoritativeScreen(
+  key: MetricFieldKey,
+  screen: SoxaiScreenType,
+): boolean {
+  const locked = lockedScreensForKey(key);
+  return locked ? locked.includes(screen) : false;
+}
+
 /** 各メトリクスの画面優先順位（先頭が最優先） */
 export const METRIC_SCREEN_PRIORITY: Partial<
   Record<MetricFieldKey, readonly SoxaiScreenType[]>
 > = {
-  bedtime: ["bed_wake", "sleep_detail", "circadian", "sleep_overview"],
-  wakeTime: ["bed_wake", "sleep_detail", "circadian", "sleep_overview"],
+  // 正: bed_wake / sleep_detail のみ。他は空のときの最終フォールバック
+  bedtime: ["bed_wake", "sleep_detail", "circadian"],
+  wakeTime: ["bed_wake", "sleep_detail", "circadian"],
   skinTemperature: ["skin_temp", "sleep_detail"],
   stress: ["stress", "sleep_detail"],
   sleepLatency: ["sleep_detail", "bed_wake"],
@@ -135,8 +165,8 @@ export const METRIC_SCREEN_PRIORITY: Partial<
   respiratoryRate: ["respiration"],
   restingHeartRate: ["rhr", "home"],
   hrv: ["hrv"],
-  // ホーム「睡眠」カードを他画面の睡眠スコアより優先
-  sleepScore: ["home", "sleep_overview", "sleep_detail"],
+  // 正: ホーム → 睡眠概要。詳細画面のスコアでは上書きしない
+  sleepScore: ["home", "sleep_overview"],
   qol: ["home"],
   yesterdayQol: ["home"],
   conditionScore: ["home"],
@@ -228,6 +258,16 @@ export function screenAffinityScore(
   screen: SoxaiScreenType,
   key: MetricFieldKey,
 ): number {
+  // ロック対象キー: 正しい画面からの候補を大幅加点
+  if (isLockedAuthoritativeScreen(key, screen)) {
+    if (key === "sleepScore") {
+      return screen === "home" ? 130 : 100;
+    }
+    if (key === "bedtime" || key === "wakeTime") {
+      return screen === "bed_wake" ? 100 : 90;
+    }
+  }
+
   // ホーム代表値はホーム画面から取れた時点で他画面を上回る
   if (screen === "home" && isHomeAuthoritativeKey(key)) {
     return 120;
@@ -263,9 +303,29 @@ export function screenAffinityScore(
       screen === "home" ||
       screen === "rhr" ||
       screen === "hrv" ||
-      screen === "respiration"
+      screen === "respiration" ||
+      screen === "sleep_overview" ||
+      screen === "other"
     ) {
-      return -40;
+      return -60;
+    }
+  }
+
+  // 睡眠スコアはホーム／概要以外から取らない（詳細・ステージ等で上書き禁止）
+  if (key === "sleepScore") {
+    if (
+      screen === "sleep_detail" ||
+      screen === "sleep_stages" ||
+      screen === "bed_wake" ||
+      screen === "stress" ||
+      screen === "skin_temp" ||
+      screen === "rhr" ||
+      screen === "hrv" ||
+      screen === "respiration" ||
+      screen === "circadian" ||
+      screen === "other"
+    ) {
+      return -50;
     }
   }
 

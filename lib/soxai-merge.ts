@@ -19,7 +19,9 @@ import {
   inferScreenTypeFromReadings,
   isCriticalOcrKey,
   isHomeAuthoritativeKey,
+  isLockedAuthoritativeScreen,
   isPrimaryMetricForScreen,
+  lockedScreensForKey,
   metricScreenRank,
   screenAffinityScore,
   type SoxaiScreenType,
@@ -254,14 +256,38 @@ function confidenceFromCandidateForKey(
 
 /**
  * 採用ゲート: 画面種別＋ラベル一致が弱い候補を除外。
- * ホーム代表値はホーム候補があれば他画面を捨てる。
- * より良い一次画面候補がある場合は誤画面を捨てる。
+ * - ホーム代表値はホーム候補があれば他画面を捨てる
+ * - sleepScore / bedtime / wakeTime は正しい画面があれば他画面を捨てる（ラベル強くても上書き禁止）
+ * - より良い一次画面候補がある場合は誤画面を捨てる
  */
 function filterCandidatesForKey(
   key: MetricFieldKey,
   candidates: Candidate[],
 ): Candidate[] {
   if (candidates.length === 0) return candidates;
+
+  // ロック画面: 正しい画面から取れたら別画面は一切採用しない
+  const lockedScreens = lockedScreensForKey(key);
+  if (lockedScreens) {
+    const lockedOnly = candidates.filter((c) =>
+      isLockedAuthoritativeScreen(key, c.screenType),
+    );
+    if (lockedOnly.length > 0) {
+      // sleepScore はホームがあればホームのみ（概要より優先）
+      if (key === "sleepScore") {
+        const homeOnly = lockedOnly.filter((c) => c.screenType === "home");
+        if (homeOnly.length > 0) return homeOnly;
+      }
+      // bedtime / wakeTime は bed_wake があればそれを優先（詳細より正）
+      if (key === "bedtime" || key === "wakeTime") {
+        const bedWakeOnly = lockedOnly.filter(
+          (c) => c.screenType === "bed_wake",
+        );
+        if (bedWakeOnly.length > 0) return bedWakeOnly;
+      }
+      return lockedOnly;
+    }
+  }
 
   // ホーム画面の代表値: ホームから取れたら他画面は無視（競合にもしない）
   if (isHomeAuthoritativeKey(key)) {
@@ -309,10 +335,13 @@ function filterCandidatesForKey(
   }
 
   if (hasPrimary && hasStrongLabel) {
+    // ロック対象キーは「強いラベル」でも二次画面を混ぜない
+    const allowStrongLabelEscape = !lockedScreensForKey(key);
     const primaryOnly = filtered.filter(
       (c) =>
         isPrimaryMetricForScreen(c.screenType, key) ||
-        c.labelScore >= (isCriticalOcrKey(key) ? 95 : 80),
+        (allowStrongLabelEscape &&
+          c.labelScore >= (isCriticalOcrKey(key) ? 95 : 80)),
     );
     if (primaryOnly.length > 0) filtered = primaryOnly;
   }
@@ -332,6 +361,11 @@ function shouldRecordConflict(
   if (uniqueValueCount <= 1) return false;
 
   if (isHomeAuthoritativeKey(key) && adopted.screenType === "home") {
+    return false;
+  }
+
+  // ロック画面から採用できた場合、他画面との差は競合にしない
+  if (isLockedAuthoritativeScreen(key, adopted.screenType)) {
     return false;
   }
 
@@ -377,6 +411,7 @@ function resolveSourceLabel(
  * 複数画像の個別OCR結果を1つの AnalysisMetrics に統合する。
  * - 不足項目は他画像から補完
  * - ホーム代表値はホーム画面を最優先（他画面との差は競合にしない）
+ * - sleepScore / bedtime / wakeTime は正しい画面をロック採用し、別画面で上書きしない
  * - 同一項目の競合は「画面種別優先 → ラベル一致 → 値形式」で採用
  * - 競合表示は本当に判断できない場合のみ
  * - 画像の順番は結果に影響しない
