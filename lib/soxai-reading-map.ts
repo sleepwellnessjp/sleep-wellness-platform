@@ -186,18 +186,21 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "bedtime",
     test: (l) =>
-      (/入眠時間|就寝時刻|就寝時間|就寝|睡眠開始|fellasleep|sleeponset|^入眠$/.test(
+      (/入眠時間|入眠時刻|睡眠開始時刻|睡眠開始|fellasleep|sleeponset|^入眠$/.test(
         l,
       ) ||
-        (/bedtime|sleepstart/.test(l) && !/latency|潜時/.test(l))) &&
-      !/潜時|latency/.test(l),
+        (/bedtime/.test(l) && !/latency|潜時/.test(l))) &&
+      !/潜時|latency|就床|全就床|就寝|起床|覚醒/.test(l),
     valueHint: "time",
   },
   {
     key: "wakeTime",
     test: (l) =>
-      /起床時間|起床時刻|起床|睡眠終了|gotup|^wake$|waketime/.test(l) &&
-      !/覚醒時間|中途|awake/.test(l),
+      (/起床時間|起床時刻|^起床$|睡眠終了|睡眠終了時刻|gotup|waketime|wakeuptime/.test(
+        l,
+      ) ||
+        (/^wake$/.test(l) && !/awake|覚醒/.test(l))) &&
+      !/覚醒時間|中途覚醒|awake time|覚醒率/.test(l),
     valueHint: "time",
   },
   {
@@ -223,12 +226,17 @@ const MAPPING_RULES: MappingRule[] = [
   },
   {
     key: "skinTemperature",
-    test: (l) => /皮膚温|skintemp|体温偏差|皮膚温度/.test(l),
+    test: (l) =>
+      /皮膚温|skintemp|skin temperature|体温偏差|皮膚温度|温度偏差|Δ温度|delta/.test(
+        l,
+      ) && !/環境|室温/.test(l),
   },
   {
     key: "stress",
     test: (l) =>
-      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア/.test(l),
+      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア|ストレス平均|平均ストレス|現在のストレス|stresslevel|stressscore|stressindex/.test(
+        l,
+      ) && !/モニター|グラフ/.test(l),
   },
 ];
 
@@ -355,8 +363,29 @@ export function labelMatchScore(key: MetricFieldKey, label: string): number {
       return 20;
 
     case "bedtime":
-      if (/入眠時間|睡眠開始|sleeponset|fellasleep/.test(l)) return 100;
-      if (/^入眠$|就寝|bedtime/.test(l)) return 80;
+      if (/入眠時間|入眠時刻|睡眠開始時刻|sleeponset|fellasleep/.test(l))
+        return 110;
+      if (/^入眠$|睡眠開始/.test(l)) return 95;
+      if (/就寝|bedtime/.test(l)) return 40;
+      if (/就床|全就床/.test(l)) return 10;
+      return 20;
+
+    case "wakeTime":
+      if (/起床時間|起床時刻|睡眠終了|waketime|gotup/.test(l)) return 110;
+      if (/^起床$|^wake$/.test(l)) return 90;
+      return 20;
+
+    case "skinTemperature":
+      if (/皮膚温度|皮膚温|skintemp/.test(l) && /平均|avg|mean/.test(l))
+        return 110;
+      if (/皮膚温度|皮膚温|skintemp|体温偏差/.test(l)) return 100;
+      if (/偏差|delta|Δ/.test(l)) return 85;
+      return 20;
+
+    case "stress":
+      if (/ストレス平均|平均ストレス|stress.*avg|avg.*stress/.test(l)) return 110;
+      if (/ストレスレベル|stresslevel/.test(l)) return 95;
+      if (/^ストレス$|^stress$|ストレス指数/.test(l)) return 90;
       return 20;
 
     case "hrv":
@@ -454,6 +483,10 @@ export function screenTypeScore(
   ) {
     if (isSleepDetail) score += 30;
   }
+
+  if (key === "skinTemperature" && isVitalsDetail) score += 35;
+  if (key === "stress" && (isVitalsDetail || /ストレスモニター/.test(joined)))
+    score += 35;
 
   return score;
 }

@@ -3,6 +3,10 @@ import {
   type AnalysisMetrics,
   type AnalysisResult,
 } from "@/lib/analysis-session";
+import {
+  buildStructuredMetrics,
+  type StructuredSleepMetrics,
+} from "@/lib/soxai-structured-metrics";
 
 const STORAGE_KEY = "swij-clients-v1";
 const SEED_FLAG_KEY = "swij-clients-seeded-v1";
@@ -22,6 +26,8 @@ export type StoredAnalysis = {
   wellnessScore: number;
   /** OCR / 確認済みメトリクス */
   metrics: AnalysisMetrics;
+  /** 構造化メトリクス（入眠・起床・皮膚温・ストレス） */
+  structured?: StructuredSleepMetrics;
   /** AI分析結果 */
   result: AnalysisResult;
   pdfHistory: PdfHistoryEntry[];
@@ -705,6 +711,7 @@ export function saveAnalysisToClientStore(
     sleepScore,
     wellnessScore: result.score,
     metrics,
+    structured: buildStructuredMetrics(metrics, result.graphs),
     result: {
       ...result,
       metrics,

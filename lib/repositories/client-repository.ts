@@ -1,5 +1,9 @@
 import type { AnalysisMetrics, AnalysisResult } from "@/lib/analysis-session";
 import {
+  normalizeAnalysisResult,
+  normalizeMetrics,
+} from "@/lib/analysis-session";
+import {
   createClient as createLocalClient,
   getClientById as getLocalClientById,
   getClientListItems as getLocalClientListItems,
@@ -16,9 +20,10 @@ import {
   type StoredClient,
 } from "@/lib/client-store";
 import {
-  normalizeMetrics,
-  normalizeAnalysisResult,
-} from "@/lib/analysis-session";
+  buildStructuredMetrics,
+  parseStructuredFromStorage,
+  type StructuredSleepMetrics,
+} from "@/lib/soxai-structured-metrics";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
@@ -62,6 +67,7 @@ type DbAnalysisRow = {
   client_id: string;
   owner_id: string;
   analyzed_at: string;
+  analysis_date?: string | null;
   sleep_score: number | null;
   sleep_duration: number | null;
   sleep_efficiency: number | null;
@@ -71,6 +77,16 @@ type DbAnalysisRow = {
   spo2: number | null;
   hrv: number | null;
   resting_heart_rate: number | null;
+  sleep_onset_time?: string | null;
+  wake_time?: string | null;
+  skin_temperature_value?: string | null;
+  skin_temperature_type?: string | null;
+  skin_temperature_unit?: string | null;
+  stress_average?: string | null;
+  stress_level?: string | null;
+  stress_series?: unknown;
+  ocr_source_images?: unknown;
+  ocr_confidence?: unknown;
   ocr_data: unknown;
   confirmed_metrics?: AnalysisMetrics | null;
   report_payload?: unknown;
@@ -144,6 +160,12 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
     row.confirmed_metrics ?? ocr.confirmed ?? ocr.extracted,
   );
   const resultRaw = row.ai_result;
+  const graphs = resultRaw?.graphs;
+  const structured = parseStructuredFromStorage(
+    row as unknown as Record<string, unknown>,
+    metrics,
+    graphs,
+  );
   const result = resultRaw
     ? normalizeAnalysisResult({
         ...resultRaw,
@@ -183,11 +205,14 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
 
   return {
     id: row.id,
-    analysisDate: row.analyzed_at.slice(0, 10),
+    analysisDate:
+      row.analysis_date?.trim() ||
+      row.analyzed_at.slice(0, 10),
     createdAt: row.created_at,
     sleepScore,
     wellnessScore: result.score,
     metrics,
+    structured,
     result,
     pdfHistory: [],
   };
@@ -562,6 +587,7 @@ export async function saveAnalysisToRepository(
   const extractedMetrics = normalizeMetrics(
     result.extractedMetrics ?? result.metrics,
   );
+  const structured = buildStructuredMetrics(metrics, result.graphs);
   const sleepScore =
     typeof metrics.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
       ? metrics.sleepScore
@@ -633,11 +659,13 @@ export async function saveAnalysisToRepository(
       score: result.score,
       scoreBreakdown: result.scoreBreakdown,
       metrics,
+      structured,
       caution: result.caution,
       disclaimer: result.disclaimer,
     },
     visual: {
       metrics,
+      structured,
       graphs: result.graphs ?? null,
     },
     clientName: name,
@@ -654,10 +682,50 @@ export async function saveAnalysisToRepository(
     measurementDate: analysisDate,
   };
 
+  const ocrConfidence: Record<string, number> = {};
+  if (result.ocrConfidence) {
+    for (const [key, value] of Object.entries(result.ocrConfidence)) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        ocrConfidence[key] = value;
+      }
+    }
+  }
+  if (Object.keys(ocrConfidence).length === 0) {
+    for (const key of Object.keys(metrics)) {
+      const value = metrics[key as keyof AnalysisMetrics];
+      const present =
+        key === "sleepScore"
+          ? typeof value === "number" && Number.isFinite(value)
+          : typeof value === "string" && value.trim().length > 0;
+      if (present) ocrConfidence[key] = 0.85;
+    }
+  }
+
+  const ocrSourceImages = (() => {
+    const indexes = new Set<number>();
+    if (result.graphs) {
+      for (const panel of Object.values(result.graphs)) {
+        if (
+          panel &&
+          typeof panel.sourceImageIndex === "number" &&
+          panel.sourceImageIndex >= 0
+        ) {
+          indexes.add(panel.sourceImageIndex);
+        }
+      }
+    }
+    // グラフが無くても、信頼度キーが存在するなら少なくとも index 0 を記録
+    if (indexes.size === 0 && Object.keys(ocrConfidence).length > 0) {
+      indexes.add(0);
+    }
+    return [...indexes].sort((a, b) => a - b);
+  })();
+
   const insertPayload = {
     client_id: clientId,
     owner_id: userId,
     analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
+    analysis_date: analysisDate,
     sleep_score: sleepScore,
     sleep_duration: parseNumeric(metrics.sleepDuration),
     sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
@@ -667,9 +735,20 @@ export async function saveAnalysisToRepository(
     spo2: parseNumeric(metrics.spo2),
     hrv: parseNumeric(metrics.hrv),
     resting_heart_rate: parseNumeric(metrics.restingHeartRate),
+    sleep_onset_time: structured.sleepOnsetTime || null,
+    wake_time: structured.wakeTime || null,
+    skin_temperature_value: structured.skinTemperatureValue || null,
+    skin_temperature_type: structured.skinTemperatureType || null,
+    skin_temperature_unit: structured.skinTemperatureUnit || "℃",
+    stress_average: structured.stressAverage || null,
+    stress_level: structured.stressLevel || null,
+    stress_series: structured.stressSeries,
+    ocr_source_images: ocrSourceImages,
+    ocr_confidence: ocrConfidence,
     ocr_data: {
       extracted: extractedMetrics,
       confirmed: metrics,
+      structured,
     },
     confirmed_metrics: metrics,
     report_payload: reportPayload,

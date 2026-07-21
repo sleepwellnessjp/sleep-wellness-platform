@@ -595,7 +595,7 @@ function NewAnalysisPageInner() {
         notes: String(formData.get("notes") ?? ""),
       };
 
-      const { metrics: extractedMetrics, conflicts, graphs } =
+      const { metrics: extractedMetrics, conflicts, graphs, confidence } =
         await extractSoxaiMetricsDetailed(images);
       const imageKeys = collectedMetricKeys(extractedMetrics);
 
@@ -612,6 +612,7 @@ function NewAnalysisPageInner() {
         extractedMetrics,
         imageKeys,
         conflicts,
+        ocrConfidence: confidence,
         graphs,
       });
       router.push("/analysis/confirm");
