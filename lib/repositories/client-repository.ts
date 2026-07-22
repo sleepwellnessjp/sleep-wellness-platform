@@ -6,8 +6,6 @@ import {
 import {
   createClient as createLocalClient,
   getClientById as getLocalClientById,
-  getClientListItems as getLocalClientListItems,
-  getComparableClients as getLocalComparableClients,
   loadClients as loadLocalClients,
   recordPdfDownload as recordLocalPdfDownload,
   rememberLastSavedAnalysisRef,
@@ -15,19 +13,13 @@ import {
   updateClientProfile as updateLocalClientProfile,
   type ClientListItem,
   type CreateClientInput,
-  type PdfHistoryEntry,
   type SavedAnalysisRef,
   type StoredAnalysis,
   type StoredClient,
 } from "@/lib/client-store";
 import {
-  parseOptionalAge,
-  parseOptionalPositiveNumber,
-} from "@/lib/client-profile";
-import {
   buildStructuredMetrics,
   parseStructuredFromStorage,
-  type StructuredSleepMetrics,
 } from "@/lib/soxai-structured-metrics";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -52,27 +44,38 @@ type SupabaseAuth = {
   userId: string;
 };
 
+/**
+ * clients テーブルの最小情報
+ * 書き込み対象: id / owner_id / name / name_kana(furigana) / memo / created_at
+ * 年齢・身長・体重・性別・職業・健康情報は client_profiles へ。
+ * birth_date / gender / email 等はレガシー列（読み取り互換のみ）。
+ */
 type DbClientRow = {
   id: string;
   owner_id: string;
   name: string;
   name_kana: string | null;
-  birth_date: string | null;
-  gender: string | null;
-  age?: number | null;
-  height_cm?: number | null;
-  weight_kg?: number | null;
-  medications?: string | null;
-  drinking_habit?: string | null;
-  exercise_habit?: string | null;
-  snoring_nasal?: string | null;
-  medical_history?: string | null;
-  email: string | null;
-  phone: string | null;
-  registered_at: string | null;
+  birth_date?: string | null;
+  gender?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  registered_at?: string | null;
   memo: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
+};
+
+type ProfileBasicsOverlay = {
+  age?: number;
+  heightCm?: number;
+  weightKg?: number;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
+  birthDate?: string;
+  gender?: string;
 };
 
 type DbAnalysisRow = {
@@ -232,31 +235,114 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
   };
 }
 
-function mapDbClient(row: DbClientRow, analyses: StoredAnalysis[]): StoredClient {
+function asFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+/** client_profiles.basic / health / lifestyle / exercise から表示用オーバーレイを作る */
+function profileOverlayFromRow(row: {
+  basic?: unknown;
+  health?: unknown;
+  lifestyle?: unknown;
+  exercise?: unknown;
+}): ProfileBasicsOverlay {
+  const basic =
+    row.basic && typeof row.basic === "object" && !Array.isArray(row.basic)
+      ? (row.basic as Record<string, unknown>)
+      : {};
+  const health =
+    row.health && typeof row.health === "object" && !Array.isArray(row.health)
+      ? (row.health as Record<string, unknown>)
+      : {};
+  const lifestyle =
+    row.lifestyle &&
+    typeof row.lifestyle === "object" &&
+    !Array.isArray(row.lifestyle)
+      ? (row.lifestyle as Record<string, unknown>)
+      : {};
+  const exercise =
+    row.exercise &&
+    typeof row.exercise === "object" &&
+    !Array.isArray(row.exercise)
+      ? (row.exercise as Record<string, unknown>)
+      : {};
+
+  const age = asFiniteNumber(basic.ageYears);
+  const heightCm = asFiniteNumber(basic.heightCm);
+  const weightKg = asFiniteNumber(basic.weightKg);
+
+  const medications =
+    asNonEmptyString(health.medicationsNote) ??
+    (Array.isArray(health.medications)
+      ? health.medications
+          .map((item) =>
+            item && typeof item === "object" && "name" in item
+              ? String((item as { name?: unknown }).name ?? "")
+              : "",
+          )
+          .filter(Boolean)
+          .join("、") || undefined
+      : undefined);
+
+  const snoringParts = [health.snoring, health.nasalCongestionHabitual]
+    .map((v) => asNonEmptyString(v))
+    .filter((v): v is string => Boolean(v));
+  const snoringNasal =
+    asNonEmptyString(health.snoringNasalNote) ??
+    (snoringParts.length > 0 ? snoringParts.join(" / ") : undefined);
+
+  return {
+    age: age != null ? Math.round(age) : undefined,
+    heightCm,
+    weightKg,
+    birthDate: asNonEmptyString(basic.birthDate),
+    gender: asNonEmptyString(basic.gender),
+    medications,
+    drinkingHabit:
+      asNonEmptyString(lifestyle.drinkingHabitNote) ??
+      asNonEmptyString(lifestyle.drinkingFrequency),
+    exerciseHabit:
+      asNonEmptyString(exercise.exerciseHabitNote) ??
+      asNonEmptyString(exercise.frequency),
+    snoringNasal,
+    medicalHistory:
+      asNonEmptyString(health.medicalHistoryNote) ??
+      asNonEmptyString(health.otherConditions),
+  };
+}
+
+function mapDbClient(
+  row: DbClientRow,
+  analyses: StoredAnalysis[],
+  profile?: ProfileBasicsOverlay,
+): StoredClient {
   return {
     id: row.id,
     name: row.name,
     registeredAt: row.registered_at ?? row.created_at.slice(0, 10),
     nameKana: row.name_kana ?? undefined,
-    birthDate: row.birth_date ?? undefined,
-    gender: row.gender ?? undefined,
-    age:
-      typeof row.age === "number" && Number.isFinite(row.age)
-        ? Math.round(row.age)
-        : undefined,
-    heightCm:
-      typeof row.height_cm === "number" && Number.isFinite(row.height_cm)
-        ? row.height_cm
-        : undefined,
-    weightKg:
-      typeof row.weight_kg === "number" && Number.isFinite(row.weight_kg)
-        ? row.weight_kg
-        : undefined,
-    medications: row.medications?.trim() || undefined,
-    drinkingHabit: row.drinking_habit?.trim() || undefined,
-    exerciseHabit: row.exercise_habit?.trim() || undefined,
-    snoringNasal: row.snoring_nasal?.trim() || undefined,
-    medicalHistory: row.medical_history?.trim() || undefined,
+    // 詳細は client_profiles 優先（clients のレガシー列はフォールバック）
+    birthDate: profile?.birthDate ?? row.birth_date ?? undefined,
+    gender: profile?.gender ?? row.gender ?? undefined,
+    age: profile?.age,
+    heightCm: profile?.heightCm,
+    weightKg: profile?.weightKg,
+    medications: profile?.medications,
+    drinkingHabit: profile?.drinkingHabit,
+    exerciseHabit: profile?.exerciseHabit,
+    snoringNasal: profile?.snoringNasal,
+    medicalHistory: profile?.medicalHistory,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
     memo: row.memo ?? undefined,
@@ -268,58 +354,157 @@ function mapDbClient(row: DbClientRow, analyses: StoredAnalysis[]): StoredClient
   };
 }
 
-function profilePayloadFromInput(input: Partial<CreateClientInput>): {
-  age?: number | null;
-  gender?: string | null;
-  height_cm?: number | null;
-  weight_kg?: number | null;
-  medications?: string;
-  drinking_habit?: string;
-  exercise_habit?: string;
-  snoring_nasal?: string;
-  medical_history?: string;
+/** clients へ書いてよい最小カラムのみ（name / furigana / memo） */
+function clientsCorePatchFromInput(input: Partial<CreateClientInput>): {
+  name?: string;
+  name_kana?: string | null;
+  memo?: string | null;
 } {
-  const payload: {
-    age?: number | null;
-    gender?: string | null;
-    height_cm?: number | null;
-    weight_kg?: number | null;
-    medications?: string;
-    drinking_habit?: string;
-    exercise_habit?: string;
-    snoring_nasal?: string;
-    medical_history?: string;
+  const patch: {
+    name?: string;
+    name_kana?: string | null;
+    memo?: string | null;
   } = {};
 
-  if (input.age !== undefined) {
-    payload.age = parseOptionalAge(String(input.age));
+  if (input.name !== undefined) {
+    const nextName = input.name.trim();
+    if (nextName) patch.name = nextName;
   }
-  if (input.gender !== undefined) {
-    payload.gender = input.gender.trim() || null;
+  if (input.nameKana !== undefined) {
+    patch.name_kana = input.nameKana.trim() || null;
   }
-  if (input.heightCm !== undefined) {
-    payload.height_cm = parseOptionalPositiveNumber(String(input.heightCm));
-  }
-  if (input.weightKg !== undefined) {
-    payload.weight_kg = parseOptionalPositiveNumber(String(input.weightKg));
-  }
-  if (input.medications !== undefined) {
-    payload.medications = input.medications.trim() || "";
-  }
-  if (input.drinkingHabit !== undefined) {
-    payload.drinking_habit = input.drinkingHabit.trim() || "";
-  }
-  if (input.exerciseHabit !== undefined) {
-    payload.exercise_habit = input.exerciseHabit.trim() || "";
-  }
-  if (input.snoringNasal !== undefined) {
-    payload.snoring_nasal = input.snoringNasal.trim() || "";
-  }
-  if (input.medicalHistory !== undefined) {
-    payload.medical_history = input.medicalHistory.trim() || "";
+  if (input.memo !== undefined) {
+    patch.memo = input.memo.trim() || null;
   }
 
-  return payload;
+  return patch;
+}
+
+function parseOptionalProfileNumber(
+  value: string | number | undefined,
+): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.trim());
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }
+  return undefined;
+}
+
+/** 入力の詳細項目を client_profiles 用セクションへ変換（undefined は含めない） */
+function profileSectionsFromClientInput(
+  input: Partial<CreateClientInput>,
+  options?: { ensureFullName?: string },
+) {
+  const basic: Record<string, unknown> = {};
+  const health: Record<string, unknown> = {};
+  const lifestyle: Record<string, unknown> = {};
+  const exercise: Record<string, unknown> = {};
+
+  if (input.name !== undefined) {
+    const fullName = input.name.trim();
+    if (fullName) basic.fullName = fullName;
+  } else if (options?.ensureFullName?.trim()) {
+    basic.fullName = options.ensureFullName.trim();
+  }
+
+  if (input.birthDate !== undefined) {
+    const v = input.birthDate.trim();
+    if (v) basic.birthDate = v;
+  }
+  if (input.gender !== undefined) {
+    const v = input.gender.trim();
+    if (v) basic.gender = v;
+  }
+  if (input.age !== undefined) {
+    const n = parseOptionalProfileNumber(input.age);
+    if (n != null) basic.ageYears = n;
+  }
+  if (input.heightCm !== undefined) {
+    const n = parseOptionalProfileNumber(input.heightCm);
+    if (n != null) basic.heightCm = n;
+  }
+  if (input.weightKg !== undefined) {
+    const n = parseOptionalProfileNumber(input.weightKg);
+    if (n != null) basic.weightKg = n;
+  }
+
+  if (input.medications !== undefined && input.medications.trim()) {
+    health.medicationsNote = input.medications.trim();
+  }
+  if (input.snoringNasal !== undefined && input.snoringNasal.trim()) {
+    health.snoringNasalNote = input.snoringNasal.trim();
+  }
+  if (input.medicalHistory !== undefined && input.medicalHistory.trim()) {
+    health.medicalHistoryNote = input.medicalHistory.trim();
+  }
+  if (input.drinkingHabit !== undefined && input.drinkingHabit.trim()) {
+    lifestyle.drinkingHabitNote = input.drinkingHabit.trim();
+  }
+  if (input.exerciseHabit !== undefined && input.exerciseHabit.trim()) {
+    exercise.exerciseHabitNote = input.exerciseHabit.trim();
+  }
+
+  return {
+    ...(Object.keys(basic).length > 0 ? { basic } : {}),
+    ...(Object.keys(health).length > 0 ? { health } : {}),
+    ...(Object.keys(lifestyle).length > 0 ? { lifestyle } : {}),
+    ...(Object.keys(exercise).length > 0 ? { exercise } : {}),
+  };
+}
+
+function hasProfileSectionPayload(
+  sections: ReturnType<typeof profileSectionsFromClientInput>,
+): boolean {
+  return Object.keys(sections).length > 0;
+}
+
+/** client_profiles が無ければ空行を作成（失敗時は呼び出し側で扱う） */
+async function ensureClientProfileRow(
+  auth: SupabaseAuth,
+  clientId: string,
+  clientName?: string,
+): Promise<void> {
+  const { supabase, userId } = auth;
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "ensure_client_profile",
+    { p_client_id: clientId },
+  );
+
+  if (!rpcError && rpcData) return;
+
+  // RPC 未適用環境向けフォールバック
+  if (rpcError) {
+    console.warn(
+      "[client-repository] ensure_client_profile RPC unavailable:",
+      rpcError.message,
+    );
+  }
+
+  const { data: existing, error: selectError } = await supabase
+    .from("client_profiles")
+    .select("id")
+    .eq("owner_id", userId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+
+  if (selectError) {
+    throw formatSupabaseError(selectError, "ensureClientProfile:select");
+  }
+  if (existing) return;
+
+  const { error: insertError } = await supabase.from("client_profiles").insert({
+    client_id: clientId,
+    owner_id: userId,
+    basic: clientName ? { fullName: clientName } : {},
+  });
+
+  if (insertError) {
+    throw formatSupabaseError(insertError, "ensureClientProfile:insert");
+  }
 }
 
 export type AnalysisHistoryListItem = {
@@ -455,6 +640,31 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
     throw formatSupabaseError(analysisError, "fetchClients:analyses");
   }
 
+  const { data: profileRows, error: profileError } = await supabase
+    .from("client_profiles")
+    .select("client_id, basic, health, lifestyle, exercise")
+    .eq("owner_id", userId);
+
+  if (profileError) {
+    // client_profiles 未適用環境でも clients 一覧は返す
+    console.error("[client-repository] fetchClients:profiles failed:", profileError);
+  }
+
+  const profileByClientId = new Map<string, ProfileBasicsOverlay>();
+  for (const row of profileRows ?? []) {
+    const clientId = (row as { client_id?: string }).client_id;
+    if (!clientId) continue;
+    profileByClientId.set(
+      clientId,
+      profileOverlayFromRow(row as {
+        basic?: unknown;
+        health?: unknown;
+        lifestyle?: unknown;
+        exercise?: unknown;
+      }),
+    );
+  }
+
   const analysesByClient = new Map<string, StoredAnalysis[]>();
   for (const row of (analysisRows ?? []) as DbAnalysisRow[]) {
     const list = analysesByClient.get(row.client_id) ?? [];
@@ -463,7 +673,11 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
   }
 
   return ((clientRows ?? []) as DbClientRow[]).map((row) =>
-    mapDbClient(row, analysesByClient.get(row.id) ?? []),
+    mapDbClient(
+      row,
+      analysesByClient.get(row.id) ?? [],
+      profileByClientId.get(row.id),
+    ),
   );
 }
 
@@ -544,8 +758,28 @@ export async function getAnalysisById(
   }
   if (!clientRow) return null;
 
+  const { data: profileRow } = await supabase
+    .from("client_profiles")
+    .select("basic, health, lifestyle, exercise")
+    .eq("owner_id", userId)
+    .eq("client_id", row.client_id)
+    .maybeSingle();
+
   const analysis = mapDbAnalysis(row);
-  const client = mapDbClient(clientRow as DbClientRow, [analysis]);
+  const client = mapDbClient(
+    clientRow as DbClientRow,
+    [analysis],
+    profileRow
+      ? profileOverlayFromRow(
+          profileRow as {
+            basic?: unknown;
+            health?: unknown;
+            lifestyle?: unknown;
+            exercise?: unknown;
+          },
+        )
+      : undefined,
+  );
   return { client, analysis };
 }
 
@@ -567,79 +801,134 @@ export async function getComparableClients(): Promise<StoredClient[]> {
 
 export async function createClient(input: CreateClientInput): Promise<StoredClient> {
   const auth = await getSupabaseAuth();
-  if (!auth) return createLocalClient(input);
-
   const name = input.name.trim();
   if (!name) throw new Error("氏名は必須です。");
 
-  const { supabase, userId } = auth;
-
-  const { data: existingRows, error: existingError } = await supabase
-    .from("clients")
-    .select("*")
-    .eq("owner_id", userId)
-    .ilike("name", name);
-
-  if (existingError) {
-    throw formatSupabaseError(existingError, "createClient:select");
+  if (!auth) {
+    const client = createLocalClient({
+      name,
+      nameKana: input.nameKana,
+      memo: input.memo,
+      registeredAt: input.registeredAt,
+    });
+    const { upsertClientProfile } = await import(
+      "@/lib/repositories/client-profile-repository"
+    );
+    await upsertClientProfile(
+      client.id,
+      profileSectionsFromClientInput(input, {
+        ensureFullName: name,
+      }) as Parameters<typeof upsertClientProfile>[1],
+    );
+    return client;
   }
 
-  const existing = ((existingRows ?? []) as DbClientRow[]).find(
-    (row) =>
-      row.name.trim().replace(/\s+/g, " ").toLowerCase() ===
-      name.replace(/\s+/g, " ").toLowerCase(),
+  const { supabase, userId } = auth;
+  const nameKana = input.nameKana?.trim() || null;
+  const memo = input.memo?.trim() || null;
+
+  // トランザクション RPC: clients + client_profiles を同時作成（失敗時ロールバック）
+  const { data: rpcClient, error: rpcError } = await supabase.rpc(
+    "create_client_with_profile",
+    {
+      p_name: name,
+      p_name_kana: nameKana,
+      p_memo: memo,
+    },
   );
 
-  if (existing) {
-    return mapDbClient(existing, []);
+  let row: DbClientRow | null = null;
+
+  if (!rpcError && rpcClient) {
+    row = (
+      Array.isArray(rpcClient) ? rpcClient[0] : rpcClient
+    ) as DbClientRow;
+  } else {
+    if (rpcError) {
+      console.warn(
+        "[client-repository] create_client_with_profile RPC unavailable:",
+        rpcError.message,
+      );
+    }
+
+    // RPC 未適用環境: 手動で clients → profiles。profiles 失敗時は clients を削除してロールバック相当。
+    const { data: existingRows, error: existingError } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("owner_id", userId)
+      .ilike("name", name);
+
+    if (existingError) {
+      throw formatSupabaseError(existingError, "createClient:select");
+    }
+
+    const existing = ((existingRows ?? []) as DbClientRow[]).find(
+      (item) =>
+        item.name.trim().replace(/\s+/g, " ").toLowerCase() ===
+        name.replace(/\s+/g, " ").toLowerCase(),
+    );
+
+    if (existing) {
+      row = existing;
+      await ensureClientProfileRow(auth, existing.id, existing.name);
+    } else {
+      const { data, error } = await supabase
+        .from("clients")
+        .insert({
+          owner_id: userId,
+          name,
+          name_kana: nameKana,
+          memo,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        throw formatSupabaseError(error, "createClient:insert");
+      }
+      if (!data) {
+        throw new Error("登録結果を取得できませんでした。");
+      }
+
+      row = data as DbClientRow;
+
+      try {
+        await ensureClientProfileRow(auth, row.id, row.name);
+      } catch (profileError) {
+        await supabase
+          .from("clients")
+          .delete()
+          .eq("owner_id", userId)
+          .eq("id", row.id);
+        throw profileError;
+      }
+    }
   }
 
-  const registeredAt =
-    input.registeredAt?.trim() || new Date().toISOString().slice(0, 10);
-
-  const payload = {
-    owner_id: userId,
-    name,
-    name_kana: input.nameKana?.trim() || null,
-    birth_date: input.birthDate?.trim() || null,
-    email: input.email?.trim() || null,
-    phone: input.phone?.trim() || null,
-    registered_at: registeredAt,
-    memo: input.memo?.trim() || null,
-    age: parseOptionalAge(input.age == null ? "" : String(input.age)),
-    gender: input.gender?.trim() || null,
-    height_cm: parseOptionalPositiveNumber(
-      input.heightCm == null ? "" : String(input.heightCm),
-    ),
-    weight_kg: parseOptionalPositiveNumber(
-      input.weightKg == null ? "" : String(input.weightKg),
-    ),
-    medications: input.medications?.trim() || "",
-    drinking_habit: input.drinkingHabit?.trim() || "",
-    exercise_habit: input.exerciseHabit?.trim() || "",
-    snoring_nasal: input.snoringNasal?.trim() || "",
-    medical_history: input.medicalHistory?.trim() || "",
-  };
-
-  console.info("[client-repository] createClient insert payload:", payload);
-
-  const { data, error } = await supabase
-    .from("clients")
-    .insert(payload)
-    .select("*")
-    .single();
-
-  if (error) {
-    throw formatSupabaseError(error, "createClient:insert");
-  }
-
-  if (!data) {
-    console.error("[client-repository] createClient: insert returned no data");
+  if (!row) {
     throw new Error("登録結果を取得できませんでした。");
   }
 
+  // 詳細（年齢・身長等）は client_profiles のみへ
+  try {
+    const { upsertClientProfile } = await import(
+      "@/lib/repositories/client-profile-repository"
+    );
+    await upsertClientProfile(
+      row.id,
+      profileSectionsFromClientInput(input, {
+        ensureFullName: row.name,
+      }) as Parameters<typeof upsertClientProfile>[1],
+    );
+  } catch (profileError) {
+    console.error(
+      "[client-repository] createClient: profile details upsert failed:",
+      profileError,
+    );
+  }
+
   notifyClientsUpdated();
-  return mapDbClient(data as DbClientRow, []);
+  return mapDbClient(row, []);
 }
 
 export async function updateClientProfile(
@@ -650,61 +939,79 @@ export async function updateClientProfile(
   if (!auth) return updateLocalClientProfile(clientId, input);
 
   const { supabase, userId } = auth;
-  const patch: {
-    name?: string;
-    age?: number | null;
-    gender?: string | null;
-    height_cm?: number | null;
-    weight_kg?: number | null;
-    medications?: string;
-    drinking_habit?: string;
-    exercise_habit?: string;
-    snoring_nasal?: string;
-    medical_history?: string;
-    name_kana?: string | null;
-    birth_date?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    memo?: string | null;
-  } = { ...profilePayloadFromInput(input) };
 
-  if (input.name !== undefined) {
-    const nextName = input.name.trim();
-    if (nextName) patch.name = nextName;
-  }
-  if (input.nameKana !== undefined) {
-    patch.name_kana = input.nameKana.trim() || null;
-  }
-  if (input.birthDate !== undefined) {
-    patch.birth_date = input.birthDate.trim() || null;
-  }
-  if (input.email !== undefined) {
-    patch.email = input.email.trim() || null;
-  }
-  if (input.phone !== undefined) {
-    patch.phone = input.phone.trim() || null;
-  }
-  if (input.memo !== undefined) {
-    patch.memo = input.memo.trim() || null;
+  // clients には最小情報のみ。詳細は client_profiles。
+  const patch = clientsCorePatchFromInput(input);
+  let data: DbClientRow | null = null;
+
+  if (Object.keys(patch).length > 0) {
+    const { data: updated, error } = await supabase
+      .from("clients")
+      .update(patch)
+      .eq("owner_id", userId)
+      .eq("id", clientId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error("[client-repository] updateClientProfile failed:", error);
+      return null;
+    }
+    data = (updated as DbClientRow | null) ?? null;
+    if (!data) return null;
+  } else {
+    const { data: existing, error } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("owner_id", userId)
+      .eq("id", clientId)
+      .maybeSingle();
+    if (error || !existing) return null;
+    data = existing as DbClientRow;
   }
 
-  const { data, error } = await supabase
-    .from("clients")
-    .update(patch)
+  try {
+    await ensureClientProfileRow(auth, clientId, data.name);
+    const sections = profileSectionsFromClientInput(input);
+    if (hasProfileSectionPayload(sections)) {
+      const { upsertClientProfile } = await import(
+        "@/lib/repositories/client-profile-repository"
+      );
+      await upsertClientProfile(
+        clientId,
+        sections as Parameters<typeof upsertClientProfile>[1],
+      );
+    }
+  } catch (profileError) {
+    console.error(
+      "[client-repository] updateClientProfile: profile upsert failed:",
+      profileError,
+    );
+  }
+
+  notifyClientsUpdated();
+
+  const { data: profileRow } = await supabase
+    .from("client_profiles")
+    .select("basic, health, lifestyle, exercise")
     .eq("owner_id", userId)
-    .eq("id", clientId)
-    .select("*")
+    .eq("client_id", clientId)
     .maybeSingle();
 
-  if (error) {
-    // マイグレーション未適用でも分析は続行できるよう、ログのみ
-    console.error("[client-repository] updateClientProfile failed:", error);
-    return null;
-  }
-
-  if (!data) return null;
-  notifyClientsUpdated();
-  return mapDbClient(data as DbClientRow, []);
+  return mapDbClient(
+    data,
+    [],
+    profileRow
+      ? profileOverlayFromRow(
+          profileRow as {
+            basic?: unknown;
+            health?: unknown;
+            lifestyle?: unknown;
+            exercise?: unknown;
+          },
+        )
+      : undefined,
+  );
 }
 
 export async function saveAnalysisToRepository(
@@ -793,22 +1100,15 @@ export async function saveAnalysisToRepository(
 
     if (matched) {
       clientId = matched.id;
+      await ensureClientProfileRow(auth, clientId, name);
     } else {
+      // clients は最小情報のみ。詳細は直後の client_profiles へ。
+      // profile 作成失敗時は client を削除してロールバック相当にする。
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
         .insert({
           owner_id: userId,
           name,
-          registered_at: analysisDate,
-          age: parseOptionalAge(result.age ?? ""),
-          gender: result.gender?.trim() || null,
-          height_cm: parseOptionalPositiveNumber(result.heightCm ?? ""),
-          weight_kg: parseOptionalPositiveNumber(result.weightKg ?? ""),
-          medications: result.medications?.trim() || "",
-          drinking_habit: result.drinkingHabit?.trim() || "",
-          exercise_habit: result.exerciseHabit?.trim() || "",
-          snoring_nasal: result.snoringNasal?.trim() || "",
-          medical_history: result.medicalHistory?.trim() || "",
         })
         .select("id")
         .single();
@@ -817,21 +1117,56 @@ export async function saveAnalysisToRepository(
         throw formatSupabaseError(clientError, "saveAnalysis:insertClient");
       }
       clientId = (newClient as { id: string }).id;
+
+      try {
+        await ensureClientProfileRow(auth, clientId, name);
+      } catch (profileError) {
+        await supabase
+          .from("clients")
+          .delete()
+          .eq("owner_id", userId)
+          .eq("id", clientId);
+        throw profileError;
+      }
     }
   }
 
   if (clientId) {
-    await updateClientProfile(clientId, {
-      age: result.age,
-      gender: result.gender,
-      heightCm: result.heightCm,
-      weightKg: result.weightKg,
-      medications: result.medications,
-      drinkingHabit: result.drinkingHabit,
-      exerciseHabit: result.exerciseHabit,
-      snoringNasal: result.snoringNasal,
-      medicalHistory: result.medicalHistory,
-    });
+    try {
+      const { upsertClientProfile } = await import(
+        "@/lib/repositories/client-profile-repository"
+      );
+      const parseOptionalNumber = (value: string | undefined) => {
+        if (!value?.trim()) return undefined;
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      await upsertClientProfile(clientId, {
+        basic: {
+          fullName: name,
+          gender: result.gender?.trim() || undefined,
+          ageYears: parseOptionalNumber(result.age),
+          heightCm: parseOptionalNumber(result.heightCm),
+          weightKg: parseOptionalNumber(result.weightKg),
+        },
+        health: {
+          medicationsNote: result.medications?.trim() || undefined,
+          snoringNasalNote: result.snoringNasal?.trim() || undefined,
+          medicalHistoryNote: result.medicalHistory?.trim() || undefined,
+        },
+        lifestyle: {
+          drinkingHabitNote: result.drinkingHabit?.trim() || undefined,
+        },
+        exercise: {
+          exerciseHabitNote: result.exerciseHabit?.trim() || undefined,
+        },
+      });
+    } catch (profileError) {
+      console.error(
+        "[client-repository] saveAnalysis: upsertClientProfile failed:",
+        profileError,
+      );
+    }
   }
 
   const reportPayload = {

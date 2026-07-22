@@ -115,6 +115,137 @@ export type Database = {
         };
         Relationships: [];
       };
+      client_profiles: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          schema_version: number;
+          basic: Json;
+          work: Json;
+          commute: Json;
+          heat_exposure: Json;
+          lifestyle: Json;
+          caffeine: Json;
+          hydration: Json;
+          exercise: Json;
+          health: Json;
+          sleep_environment: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          schema_version?: number;
+          basic?: Json;
+          work?: Json;
+          commute?: Json;
+          heat_exposure?: Json;
+          lifestyle?: Json;
+          caffeine?: Json;
+          hydration?: Json;
+          exercise?: Json;
+          health?: Json;
+          sleep_environment?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          schema_version?: number;
+          basic?: Json;
+          work?: Json;
+          commute?: Json;
+          heat_exposure?: Json;
+          lifestyle?: Json;
+          caffeine?: Json;
+          hydration?: Json;
+          exercise?: Json;
+          health?: Json;
+          sleep_environment?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_profiles_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: true;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      weather_records: {
+        Row: {
+          id: string;
+          owner_id: string;
+          target_date: string;
+          region: string;
+          latitude: number | null;
+          longitude: number | null;
+          temp_max_c: number | null;
+          temp_min_c: number | null;
+          humidity_percent: number | null;
+          pressure_hpa: number | null;
+          precipitation_mm: number | null;
+          weather_condition: string;
+          heat_index_c: number | null;
+          sunrise_time: string;
+          sunset_time: string;
+          source: string;
+          fetched_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          target_date: string;
+          region?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+          temp_max_c?: number | null;
+          temp_min_c?: number | null;
+          humidity_percent?: number | null;
+          pressure_hpa?: number | null;
+          precipitation_mm?: number | null;
+          weather_condition?: string;
+          heat_index_c?: number | null;
+          sunrise_time?: string;
+          sunset_time?: string;
+          source?: string;
+          fetched_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          target_date?: string;
+          region?: string;
+          latitude?: number | null;
+          longitude?: number | null;
+          temp_max_c?: number | null;
+          temp_min_c?: number | null;
+          humidity_percent?: number | null;
+          pressure_hpa?: number | null;
+          precipitation_mm?: number | null;
+          weather_condition?: string;
+          heat_index_c?: number | null;
+          sunrise_time?: string;
+          sunset_time?: string;
+          source?: string;
+          fetched_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       analyses: {
         Row: {
           id: string;
@@ -134,6 +265,8 @@ export type Database = {
           confirmed_metrics: Json | null;
           report_payload: Json | null;
           ai_result: Json | null;
+          day_context: Json;
+          personal_baseline: Json;
           credits_consumed: number;
           created_at: string;
           updated_at: string;
@@ -156,6 +289,8 @@ export type Database = {
           confirmed_metrics?: Json | null;
           report_payload?: Json | null;
           ai_result?: Json | null;
+          day_context?: Json;
+          personal_baseline?: Json;
           credits_consumed?: number;
           created_at?: string;
           updated_at?: string;
@@ -178,6 +313,8 @@ export type Database = {
           confirmed_metrics?: Json | null;
           report_payload?: Json | null;
           ai_result?: Json | null;
+          day_context?: Json;
+          personal_baseline?: Json;
           credits_consumed?: number;
           created_at?: string;
           updated_at?: string;
@@ -185,6 +322,314 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "analyses_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      occupation_master: {
+        Row: {
+          id: string;
+          label: string;
+          category:
+            | "thermal"
+            | "posture"
+            | "schedule"
+            | "digital"
+            | "physical"
+            | "sensory"
+            | "recovery"
+            | "other";
+          description: string;
+          ai_context: string;
+          sleep_relevance: string[];
+          sort_order: number;
+          is_active: boolean;
+          schema_version: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          label: string;
+          category?:
+            | "thermal"
+            | "posture"
+            | "schedule"
+            | "digital"
+            | "physical"
+            | "sensory"
+            | "recovery"
+            | "other";
+          description?: string;
+          ai_context?: string;
+          sleep_relevance?: string[];
+          sort_order?: number;
+          is_active?: boolean;
+          schema_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          label?: string;
+          category?:
+            | "thermal"
+            | "posture"
+            | "schedule"
+            | "digital"
+            | "physical"
+            | "sensory"
+            | "recovery"
+            | "other";
+          description?: string;
+          ai_context?: string;
+          sleep_relevance?: string[];
+          sort_order?: number;
+          is_active?: boolean;
+          schema_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      client_occupation_attributes: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          attribute_id: string;
+          intensity: "mild" | "moderate" | "high" | "unknown";
+          notes: string;
+          payload: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          attribute_id: string;
+          intensity?: "mild" | "moderate" | "high" | "unknown";
+          notes?: string;
+          payload?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          attribute_id?: string;
+          intensity?: "mild" | "moderate" | "high" | "unknown";
+          notes?: string;
+          payload?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_occupation_attributes_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "client_occupation_attributes_attribute_id_fkey";
+            columns: ["attribute_id"];
+            isOneToOne: false;
+            referencedRelation: "occupation_master";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      environment_event_master: {
+        Row: {
+          id: string;
+          label: string;
+          category:
+            | "travel"
+            | "lodging"
+            | "transport"
+            | "outdoor"
+            | "work"
+            | "other";
+          description: string;
+          ai_context: string;
+          sleep_relevance: string[];
+          payload_schema: Json;
+          sort_order: number;
+          is_active: boolean;
+          schema_version: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          label: string;
+          category?:
+            | "travel"
+            | "lodging"
+            | "transport"
+            | "outdoor"
+            | "work"
+            | "other";
+          description?: string;
+          ai_context?: string;
+          sleep_relevance?: string[];
+          payload_schema?: Json;
+          sort_order?: number;
+          is_active?: boolean;
+          schema_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          label?: string;
+          category?:
+            | "travel"
+            | "lodging"
+            | "transport"
+            | "outdoor"
+            | "work"
+            | "other";
+          description?: string;
+          ai_context?: string;
+          sleep_relevance?: string[];
+          payload_schema?: Json;
+          sort_order?: number;
+          is_active?: boolean;
+          schema_version?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      analysis_environment_events: {
+        Row: {
+          id: string;
+          analysis_id: string;
+          client_id: string;
+          owner_id: string;
+          event_type_id: string;
+          event_date: string | null;
+          started_at: string | null;
+          ended_at: string | null;
+          notes: string;
+          payload: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          analysis_id: string;
+          client_id: string;
+          owner_id: string;
+          event_type_id: string;
+          event_date?: string | null;
+          started_at?: string | null;
+          ended_at?: string | null;
+          notes?: string;
+          payload?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          analysis_id?: string;
+          client_id?: string;
+          owner_id?: string;
+          event_type_id?: string;
+          event_date?: string | null;
+          started_at?: string | null;
+          ended_at?: string | null;
+          notes?: string;
+          payload?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "analysis_environment_events_analysis_id_fkey";
+            columns: ["analysis_id"];
+            isOneToOne: false;
+            referencedRelation: "analyses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "analysis_environment_events_event_type_id_fkey";
+            columns: ["event_type_id"];
+            isOneToOne: false;
+            referencedRelation: "environment_event_master";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_metric_baselines: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          window_days: 30 | 90;
+          as_of_date: string;
+          metric_key: string;
+          sample_count: number;
+          avg_value: number | null;
+          median_value: number | null;
+          min_value: number | null;
+          max_value: number | null;
+          stddev_value: number | null;
+          unit: string;
+          source: string;
+          computed_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          window_days: 30 | 90;
+          as_of_date: string;
+          metric_key: string;
+          sample_count?: number;
+          avg_value?: number | null;
+          median_value?: number | null;
+          min_value?: number | null;
+          max_value?: number | null;
+          stddev_value?: number | null;
+          unit?: string;
+          source?: string;
+          computed_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          window_days?: 30 | 90;
+          as_of_date?: string;
+          metric_key?: string;
+          sample_count?: number;
+          avg_value?: number | null;
+          median_value?: number | null;
+          min_value?: number | null;
+          max_value?: number | null;
+          stddev_value?: number | null;
+          unit?: string;
+          source?: string;
+          computed_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_metric_baselines_client_id_fkey";
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
@@ -540,6 +985,18 @@ export type Database = {
     Functions: {
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_admin_or_above: { Args: Record<string, never>; Returns: boolean };
+      create_client_with_profile: {
+        Args: {
+          p_name: string;
+          p_name_kana?: string | null;
+          p_memo?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["clients"]["Row"];
+      };
+      ensure_client_profile: {
+        Args: { p_client_id: string };
+        Returns: Database["public"]["Tables"]["client_profiles"]["Row"];
+      };
       ensure_monthly_credit: {
         Args: { p_user_id?: string | null };
         Returns: Database["public"]["Tables"]["monthly_credit"]["Row"];

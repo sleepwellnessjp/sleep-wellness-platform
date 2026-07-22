@@ -17,6 +17,9 @@ create table if not exists public.profiles (
 -- ============================================================
 -- clients
 -- ============================================================
+-- App 書き込み対象（最小）: id / owner_id / name / name_kana(furigana) / memo / created_at
+-- 年齢・身長・体重・性別・職業・健康情報は client_profiles へ保存する。
+-- 下記の birth_date / gender / email 等は後方互換のためのレガシー列（新規書き込みしない）。
 create table if not exists public.clients (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users (id) on delete cascade,

@@ -27,45 +27,31 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Json } from "@/lib/supabase/database.types";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 
-/** Phase1 clients テーブルへ基本項目を同期（既存列を壊さない） */
+/** clients テーブルへ同期する最小項目のみ（氏名）。年齢・身長等は client_profiles に残す */
 async function syncClientsBasicsFromProfile(
   clientId: string,
   sections: ClientProfileSections,
 ) {
   const fullName = sections.basic.fullName?.trim();
+  if (!fullName) return;
+
   try {
-    await updateClientProfile(clientId, {
-      ...(fullName ? { name: fullName } : {}),
-      birthDate: sections.basic.birthDate ?? "",
-      gender: sections.basic.gender ?? "",
-      age: sections.basic.ageYears ?? "",
-      heightCm: sections.basic.heightCm ?? "",
-      weightKg: sections.basic.weightKg ?? "",
-      medications:
-        sections.health.medicationsNote ??
-        sections.health.medications
-          ?.map((m) => m.name)
-          .filter(Boolean)
-          .join("、") ??
-        "",
-      drinkingHabit:
-        sections.lifestyle.drinkingHabitNote ??
-        sections.lifestyle.drinkingFrequency ??
-        "",
-      exerciseHabit:
-        sections.exercise.exerciseHabitNote ??
-        sections.exercise.frequency ??
-        "",
-      snoringNasal:
-        sections.health.snoringNasalNote ??
-        [sections.health.snoring, sections.health.nasalCongestionHabitual]
-          .filter(Boolean)
-          .join(" / "),
-      medicalHistory:
-        sections.health.medicalHistoryNote ??
-        sections.health.otherConditions ??
-        "",
-    });
+    // updateClientProfile 経由だと profile upsert と循環するため、最小カラムを直接更新
+    const auth = await getSupabaseAuth();
+    if (!auth) {
+      await updateClientProfile(clientId, { name: fullName });
+      return;
+    }
+
+    const { error } = await auth.supabase
+      .from("clients")
+      .update({ name: fullName })
+      .eq("owner_id", auth.userId)
+      .eq("id", clientId);
+
+    if (error) {
+      throw formatSupabaseError(error, "syncClientsBasicsFromProfile");
+    }
   } catch (error) {
     console.error(
       "[client-profile] syncClientsBasicsFromProfile failed:",
