@@ -242,6 +242,7 @@ export default function ConfirmExtractionPage() {
             improvements: prior.result?.improvements,
             nextComparisonPoints: prior.result?.nextComparisonPoints,
             recommendationsUntilNext: prior.result?.recommendationsUntilNext,
+            homeworkAchievement: prior.result?.homeworkAchievement,
           });
         }
       } catch {

@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
+import EmptyState from "@/components/ui/EmptyState";
+import { ListSkeleton } from "@/components/ui/Skeleton";
 import {
   formatProgramDate,
   getProgramListItems,
@@ -25,11 +27,19 @@ export default function ProgramsPage() {
   const [filter, setFilter] = useState<FilterValue>("all");
 
   useEffect(() => {
+    let cancelled = false;
     const refresh = async () => {
-      setItems(await getProgramListItems());
+      try {
+        const next = await getProgramListItems();
+        if (!cancelled) setItems(next);
+      } catch (error) {
+        console.error("[programs] getProgramListItems failed:", error);
+        if (!cancelled) setItems([]);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     };
     void refresh();
-    setReady(true);
 
     const onUpdate = () => {
       void refresh();
@@ -38,6 +48,7 @@ export default function ProgramsPage() {
     window.addEventListener("swij-clients-updated", onUpdate);
     window.addEventListener("swij-programs-updated", onUpdate);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onUpdate);
       window.removeEventListener("swij-clients-updated", onUpdate);
       window.removeEventListener("swij-programs-updated", onUpdate);
@@ -140,20 +151,26 @@ export default function ProgramsPage() {
 
         <div className="mt-8 space-y-3 sm:mt-10">
           {!ready ? (
-            <p className="py-16 text-center text-sm text-slate-400">読み込み中...</p>
+            <ListSkeleton rows={4} />
           ) : filteredItems.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-16 text-center">
-              <p className="text-base font-semibold" style={{ color: NAVY }}>
-                {items.length === 0
+            <EmptyState
+              illustration="journey"
+              title={
+                items.length === 0
                   ? "表示できるクライアントがありません"
-                  : "条件に一致するプログラムがありません"}
-              </p>
-              <p className="mt-3 text-sm leading-7 text-slate-500">
-                {items.length === 0
+                  : "条件に一致するプログラムがありません"
+              }
+              description={
+                items.length === 0
                   ? "クライアントを登録すると、ここに改善プログラムが表示されます。"
-                  : "検索条件やフィルターを変更してください。"}
-              </p>
-            </div>
+                  : "検索条件やフィルターを変更してください。"
+              }
+              primaryAction={
+                items.length === 0
+                  ? { label: "クライアント一覧へ", href: "/clients" }
+                  : undefined
+              }
+            />
           ) : (
             filteredItems.map((item) => {
               const badge = statusBadgeStyle(item.status);

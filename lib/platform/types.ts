@@ -1,4 +1,9 @@
-export type UserRole = "super_admin" | "admin" | "instructor" | "client";
+export type UserRole =
+  | "super_admin"
+  | "admin"
+  | "instructor"
+  | "client"
+  | "enterprise";
 
 export type CertificationType =
   | "navigator"

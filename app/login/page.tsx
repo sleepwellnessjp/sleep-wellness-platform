@@ -5,19 +5,105 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
 import { enableDemoSession } from "@/lib/auth/demo-session";
+import {
+  homePathForRole,
+  isClientOnlyPath,
+  isInstructorOnlyPath,
+  sanitizeAppRedirect,
+} from "@/lib/safe-redirect";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
+const MIN_PASSWORD_LENGTH = 8;
 
 const inputClass =
-  "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base disabled:opacity-60";
+
+async function resolvePostAuthDestination(
+  supabase: NonNullable<ReturnType<typeof createBrowserClient>>,
+  requestedRedirect: string,
+  hasExplicitRedirect: boolean,
+): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return requestedRedirect;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const role =
+    profile && typeof profile === "object" && "role" in profile
+      ? String((profile as { role?: unknown }).role ?? "")
+      : "";
+  const home = homePathForRole(role || "instructor");
+
+  void Promise.all([
+    supabase.from("system_activity_logs").insert({
+      actor_id: user.id,
+      category: "login",
+      action: "sign_in",
+      summary: "ログインしました",
+      payload: { email: user.email ?? null },
+    }),
+    supabase
+      .from("profiles")
+      .update({ last_login_at: new Date().toISOString() })
+      .eq("id", user.id),
+  ]).catch(() => {
+    // ignore — table may not exist yet
+  });
+
+  if (!hasExplicitRedirect) return home;
+  if (
+    (role === "client" || role === "enterprise") &&
+    isInstructorOnlyPath(requestedRedirect)
+  ) {
+    return home;
+  }
+  if (
+    role &&
+    role !== "client" &&
+    isClientOnlyPath(requestedRedirect) &&
+    role !== "admin" &&
+    role !== "super_admin"
+  ) {
+    return home;
+  }
+  if (
+    role &&
+    role !== "enterprise" &&
+    (requestedRedirect === "/enterprise" ||
+      requestedRedirect.startsWith("/enterprise/")) &&
+    role !== "admin" &&
+    role !== "super_admin"
+  ) {
+    return home;
+  }
+  if (
+    (requestedRedirect === "/admin" ||
+      requestedRedirect.startsWith("/admin/")) &&
+    role &&
+    role !== "admin" &&
+    role !== "super_admin"
+  ) {
+    return home;
+  }
+  return requestedRedirect;
+}
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const hasExplicitRedirect = Boolean(searchParams.get("redirect"));
+  const redirectTo = sanitizeAppRedirect(
+    searchParams.get("redirect"),
+    "/dashboard",
+  );
   const queryError = searchParams.get("error");
 
   const supabaseEnabled = isSupabaseConfigured();
@@ -60,7 +146,13 @@ function LoginForm() {
         return;
       }
 
-      router.replace(redirectTo);
+      const destination = await resolvePostAuthDestination(
+        supabase,
+        redirectTo,
+        hasExplicitRedirect,
+      );
+
+      router.replace(destination);
       router.refresh();
     } catch (err) {
       setError(
@@ -85,8 +177,10 @@ function LoginForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("パスワードは6文字以上で入力してください。");
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(
+        `パスワードは${MIN_PASSWORD_LENGTH}文字以上で入力してください。`,
+      );
       return;
     }
 
@@ -120,13 +214,20 @@ function LoginForm() {
       }
 
       if (!data.user) {
-        setError("ユーザーの作成に失敗しました。入力内容を確認して再度お試しください。");
+        setError(
+          "ユーザーの作成に失敗しました。入力内容を確認して再度お試しください。",
+        );
         return;
       }
 
       if (data.session) {
-        setMessage("登録が完了しました。ダッシュボードへ移動します。");
-        router.replace(redirectTo);
+        const destination = await resolvePostAuthDestination(
+          supabase,
+          redirectTo,
+          hasExplicitRedirect,
+        );
+        setMessage("登録が完了しました。移動します。");
+        router.replace(destination);
         router.refresh();
         return;
       }
@@ -166,7 +267,7 @@ function LoginForm() {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
         {
-          redirectTo: `${window.location.origin}/auth/callback?redirect=/dashboard`,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       );
 
@@ -209,7 +310,7 @@ function LoginForm() {
             className="text-[10px] font-semibold tracking-[0.22em] sm:text-xs sm:tracking-[0.28em]"
             style={{ color: GOLD }}
           >
-            INSTRUCTOR LOGIN
+            LOGIN
           </p>
         </div>
       </div>
@@ -226,11 +327,10 @@ function LoginForm() {
             className="mt-4 text-[1.65rem] font-semibold leading-snug tracking-[-0.05em] sm:text-[1.85rem] sm:leading-tight sm:whitespace-nowrap lg:text-4xl"
             style={{ color: NAVY }}
           >
-            <span className="block sm:inline">インストラクター</span>
-            <span className="block sm:inline">ログイン</span>
+            ログイン
           </h1>
-          <p className="mx-auto mt-4 max-w-[20rem] text-[14px] leading-7 text-slate-600 [word-break:keep-all] sm:max-w-none sm:whitespace-nowrap sm:text-[14.5px]">
-            クライアントデータを安全に管理するためのログイン画面です。
+          <p className="mx-auto mt-4 max-w-[22rem] text-[14px] leading-7 text-slate-600 [word-break:keep-all] sm:max-w-none sm:text-[14.5px]">
+            認定講師・クライアント共通のログイン画面です。
           </p>
         </header>
 
@@ -277,10 +377,11 @@ function LoginForm() {
                 type="email"
                 required
                 autoComplete="email"
+                disabled={busy}
                 className={inputClass}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="instructor@example.com"
+                placeholder="you@example.com"
               />
             </label>
 
@@ -292,10 +393,11 @@ function LoginForm() {
                 type="password"
                 required
                 autoComplete="current-password"
+                disabled={busy}
                 className={inputClass}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="8文字以上"
+                placeholder={`${MIN_PASSWORD_LENGTH}文字以上`}
               />
             </label>
 
@@ -325,16 +427,16 @@ function LoginForm() {
                 type="button"
                 disabled={busy}
                 onClick={handleSignUp}
-                className="text-sm font-semibold transition hover:underline"
+                className="text-sm font-semibold transition hover:underline disabled:opacity-60"
                 style={{ color: GOLD }}
               >
-                新規登録
+                認定講師として新規登録
               </button>
               <button
                 type="button"
                 disabled={busy}
                 onClick={handleForgotPassword}
-                className="text-sm font-medium text-slate-500 transition hover:text-slate-700"
+                className="text-sm font-medium text-slate-500 transition hover:text-slate-700 disabled:opacity-60"
               >
                 パスワードを忘れた方
               </button>

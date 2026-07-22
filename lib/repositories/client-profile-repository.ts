@@ -46,7 +46,7 @@ async function syncClientsBasicsFromProfile(
     const { error } = await auth.supabase
       .from("clients")
       .update({ name: fullName })
-      .eq("owner_id", auth.userId)
+      .eq("instructor_id", auth.userId)
       .eq("id", clientId);
 
     if (error) {
@@ -132,6 +132,21 @@ export async function getClientProfile(
   const auth = await getSupabaseAuth();
   if (!auth) {
     return readLocalProfiles()[clientId] ?? empty;
+  }
+
+  // 他講師のクライアントは閲覧不可（URL 直打ち対策）
+  const { data: ownedClient, error: ownedError } = await auth.supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("instructor_id", auth.userId)
+    .maybeSingle();
+
+  if (ownedError) {
+    throw formatSupabaseError(ownedError, "getClientProfile:client");
+  }
+  if (!ownedClient) {
+    throw new Error("クライアントが見つかりません。");
   }
 
   const { data, error } = await auth.supabase

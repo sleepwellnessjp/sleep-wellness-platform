@@ -214,11 +214,21 @@ export type ImprovementEffectPrediction = {
   maxPoints: number;
 };
 
-/** ⑧次回までのおすすめ（行動目標）。チェック状態を次回比較に使う */
+/** ⑧AI宿題（次回までの行動目標）。チェック状態を次回比較に使う */
 export type NextActionGoal = {
   id: string;
   text: string;
   checked: boolean;
+};
+
+/** AI宿題の達成率スナップショット（カルテ・次回比較用） */
+export type HomeworkAchievement = {
+  /** 達成件数 */
+  checked: number;
+  /** 目標件数（3〜5） */
+  total: number;
+  /** 0〜100（整数）。total が 0 のときは 0 */
+  rate: number;
 };
 
 export type AnalysisResult = {
@@ -248,10 +258,15 @@ export type AnalysisResult = {
   /** ⑦次回比較ポイント（2〜4件。次回分析で見るべき観点） */
   nextComparisonPoints: string[];
   /**
-   * ⑧次回までのおすすめ（行動目標・3〜5件）。
-   * 認定講師がチェック・編集でき、次回分析時の比較用に保存する。
+   * ⑧AI宿題（次回までの行動目標・3〜5件）。
+   * 認定講師がチェック・編集でき、達成率とともにカルテへ保存し、次回分析時に比較表示する。
    */
   recommendationsUntilNext: NextActionGoal[];
+  /**
+   * AI宿題の達成率。goals のチェックから算出して保存する。
+   * 未設定時は normalize 時に goals から再計算する。
+   */
+  homeworkAchievement?: HomeworkAchievement;
   /** Sleep Wellness Platform 独自の総合スコア（0〜100）。SOXAI睡眠スコアとは別 */
   score: number;
   scoreBreakdown: ScoreBreakdown;
@@ -479,7 +494,7 @@ export function normalizeImprovementEffectPredictions(
     };
     const action = asString(record.action).trim().slice(0, 40);
     if (!action) continue;
-    let minPoints = clampPointDelta(record.minPoints, 2);
+    const minPoints = clampPointDelta(record.minPoints, 2);
     let maxPoints = clampPointDelta(record.maxPoints, minPoints + 2);
     if (maxPoints <= minPoints) {
       maxPoints = Math.min(30, minPoints + 2);
@@ -515,6 +530,9 @@ type LegacyAnalysisFields = {
   recommendationsUntilNext?: unknown;
   improvements?: unknown;
   karteSummary?: unknown;
+  homeworkAchievement?: unknown;
+  /** 旧フィールド互換 */
+  achievementRate?: unknown;
 };
 
 function createNextActionGoalId(): string {
@@ -569,6 +587,57 @@ export function normalizeRecommendationsUntilNext(
     if (items.length >= 5) break;
   }
   return items;
+}
+
+/** AI宿題の達成率を goals から算出 */
+export function computeHomeworkAchievement(
+  goals: NextActionGoal[] | unknown,
+): HomeworkAchievement {
+  const list = normalizeRecommendationsUntilNext(goals);
+  const total = list.length;
+  const checked = list.filter((item) => item.checked).length;
+  const rate =
+    total > 0 ? Math.round((checked / total) * 100) : 0;
+  return { checked, total, rate };
+}
+
+function normalizeHomeworkAchievement(
+  raw: unknown,
+  goals: NextActionGoal[],
+): HomeworkAchievement {
+  const fromGoals = computeHomeworkAchievement(goals);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    // 旧フィールド: achievementRate が number のみの場合
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      return {
+        ...fromGoals,
+        rate: Math.max(0, Math.min(100, Math.round(raw))),
+      };
+    }
+    return fromGoals;
+  }
+  const record = raw as {
+    checked?: unknown;
+    total?: unknown;
+    rate?: unknown;
+  };
+  const total =
+    typeof record.total === "number" && Number.isFinite(record.total)
+      ? Math.max(0, Math.round(record.total))
+      : fromGoals.total;
+  const checked =
+    typeof record.checked === "number" && Number.isFinite(record.checked)
+      ? Math.max(0, Math.min(total, Math.round(record.checked)))
+      : fromGoals.checked;
+  const rate =
+    typeof record.rate === "number" && Number.isFinite(record.rate)
+      ? Math.max(0, Math.min(100, Math.round(record.rate)))
+      : total > 0
+        ? Math.round((checked / total) * 100)
+        : 0;
+  // goals があるときは常に最新チェックから再計算（保存ズレ防止）
+  if (goals.length > 0) return fromGoals;
+  return { checked, total, rate };
 }
 
 /** 総合評価を 100〜200 文字に整える（短すぎる場合はそのまま） */
@@ -756,6 +825,11 @@ export function normalizeAnalysisResult(
     return list;
   })();
 
+  const homeworkAchievement = normalizeHomeworkAchievement(
+    raw.homeworkAchievement ?? raw.achievementRate,
+    recommendationsUntilNext,
+  );
+
   const summary = normalizeSummaryLength(
     typeof raw.summary === "string" ? raw.summary : "",
   );
@@ -776,6 +850,7 @@ export function normalizeAnalysisResult(
     todaysRecommendations,
     nextComparisonPoints,
     recommendationsUntilNext,
+    homeworkAchievement,
     score,
     scoreBreakdown,
     categoryScores: normalizeCategoryScores(

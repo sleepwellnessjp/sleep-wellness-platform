@@ -112,6 +112,8 @@ export default function ProgramDetailPage() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!clientId) {
       setDetail(null);
       setLatestAnalysis(null);
@@ -119,22 +121,34 @@ export default function ProgramDetailPage() {
       return;
     }
 
+    setReady(false);
+
     const refresh = async () => {
-      const [next, client] = await Promise.all([
-        getProgramDetail(clientId),
-        getClientById(clientId),
-      ]);
-      setDetail(next);
-      setLatestAnalysis(client?.analyses[0] ?? null);
-      if (next) {
-        setGoals(next.goals);
-        setMenuItems(next.menuItems);
-        setInstructorMemo(next.instructorMemo);
+      try {
+        const [next, client] = await Promise.all([
+          getProgramDetail(clientId),
+          getClientById(clientId),
+        ]);
+        if (cancelled) return;
+        setDetail(next);
+        setLatestAnalysis(client?.analyses[0] ?? null);
+        if (next) {
+          setGoals(next.goals);
+          setMenuItems(next.menuItems);
+          setInstructorMemo(next.instructorMemo);
+        }
+      } catch (error) {
+        console.error("[programs/detail] refresh failed:", error);
+        if (!cancelled) {
+          setDetail(null);
+          setLatestAnalysis(null);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
       }
     };
 
     void refresh();
-    setReady(true);
 
     const onUpdate = () => {
       void refresh();
@@ -143,6 +157,7 @@ export default function ProgramDetailPage() {
     window.addEventListener("swij-clients-updated", onUpdate);
     window.addEventListener("swij-programs-updated", onUpdate);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onUpdate);
       window.removeEventListener("swij-clients-updated", onUpdate);
       window.removeEventListener("swij-programs-updated", onUpdate);

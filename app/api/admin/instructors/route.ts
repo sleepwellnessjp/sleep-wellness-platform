@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { listDemoAdminInstructors } from "@/lib/admin/demo-admin-store";
+import { listAdminInstructors } from "@/lib/admin/admin-service";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   grantDemoCredits,
@@ -6,10 +8,24 @@ import {
 } from "@/lib/platform/demo-platform-store";
 import {
   grantCredits,
-  requireSuperAdminProfile,
+  requireAdminProfile,
   updateMembership,
 } from "@/lib/platform/platform-service";
 import type { MembershipStatus } from "@/lib/platform/types";
+
+export async function GET() {
+  try {
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json({ instructors: listDemoAdminInstructors() });
+    }
+    const instructors = await listAdminInstructors();
+    return NextResponse.json({ instructors });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Forbidden";
+    const status = message === "Unauthorized" ? 401 : 403;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
 
 type Body = {
   userId?: string;
@@ -41,7 +57,11 @@ export async function POST(request: Request) {
           actorId: actor.id,
         });
       }
-      if (body.status || body.expiresAt !== undefined || body.adminMemo !== undefined) {
+      if (
+        body.status ||
+        body.expiresAt !== undefined ||
+        body.adminMemo !== undefined
+      ) {
         updateDemoMembership({
           userId: body.userId,
           status: body.status,
@@ -53,7 +73,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    const actor = await requireSuperAdminProfile();
+    const actor = await requireAdminProfile();
 
     if (typeof body.amount === "number" && body.amount > 0) {
       await grantCredits({
@@ -63,7 +83,11 @@ export async function POST(request: Request) {
       });
     }
 
-    if (body.status || body.expiresAt !== undefined || body.adminMemo !== undefined) {
+    if (
+      body.status ||
+      body.expiresAt !== undefined ||
+      body.adminMemo !== undefined
+    ) {
       await updateMembership({
         targetUserId: body.userId,
         status: body.status,

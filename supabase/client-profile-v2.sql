@@ -8,7 +8,7 @@
 --   - weather_records: 対象日×地域の気象データ
 --
 -- clients 設計:
---   最小カラムのみ（id / owner_id / name / name_kana / memo / created_at 等）。
+--   最小カラムのみ（id / instructor_id / name / name_kana / memo / created_at 等）。
 --   年齢・性別・身長・体重・職業・健康情報は client_profiles へ保存する。
 --   本 SQL は clients に存在しない旧プロフィール列（age / height_cm 等）を参照しない。
 --
@@ -32,7 +32,7 @@ create table if not exists public.client_profiles (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null unique
     references public.clients (id) on delete cascade,
-  -- RLS 用に owner_id を冗長保持（clients.owner_id と一致させる）
+  -- RLS 用に owner_id を冗長保持（clients.instructor_id と一致させる）
   owner_id uuid not null
     references auth.users (id) on delete cascade,
   -- 今後セクションが増えても移行できるようバージョン管理
@@ -171,7 +171,7 @@ create policy "client_profiles_insert_own"
     auth.uid() = owner_id
     and exists (
       select 1 from public.clients c
-      where c.id = client_id and c.owner_id = auth.uid()
+      where c.id = client_id and c.instructor_id = auth.uid()
     )
   );
 
@@ -183,7 +183,7 @@ create policy "client_profiles_update_own"
     auth.uid() = owner_id
     and exists (
       select 1 from public.clients c
-      where c.id = client_id and c.owner_id = auth.uid()
+      where c.id = client_id and c.instructor_id = auth.uid()
     )
   );
 
@@ -218,7 +218,7 @@ create policy "weather_records_delete_own"
 
 -- ------------------------------------------------------------
 -- 5) 既存 clients からの安全な初期バックフィル（任意・非破壊）
---    clients は最小カラムのみ参照（id / owner_id / name）。
+--    clients は最小カラムのみ参照（id / instructor_id / name）。
 --    age / gender / height_cm / weight_kg / medications 等は参照しない。
 --    不足プロフィール項目はテーブル default（{}）で初期化。
 --    既に profile がある場合は触らない（create_client_with_profile と整合）。
@@ -231,7 +231,7 @@ insert into public.client_profiles (
 )
 select
   c.id,
-  c.owner_id,
+  c.instructor_id,
   1,
   jsonb_build_object('fullName', c.name)
 from public.clients c

@@ -8,6 +8,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   admin: "Admin",
   instructor: "Instructor",
   client: "Client",
+  enterprise: "Enterprise Admin",
 };
 
 export const CERTIFICATION_LABELS: Record<CertificationType, string> = {

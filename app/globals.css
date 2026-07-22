@@ -24,11 +24,9 @@
   --animate-scroll-dot: scroll-dot 1.8s ease-in-out infinite;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* V1.0 はライトテーマ固定。OS ダークモードで本文色だけ反転しないようにする */
+html {
+  color-scheme: light;
 }
 
 @keyframes fade-in {
@@ -591,6 +589,17 @@
     display: block !important;
     margin-top: 2mm !important;
     font-size: 7pt !important;
+  }
+
+  .academy-certificate-page {
+    min-height: 270mm !important;
+    padding: 18mm 16mm !important;
+    border-radius: 0 !important;
+    background: linear-gradient(145deg, #faf7f1, #ffffff 45%, #f5efe4) !important;
+  }
+
+  .academy-certificate-sheet {
+    box-shadow: none !important;
   }
 }
 

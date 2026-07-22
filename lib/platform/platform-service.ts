@@ -23,7 +23,8 @@ function asRole(value: unknown): UserRole {
     value === "super_admin" ||
     value === "admin" ||
     value === "instructor" ||
-    value === "client"
+    value === "client" ||
+    value === "enterprise"
   ) {
     return value;
   }
@@ -482,7 +483,7 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
     const { data: clientRows, error: clientError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("owner_id", profile.id)
+      .eq("instructor_id", profile.id)
       .in("id", clientIds);
 
     if (clientError) {

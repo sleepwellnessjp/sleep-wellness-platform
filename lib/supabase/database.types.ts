@@ -43,21 +43,30 @@ export type Database = {
           id: string;
           email: string | null;
           display_name: string | null;
-          role: "super_admin" | "admin" | "instructor" | "client";
+          role: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          avatar_url: string | null;
+          client_message: string | null;
+          last_login_at: string | null;
           created_at: string;
         };
         Insert: {
           id: string;
           email?: string | null;
           display_name?: string | null;
-          role?: "super_admin" | "admin" | "instructor" | "client";
+          role?: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          avatar_url?: string | null;
+          client_message?: string | null;
+          last_login_at?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           email?: string | null;
           display_name?: string | null;
-          role?: "super_admin" | "admin" | "instructor" | "client";
+          role?: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          avatar_url?: string | null;
+          client_message?: string | null;
+          last_login_at?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -73,7 +82,8 @@ export type Database = {
       clients: {
         Row: {
           id: string;
-          owner_id: string;
+          instructor_id: string;
+          auth_user_id: string | null;
           name: string;
           name_kana: string | null;
           birth_date: string | null;
@@ -88,7 +98,8 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          owner_id: string;
+          instructor_id: string;
+          auth_user_id?: string | null;
           name: string;
           name_kana?: string | null;
           birth_date?: string | null;
@@ -103,7 +114,8 @@ export type Database = {
         };
         Update: {
           id?: string;
-          owner_id?: string;
+          instructor_id?: string;
+          auth_user_id?: string | null;
           name?: string;
           name_kana?: string | null;
           birth_date?: string | null;
@@ -152,6 +164,498 @@ export type Database = {
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_homeworks: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          title: string;
+          description: string;
+          assigned_date: string;
+          due_date: string;
+          is_completed: boolean;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          title: string;
+          description?: string;
+          assigned_date?: string;
+          due_date: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          title?: string;
+          description?: string;
+          assigned_date?: string;
+          due_date?: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_homeworks_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      academy_credentials: {
+        Row: {
+          id: string;
+          user_id: string;
+          qualification_id: string;
+          acquired_at: string;
+          expires_at: string;
+          renewed_at: string | null;
+          certificate_number: string;
+          issued_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          qualification_id: string;
+          acquired_at: string;
+          expires_at: string;
+          renewed_at?: string | null;
+          certificate_number: string;
+          issued_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          qualification_id?: string;
+          acquired_at?: string;
+          expires_at?: string;
+          renewed_at?: string | null;
+          certificate_number?: string;
+          issued_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      academy_lesson_progress: {
+        Row: {
+          id: string;
+          user_id: string;
+          lesson_id: string;
+          status: string;
+          started_at: string | null;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          lesson_id: string;
+          status?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          lesson_id?: string;
+          status?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      academy_test_attempts: {
+        Row: {
+          id: string;
+          user_id: string;
+          test_id: string;
+          score: number;
+          max_score: number;
+          passed: boolean;
+          answers: Json;
+          submitted_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          test_id: string;
+          score?: number;
+          max_score?: number;
+          passed?: boolean;
+          answers?: Json;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          test_id?: string;
+          score?: number;
+          max_score?: number;
+          passed?: boolean;
+          answers?: Json;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      community_announcements: {
+        Row: {
+          id: string;
+          category: string;
+          title: string;
+          body: string;
+          published_at: string;
+          pinned: boolean;
+          author_name: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          category: string;
+          title: string;
+          body: string;
+          published_at?: string;
+          pinned?: boolean;
+          author_name?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          category?: string;
+          title?: string;
+          body?: string;
+          published_at?: string;
+          pinned?: boolean;
+          author_name?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      community_discussion_posts: {
+        Row: {
+          id: string;
+          author_id: string;
+          author_name: string;
+          category: string;
+          title: string;
+          body: string;
+          like_count: number;
+          comment_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          author_id: string;
+          author_name: string;
+          category: string;
+          title: string;
+          body: string;
+          like_count?: number;
+          comment_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          author_id?: string;
+          author_name?: string;
+          category?: string;
+          title?: string;
+          body?: string;
+          like_count?: number;
+          comment_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      community_discussion_comments: {
+        Row: {
+          id: string;
+          post_id: string;
+          author_id: string;
+          author_name: string;
+          parent_id: string | null;
+          body: string;
+          like_count: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          post_id: string;
+          author_id: string;
+          author_name: string;
+          parent_id?: string | null;
+          body: string;
+          like_count?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          post_id?: string;
+          author_id?: string;
+          author_name?: string;
+          parent_id?: string | null;
+          body?: string;
+          like_count?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "community_discussion_comments_post_id_fkey";
+            columns: ["post_id"];
+            isOneToOne: false;
+            referencedRelation: "community_discussion_posts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      community_likes: {
+        Row: {
+          id: string;
+          user_id: string;
+          target_type: string;
+          target_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          target_type: string;
+          target_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          target_type?: string;
+          target_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      community_case_shares: {
+        Row: {
+          id: string;
+          author_id: string;
+          author_name: string;
+          age_band: string;
+          gender: string;
+          challenge: string;
+          intervention: string;
+          outcome: string;
+          attachment_note: string | null;
+          like_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          author_id: string;
+          author_name: string;
+          age_band: string;
+          gender?: string;
+          challenge: string;
+          intervention: string;
+          outcome: string;
+          attachment_note?: string | null;
+          like_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          author_id?: string;
+          author_name?: string;
+          age_band?: string;
+          gender?: string;
+          challenge?: string;
+          intervention?: string;
+          outcome?: string;
+          attachment_note?: string | null;
+          like_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      community_knowledge_items: {
+        Row: {
+          id: string;
+          type: string;
+          title: string;
+          description: string;
+          tags: string[];
+          href: string | null;
+          published_at: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: string;
+          title: string;
+          description?: string;
+          tags?: string[];
+          href?: string | null;
+          published_at?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: string;
+          title?: string;
+          description?: string;
+          tags?: string[];
+          href?: string | null;
+          published_at?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      community_events: {
+        Row: {
+          id: string;
+          type: string;
+          title: string;
+          description: string;
+          starts_at: string;
+          ends_at: string | null;
+          location: string;
+          capacity: number | null;
+          registration_url: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: string;
+          title: string;
+          description?: string;
+          starts_at: string;
+          ends_at?: string | null;
+          location?: string;
+          capacity?: number | null;
+          registration_url?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: string;
+          title?: string;
+          description?: string;
+          starts_at?: string;
+          ends_at?: string | null;
+          location?: string;
+          capacity?: number | null;
+          registration_url?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      community_message_threads: {
+        Row: {
+          id: string;
+          participant_a: string;
+          participant_b: string;
+          last_message: string;
+          last_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          participant_a: string;
+          participant_b: string;
+          last_message?: string;
+          last_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          participant_a?: string;
+          participant_b?: string;
+          last_message?: string;
+          last_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      community_messages: {
+        Row: {
+          id: string;
+          thread_id: string;
+          sender_id: string;
+          body: string;
+          sent_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          thread_id: string;
+          sender_id: string;
+          body: string;
+          sent_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          thread_id?: string;
+          sender_id?: string;
+          body?: string;
+          sent_at?: string;
+          read_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "community_messages_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "community_message_threads";
             referencedColumns: ["id"];
           },
         ];
@@ -1048,6 +1552,87 @@ export type Database = {
           },
         ];
       };
+      platform_settings: {
+        Row: {
+          id: string;
+          brand_primary: string;
+          brand_accent: string;
+          logo_url: string;
+          terms_of_service: string;
+          privacy_policy: string;
+          contact_email: string;
+          contact_phone: string;
+          contact_note: string;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          brand_primary?: string;
+          brand_accent?: string;
+          logo_url?: string;
+          terms_of_service?: string;
+          privacy_policy?: string;
+          contact_email?: string;
+          contact_phone?: string;
+          contact_note?: string;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          brand_primary?: string;
+          brand_accent?: string;
+          logo_url?: string;
+          terms_of_service?: string;
+          privacy_policy?: string;
+          contact_email?: string;
+          contact_phone?: string;
+          contact_note?: string;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      system_activity_logs: {
+        Row: {
+          id: string;
+          actor_id: string | null;
+          category: "login" | "analysis" | "pdf" | "ai" | "admin" | "other";
+          action: string;
+          target_type: string | null;
+          target_id: string | null;
+          summary: string;
+          payload: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          actor_id?: string | null;
+          category: "login" | "analysis" | "pdf" | "ai" | "admin" | "other";
+          action: string;
+          target_type?: string | null;
+          target_id?: string | null;
+          summary?: string;
+          payload?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          actor_id?: string | null;
+          category?: "login" | "analysis" | "pdf" | "ai" | "admin" | "other";
+          action?: string;
+          target_type?: string | null;
+          target_id?: string | null;
+          summary?: string;
+          payload?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       notifications: {
         Row: {
           id: string;
@@ -1091,6 +1676,7 @@ export type Database = {
     Functions: {
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_admin_or_above: { Args: Record<string, never>; Returns: boolean };
+      is_community_member: { Args: Record<string, never>; Returns: boolean };
       create_client_with_profile: {
         Args: {
           p_name: string;
@@ -1125,6 +1711,36 @@ export type Database = {
           p_analysis_id?: string | null;
         };
         Returns: Json;
+      };
+      is_linked_client: {
+        Args: { p_client_id: string };
+        Returns: boolean;
+      };
+      claim_my_client_portal: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["clients"]["Row"] | null;
+      };
+      link_client_portal_user: {
+        Args: {
+          p_client_id: string;
+          p_email?: string | null;
+          p_auth_user_id?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["clients"]["Row"];
+      };
+      update_own_homework_checks: {
+        Args: {
+          p_analysis_id: string;
+          p_goals: Json;
+        };
+        Returns: Json;
+      };
+      set_own_homework_completion: {
+        Args: {
+          p_homework_id: string;
+          p_is_completed: boolean;
+        };
+        Returns: Database["public"]["Tables"]["client_homeworks"]["Row"];
       };
     };
     Enums: Record<string, never>;

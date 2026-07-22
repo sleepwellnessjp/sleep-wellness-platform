@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import InstructorClientFacingProfileCard from "@/components/InstructorClientFacingProfileCard";
 import InstructorNav from "@/components/InstructorNav";
 import PlatformStatusCard from "@/components/PlatformStatusCard";
+import EmptyState from "@/components/ui/EmptyState";
+import ErrorState from "@/components/ui/ErrorState";
+import { SoftSkeleton } from "@/components/ui/Skeleton";
 import { usePlatformMe } from "@/lib/platform/use-platform-me";
 import {
   CERTIFICATION_LABELS,
@@ -35,23 +39,30 @@ export default function InstructorPortalPage() {
           </h1>
           <p className="mt-4 text-[15px] leading-7 text-slate-600 sm:text-base">
             認定資格・クレジット・分析履歴を確認できます。
-            継続教育・認定更新・お知らせは今後ここに追加されます。
+            継続教育・認定更新はアカデミーから進められます。
           </p>
         </header>
 
         {loading && (
-          <p className="mt-16 text-center text-sm text-slate-400">読み込み中...</p>
+          <div className="mt-10">
+            <SoftSkeleton variant="card" />
+            <div className="mt-4">
+              <SoftSkeleton variant="card" />
+            </div>
+          </div>
         )}
 
         {error && (
-          <p className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
-            {error}
-          </p>
+          <div className="mt-8">
+            <ErrorState message={error} onRetry={() => void refresh()} />
+          </div>
         )}
 
         {data && (
           <div className="mt-8 space-y-6 sm:mt-10">
             <PlatformStatusCard data={data} />
+
+            <InstructorClientFacingProfileCard />
 
             <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8">
               <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
@@ -83,8 +94,23 @@ export default function InstructorPortalPage() {
                   <DetailRow label="有効期限" value={data.membership.expiresAt ?? "—"} />
                 </dl>
               ) : (
-                <p className="text-sm text-slate-500">認定資格が登録されていません。</p>
+                <EmptyState
+                  compact
+                  illustration="generic"
+                  title="認定資格が登録されていません"
+                  description="認定情報が紐づくと、ここに詳細が表示されます。"
+                />
               )}
+
+              <div className="mt-5">
+                <Link
+                  href="/academy"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#8a6a2d]/30 bg-[#faf7f1] px-5 py-2.5 text-[13px] font-semibold"
+                  style={{ color: GOLD }}
+                >
+                  アカデミーを開く
+                </Link>
+              </div>
             </section>
 
             <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8">
@@ -104,9 +130,16 @@ export default function InstructorPortalPage() {
               </div>
 
               {data.recentAnalyses.length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-400">
-                  まだ分析履歴がありません。
-                </p>
+                <EmptyState
+                  compact
+                  illustration="history"
+                  title="まだ分析履歴がありません"
+                  description="分析を完了すると、ここに履歴が表示されます。"
+                  primaryAction={{
+                    label: "新しい分析を作成",
+                    href: "/analysis/new",
+                  }}
+                />
               ) : (
                 <ul className="space-y-3">
                   {data.recentAnalyses.map((item) => (

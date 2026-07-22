@@ -391,9 +391,9 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
   例: 「深い睡眠の割合の変化」「就寝前の飲酒終了時刻」「心拍のゆらぎの推移」
   行動指示ではなく、観察・比較の観点にする。番号は付けない。
 
-⑧ recommendationsUntilNext（次回までのおすすめ＝行動目標）※必須
+⑧ recommendationsUntilNext（AI宿題＝次回までの行動目標）※必須
   必ず 3〜5件の配列。2件以下・6件以上は禁止。
-  次回分析までに継続して取り組む行動目標のみ。
+  次回分析までに継続して取り組む行動目標のみ（AI宿題）。
   todaysRecommendations（今日だけ）や nextComparisonPoints（観察観点）と役割を混ぜない。
   各項目は1文・短文のみ（目安 40文字以内）。長文・抽象論・一般論は禁止。
   番号は付けない。文末は「〜する」「〜を続ける」など実践できる目標形でよい。
@@ -402,7 +402,7 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
   - 「平日の起床時刻を揃える」
   - 「午後のカフェインを控える」
   improvements / todaysRecommendations と整合させる。根拠に無い提案は禁止。
-  前回分析に recommendationsUntilNext がある場合は、達成・未達の可能性を踏まえつつ、今回のデータに合う目標を新たに書く（前回の文言をそのままコピーしない）。
+  前回分析に recommendationsUntilNext（AI宿題）がある場合は、checked（達成）/未達と達成率を踏まえつつ、今回のデータに合う目標を新たに書く（前回の文言をそのままコピーしない）。
 
 - caution: 単日の限界を簡潔に。強い症状・呼吸苦などが疑われる場合のみ医療機関相談を穏やかに促す
 - disclaimer: 睡眠ウェルネス支援であり医療診断・治療を代替しない旨を簡潔に
@@ -800,7 +800,7 @@ ${formatConfirmedMetrics(confirmedMetrics)}
 
 優先順位: SOXAI実測 > 当日生活習慣 > 固定プロフィール > 前回分析 > 気象 > 一般参考基準。
 固定プロフィールに無い項目は推測しない。前回が無い場合は前回比較に触れない。
-前回の recommendationsUntilNext（行動目標）がある場合は、checked（達成）/未達成を可能性として参照し、今回の目標に活かす。数値として上書きしない。
+前回の recommendationsUntilNext（AI宿題）がある場合は、checked（達成）/未達と達成率を可能性として参照し、今回の宿題に活かす。数値として上書きしない。
 
 ${metricsBlock}
 
@@ -825,7 +825,7 @@ ${previousBlock}
 ⑤ scoreComment＝睡眠ウェルネススコアの解説（短段落）＋ score / categoryScores / scoreBreakdown
 ⑥ todaysRecommendations＝今日のおすすめ（必ずちょうど3件。今日実践できる短文のみ）
 ⑦ nextComparisonPoints＝次回比較ポイント（2〜4件。次回見るべき観点の短文）
-⑧ recommendationsUntilNext＝次回までのおすすめ（行動目標・必ず3〜5件。継続して取り組む短文）
+⑧ recommendationsUntilNext＝AI宿題（次回までの行動目標・必ず3〜5件。継続して取り組む短文）
 
 【絶対禁止】
 - 改善点だけのレポート（良かった点を書かない／後回しにする／summary を改善点だけで始める）
@@ -901,9 +901,33 @@ ${formatLifestyle(lifestyle)}`,
     }
 
     if (confirmedMetrics) {
-      return NextResponse.json(
-        applyConfirmedMetrics(analysis, confirmedMetrics),
+      analysis = applyConfirmedMetrics(analysis, confirmedMetrics);
+    }
+
+    try {
+      const { recordSystemActivity } = await import(
+        "@/lib/admin/admin-service"
       );
+      await recordSystemActivity({
+        category: "analysis",
+        action: "analyze",
+        summary: "睡眠分析を実行しました",
+        targetType: "analysis",
+        payload: {
+          clientName:
+            typeof lifestyle?.clientName === "string"
+              ? lifestyle.clientName
+              : null,
+        },
+      });
+      await recordSystemActivity({
+        category: "ai",
+        action: "openai_analysis",
+        summary: "AI分析を利用しました",
+        targetType: "analysis",
+      });
+    } catch {
+      // activity log is best-effort
     }
 
     return NextResponse.json(analysis);

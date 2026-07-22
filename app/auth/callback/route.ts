@@ -2,6 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  homePathForRole,
+  isClientOnlyPath,
+  isInstructorOnlyPath,
+  sanitizeAppRedirect,
+} from "@/lib/safe-redirect";
+import {
   getSupabaseAnonKey,
   getSupabaseUrl,
   isSupabaseConfigured,
@@ -16,7 +22,10 @@ export async function GET(request: Request) {
 
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const requestedRedirect = sanitizeAppRedirect(
+    searchParams.get("redirect"),
+    "/dashboard",
+  );
   const errorDescription = searchParams.get("error_description");
 
   if (errorDescription) {
@@ -62,5 +71,73 @@ export async function GET(request: Request) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.redirect(new URL(redirectTo, origin));
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let destination = requestedRedirect;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    const role =
+      profile && typeof profile === "object" && "role" in profile
+        ? String((profile as { role?: unknown }).role ?? "")
+        : "";
+
+    // ログイン履歴（失敗しても認証フローは継続）
+    void Promise.all([
+      supabase.from("system_activity_logs").insert({
+        actor_id: user.id,
+        category: "login",
+        action: "sign_in",
+        summary: "ログインしました",
+        payload: { email: user.email ?? null },
+      }),
+      supabase
+        .from("profiles")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", user.id),
+    ]).catch(() => {
+      // table may not exist yet
+    });
+
+    const home = homePathForRole(role || "instructor");
+    if (
+      (role === "client" || role === "enterprise") &&
+      isInstructorOnlyPath(destination)
+    ) {
+      destination = home;
+    } else if (
+      role &&
+      role !== "client" &&
+      isClientOnlyPath(destination) &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      destination = home;
+    } else if (
+      role &&
+      role !== "enterprise" &&
+      (destination === "/enterprise" ||
+        destination.startsWith("/enterprise/")) &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      destination = home;
+    } else if (
+      (destination === "/admin" || destination.startsWith("/admin/")) &&
+      role &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      destination = home;
+    } else if (!searchParams.get("redirect")) {
+      destination = home;
+    }
+  }
+
+  return NextResponse.redirect(new URL(destination, origin));
 }

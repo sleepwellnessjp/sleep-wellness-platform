@@ -193,11 +193,7 @@ export function buildTrendSeries(
     });
 }
 
-function formatDelta(
-  metricId: TrendMetricId,
-  delta: number,
-  def: TrendMetricDef,
-): string {
+function formatDelta(metricId: TrendMetricId, delta: number): string {
   if (metricId === "bedtime" || metricId === "wakeTime") {
     const sign = delta >= 0 ? "+" : "";
     return `${sign}${Math.round(delta)}分`;
@@ -252,7 +248,6 @@ export function computeTrendStats(
     previousDelta = formatDelta(
       metricId,
       latestPoint.value - prevPoint.value,
-      def,
     );
   }
 
