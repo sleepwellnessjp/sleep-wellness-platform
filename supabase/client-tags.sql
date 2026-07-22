@@ -47,7 +47,7 @@ begin
   select c.*
   into v_client
   from public.clients c
-  where c.owner_id = v_uid
+  where c.instructor_id = v_uid
     and lower(regexp_replace(btrim(c.name), '\s+', ' ', 'g'))
       = lower(regexp_replace(v_name, '\s+', ' ', 'g'))
   order by c.created_at asc
@@ -65,7 +65,7 @@ begin
     return v_client;
   end if;
 
-  insert into public.clients (owner_id, name, name_kana, memo, tags)
+  insert into public.clients (instructor_id, name, name_kana, memo, tags)
   values (v_uid, v_name, v_kana, v_memo, v_tags)
   returning * into v_client;
 
