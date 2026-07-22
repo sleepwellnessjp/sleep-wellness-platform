@@ -65,6 +65,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
   if (isAdminOsRole(role)) {
     return [
       {
+        id: "executive",
+        eyebrow: "EXECUTIVE",
+        title: "Executive Dashboard",
+        description: "改善状況・本日の活動を一目で把握します。",
+        href: "/admin#executive",
+      },
+      {
         id: "swij",
         eyebrow: "SWIJ",
         title: "SWIJ Dashboard",
@@ -119,25 +126,39 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
   if (role === "instructor") {
     return [
       {
-        id: "appointments",
+        id: "schedule",
         eyebrow: "SCHEDULE",
-        title: "今日の予約",
-        description: "本日のセッション予定を確認します。",
-        href: "/dashboard#appointments",
+        title: "今日の予定",
+        description: "カウンセリング・ヨガ・分析予定を確認します。",
+        href: "/dashboard#schedule",
       },
       {
-        id: "homework",
-        eyebrow: "HOMEWORK",
-        title: "今日の宿題確認",
-        description: "期限が近い宿題の提出状況を確認します。",
-        href: "/dashboard#homework",
+        id: "priority",
+        eyebrow: "PRIORITY",
+        title: "今日の対応",
+        description: "優先対応が必要なクライアントを確認します。",
+        href: "/dashboard#priority",
       },
       {
-        id: "insight",
-        eyebrow: "AI INSIGHT",
-        title: "AI Instructor Insight",
-        description: "カウンセリング前のAIインサイト。",
-        href: "/dashboard#insight",
+        id: "summary",
+        eyebrow: "PLATFORM",
+        title: "Platform Summary",
+        description: "担当人数・平均Score・改善率を把握します。",
+        href: "/dashboard#summary",
+      },
+      {
+        id: "activity",
+        eyebrow: "ACTIVITY",
+        title: "最近の活動",
+        description: "分析・宿題・Journey の時系列。",
+        href: "/dashboard#activity",
+      },
+      {
+        id: "advice",
+        eyebrow: "AI ADVICE",
+        title: "今日のAIアドバイス",
+        description: "認定講師向けの今日の着眼点。",
+        href: "/dashboard#advice",
       },
       {
         id: "clients",

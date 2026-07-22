@@ -84,7 +84,7 @@ export function demoOsNotifications(now = new Date()): OsNotification[] {
       body: "就寝前のメラトニンヨガ™（10分）の提出期限は明日です。",
       createdAt: iso(2),
       readAt: null,
-      href: "/dashboard#homework",
+      href: "/dashboard#priority",
     },
     {
       id: "demo-an-1",
@@ -93,7 +93,7 @@ export function demoOsNotifications(now = new Date()): OsNotification[] {
       body: "14:00 にクライアント分析セッションが予定されています。",
       createdAt: iso(5),
       readAt: null,
-      href: "/dashboard#appointments",
+      href: "/dashboard#schedule",
     },
     {
       id: "demo-cert-1",

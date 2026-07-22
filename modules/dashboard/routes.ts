@@ -3,6 +3,7 @@ export const DASHBOARD_ROUTES = {
   adminHome: "/admin",
   clientHome: "/client",
   enterpriseHome: "/enterprise",
+  executiveApi: "/api/executive",
 } as const;
 
 export type DashboardRouteKey = keyof typeof DASHBOARD_ROUTES;
