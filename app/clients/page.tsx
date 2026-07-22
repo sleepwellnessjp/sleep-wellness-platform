@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
-import NewClientModal from "@/components/NewClientModal";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
 import {
   formatDisplayDate,
@@ -17,7 +16,6 @@ const GOLD = "#8a6a2d";
 export default function ClientsPage() {
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [ready, setReady] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     const refresh = async () => {
@@ -66,14 +64,13 @@ export default function ClientsPage() {
             分析結果は自動で保存され、こちらで確認できます。
             氏名・登録日・最新スコアを一覧で把握できます。
           </p>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
+          <Link
+            href="/clients/new"
             className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-6 py-2.5 text-[13px] font-semibold transition hover:bg-[#f5efe4] sm:text-sm"
             style={{ color: GOLD }}
           >
             新規クライアント登録
-          </button>
+          </Link>
         </header>
 
         <div className="mt-10 space-y-3 sm:mt-12">
@@ -88,14 +85,13 @@ export default function ClientsPage() {
                 新規登録するか、新しい分析を完了するとここに追加されます。
               </p>
               <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(true)}
+                <Link
+                  href="/clients/new"
                   className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
                   style={{ backgroundColor: NAVY }}
                 >
                   新規クライアント登録
-                </button>
+                </Link>
                 <Link
                   href="/analysis/new"
                   className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
@@ -150,7 +146,14 @@ export default function ClientsPage() {
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                  <Link
+                    href={`/clients/${client.id}/profile`}
+                    className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-6 py-3.5 text-[15px] font-semibold transition hover:bg-[#f5efe4] sm:text-sm"
+                    style={{ color: GOLD }}
+                  >
+                    プロフィール
+                  </Link>
                   <Link
                     href={`/analysis/new?clientId=${encodeURIComponent(client.id)}`}
                     className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3.5 text-[15px] font-semibold transition hover:bg-slate-50 sm:text-sm"
@@ -171,14 +174,6 @@ export default function ClientsPage() {
           )}
         </div>
       </div>
-
-      <NewClientModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={() => {
-          void getClientListItems().then(setClients);
-        }}
-      />
     </main>
   );
 }

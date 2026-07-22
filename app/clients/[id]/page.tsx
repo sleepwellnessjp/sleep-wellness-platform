@@ -209,6 +209,22 @@ export default function ClientDetailPage() {
               </p>
             </div>
           </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href={`/clients/${client.id}/profile`}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-5 py-2.5 text-[13px] font-semibold transition hover:bg-[#f5efe4] sm:text-sm"
+              style={{ color: GOLD }}
+            >
+              プロフィール編集
+            </Link>
+            <Link
+              href={`/clients/${client.id}/profile/confirm`}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-[13px] font-semibold transition hover:bg-slate-50 sm:text-sm"
+              style={{ color: NAVY }}
+            >
+              プロフィール確認
+            </Link>
+          </div>
         </header>
 
         <Section eyebrow="LATEST" title="最新分析">

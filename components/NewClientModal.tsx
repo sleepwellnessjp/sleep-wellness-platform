@@ -1,7 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useId, useState } from "react";
-import { createClient, type CreateClientInput } from "@/lib/repositories/client-repository";
+import { FormEvent, useId, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  createClient,
+  type CreateClientInput,
+} from "@/lib/repositories/client-repository";
+import { upsertClientProfile } from "@/lib/repositories/client-profile-repository";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -18,39 +23,37 @@ type Props = {
   onCreated?: (clientId: string) => void;
 };
 
-const emptyForm = (): CreateClientInput => ({
+type FormState = CreateClientInput;
+
+const emptyForm = (): FormState => ({
   name: "",
   nameKana: "",
-  birthDate: "",
-  gender: "",
-  email: "",
-  phone: "",
   registeredAt: new Date().toISOString().slice(0, 10),
   memo: "",
 });
 
+/** 簡易登録モーダル（氏名必須）。詳細は /clients/[id]/profile へ */
 export default function NewClientModal({ open, onClose, onCreated }: Props) {
+  if (!open) return null;
+  return (
+    <NewClientModalForm onClose={onClose} onCreated={onCreated} />
+  );
+}
+
+function NewClientModalForm({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated?: (clientId: string) => void;
+}) {
+  const router = useRouter();
   const titleId = useId();
-  const [form, setForm] = useState<CreateClientInput>(emptyForm);
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    setForm(emptyForm());
-    setError(null);
-    setSaving(false);
-
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const update = (key: keyof CreateClientInput, value: string) => {
+  const update = (key: keyof FormState, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
@@ -66,17 +69,14 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
     setSaving(true);
     try {
       const client = await createClient(form);
+      await upsertClientProfile(client.id, {
+        basic: { fullName: form.name.trim() },
+      });
       onCreated?.(client.id);
       onClose();
+      router.push(`/clients/${client.id}/profile`);
     } catch (err) {
       console.error("[NewClientModal] createClient failed:", err);
-      if (err && typeof err === "object") {
-        console.error("[NewClientModal] error keys:", Object.keys(err as object));
-        console.error(
-          "[NewClientModal] error JSON:",
-          JSON.stringify(err, Object.getOwnPropertyNames(err as object), 2),
-        );
-      }
       const message =
         err instanceof Error
           ? err.message
@@ -87,8 +87,8 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
             ? (err as { message: string }).message
             : "登録に失敗しました。";
       setError(message || "登録に失敗しました。");
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   return (
@@ -118,14 +118,17 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
           新規クライアント登録
         </h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          氏名のみ必須です。ほかは分かる範囲で入力してください。
+          氏名のみ必須です。登録後に詳細プロフィールを入力できます。
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <label className="block">
             <span className="text-sm font-semibold" style={{ color: NAVY }}>
               氏名
-              <span className="ml-1.5 text-[11px] font-medium" style={{ color: GOLD }}>
+              <span
+                className="ml-1.5 text-[11px] font-medium"
+                style={{ color: GOLD }}
+              >
                 必須
               </span>
             </span>
@@ -151,66 +154,6 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
             />
           </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block">
-              <span className="text-sm font-semibold text-slate-600">生年月日</span>
-              <input
-                type="date"
-                className={inputClass}
-                value={form.birthDate ?? ""}
-                onChange={(event) => update("birthDate", event.target.value)}
-              />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-slate-600">性別</span>
-              <select
-                className={inputClass}
-                value={form.gender ?? ""}
-                onChange={(event) => update("gender", event.target.value)}
-              >
-                <option value="">選択してください</option>
-                <option value="female">女性</option>
-                <option value="male">男性</option>
-                <option value="other">その他</option>
-                <option value="unspecified">回答しない</option>
-              </select>
-            </label>
-          </div>
-
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-600">
-              メールアドレス
-            </span>
-            <input
-              type="email"
-              className={inputClass}
-              value={form.email ?? ""}
-              onChange={(event) => update("email", event.target.value)}
-              placeholder="例：client@example.com"
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-600">電話番号</span>
-            <input
-              type="tel"
-              className={inputClass}
-              value={form.phone ?? ""}
-              onChange={(event) => update("phone", event.target.value)}
-              placeholder="例：090-1234-5678"
-            />
-          </label>
-
-          <label className="block">
-            <span className="text-sm font-semibold text-slate-600">初回登録日</span>
-            <input
-              type="date"
-              className={inputClass}
-              value={form.registeredAt ?? ""}
-              onChange={(event) => update("registeredAt", event.target.value)}
-            />
-          </label>
-
           <label className="block">
             <span className="text-sm font-semibold text-slate-600">担当者メモ</span>
             <textarea
@@ -222,19 +165,7 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
             />
           </label>
 
-          {error && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-rose-600">{error}</p>
-              {error.includes("schema.sql") && (
-                <a
-                  href="/setup"
-                  className="inline-flex text-sm font-semibold text-[#8a6a2d] underline-offset-2 hover:underline"
-                >
-                  初期設定ページで schema.sql を実行する →
-                </a>
-              )}
-            </div>
-          )}
+          {error && <p className="text-sm font-medium text-rose-600">{error}</p>}
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <button
@@ -250,7 +181,7 @@ export default function NewClientModal({ open, onClose, onCreated }: Props) {
               className="inline-flex min-h-12 items-center justify-center rounded-full px-7 py-3 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
               style={{ backgroundColor: NAVY }}
             >
-              {saving ? "登録中..." : "登録する"}
+              {saving ? "登録中..." : "登録してプロフィールへ"}
             </button>
           </div>
         </form>
