@@ -13,10 +13,12 @@ import AnalysisFlow from "@/components/AnalysisFlow";
 import AiFollowAlerts from "@/components/AiFollowAlerts";
 import WellnessRadarChart from "@/components/WellnessRadarChart";
 import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextCard";
+import PreviousHomeworkCard from "@/components/PreviousHomeworkCard";
 import {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
 } from "@/components/SoxaiVisualCharts";
+import { useToast } from "@/components/ui/Toast";
 import {
   AnalysisResult,
   formatImprovementStars,
@@ -36,9 +38,11 @@ import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import {
   analysisResultToStoredShape,
   buildPreviousComparisonSummary,
+  buildPreviousHomeworkComparison,
   findPreviousAnalysis,
   previousComparisonToneColor,
   type PreviousComparisonSummary,
+  type PreviousHomeworkComparison,
 } from "@/lib/previous-comparison";
 import { pickBrandClosingMessage } from "@/lib/brand-closing-messages";
 import { getClientProfile } from "@/lib/repositories/client-profile-repository";
@@ -353,8 +357,9 @@ export default function AnalysisResultPage() {
           graphs: found.analysis.result.graphs,
         });
         setResult(hydrated);
-        setImages(loadAnalysisImages());
-        setGraphs(hydrated.graphs ?? loadAnalysisGraphs());
+        // 保存済み分析はセッションの別分析画像を混ぜない（画像バイナリは未永続化）
+        setImages([]);
+        setGraphs(hydrated.graphs ?? {});
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -499,9 +504,12 @@ function ResultContent({
   images: string[];
   graphs: SoxaiGraphBundle;
 }) {
+  const { success } = useToast();
   const [result, setResult] = useState(initialResult);
   const [previousComparison, setPreviousComparison] =
     useState<PreviousComparisonSummary | null>(null);
+  const [previousHomework, setPreviousHomework] =
+    useState<PreviousHomeworkComparison | null>(null);
   const [followAlerts, setFollowAlerts] = useState<AiFollowAlert[]>([]);
 
   useEffect(() => {
@@ -512,6 +520,7 @@ function ResultContent({
     const clientId = result.clientId?.trim();
     if (!clientId) {
       setPreviousComparison(null);
+      setPreviousHomework(null);
       setFollowAlerts(
         buildAiFollowAlerts({
           analyses: [analysisResultToStoredShape(result)],
@@ -531,6 +540,7 @@ function ResultContent({
 
         if (!client) {
           setPreviousComparison(null);
+          setPreviousHomework(null);
           setFollowAlerts(
             buildAiFollowAlerts({
               analyses: [analysisResultToStoredShape(result)],
@@ -549,10 +559,12 @@ function ResultContent({
 
         if (!previous) {
           setPreviousComparison(null);
+          setPreviousHomework(null);
         } else {
           setPreviousComparison(
             buildPreviousComparisonSummary(previous, current),
           );
+          setPreviousHomework(buildPreviousHomeworkComparison(previous));
         }
 
         // 最新分析として現在結果を先頭に揃える（未保存セッション対応）
@@ -779,6 +791,10 @@ function ResultContent({
             />
           ) : null}
 
+          {previousHomework ? (
+            <PreviousHomeworkCard comparison={previousHomework} />
+          ) : null}
+
           {followAlerts.length > 0 ? (
             <div className="mt-5 sm:mt-6">
               <AiFollowAlerts alerts={followAlerts} compact />
@@ -900,10 +916,11 @@ function ResultContent({
 
           <RecommendationsUntilNextCard
             result={result}
-            onUpdated={(goals) =>
+            onUpdated={(goals, achievement) =>
               setResult((current) => ({
                 ...current,
                 recommendationsUntilNext: goals,
+                homeworkAchievement: achievement,
               }))
             }
           />
@@ -1106,14 +1123,41 @@ function ResultContent({
           <button
             type="button"
             onClick={() => {
-              const saved = loadLastSavedAnalysisRef();
-              if (saved) {
-                recordPdfDownload(
-                  saved.clientId,
-                  saved.analysisId,
+              const clientId = result.clientId?.trim();
+              const analysisId = result.analysisId?.trim();
+              if (clientId && analysisId) {
+                void recordPdfDownload(
+                  clientId,
+                  analysisId,
                   "PDFダウンロード",
                 );
+              } else {
+                const saved = loadLastSavedAnalysisRef();
+                if (saved) {
+                  void recordPdfDownload(
+                    saved.clientId,
+                    saved.analysisId,
+                    "PDFダウンロード",
+                  );
+                }
               }
+              success("PDFを生成しました");
+              void fetch("/api/activity", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  category: "pdf",
+                  action: "generate",
+                  summary: "PDFレポートを生成しました",
+                  targetType: "analysis",
+                  targetId:
+                    result.analysisId?.trim() ||
+                    loadLastSavedAnalysisRef()?.analysisId ||
+                    null,
+                }),
+              }).catch(() => {
+                // best-effort
+              });
               window.print();
             }}
             className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"

@@ -1,4 +1,12 @@
-import type { AnalysisResult } from "@/lib/analysis-session";
+import type {
+  AnalysisResult,
+  HomeworkAchievement,
+  NextActionGoal,
+} from "@/lib/analysis-session";
+import {
+  computeHomeworkAchievement,
+  normalizeRecommendationsUntilNext,
+} from "@/lib/analysis-session";
 import type { StoredAnalysis } from "@/lib/repositories/client-repository";
 import {
   parseDurationMinutes,
@@ -17,6 +25,13 @@ export type PreviousComparisonSummary = {
   previousDate: string;
   items: PreviousComparisonItem[];
   profileNote: string;
+};
+
+/** 前回AI宿題の達成比較（次回分析結果で表示） */
+export type PreviousHomeworkComparison = {
+  previousDate: string;
+  goals: NextActionGoal[];
+  achievement: HomeworkAchievement;
 };
 
 const PROFILE_KEYS = [
@@ -228,10 +243,134 @@ export function buildPreviousComparisonSummary(
   };
 }
 
+/**
+ * 前回分析の AI宿題（行動目標）と達成率を比較表示用にまとめる。
+ * 宿題が無い場合は null。
+ */
+export function buildPreviousHomeworkComparison(
+  previous: StoredAnalysis,
+): PreviousHomeworkComparison | null {
+  const goals = normalizeRecommendationsUntilNext(
+    previous.result?.recommendationsUntilNext,
+  );
+  if (goals.length === 0) return null;
+
+  const stored = previous.result?.homeworkAchievement;
+  const achievement =
+    stored && stored.total === goals.length
+      ? stored
+      : computeHomeworkAchievement(goals);
+
+  return {
+    previousDate: previous.analysisDate,
+    goals,
+    achievement,
+  };
+}
+
 export function previousComparisonToneColor(
   tone: PreviousComparisonTone,
 ): string {
   if (tone === "improved") return "#0f6b5c";
   if (tone === "worsened") return "#a33a3a";
   return "#8a6a2d";
+}
+
+function wellnessScoreOf(analysis: StoredAnalysis): number | null {
+  if (
+    typeof analysis.wellnessScore === "number" &&
+    Number.isFinite(analysis.wellnessScore)
+  ) {
+    return analysis.wellnessScore;
+  }
+  if (
+    typeof analysis.result?.score === "number" &&
+    Number.isFinite(analysis.result.score)
+  ) {
+    return analysis.result.score;
+  }
+  return null;
+}
+
+function sleepDurationMinutes(analysis: StoredAnalysis): number | null {
+  return parseDurationMinutes(String(analysis.metrics.sleepDuration ?? ""));
+}
+
+function sleepEfficiencyPercent(analysis: StoredAnalysis): number | null {
+  const raw = analysis.metrics.sleepEfficiency;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  return parseLeadingNumber(String(raw ?? ""));
+}
+
+function formatSignedScore(delta: number): string {
+  const rounded = Math.round(delta);
+  if (rounded === 0) return "±0";
+  return rounded > 0 ? `+${rounded}` : String(rounded);
+}
+
+function formatSignedPercent(delta: number): string {
+  const rounded = Math.round(delta * 10) / 10;
+  if (Math.abs(rounded) < 0.05) return "±0%";
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded}%`;
+}
+
+/**
+ * クライアントマイページ用の前回比較。
+ * Sleep Wellness Score / 睡眠効率 / 睡眠時間。
+ */
+export function buildClientMypageComparison(
+  previous: StoredAnalysis,
+  current: StoredAnalysis,
+): PreviousComparisonSummary | null {
+  const items: PreviousComparisonItem[] = [];
+
+  const scoreTrend = resolveTrend(
+    wellnessScoreOf(previous),
+    wellnessScoreOf(current),
+    false,
+  );
+  if (scoreTrend.delta != null) {
+    items.push({
+      label: "Sleep Wellness Score",
+      value: formatSignedScore(scoreTrend.delta),
+      tone: scoreTrend.tone,
+    });
+  }
+
+  const efficiencyTrend = resolveTrend(
+    sleepEfficiencyPercent(previous),
+    sleepEfficiencyPercent(current),
+    false,
+  );
+  if (efficiencyTrend.delta != null) {
+    items.push({
+      label: "睡眠効率",
+      value: formatSignedPercent(efficiencyTrend.delta),
+      tone: efficiencyTrend.tone,
+    });
+  }
+
+  const durationTrend = resolveTrend(
+    sleepDurationMinutes(previous),
+    sleepDurationMinutes(current),
+    false,
+  );
+  if (durationTrend.delta != null) {
+    items.push({
+      label: "睡眠時間",
+      value: formatSignedMinutes(durationTrend.delta),
+      tone: durationTrend.tone,
+    });
+  }
+
+  if (items.length === 0) return null;
+
+  return {
+    previousDate: previous.analysisDate,
+    items,
+    profileNote: profileChanged(previous.result, current.result)
+      ? "プロフィールに更新あり"
+      : "プロフィールは変化なし",
+  };
 }

@@ -1,6 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  homePathForRole,
+  isClientOnlyPath,
+  isEnterpriseOnlyPath,
+  isInstructorOnlyPath,
+} from "@/lib/safe-redirect";
+import {
   getSupabaseAnonKey,
   getSupabaseUrl,
   isSupabaseConfigured,
@@ -11,11 +17,28 @@ const PROTECTED_PREFIXES = [
   "/portal",
   "/admin",
   "/clients",
+  "/client",
+  "/enterprise",
+  "/programs",
+  "/academy",
+  "/community",
+  "/insights",
+  "/settings",
   "/setup",
   "/analysis/new",
   "/analysis/confirm",
   "/analysis/loading",
   "/analysis/result",
+  // Version 3.0 module routes
+  "/research",
+  "/retreat",
+  "/events",
+  "/companies",
+  "/reports",
+  "/billing",
+  "/notifications",
+  // Version 4.0 API Platform
+  "/developer",
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -23,12 +46,25 @@ function isProtectedPath(pathname: string): boolean {
     return true;
   }
   if (pathname.startsWith("/clients/")) return true;
+  if (pathname.startsWith("/client/")) return true;
+  if (pathname.startsWith("/enterprise/")) return true;
+  if (pathname.startsWith("/programs/")) return true;
+  if (pathname.startsWith("/academy/")) return true;
+  if (pathname.startsWith("/community/")) return true;
+  if (pathname.startsWith("/insights/")) return true;
+  if (pathname.startsWith("/settings/")) return true;
   if (pathname.startsWith("/analysis/")) return true;
+  if (pathname.startsWith("/developer/")) return true;
   return false;
 }
 
 function needsSessionRefresh(pathname: string): boolean {
-  return isProtectedPath(pathname) || pathname.startsWith("/api/platform");
+  return (
+    isProtectedPath(pathname) ||
+    pathname.startsWith("/api/platform") ||
+    pathname.startsWith("/api/os") ||
+    pathname.startsWith("/api/developer")
+  );
 }
 
 export async function proxy(request: NextRequest) {
@@ -79,6 +115,71 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  if (user && isProtectedPath(pathname)) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const role =
+      profile && typeof profile === "object" && "role" in profile
+        ? String((profile as { role?: unknown }).role ?? "")
+        : "";
+
+    if (
+      (role === "client" || role === "enterprise") &&
+      isInstructorOnlyPath(pathname)
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    // /admin と /developer は admin / super_admin のみ
+    if (
+      (pathname === "/admin" ||
+        pathname.startsWith("/admin/") ||
+        pathname === "/developer" ||
+        pathname.startsWith("/developer/")) &&
+      role &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (
+      role &&
+      role !== "client" &&
+      isClientOnlyPath(pathname) &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (
+      role &&
+      role !== "enterprise" &&
+      isEnterpriseOnlyPath(pathname) &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
   return response;
 }
 
@@ -88,6 +189,20 @@ export const config = {
     "/portal/:path*",
     "/admin/:path*",
     "/clients/:path*",
+    "/client",
+    "/client/:path*",
+    "/enterprise",
+    "/enterprise/:path*",
+    "/programs",
+    "/programs/:path*",
+    "/academy",
+    "/academy/:path*",
+    "/community",
+    "/community/:path*",
+    "/insights",
+    "/insights/:path*",
+    "/settings",
+    "/settings/:path*",
     "/setup",
     "/analysis/new",
     "/analysis/confirm",
@@ -95,5 +210,9 @@ export const config = {
     "/analysis/result",
     "/analysis/result/:path*",
     "/api/platform/:path*",
+    "/api/os/:path*",
+    "/api/developer/:path*",
+    "/developer",
+    "/developer/:path*",
   ],
 };

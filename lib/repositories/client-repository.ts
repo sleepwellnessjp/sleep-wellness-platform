@@ -1,5 +1,6 @@
 import type { AnalysisMetrics, AnalysisResult } from "@/lib/analysis-session";
 import {
+  computeHomeworkAchievement,
   normalizeAnalysisResult,
   normalizeMetrics,
   normalizeRecommendationsUntilNext,
@@ -50,13 +51,14 @@ type SupabaseAuth = {
 
 /**
  * clients テーブルの最小情報
- * 書き込み対象: id / owner_id / name / name_kana(furigana) / memo / tags / created_at
+ * 書き込み対象: id / instructor_id / name / name_kana(furigana) / memo / tags / created_at
+ * instructor_id = 担当認定講師の auth.users.id（ログインユーザー）
  * 年齢・身長・体重・性別・職業・健康情報は client_profiles へ。
  * birth_date / gender / email 等はレガシー列（読み取り互換のみ）。
  */
 type DbClientRow = {
   id: string;
-  owner_id: string;
+  instructor_id: string;
   name: string;
   name_kana: string | null;
   birth_date?: string | null;
@@ -590,7 +592,7 @@ export async function listAnalysisHistory(
   const { data: clientRows, error: clientError } = await supabase
     .from("clients")
     .select("id, name")
-    .eq("owner_id", userId)
+    .eq("instructor_id", userId)
     .in("id", clientIds);
 
   if (clientError) {
@@ -640,7 +642,7 @@ async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClien
   const { data: clientRows, error: clientError } = await supabase
     .from("clients")
     .select("*")
-    .eq("owner_id", userId)
+    .eq("instructor_id", userId)
     .order("updated_at", { ascending: false });
 
   if (clientError) {
@@ -734,8 +736,55 @@ export async function getClientById(id: string): Promise<StoredClient | null> {
   const auth = await getSupabaseAuth();
   if (!auth) return getLocalClientById(id);
 
-  const clients = await fetchClientsFromSupabase(auth);
-  return clients.find((client) => client.id === id) ?? null;
+  const { supabase, userId } = auth;
+
+  // instructor_id 一致 + RLS で他講師のクライアントは取得できない
+  const { data: clientRow, error: clientError } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("instructor_id", userId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (clientError) {
+    throw formatSupabaseError(clientError, "getClientById:client");
+  }
+  if (!clientRow) return null;
+
+  const { data: analysisRows, error: analysisError } = await supabase
+    .from("analyses")
+    .select("*")
+    .eq("owner_id", userId)
+    .eq("client_id", id)
+    .order("created_at", { ascending: false });
+
+  if (analysisError) {
+    throw formatSupabaseError(analysisError, "getClientById:analyses");
+  }
+
+  const { data: profileRow } = await supabase
+    .from("client_profiles")
+    .select("basic, health, lifestyle, exercise")
+    .eq("owner_id", userId)
+    .eq("client_id", id)
+    .maybeSingle();
+
+  const analyses = ((analysisRows ?? []) as DbAnalysisRow[]).map(mapDbAnalysis);
+
+  return mapDbClient(
+    clientRow as DbClientRow,
+    analyses,
+    profileRow
+      ? profileOverlayFromRow(
+          profileRow as {
+            basic?: unknown;
+            health?: unknown;
+            lifestyle?: unknown;
+            exercise?: unknown;
+          },
+        )
+      : undefined,
+  );
 }
 
 export async function getAnalysisById(
@@ -768,7 +817,7 @@ export async function getAnalysisById(
   const { data: clientRow, error: clientError } = await supabase
     .from("clients")
     .select("*")
-    .eq("owner_id", userId)
+    .eq("instructor_id", userId)
     .eq("id", row.client_id)
     .maybeSingle();
 
@@ -877,7 +926,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
     const { data: existingRows, error: existingError } = await supabase
       .from("clients")
       .select("*")
-      .eq("owner_id", userId)
+      .eq("instructor_id", userId)
       .ilike("name", name);
 
     if (existingError) {
@@ -900,7 +949,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       const withTags = await supabase
         .from("clients")
         .insert({
-          owner_id: userId,
+          instructor_id: userId,
           name,
           name_kana: nameKana,
           memo,
@@ -917,7 +966,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
         const withoutTags = await supabase
           .from("clients")
           .insert({
-            owner_id: userId,
+            instructor_id: userId,
             name,
             name_kana: nameKana,
             memo,
@@ -943,7 +992,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
         await supabase
           .from("clients")
           .delete()
-          .eq("owner_id", userId)
+          .eq("instructor_id", userId)
           .eq("id", row.id);
         throw profileError;
       }
@@ -964,7 +1013,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       const { data: patched, error: tagsError } = await supabase
         .from("clients")
         .update({ tags })
-        .eq("owner_id", userId)
+        .eq("instructor_id", userId)
         .eq("id", row.id)
         .select("*")
         .maybeSingle();
@@ -1018,7 +1067,7 @@ export async function updateClientProfile(
     const { data: updated, error } = await supabase
       .from("clients")
       .update(patch)
-      .eq("owner_id", userId)
+      .eq("instructor_id", userId)
       .eq("id", clientId)
       .select("*")
       .maybeSingle();
@@ -1033,7 +1082,7 @@ export async function updateClientProfile(
     const { data: existing, error } = await supabase
       .from("clients")
       .select("*")
-      .eq("owner_id", userId)
+      .eq("instructor_id", userId)
       .eq("id", clientId)
       .maybeSingle();
     if (error || !existing) return null;
@@ -1139,7 +1188,7 @@ export async function saveAnalysisToRepository(
     const { data: ownedClient, error: ownedLookupError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("owner_id", userId)
+      .eq("instructor_id", userId)
       .eq("id", preferredClientId)
       .maybeSingle();
 
@@ -1156,7 +1205,7 @@ export async function saveAnalysisToRepository(
     const { data: existingRows, error: existingLookupError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("owner_id", userId);
+      .eq("instructor_id", userId);
 
     if (existingLookupError) {
       throw formatSupabaseError(existingLookupError, "saveAnalysis:selectClients");
@@ -1177,7 +1226,7 @@ export async function saveAnalysisToRepository(
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
         .insert({
-          owner_id: userId,
+          instructor_id: userId,
           name,
         })
         .select("id")
@@ -1194,7 +1243,7 @@ export async function saveAnalysisToRepository(
         await supabase
           .from("clients")
           .delete()
-          .eq("owner_id", userId)
+          .eq("instructor_id", userId)
           .eq("id", clientId);
         throw profileError;
       }
@@ -1250,6 +1299,9 @@ export async function saveAnalysisToRepository(
       todaysRecommendations: result.todaysRecommendations,
       nextComparisonPoints: result.nextComparisonPoints,
       recommendationsUntilNext: result.recommendationsUntilNext,
+      homeworkAchievement:
+        result.homeworkAchievement ??
+        computeHomeworkAchievement(result.recommendationsUntilNext),
       score: result.score,
       scoreBreakdown: result.scoreBreakdown,
       categoryScores: result.categoryScores,
@@ -1269,6 +1321,9 @@ export async function saveAnalysisToRepository(
 
   const aiResultPayload: AnalysisResult = {
     ...result,
+    homeworkAchievement:
+      result.homeworkAchievement ??
+      computeHomeworkAchievement(result.recommendationsUntilNext),
     metrics,
     extractedMetrics,
     graphs: result.graphs,
@@ -1419,12 +1474,8 @@ export async function recordPdfDownload(
   analysisId: string,
   label = "PDFダウンロード",
 ): Promise<void> {
-  const auth = await getSupabaseAuth();
-  if (!auth) {
-    recordLocalPdfDownload(clientId, analysisId, label);
-    return;
-  }
-  // PDF 履歴は Supabase 初版では localStorage 互換のためスキップ（将来拡張）
+  // V1.0: ブラウザ側履歴として記録（Supabase 専用テーブルは 1.1）
+  recordLocalPdfDownload(clientId, analysisId, label);
 }
 
 /**
@@ -1458,7 +1509,19 @@ export async function updateAnalysisRecommendationsUntilNext(
     return false;
   }
   if (!row) {
-    return updateLocalAnalysisRecommendationsUntilNext(analysisId, normalized);
+    // クライアント本人（auth_user_id 紐付け）からの宿題チェック更新
+    try {
+      const { updateOwnHomeworkChecks } = await import(
+        "@/lib/repositories/client-mypage-repository"
+      );
+      return await updateOwnHomeworkChecks(analysisId, normalized);
+    } catch (err) {
+      console.error(
+        "[client-repository] client homework fallback failed:",
+        err,
+      );
+      return false;
+    }
   }
 
   const existingResult =
@@ -1476,6 +1539,7 @@ export async function updateAnalysisRecommendationsUntilNext(
   const nextResult: AnalysisResult = {
     ...existingResult,
     recommendationsUntilNext: normalized,
+    homeworkAchievement: computeHomeworkAchievement(normalized),
     analysisId,
   };
 
@@ -1497,6 +1561,7 @@ export async function updateAnalysisRecommendationsUntilNext(
     medical: {
       ...existingMedical,
       recommendationsUntilNext: normalized,
+      homeworkAchievement: nextResult.homeworkAchievement,
     },
   };
 

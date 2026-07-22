@@ -50,10 +50,12 @@ export type PreviousAnalysisForAi = {
   improvements?: string[];
   nextComparisonPoints?: string[];
   /**
-   * 前回の「次回までのおすすめ」（行動目標）。
+   * 前回の AI宿題（行動目標）。
    * checked=true は達成として講師が記録したもの。
    */
   recommendationsUntilNext?: Array<{ text: string; checked: boolean }>;
+  /** 前回AI宿題の達成率（0〜100） */
+  homeworkAchievementRate?: number;
 };
 
 export type AnalysisAiInput = {
@@ -550,6 +552,8 @@ export function compactPreviousAnalysisForAi(input: {
   recommendationsUntilNext?: Array<
     string | { text?: string; checked?: boolean }
   >;
+  homeworkAchievement?: { rate?: number; checked?: number; total?: number };
+  achievementRate?: number;
 } | null | undefined): PreviousAnalysisForAi | undefined {
   if (!input) return undefined;
   const analysisDate = input.analysisDate?.trim();
@@ -614,6 +618,24 @@ export function compactPreviousAnalysisForAi(input: {
     )
     .slice(0, 5);
 
+  const fromGoalsRate =
+    recommendationsUntilNext.length > 0
+      ? Math.round(
+          (recommendationsUntilNext.filter((g) => g.checked).length /
+            recommendationsUntilNext.length) *
+            100,
+        )
+      : undefined;
+  const storedRate =
+    typeof input.homeworkAchievement?.rate === "number" &&
+    Number.isFinite(input.homeworkAchievement.rate)
+      ? Math.max(0, Math.min(100, Math.round(input.homeworkAchievement.rate)))
+      : typeof input.achievementRate === "number" &&
+          Number.isFinite(input.achievementRate)
+        ? Math.max(0, Math.min(100, Math.round(input.achievementRate)))
+        : undefined;
+  const homeworkAchievementRate = storedRate ?? fromGoalsRate;
+
   return {
     analysisDate,
     sleepScore:
@@ -640,6 +662,7 @@ export function compactPreviousAnalysisForAi(input: {
       recommendationsUntilNext.length > 0
         ? recommendationsUntilNext
         : undefined,
+    homeworkAchievementRate,
   };
 }
 
@@ -1069,7 +1092,7 @@ export function buildAnalysisAiInput(
     "固定プロフィール要約は【生活スタイル】【睡眠へ影響しそうな要素】【AIが分析時に重視する項目】の構成。診断ではなく分析参照用。",
     "固定プロフィールは普段の傾向。当日の生活習慣と混同しない。",
     "前回分析がある場合は差分を可能性として参照する。無い場合は触れない。",
-    "前回の recommendationsUntilNext（行動目標）がある場合は達成・未達を可能性として参照し、今回の行動目標に活かす。",
+    "前回の recommendationsUntilNext（AI宿題）がある場合は達成・未達と達成率を可能性として参照し、今回のAI宿題に活かす。",
     "医療診断・病名の断定はしない。",
   ];
 

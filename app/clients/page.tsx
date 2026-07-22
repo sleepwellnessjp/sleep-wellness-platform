@@ -5,6 +5,8 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ClientTagChips } from "@/components/ClientTagsEditor";
 import InstructorNav from "@/components/InstructorNav";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
+import EmptyState from "@/components/ui/EmptyState";
+import { ListSkeleton } from "@/components/ui/Skeleton";
 import { matchesClientSearch } from "@/lib/client-search";
 import {
   PREDEFINED_CLIENT_TAGS,
@@ -68,16 +70,19 @@ export default function ClientsPage() {
   const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
+    let cancelled = false;
     const refresh = async () => {
       try {
-        setClients(await getClientListItems());
+        const next = await getClientListItems();
+        if (!cancelled) setClients(next);
       } catch (error) {
         console.error("[clients] getClientListItems failed:", error);
-        setClients([]);
+        if (!cancelled) setClients([]);
+      } finally {
+        if (!cancelled) setReady(true);
       }
     };
     void refresh();
-    setReady(true);
 
     const onUpdate = () => {
       void refresh();
@@ -85,6 +90,7 @@ export default function ClientsPage() {
     window.addEventListener("storage", onUpdate);
     window.addEventListener("swij-clients-updated", onUpdate);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onUpdate);
       window.removeEventListener("swij-clients-updated", onUpdate);
     };
@@ -241,32 +247,21 @@ export default function ClientsPage() {
           className={`mt-6 space-y-3 sm:mt-8 ${isFiltering ? "opacity-70" : "opacity-100"} transition-opacity duration-150`}
         >
           {!ready ? (
-            <p className="py-16 text-center text-sm text-slate-400">読み込み中...</p>
+            <ListSkeleton rows={5} />
           ) : clients.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-16 text-center">
-              <p className="text-base font-semibold" style={{ color: NAVY }}>
-                まだクライアントがいません
-              </p>
-              <p className="mt-3 text-sm leading-7 text-slate-500">
-                新規登録するか、新しい分析を完了するとここに追加されます。
-              </p>
-              <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                <Link
-                  href="/clients/new"
-                  className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
-                  style={{ backgroundColor: NAVY }}
-                >
-                  新規クライアント登録
-                </Link>
-                <Link
-                  href="/analysis/new"
-                  className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
-                  style={{ color: NAVY }}
-                >
-                  新しい分析を作成
-                </Link>
-              </div>
-            </div>
+            <EmptyState
+              illustration="generic"
+              title="まだクライアントがいません"
+              description="新規登録するか、新しい分析を完了するとここに追加されます。"
+              primaryAction={{
+                label: "新規クライアント登録",
+                href: "/clients/new",
+              }}
+              secondaryAction={{
+                label: "新しい分析を作成",
+                href: "/analysis/new",
+              }}
+            />
           ) : filteredClients.length === 0 ? (
             <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-6 py-14 text-center">
               <p className="text-base font-semibold" style={{ color: NAVY }}>

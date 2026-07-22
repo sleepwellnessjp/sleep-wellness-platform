@@ -2,10 +2,12 @@
 -- create_client_with_profile / ensure_client_profile
 -- Migration: 20260722150000_create_client_with_profile
 -- Extended: 20260722160000_client_tags (p_tags)
+-- Updated: 20260722190000_clients_instructor_id
 --
--- clients は最小情報のみ（id / owner_id / name / name_kana / memo / tags / created_at）。
+-- clients は最小情報のみ（id / instructor_id / name / name_kana / memo / tags / created_at）。
 -- 年齢・身長・体重・性別・職業・健康情報は client_profiles へ。
 -- 作成は単一トランザクションで行い、途中失敗時はロールバックする。
+-- instructor_id は auth.uid()（ログイン中の認定講師）を自動保存する。
 -- ============================================================
 
 create or replace function public.create_client_with_profile(
@@ -40,11 +42,11 @@ begin
   from unnest(v_tags) as t
   where btrim(t) <> '';
 
-  -- 同名（owner 内・大小無視・空白正規化）があれば既存を返し、profile を確保
+  -- 同名（講師内・大小無視・空白正規化）があれば既存を返し、profile を確保
   select c.*
   into v_client
   from public.clients c
-  where c.owner_id = v_uid
+  where c.instructor_id = v_uid
     and lower(regexp_replace(btrim(c.name), '\s+', ' ', 'g'))
       = lower(regexp_replace(v_name, '\s+', ' ', 'g'))
   order by c.created_at asc
@@ -62,7 +64,7 @@ begin
     return v_client;
   end if;
 
-  insert into public.clients (owner_id, name, name_kana, memo, tags)
+  insert into public.clients (instructor_id, name, name_kana, memo, tags)
   values (v_uid, v_name, v_kana, v_memo, v_tags)
   returning * into v_client;
 
@@ -78,7 +80,7 @@ end;
 $$;
 
 comment on function public.create_client_with_profile(text, text, text, text[]) is
-  'clients（最小カラム + tags）と空の client_profiles を同一トランザクションで作成。失敗時はロールバック。';
+  'clients（instructor_id = auth.uid()）と空の client_profiles を同一トランザクションで作成。失敗時はロールバック。';
 
 create or replace function public.ensure_client_profile(
   p_client_id uuid
@@ -101,7 +103,7 @@ begin
   into v_client
   from public.clients c
   where c.id = p_client_id
-    and c.owner_id = v_uid;
+    and c.instructor_id = v_uid;
 
   if not found then
     raise exception 'Client not found';
@@ -130,7 +132,7 @@ end;
 $$;
 
 comment on function public.ensure_client_profile(uuid) is
-  'client_profiles が無ければ空行を作成して返す。';
+  'client_profiles が無ければ空行を作成して返す。担当講師のクライアントのみ。';
 
 revoke all on function public.create_client_with_profile(text, text, text, text[]) from public;
 grant execute on function public.create_client_with_profile(text, text, text, text[]) to authenticated;

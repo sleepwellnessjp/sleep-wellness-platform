@@ -17,12 +17,15 @@ create table if not exists public.profiles (
 -- ============================================================
 -- clients
 -- ============================================================
--- App 書き込み対象（最小）: id / owner_id / name / name_kana(furigana) / memo / tags / created_at
+-- App 書き込み対象（最小）: id / instructor_id / name / name_kana(furigana) / memo / tags / created_at
+-- instructor_id = 担当認定講師の auth.users.id（Supabase Auth ログインユーザー）
 -- 年齢・身長・体重・性別・職業・健康情報は client_profiles へ保存する。
 -- 下記の birth_date / gender / email 等は後方互換のためのレガシー列（新規書き込みしない）。
 create table if not exists public.clients (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users (id) on delete cascade,
+  instructor_id uuid not null references auth.users (id) on delete cascade,
+  -- クライアント本人の auth.users.id（マイページ /client 用）。migration 20260722200000
+  -- auth_user_id uuid references auth.users (id) on delete set null,
   name text not null,
   name_kana text,
   birth_date date,
@@ -36,8 +39,8 @@ create table if not exists public.clients (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists clients_owner_id_idx on public.clients (owner_id);
-create index if not exists clients_owner_updated_idx on public.clients (owner_id, updated_at desc);
+create index if not exists clients_instructor_id_idx on public.clients (instructor_id);
+create index if not exists clients_instructor_updated_idx on public.clients (instructor_id, updated_at desc);
 create index if not exists clients_tags_gin_idx on public.clients using gin (tags);
 
 -- ============================================================
@@ -166,23 +169,23 @@ create policy "profiles_insert_own"
 drop policy if exists "clients_select_own" on public.clients;
 create policy "clients_select_own"
   on public.clients for select
-  using (auth.uid() = owner_id);
+  using (auth.uid() = instructor_id);
 
 drop policy if exists "clients_insert_own" on public.clients;
 create policy "clients_insert_own"
   on public.clients for insert
-  with check (auth.uid() = owner_id);
+  with check (auth.uid() = instructor_id);
 
 drop policy if exists "clients_update_own" on public.clients;
 create policy "clients_update_own"
   on public.clients for update
-  using (auth.uid() = owner_id)
-  with check (auth.uid() = owner_id);
+  using (auth.uid() = instructor_id)
+  with check (auth.uid() = instructor_id);
 
 drop policy if exists "clients_delete_own" on public.clients;
 create policy "clients_delete_own"
   on public.clients for delete
-  using (auth.uid() = owner_id);
+  using (auth.uid() = instructor_id);
 
 drop policy if exists "analyses_select_own" on public.analyses;
 create policy "analyses_select_own"

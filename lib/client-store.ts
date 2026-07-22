@@ -1,4 +1,5 @@
 import {
+  computeHomeworkAchievement,
   normalizeMetrics,
   normalizeRecommendationsUntilNext,
   type AnalysisMetrics,
@@ -1110,7 +1111,7 @@ export function recordPdfDownload(
   writeClients(clients);
 }
 
-/** ローカル保存の分析結果に「次回までのおすすめ」を反映 */
+/** ローカル保存の分析結果に「AI宿題」を反映（達成率も保存） */
 export function updateAnalysisRecommendationsUntilNext(
   analysisId: string,
   goals: NextActionGoal[],
@@ -1119,6 +1120,7 @@ export function updateAnalysisRecommendationsUntilNext(
 
   const clients = loadClients();
   const normalized = normalizeRecommendationsUntilNext(goals);
+  const homeworkAchievement = computeHomeworkAchievement(normalized);
   let found = false;
 
   for (const client of clients) {
@@ -1127,6 +1129,7 @@ export function updateAnalysisRecommendationsUntilNext(
     analysis.result = {
       ...analysis.result,
       recommendationsUntilNext: normalized,
+      homeworkAchievement,
       analysisId,
       clientId: client.id,
     };

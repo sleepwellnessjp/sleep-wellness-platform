@@ -66,17 +66,28 @@ export default function ClientComparePage() {
   const [afterId, setAfterId] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!id) {
       setClient(null);
       setReady(true);
       return;
     }
 
+    setReady(false);
+
     const refresh = async () => {
-      setClient(await getClientById(id));
+      try {
+        const next = await getClientById(id);
+        if (!cancelled) setClient(next);
+      } catch (error) {
+        console.error("[clients/compare] refresh failed:", error);
+        if (!cancelled) setClient(null);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     };
     void refresh();
-    setReady(true);
 
     const onUpdate = () => {
       void refresh();
@@ -84,12 +95,13 @@ export default function ClientComparePage() {
     window.addEventListener("storage", onUpdate);
     window.addEventListener("swij-clients-updated", onUpdate);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onUpdate);
       window.removeEventListener("swij-clients-updated", onUpdate);
     };
   }, [id]);
 
-  const analyses = client?.analyses ?? [];
+  const analyses = useMemo(() => client?.analyses ?? [], [client]);
   const canCompare = analyses.length >= 2;
 
   useEffect(() => {

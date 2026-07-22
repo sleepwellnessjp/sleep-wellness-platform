@@ -6,7 +6,10 @@ import AiFollowAlerts, {
   type AiFollowAlertItem,
 } from "@/components/AiFollowAlerts";
 import InstructorNav from "@/components/InstructorNav";
+import OnboardingGuide from "@/components/OnboardingGuide";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
+import EmptyState from "@/components/ui/EmptyState";
+import { ListSkeleton } from "@/components/ui/Skeleton";
 import { buildAiFollowAlerts } from "@/lib/ai-follow-alerts";
 import { usePlatformMe } from "@/lib/platform/use-platform-me";
 import {
@@ -15,6 +18,14 @@ import {
   listTodayOwnerAppointments,
   type ClientAppointment,
 } from "@/lib/repositories/client-appointments-repository";
+import {
+  filterTodaysHomeworks,
+  formatHomeworkDate,
+  homeworkStatusLabel,
+  homeworkStatusOf,
+  listClientHomeworks,
+  type ClientHomework,
+} from "@/lib/repositories/client-homeworks-repository";
 import {
   formatDisplayDate,
   loadClients,
@@ -26,6 +37,7 @@ import {
   type RecentAnalysisItem,
 } from "@/lib/dashboard-stats";
 import { SWIJ_NEWS_ITEMS } from "@/lib/swij-news";
+import { homeModulesForRole } from "@/lib/os/navigation";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -43,6 +55,12 @@ type ClientPreview = {
   name: string;
   latestSleepScore: number | null;
   latestAnalysisDate: string | null;
+};
+
+type HomeworkPreview = {
+  homework: ClientHomework;
+  clientId: string;
+  clientName: string;
 };
 
 function emptyStats(): DashboardStats {
@@ -209,6 +227,9 @@ export default function InstructorDashboardPage() {
   const [todaySchedule, setTodaySchedule] = useState<TodayScheduleItem[]>([]);
   const [alerts, setAlerts] = useState<AiFollowAlertItem[]>([]);
   const [clientPreviews, setClientPreviews] = useState<ClientPreview[]>([]);
+  const [homeworkPreviews, setHomeworkPreviews] = useState<HomeworkPreview[]>(
+    [],
+  );
   const [ready, setReady] = useState(false);
   const { data: platformMe } = usePlatformMe();
 
@@ -226,18 +247,36 @@ export default function InstructorDashboardPage() {
       setTodaySchedule(buildTodaySchedule(appointments, nameById));
       setAlerts(buildDashboardAlerts(clients));
       setClientPreviews(buildClientPreviews(clients));
+
+      const homeworkPairs = await Promise.all(
+        clients.slice(0, 12).map(async (client) => {
+          try {
+            const items = await listClientHomeworks(client.id);
+            return filterTodaysHomeworks(items).map((homework) => ({
+              homework,
+              clientId: client.id,
+              clientName: client.name,
+            }));
+          } catch {
+            return [] as HomeworkPreview[];
+          }
+        }),
+      );
+      setHomeworkPreviews(homeworkPairs.flat().slice(0, 8));
     } catch (error) {
       console.error("[dashboard] loadClients failed:", error);
       setStats(emptyStats());
       setTodaySchedule([]);
       setAlerts([]);
       setClientPreviews([]);
+      setHomeworkPreviews([]);
+    } finally {
+      setReady(true);
     }
   };
 
   useEffect(() => {
     void refresh();
-    setReady(true);
     const onUpdate = () => {
       void refresh();
     };
@@ -281,6 +320,7 @@ export default function InstructorDashboardPage() {
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
       <InstructorNav eyebrow="DASHBOARD" />
+      <OnboardingGuide enabled={ready} />
 
       <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
         <SchemaSetupBanner />
@@ -307,18 +347,51 @@ export default function InstructorDashboardPage() {
         </header>
 
         {!ready ? (
-          <p className="mt-16 py-10 text-center text-sm text-slate-400">
-            読み込み中...
-          </p>
+          <div className="mt-16">
+            <ListSkeleton rows={4} />
+          </div>
         ) : (
           <div className="mt-10 space-y-5 sm:mt-12 sm:space-y-6">
-            {/* 1. 今日の予定 */}
             <section
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "30ms" }}
+            >
+              <SectionHeader title="OS Home" eyebrow="SLEEP WELLNESS OS" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                {homeModulesForRole("instructor").map((module) => (
+                  <Link
+                    key={module.id}
+                    href={module.href}
+                    className="rounded-2xl bg-[#fafaf8] px-4 py-4 transition hover:bg-[#f5f4f0]"
+                  >
+                    <p
+                      className="text-[10px] font-semibold tracking-[0.16em]"
+                      style={{ color: GOLD }}
+                    >
+                      {module.eyebrow}
+                    </p>
+                    <p
+                      className="mt-2 text-[15px] font-semibold"
+                      style={{ color: NAVY }}
+                    >
+                      {module.title}
+                    </p>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                      {module.description}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+
+            {/* 1. 今日の予約 */}
+            <section
+              id="appointments"
               className={`animate-fade-up ${cardClassName()}`}
               style={{ animationDelay: "60ms" }}
             >
               <SectionHeader
-                title="今日の予定"
+                title="今日の予約"
                 eyebrow="SCHEDULE"
                 action={
                   <p
@@ -403,9 +476,16 @@ export default function InstructorDashboardPage() {
               <SectionHeader title="最近分析" eyebrow="RECENT" />
 
               {recentClients.length === 0 ? (
-                <p className="py-8 text-center text-sm leading-7 text-slate-400">
-                  まだ分析がありません。
-                </p>
+                <EmptyState
+                  compact
+                  illustration="analysis"
+                  title="まだ分析がありません"
+                  description="最初の睡眠分析を始めると、ここに最近の結果が表示されます。"
+                  primaryAction={{
+                    label: "新しい分析を作成",
+                    href: "/analysis/new",
+                  }}
+                />
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {recentClients.map((client) => (
@@ -440,17 +520,73 @@ export default function InstructorDashboardPage() {
               )}
             </section>
 
-            {/* 3. AIアラート */}
-            <AiFollowAlerts
-              className="animate-fade-up"
-              style={{ animationDelay: "180ms" }}
-              alerts={alerts}
-              title="AIアラート"
-              eyebrow="AI ALERT"
-              description="診断ではありません。今日フォローしたい着眼点です。"
-              emptyMessage="いま優先して見るアラートはありません。"
-              dividedHeader
-            />
+            {/* 2b. 今日の宿題確認 */}
+            <section
+              id="homework"
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "150ms" }}
+            >
+              <SectionHeader
+                title="今日の宿題確認"
+                eyebrow="HOMEWORK"
+                action={
+                  <p className="text-[12px] font-medium text-slate-400">
+                    {homeworkPreviews.length}件
+                  </p>
+                }
+              />
+              {homeworkPreviews.length === 0 ? (
+                <div className="rounded-2xl bg-[#fafaf8] px-4 py-8 text-center">
+                  <p className="text-sm leading-7 text-slate-500">
+                    本日確認すべき宿題はありません。
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {homeworkPreviews.map(({ homework, clientId, clientName }) => {
+                    const status = homeworkStatusOf(homework);
+                    return (
+                      <li key={homework.id}>
+                        <Link
+                          href={`/clients/${encodeURIComponent(clientId)}`}
+                          className="group flex items-center justify-between gap-4 py-3.5 first:pt-0 last:pb-0"
+                        >
+                          <div className="min-w-0">
+                            <p
+                              className="text-[15px] font-medium transition group-hover:opacity-70"
+                              style={{ color: NAVY }}
+                            >
+                              {toSanName(clientName)}
+                            </p>
+                            <p className="mt-0.5 truncate text-[12px] text-slate-400">
+                              {homework.title} · 期限{" "}
+                              {formatHomeworkDate(homework.dueDate)}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[12px] font-semibold text-slate-500">
+                            {homeworkStatusLabel(status)}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+
+            {/* 3. AI Instructor Insight */}
+            <div id="insight">
+              <AiFollowAlerts
+                className="animate-fade-up"
+                style={{ animationDelay: "180ms" }}
+                alerts={alerts}
+                title="AI Instructor Insight"
+                eyebrow="AI INSIGHT"
+                description="診断ではありません。今日フォローしたい着眼点です。"
+                emptyMessage="いま優先して見るインサイトはありません。"
+                dividedHeader
+              />
+            </div>
 
             {/* 4. Sleep Wellness Institute Japan News */}
             <section
@@ -510,13 +646,14 @@ export default function InstructorDashboardPage() {
               </ul>
             </section>
 
-            {/* 5. クライアント一覧 */}
+            {/* 5. 担当クライアント */}
             <section
+              id="clients"
               className={`animate-fade-up ${cardClassName()}`}
               style={{ animationDelay: "300ms" }}
             >
               <SectionHeader
-                title="クライアント一覧"
+                title="担当クライアント"
                 eyebrow="CLIENTS"
                 action={
                   <p className="text-[12px] font-medium text-slate-400">
@@ -526,9 +663,16 @@ export default function InstructorDashboardPage() {
               />
 
               {clientPreviews.length === 0 ? (
-                <p className="py-8 text-center text-sm leading-7 text-slate-400">
-                  まだクライアントがいません。
-                </p>
+                <EmptyState
+                  compact
+                  illustration="generic"
+                  title="まだクライアントがいません"
+                  description="新規登録からクライアントを追加しましょう。"
+                  primaryAction={{
+                    label: "クライアント一覧へ",
+                    href: "/clients",
+                  }}
+                />
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {clientPreviews.map((client) => (
