@@ -7,6 +7,15 @@ import {
   openaiErrorMessage,
 } from "@/lib/openai-helpers";
 import { normalizeMetrics, type AnalysisMetrics } from "@/lib/analysis-session";
+import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
+import type {
+  AnalysisDayContext,
+  ClientProfileSections,
+} from "@/lib/client-profiles/types";
+import {
+  buildAnalysisAiInput,
+  logAnalysisAiInputInDev,
+} from "@/lib/client-profiles/ai-input";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -77,6 +86,12 @@ type AnalyzeRequestBody = {
   lifestyle?: LifestyleData;
   images?: unknown;
   metrics?: Partial<AnalysisMetrics>;
+  /** 固定プロフィール（client_profiles）。当日情報と混在させない */
+  fixedProfile?: ClientProfileSections;
+  /** 当日情報（将来用） */
+  dayContext?: AnalysisDayContext;
+  /** 事前構築済み AI 入力 JSON（あれば優先利用） */
+  aiInput?: AnalysisAiInput;
 };
 
 const analysisSchema = {
@@ -278,6 +293,9 @@ function validateBody(body: unknown): {
   lifestyle: LifestyleData;
   images: string[];
   metrics?: AnalysisMetrics;
+  fixedProfile?: ClientProfileSections;
+  dayContext?: AnalysisDayContext;
+  aiInput?: AnalysisAiInput;
 } | {
   ok: false;
   message: string;
@@ -286,7 +304,8 @@ function validateBody(body: unknown): {
     return { ok: false, message: "リクエスト形式が正しくありません。" };
   }
 
-  const { lifestyle, images, metrics } = body as AnalyzeRequestBody;
+  const { lifestyle, images, metrics, fixedProfile, dayContext, aiInput } =
+    body as AnalyzeRequestBody;
 
   if (!lifestyle || typeof lifestyle !== "object" || Array.isArray(lifestyle)) {
     return { ok: false, message: "生活習慣データが不足しています。" };
@@ -309,7 +328,19 @@ function validateBody(body: unknown): {
       ? normalizeMetrics(metrics)
       : undefined;
 
-  return { ok: true, lifestyle, images, metrics: confirmed };
+  return {
+    ok: true,
+    lifestyle,
+    images,
+    metrics: confirmed,
+    fixedProfile:
+      fixedProfile && typeof fixedProfile === "object"
+        ? fixedProfile
+        : undefined,
+    dayContext:
+      dayContext && typeof dayContext === "object" ? dayContext : undefined,
+    aiInput: aiInput && typeof aiInput === "object" ? aiInput : undefined,
+  };
 }
 
 function formatYesNone(
@@ -536,6 +567,27 @@ export async function POST(request: Request) {
   const images = validated.images.map(normalizeImageDataUrl);
   const confirmedMetrics = validated.metrics;
 
+  const aiInput =
+    validated.aiInput ??
+    buildAnalysisAiInput({
+      analysisDate: lifestyle.measurementDate,
+      clientName: lifestyle.clientName,
+      soxaiMetrics: confirmedMetrics ?? null,
+      dayContext: validated.dayContext ?? null,
+      fixedProfile: validated.fixedProfile ?? null,
+    });
+
+  logAnalysisAiInputInDev(aiInput);
+
+  const fixedProfileBlock = aiInput.fixedProfileSummary
+    ? `【固定プロフィール要約（普段の傾向。当日データより優先度は低い。未記載は触れない・推測禁止）】
+${aiInput.fixedProfileSummary}
+
+【固定プロフィール構造化データ（未入力除外済み）】
+${JSON.stringify(aiInput.fixedProfile ?? {}, null, 2)}`
+    : `【固定プロフィール】
+未取得または未入力のため、固定プロフィールに基づく言及は行わない。`;
+
   try {
     const client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
@@ -566,7 +618,12 @@ ${formatConfirmedMetrics(confirmedMetrics)}
 Sleep Wellness Medical Report（睡眠ウェルネス改善レポート）を作成してください。
 数値の説明ではなく、改善につながる考察にしてください。テンプレート文章は禁止。単日データで断定しない。
 
+優先順位: SOXAI実測 > 当日情報 > 固定プロフィール > 気象 > 一般参考基準。
+固定プロフィールに無い項目は推測しない。
+
 ${metricsBlock}
+
+${fixedProfileBlock}
 
 【必ずこの6項目を空欄なく生成】
 ① summary＝総合評価（100〜200文字。睡眠全体を一言で評価。数値羅列禁止）
@@ -584,7 +641,7 @@ ${metricsBlock}
 - 年齢・性別の一般基準比較は参考値のみ。病名断定禁止
 - 年齢または性別が未入力なら「年齢・性別を考慮していない参考分析」と明記
 
-【クライアント基本情報＋生活習慣データ】
+【クライアント基本情報＋生活習慣データ（当日入力を含む）】
 ${formatLifestyle(lifestyle)}`,
             },
             ...(confirmedMetrics

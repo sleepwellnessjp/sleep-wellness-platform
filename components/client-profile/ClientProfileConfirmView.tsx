@@ -6,27 +6,25 @@ import InstructorNav from "@/components/InstructorNav";
 import { GOLD, NAVY } from "@/components/client-profile/form-ui";
 import { formatGenderLabel } from "@/lib/client-profile";
 import {
+  NUMBER_RULES,
+  PROFILE_LABELS,
+  PROFILE_SECTION_TITLES,
   attributeLabel,
+  displayProfileValue,
   type ClientProfileRecord,
 } from "@/lib/client-profiles";
 import { getClientProfile } from "@/lib/repositories/client-profile-repository";
 import { getClientById } from "@/lib/repositories/client-repository";
 
-function display(value: unknown): string {
-  if (value == null) return "—";
-  if (typeof value === "boolean") return value ? "はい" : "いいえ";
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value === "string") return value.trim() || "—";
-  if (Array.isArray(value)) {
-    const items = value
-      .map((item) => (typeof item === "string" ? item : ""))
-      .filter(Boolean);
-    return items.length ? items.join("、") : "—";
-  }
-  return "—";
-}
-
-function Row({ label, value }: { label: string; value: unknown }) {
+function Row({
+  label,
+  value,
+  numberRule,
+}: {
+  label: string;
+  value: unknown;
+  numberRule?: (typeof NUMBER_RULES)[keyof typeof NUMBER_RULES];
+}) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-2.5 last:border-b-0">
       <dt className="shrink-0 text-[13px] text-slate-400">{label}</dt>
@@ -34,7 +32,7 @@ function Row({ label, value }: { label: string; value: unknown }) {
         className="text-right text-[14px] font-medium tracking-[-0.02em]"
         style={{ color: NAVY }}
       >
-        {display(value)}
+        {displayProfileValue(value, { numberRule })}
       </dd>
     </div>
   );
@@ -133,6 +131,8 @@ export default function ClientProfileConfirmView({
   const attrLabels = (profile.work.environmentAttributeIds ?? []).map(
     attributeLabel,
   );
+  const temp = NUMBER_RULES.temperatureC;
+  const humidity = NUMBER_RULES.humidity;
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -157,245 +157,328 @@ export default function ClientProfileConfirmView({
           </p>
         </header>
 
-        <Block title="基本情報">
-          <Row label="氏名" value={profile.basic.fullName || name} />
-          <Row label="生年月日" value={profile.basic.birthDate} />
-          <Row label="年齢" value={profile.basic.ageYears} />
+        <Block title={PROFILE_SECTION_TITLES.basic}>
+          <Row label={PROFILE_LABELS.fullName} value={profile.basic.fullName || name} />
+          <Row label={PROFILE_LABELS.birthDate} value={profile.basic.birthDate} />
           <Row
-            label="性別"
+            label={PROFILE_LABELS.ageYears}
+            value={profile.basic.ageYears}
+            numberRule={NUMBER_RULES.age}
+          />
+          <Row
+            label={PROFILE_LABELS.gender}
             value={formatGenderLabel(profile.basic.gender) || profile.basic.gender}
           />
-          <Row label="身長 (cm)" value={profile.basic.heightCm} />
-          <Row label="体重 (kg)" value={profile.basic.weightKg} />
-          <Row label="BMI" value={profile.basic.bmi} />
-          <Row label="居住地域" value={profile.basic.residenceRegion} />
-          <Row label="勤務先地域" value={profile.basic.workplaceRegion} />
+          <Row
+            label={PROFILE_LABELS.heightCm}
+            value={profile.basic.heightCm}
+            numberRule={NUMBER_RULES.positive}
+          />
+          <Row
+            label={PROFILE_LABELS.weightKg}
+            value={profile.basic.weightKg}
+            numberRule={NUMBER_RULES.positive}
+          />
+          <Row
+            label={PROFILE_LABELS.bmi}
+            value={profile.basic.bmi}
+            numberRule={NUMBER_RULES.positive}
+          />
+          <Row label={PROFILE_LABELS.residenceRegion} value={profile.basic.residenceRegion} />
+          <Row label={PROFILE_LABELS.workplaceRegion} value={profile.basic.workplaceRegion} />
         </Block>
 
-        <Block title="職業・勤務形態">
+        <Block title={PROFILE_SECTION_TITLES.work}>
           <Row
-            label="職業"
+            label={PROFILE_LABELS.occupation}
             value={
-              profile.work.occupationCustom ||
-              profile.work.occupationPreset
+              profile.work.occupationCustom || profile.work.occupationPreset
             }
           />
-          <Row label="勤務形態" value={profile.work.workStyle} />
-          <Row label="勤務開始" value={profile.work.workStartTime} />
-          <Row label="勤務終了" value={profile.work.workEndTime} />
-          <Row label="週の勤務日数" value={profile.work.workDaysPerWeek} />
-          <Row label="夜勤回数" value={profile.work.nightShiftsPerMonth} />
-          <Row label="自覚ストレス" value={profile.work.workStressSelf} />
-        </Block>
-
-        <Block title="勤務環境属性">
-          <Row label="属性" value={attrLabels} />
-          <Row label="その他" value={profile.work.traitsOther} />
-        </Block>
-
-        <Block title="高温環境への曝露">
-          <Row label="高温環境" value={profile.heatExposure.worksInHeat} />
-          <Row label="種類" value={profile.heatExposure.heatEnvironmentTypes} />
-          <Row label="種類（自由）" value={profile.heatExposure.heatEnvironmentOther} />
-          <Row label="室温 (℃)" value={profile.heatExposure.roomTemperatureC} />
-          <Row label="湿度 (%)" value={profile.heatExposure.humidityPercent} />
+          <Row label={PROFILE_LABELS.workStyle} value={profile.work.workStyle} />
+          <Row label={PROFILE_LABELS.workStartTime} value={profile.work.workStartTime} />
+          <Row label={PROFILE_LABELS.workEndTime} value={profile.work.workEndTime} />
+          <Row label={PROFILE_LABELS.workDaysPerWeek} value={profile.work.workDaysPerWeek} />
           <Row
-            label="曝露時間 (分)"
+            label={PROFILE_LABELS.nightShiftsPerMonth}
+            value={profile.work.nightShiftsPerMonth}
+          />
+          <Row label={PROFILE_LABELS.workStressSelf} value={profile.work.workStressSelf} />
+        </Block>
+
+        <Block title={PROFILE_SECTION_TITLES.environment}>
+          <Row label={PROFILE_LABELS.environmentAttributes} value={attrLabels} />
+          <Row label={PROFILE_LABELS.environmentTraitsOther} value={profile.work.traitsOther} />
+        </Block>
+
+        <Block title={PROFILE_SECTION_TITLES.heat}>
+          <Row label={PROFILE_LABELS.worksInHeat} value={profile.heatExposure.worksInHeat} />
+          <Row
+            label={PROFILE_LABELS.heatEnvironmentTypes}
+            value={profile.heatExposure.heatEnvironmentTypes}
+          />
+          <Row
+            label={PROFILE_LABELS.heatEnvironmentOther}
+            value={profile.heatExposure.heatEnvironmentOther}
+          />
+          <Row
+            label={PROFILE_LABELS.heatRoomTemperatureC}
+            value={profile.heatExposure.roomTemperatureC}
+            numberRule={temp}
+          />
+          <Row
+            label={PROFILE_LABELS.heatHumidityPercent}
+            value={profile.heatExposure.humidityPercent}
+            numberRule={humidity}
+          />
+          <Row
+            label={PROFILE_LABELS.exposureDurationMinutes}
             value={profile.heatExposure.exposureDurationMinutes}
           />
-          <Row label="発汗量" value={profile.heatExposure.sweatAmount} />
+          <Row label={PROFILE_LABELS.sweatAmount} value={profile.heatExposure.sweatAmount} />
           <Row
-            label="水分摂取 (mL)"
+            label={PROFILE_LABELS.waterIntakeDuringWorkMl}
             value={profile.heatExposure.waterIntakeDuringWorkMl}
           />
-          <Row label="休憩回数" value={profile.heatExposure.breakCount} />
+          <Row label={PROFILE_LABELS.breakCount} value={profile.heatExposure.breakCount} />
           <Row
-            label="着替え"
+            label={PROFILE_LABELS.changesClothesAfterWork}
             value={profile.heatExposure.changesClothesAfterWork}
           />
-          <Row label="シャワー" value={profile.heatExposure.showerAfterWork} />
           <Row
-            label="クールダウン (分)"
+            label={PROFILE_LABELS.showerAfterWork}
+            value={profile.heatExposure.showerAfterWork}
+          />
+          <Row
+            label={PROFILE_LABELS.cooldownDurationMinutes}
             value={profile.heatExposure.cooldownDurationMinutes}
           />
           <Row
-            label="すぐ移動"
+            label={PROFILE_LABELS.movesImmediatelyAfterWork}
             value={profile.heatExposure.movesImmediatelyAfterWork}
           />
         </Block>
 
-        <Block title="通勤">
-          <Row label="徒歩 (分)" value={profile.commute.walkOneWayMinutes} />
-          <Row label="自転車 (分)" value={profile.commute.bicycleOneWayMinutes} />
-          <Row label="電車 (分)" value={profile.commute.trainOneWayMinutes} />
-          <Row label="バス (分)" value={profile.commute.busOneWayMinutes} />
-          <Row label="車 (分)" value={profile.commute.carOneWayMinutes} />
+        <Block title={PROFILE_SECTION_TITLES.commute}>
+          <Row label={PROFILE_LABELS.walkOneWayMinutes} value={profile.commute.walkOneWayMinutes} />
           <Row
-            label="バイク (分)"
+            label={PROFILE_LABELS.bicycleOneWayMinutes}
+            value={profile.commute.bicycleOneWayMinutes}
+          />
+          <Row label={PROFILE_LABELS.trainOneWayMinutes} value={profile.commute.trainOneWayMinutes} />
+          <Row label={PROFILE_LABELS.busOneWayMinutes} value={profile.commute.busOneWayMinutes} />
+          <Row label={PROFILE_LABELS.carOneWayMinutes} value={profile.commute.carOneWayMinutes} />
+          <Row
+            label={PROFILE_LABELS.motorcycleOneWayMinutes}
             value={profile.commute.motorcycleOneWayMinutes}
           />
-          <Row label="乗り換え" value={profile.commute.transferCount} />
-          <Row label="通勤日数" value={profile.commute.commuteDaysPerWeek} />
-          <Row label="混雑" value={profile.commute.crowdingLevel} />
-          <Row label="通勤ストレス" value={profile.commute.commuteStressSelf} />
+          <Row label={PROFILE_LABELS.transferCount} value={profile.commute.transferCount} />
+          <Row
+            label={PROFILE_LABELS.commuteDaysPerWeek}
+            value={profile.commute.commuteDaysPerWeek}
+          />
+          <Row label={PROFILE_LABELS.crowdingLevel} value={profile.commute.crowdingLevel} />
+          <Row
+            label={PROFILE_LABELS.commuteStressSelf}
+            value={profile.commute.commuteStressSelf}
+          />
         </Block>
 
-        <Block title="生活習慣">
-          <Row label="飲酒頻度" value={profile.lifestyle.drinkingFrequency} />
+        <Block title={PROFILE_SECTION_TITLES.lifestyle}>
           <Row
-            label="飲酒量"
+            label={PROFILE_LABELS.drinkingFrequency}
+            value={profile.lifestyle.drinkingFrequency}
+          />
+          <Row
+            label={PROFILE_LABELS.drinkingAmountPerOccasion}
             value={profile.lifestyle.drinkingAmountPerOccasion}
           />
-          <Row label="喫煙" value={profile.lifestyle.smokingType} />
+          <Row label={PROFILE_LABELS.smokingType} value={profile.lifestyle.smokingType} />
           <Row
-            label="カフェイン種類"
+            label={PROFILE_LABELS.caffeineType}
             value={profile.caffeine.entries?.[0]?.type}
           />
           <Row
-            label="カフェイン量"
+            label={PROFILE_LABELS.caffeineAmount}
             value={profile.caffeine.entries?.[0]?.amountNote}
           />
           <Row
-            label="最後の摂取時刻"
+            label={PROFILE_LABELS.caffeineLastIntakeTime}
             value={profile.caffeine.entries?.[0]?.lastIntakeTimeTypical}
           />
           <Row
-            label="デカフェ"
+            label={PROFILE_LABELS.caffeineDecaf}
             value={profile.caffeine.entries?.[0]?.isDecaf}
           />
         </Block>
 
-        <Block title="水分">
-          <Row label="水 (mL)" value={profile.hydration.waterMl} />
-          <Row label="お茶 (mL)" value={profile.hydration.teaMl} />
-          <Row label="コーヒー・紅茶 (mL)" value={profile.hydration.coffeeTeaMl} />
-          <Row label="スポーツドリンク (mL)" value={profile.hydration.sportsDrinkMl} />
-          <Row label="アルコール (mL)" value={profile.hydration.alcoholMl} />
-          <Row label="その他 (mL)" value={profile.hydration.otherBeverageMl} />
-          <Row label="総水分量 (mL)" value={profile.hydration.totalFluidMl} />
+        <Block title={PROFILE_SECTION_TITLES.hydration}>
+          <Row label={PROFILE_LABELS.hydrationWaterMl} value={profile.hydration.waterMl} />
+          <Row label={PROFILE_LABELS.hydrationTeaMl} value={profile.hydration.teaMl} />
+          <Row label={PROFILE_LABELS.hydrationCoffeeTeaMl} value={profile.hydration.coffeeTeaMl} />
           <Row
-            label="就寝前2時間 (mL)"
+            label={PROFILE_LABELS.hydrationSportsDrinkMl}
+            value={profile.hydration.sportsDrinkMl}
+          />
+          <Row label={PROFILE_LABELS.hydrationAlcoholMl} value={profile.hydration.alcoholMl} />
+          <Row label={PROFILE_LABELS.hydrationOtherMl} value={profile.hydration.otherBeverageMl} />
+          <Row label={PROFILE_LABELS.hydrationTotalMl} value={profile.hydration.totalFluidMl} />
+          <Row
+            label={PROFILE_LABELS.preSleep2hFluidMl}
             value={profile.hydration.preSleep2hFluidMl}
           />
-          <Row label="夜間頻尿" value={profile.hydration.nocturia} />
+          <Row label={PROFILE_LABELS.nocturia} value={profile.hydration.nocturia} />
           <Row
-            label="夜間排尿回数"
+            label={PROFILE_LABELS.nighttimeUrinationCount}
             value={profile.hydration.nighttimeUrinationCount}
           />
         </Block>
 
-        <Block title="運動">
-          <Row label="頻度" value={profile.exercise.frequency} />
-          <Row label="種類" value={profile.exercise.types} />
-          <Row label="種類（自由）" value={profile.exercise.typeOther} />
-          <Row label="時間 (分)" value={profile.exercise.durationMinutes} />
-          <Row label="強度" value={profile.exercise.intensity} />
-          <Row label="終了時刻" value={profile.exercise.endTimeTypical} />
-          <Row label="高温環境" value={profile.exercise.inHeatEnvironment} />
-          <Row label="発汗量" value={profile.exercise.sweatAmount} />
-          <Row label="水分補給" value={profile.exercise.fluidAfterExercise} />
-          <Row label="着替え" value={profile.exercise.changesClothesAfter} />
-          <Row label="シャワー" value={profile.exercise.showerAfter} />
+        <Block title={PROFILE_SECTION_TITLES.exercise}>
+          <Row label={PROFILE_LABELS.exerciseFrequency} value={profile.exercise.frequency} />
+          <Row label={PROFILE_LABELS.exerciseTypes} value={profile.exercise.types} />
+          <Row label={PROFILE_LABELS.exerciseTypeOther} value={profile.exercise.typeOther} />
           <Row
-            label="クールダウン (分)"
+            label={PROFILE_LABELS.exerciseDurationMinutes}
+            value={profile.exercise.durationMinutes}
+          />
+          <Row label={PROFILE_LABELS.exerciseIntensity} value={profile.exercise.intensity} />
+          <Row label={PROFILE_LABELS.exerciseEndTime} value={profile.exercise.endTimeTypical} />
+          <Row label={PROFILE_LABELS.exerciseInHeat} value={profile.exercise.inHeatEnvironment} />
+          <Row label={PROFILE_LABELS.exerciseSweatAmount} value={profile.exercise.sweatAmount} />
+          <Row
+            label={PROFILE_LABELS.fluidAfterExercise}
+            value={profile.exercise.fluidAfterExercise}
+          />
+          <Row
+            label={PROFILE_LABELS.changesClothesAfterExercise}
+            value={profile.exercise.changesClothesAfter}
+          />
+          <Row
+            label={PROFILE_LABELS.showerAfterExercise}
+            value={profile.exercise.showerAfter}
+          />
+          <Row
+            label={PROFILE_LABELS.exerciseCooldownMinutes}
             value={profile.exercise.cooldownDurationMinutes}
           />
           <Row
-            label="すぐ移動"
+            label={PROFILE_LABELS.movesImmediatelyAfterExercise}
             value={profile.exercise.movesImmediatelyAfter}
           />
         </Block>
 
-        <Block title="健康情報">
-          <Row label="更年期" value={profile.health.menopause} />
-          <Row label="服薬" value={profile.health.medicationsNote} />
-          <Row label="睡眠薬" value={profile.health.sleepMedicationUse} />
-          <Row label="鼻づまり" value={profile.health.nasalCongestionHabitual} />
-          <Row label="花粉症" value={profile.health.pollenAllergy} />
-          <Row label="アレルギー" value={profile.health.allergies} />
-          <Row label="いびき" value={profile.health.snoring} />
+        <Block title={PROFILE_SECTION_TITLES.health}>
+          <Row label={PROFILE_LABELS.menopause} value={profile.health.menopause} />
+          <Row label={PROFILE_LABELS.medicationsNote} value={profile.health.medicationsNote} />
           <Row
-            label="睡眠時無呼吸"
+            label={PROFILE_LABELS.sleepMedicationUse}
+            value={profile.health.sleepMedicationUse}
+          />
+          <Row
+            label={PROFILE_LABELS.nasalCongestionHabitual}
+            value={profile.health.nasalCongestionHabitual}
+          />
+          <Row label={PROFILE_LABELS.pollenAllergy} value={profile.health.pollenAllergy} />
+          <Row label={PROFILE_LABELS.allergies} value={profile.health.allergies} />
+          <Row label={PROFILE_LABELS.snoring} value={profile.health.snoring} />
+          <Row
+            label={PROFILE_LABELS.sleepApneaDiagnosed}
             value={profile.health.sleepApneaDiagnosed}
           />
-          <Row label="高血圧" value={profile.health.hypertension} />
-          <Row label="糖尿病" value={profile.health.diabetes} />
-          <Row label="脂質異常症" value={profile.health.dyslipidemia} />
-          <Row label="心疾患" value={profile.health.heartDisease} />
-          <Row label="呼吸器疾患" value={profile.health.respiratoryDisease} />
-          <Row label="慢性疼痛" value={profile.health.chronicPain} />
-          <Row label="その他持病" value={profile.health.otherConditions} />
+          <Row label={PROFILE_LABELS.hypertension} value={profile.health.hypertension} />
+          <Row label={PROFILE_LABELS.diabetes} value={profile.health.diabetes} />
+          <Row label={PROFILE_LABELS.dyslipidemia} value={profile.health.dyslipidemia} />
+          <Row label={PROFILE_LABELS.heartDisease} value={profile.health.heartDisease} />
+          <Row
+            label={PROFILE_LABELS.respiratoryDisease}
+            value={profile.health.respiratoryDisease}
+          />
+          <Row label={PROFILE_LABELS.chronicPain} value={profile.health.chronicPain} />
+          <Row label={PROFILE_LABELS.otherConditions} value={profile.health.otherConditions} />
         </Block>
 
-        <Block title="睡眠・生活環境">
-          <Row label="就寝" value={profile.sleepEnvironment.typicalBedtime} />
-          <Row label="起床" value={profile.sleepEnvironment.typicalWakeTime} />
-          <Row label="昼寝" value={profile.sleepEnvironment.napHabit} />
+        <Block title={PROFILE_SECTION_TITLES.sleep}>
           <Row
-            label="日中の眠気"
+            label={PROFILE_LABELS.typicalBedtime}
+            value={profile.sleepEnvironment.typicalBedtime}
+          />
+          <Row
+            label={PROFILE_LABELS.typicalWakeTime}
+            value={profile.sleepEnvironment.typicalWakeTime}
+          />
+          <Row label={PROFILE_LABELS.napHabit} value={profile.sleepEnvironment.napHabit} />
+          <Row
+            label={PROFILE_LABELS.daytimeSleepiness}
             value={profile.sleepEnvironment.daytimeSleepiness}
           />
           <Row
-            label="睡眠満足度"
+            label={PROFILE_LABELS.sleepSatisfaction}
             value={profile.sleepEnvironment.sleepSatisfaction}
           />
-          <Row label="同居家族" value={profile.sleepEnvironment.cohabitants} />
+          <Row label={PROFILE_LABELS.cohabitants} value={profile.sleepEnvironment.cohabitants} />
           <Row
-            label="小さな子ども"
+            label={PROFILE_LABELS.youngChildren}
             value={profile.sleepEnvironment.youngChildren}
           />
-          <Row label="介護" value={profile.sleepEnvironment.caregiving} />
-          <Row label="ペット" value={profile.sleepEnvironment.pets} />
+          <Row label={PROFILE_LABELS.caregiving} value={profile.sleepEnvironment.caregiving} />
+          <Row label={PROFILE_LABELS.pets} value={profile.sleepEnvironment.pets} />
           <Row
-            label="自宅室温 (℃)"
+            label={PROFILE_LABELS.homeTemperatureC}
             value={profile.sleepEnvironment.homeTemperatureC}
+            numberRule={temp}
           />
           <Row
-            label="自宅湿度 (%)"
+            label={PROFILE_LABELS.homeHumidityPercent}
             value={profile.sleepEnvironment.homeHumidityPercent}
+            numberRule={humidity}
           />
           <Row
-            label="寝室室温 (℃)"
+            label={PROFILE_LABELS.bedroomBedtimeTemperatureC}
             value={profile.sleepEnvironment.bedroomBedtimeTemperatureC}
+            numberRule={temp}
           />
           <Row
-            label="寝室湿度 (%)"
+            label={PROFILE_LABELS.bedroomBedtimeHumidityPercent}
             value={profile.sleepEnvironment.bedroomBedtimeHumidityPercent}
+            numberRule={humidity}
           />
           <Row
-            label="仕事場室温 (℃)"
+            label={PROFILE_LABELS.workplaceTemperatureC}
             value={profile.sleepEnvironment.workplaceTemperatureC}
+            numberRule={temp}
           />
           <Row
-            label="仕事場湿度 (%)"
+            label={PROFILE_LABELS.workplaceHumidityPercent}
             value={profile.sleepEnvironment.workplaceHumidityPercent}
+            numberRule={humidity}
           />
           <Row
-            label="冷房"
+            label={PROFILE_LABELS.airConditioning}
             value={profile.sleepEnvironment.bedroomControls?.airConditioning}
           />
           <Row
-            label="暖房"
+            label={PROFILE_LABELS.heating}
             value={profile.sleepEnvironment.bedroomControls?.heating}
           />
           <Row
-            label="除湿"
+            label={PROFILE_LABELS.dehumidifier}
             value={profile.sleepEnvironment.bedroomControls?.dehumidifier}
           />
           <Row
-            label="加湿器"
+            label={PROFILE_LABELS.humidifier}
             value={profile.sleepEnvironment.bedroomControls?.humidifier}
           />
           <Row
-            label="扇風機"
+            label={PROFILE_LABELS.fan}
             value={profile.sleepEnvironment.bedroomControls?.fan}
           />
           <Row
-            label="窓を開けて寝る"
+            label={PROFILE_LABELS.windowOpen}
             value={profile.sleepEnvironment.bedroomControls?.windowOpen}
           />
           <Row
-            label="遮光カーテン"
+            label={PROFILE_LABELS.blackoutCurtain}
             value={profile.sleepEnvironment.bedroomControls?.blackoutCurtain}
           />
         </Block>

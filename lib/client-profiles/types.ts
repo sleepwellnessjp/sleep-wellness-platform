@@ -91,20 +91,20 @@ export const WORK_TRAIT_OPTIONS = [
   "スマートフォン作業",
   "対人対応が多い",
   "強い集中を必要とする",
-  "騒音環境",
+  "騒音がある",
   "屋外勤務",
-  "高温環境",
-  "高湿度環境",
-  "低温環境",
-  "乾燥環境",
-  "火、炉、オーブンの近く",
+  "高温環境（ホットヨガ・サウナ・厨房など）",
+  "湿度が高い",
+  "寒い環境",
+  "乾燥した環境",
+  "火・炉・オーブンの近く",
   "強い輻射熱",
-  "煙の多い環境",
-  "粉塵の多い環境",
+  "煙が多い",
+  "粉塵が多い",
   "夜間勤務",
   "早朝勤務",
   "休憩が取りにくい",
-  "勤務終了後すぐに移動する",
+  "終了後すぐに移動する",
   "その他",
 ] as const;
 
@@ -247,24 +247,36 @@ export type ClientProfileCommute = CommuteModeMinutes & {
 };
 
 // ---------------------------------------------------------------------------
-// 4. heatExposure
+// 4. heatExposure（固定＝普段の傾向。当日の実測は AnalysisDayContext）
 // ---------------------------------------------------------------------------
 
+/**
+ * 固定プロフィールの高温環境（普段の傾向）
+ * 当日の「その日にいた時間・その日の室温」などは day_context へ。
+ */
 export type ClientProfileHeatExposure = {
+  /** 普段、暑い環境で活動・勤務するか */
   worksInHeat?: boolean | null;
+  /** 暑い環境の種類（ホットヨガ・サウナ・厨房など） */
   heatEnvironmentTypes?: string[];
   heatEnvironmentOther?: string;
+  /** 普段、暑い環境にいる時間の目安（分）。当日分は day_context.heatActivityDurationMinutes */
   exposureDurationMinutes?: number | null;
+  /** 普段の活動場所の室温目安。当日分は day_context */
   roomTemperatureC?: number | null;
+  /** 普段の活動場所の湿度目安。当日分は day_context */
   humidityPercent?: number | null;
   indoorOutdoor?: IndoorOutdoor;
   nearFireOven?: boolean | null;
+  /** 普段のかく汗の量の目安 */
   sweatAmount?: string;
   waterIntakeDuringWorkMl?: number | null;
   breakCount?: number | null;
   changesClothesAfterWork?: boolean | null;
   showerAfterWork?: boolean | null;
+  /** 普段、涼しい場所で休む時間の目安。当日分は day_context */
   cooldownDurationMinutes?: number | null;
+  /** 普段、終了後すぐに移動するか。当日分は day_context.movedImmediatelyAfter */
   movesImmediatelyAfterWork?: boolean | null;
   minutesUntilMoveAfterWork?: number | null;
 };
@@ -454,6 +466,13 @@ export type ClientProfileRecord = ClientProfileSections & {
 // Day context（分析日ごと — 固定と混在させない）
 // ---------------------------------------------------------------------------
 
+/**
+ * 分析日ごとの当日情報（固定プロフィールと混在させない）
+ * 例: その日の飲酒量 / 運動 / 高温環境にいた時間 / 水分 / 室温・湿度 /
+ *     活動後すぐに移動したか / 鼻づまり / 自分で感じるストレス
+ *
+ * 今回はフォーム未実装。型と AI 入力結合のみ準備する。
+ */
 export type AnalysisDayContext = {
   schemaVersion?: number;
   /** 分析対象日 YYYY-MM-DD */
@@ -463,6 +482,7 @@ export type AnalysisDayContext = {
   weatherRegionCustom?: string;
   weatherRecordId?: string;
 
+  /** 当日の飲酒量など */
   previousDayAlcoholAmount?: string;
   caffeineLastIntakeTime?: string;
   waterIntakeMl?: number | null;
@@ -477,13 +497,17 @@ export type AnalysisDayContext = {
 
   exerciseSummary?: string;
   exerciseEndTime?: string;
+  /** 当日、高温環境にいた時間（分） */
   heatActivityDurationMinutes?: number | null;
   sweatAmount?: string;
   changedClothes?: boolean | null;
   showered?: boolean | null;
+  /** 当日、涼しい場所で休んだ時間（分） */
   cooldownDurationMinutes?: number | null;
+  /** 当日、終了後すぐに移動したか */
   movedImmediatelyAfter?: boolean | null;
 
+  /** 当日の室温・湿度 */
   homeTemperatureC?: number | null;
   homeHumidityPercent?: number | null;
   bedroomTemperatureC?: number | null;
@@ -497,8 +521,10 @@ export type AnalysisDayContext = {
    */
   environmentEvents?: DayContextEnvironmentEvent[];
 
+  /** 当日、自分で感じるストレス */
   stressSelf?: string;
   condition?: string;
+  /** 当日の鼻づまり */
   nasalCongestion?: string;
   medicationsToday?: string;
   notes?: string;

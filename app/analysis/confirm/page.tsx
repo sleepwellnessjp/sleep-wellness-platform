@@ -14,6 +14,10 @@ import {
   type ExtractionDraft,
   type MetricConflict,
 } from "@/lib/analysis-session";
+import {
+  buildAnalysisAiInput,
+  logAnalysisAiInputInDev,
+} from "@/lib/client-profiles";
 import { graphPanelCount } from "@/lib/soxai-graphs";
 import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
 import {
@@ -218,6 +222,20 @@ export default function ConfirmExtractionPage() {
       extractedMetrics: draft.extractedMetrics,
       graphs: draft.graphs,
       ocrConfidence: draft.ocrConfidence,
+      fixedProfile: draft.fixedProfile,
+      dayContext: draft.dayContext,
+      aiInput: (() => {
+        const aiInput = buildAnalysisAiInput({
+          analysisDate: draft.lifestyle.measurementDate,
+          clientId: draft.lifestyle.clientId,
+          clientName: draft.lifestyle.clientName,
+          soxaiMetrics: normalizeMetrics(confirmed),
+          dayContext: draft.dayContext ?? null,
+          fixedProfile: draft.fixedProfile ?? null,
+        });
+        logAnalysisAiInputInDev(aiInput);
+        return aiInput;
+      })(),
     });
     router.push("/analysis/loading");
   };

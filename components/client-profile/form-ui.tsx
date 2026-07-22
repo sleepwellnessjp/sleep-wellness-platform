@@ -1,6 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
+import {
+  htmlMaxForRule,
+  htmlMinForRule,
+  NUMBER_RULES,
+  parseOptionalNumber as parseValidatedNumber,
+  type NumberRule,
+} from "@/lib/client-profiles/validation";
+import { numberToInputValue } from "@/lib/client-profiles/display";
 
 export const NAVY = "#071426";
 export const GOLD = "#8a6a2d";
@@ -124,14 +132,20 @@ export function BoolSelect({
   );
 }
 
-export function parseOptionalNumber(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
+/** @deprecated use parseOptionalNumber(value, rule) */
+export function parseOptionalNumber(
+  value: string,
+  rule: NumberRule = NUMBER_RULES.nonNegative,
+): number | null {
+  return parseValidatedNumber(value, rule);
 }
 
-export function numberToInput(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "";
-  return String(value);
+export function numberToInput(
+  value: number | null | undefined,
+  rule: NumberRule = NUMBER_RULES.nonNegative,
+): string {
+  return numberToInputValue(value, rule);
 }
+
+export { NUMBER_RULES, htmlMinForRule, htmlMaxForRule };
+export type { NumberRule };

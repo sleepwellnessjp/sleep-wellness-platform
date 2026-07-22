@@ -16,6 +16,11 @@ import {
   normalizeVisibleReadings,
 } from "@/lib/soxai-reading-map";
 import type { MetricConfidenceMap } from "@/lib/soxai-merge";
+import type {
+  AnalysisDayContext,
+  ClientProfileSections,
+} from "@/lib/client-profiles/types";
+import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
 
 export type { AnalysisMetrics };
 export type { SoxaiGraphBundle };
@@ -96,6 +101,20 @@ export type AnalysisRequest = {
   graphs?: SoxaiGraphBundle;
   /** 項目別 OCR 信頼度 0–1 */
   ocrConfidence?: MetricConfidenceMap;
+  /**
+   * 選択クライアントの固定プロフィール（client_profiles）
+   * 当日情報と混在させない。未選択時は undefined
+   */
+  fixedProfile?: ClientProfileSections;
+  /**
+   * 分析日ごとの当日情報（将来フォーム用。今回は通常未設定）
+   */
+  dayContext?: AnalysisDayContext;
+  /**
+   * AI分析用の構造化入力（SOXAI + 当日 + 固定プロフィール）
+   * Medical / Visual / PDF が同じ分析結果を使うための準備
+   */
+  aiInput?: AnalysisAiInput;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -119,6 +138,10 @@ export type ExtractionDraft = {
   ocrConfidence?: MetricConfidenceMap;
   /** OCRで抽出したグラフ（Visual / PDF 共通） */
   graphs: SoxaiGraphBundle;
+  /** 選択クライアントの固定プロフィール（あれば） */
+  fixedProfile?: ClientProfileSections;
+  /** 当日情報（将来用。今回は通常未設定） */
+  dayContext?: AnalysisDayContext;
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -451,6 +474,8 @@ export function setExtractionDraft(draft: ExtractionDraft) {
       ? { ...draft.ocrConfidence }
       : undefined,
     graphs: normalizeGraphBundle(draft.graphs),
+    fixedProfile: draft.fixedProfile,
+    dayContext: draft.dayContext,
   };
 }
 
@@ -475,6 +500,9 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     ocrConfidence: request.ocrConfidence
       ? { ...request.ocrConfidence }
       : undefined,
+    fixedProfile: request.fixedProfile,
+    dayContext: request.dayContext,
+    aiInput: request.aiInput,
   };
   inFlightAnalysis = null;
 }

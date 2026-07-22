@@ -27,6 +27,11 @@ import {
   type ClientProfileBasics,
 } from "@/lib/client-profile";
 import {
+  normalizeClientProfileSections,
+  type ClientProfileSections,
+} from "@/lib/client-profiles";
+import { getClientProfile } from "@/lib/repositories/client-profile-repository";
+import {
   getClientById,
   getClientListItems,
   type ClientListItem,
@@ -660,6 +665,34 @@ function NewAnalysisPageInner() {
         );
       }
 
+      let fixedProfile: ClientProfileSections | undefined;
+      if (clientId) {
+        try {
+          const loaded = await getClientProfile(clientId);
+          if (loaded) {
+            fixedProfile = normalizeClientProfileSections(loaded);
+          }
+        } catch (profileError) {
+          console.error(
+            "[analysis/new] failed to load client_profiles:",
+            profileError,
+          );
+          // 固定プロフィール取得失敗でも分析は継続（Phase1 basics は lifestyle に残る）
+          fixedProfile = undefined;
+        }
+      }
+
+      if (process.env.NODE_ENV === "development" && fixedProfile) {
+        console.info(
+          "[analysis/new] fixed profile loaded for client",
+          clientId,
+          {
+            hasHeat: fixedProfile.heatExposure.worksInHeat,
+            attrCount: fixedProfile.work.environmentAttributeIds?.length ?? 0,
+          },
+        );
+      }
+
       setExtractionDraft({
         lifestyle,
         images,
@@ -668,6 +701,7 @@ function NewAnalysisPageInner() {
         conflicts,
         ocrConfidence: confidence,
         graphs,
+        fixedProfile,
       });
       router.push("/analysis/confirm");
     } catch (err) {
