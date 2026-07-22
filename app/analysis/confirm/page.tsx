@@ -486,6 +486,24 @@ export default function ConfirmExtractionPage() {
               </span>
             </p>
             <p className="mt-1 text-sm text-slate-500">
+              {[
+                draft.lifestyle.age?.trim()
+                  ? `${draft.lifestyle.age.trim()}歳`
+                  : null,
+                draft.lifestyle.gender === "female"
+                  ? "女性"
+                  : draft.lifestyle.gender === "male"
+                    ? "男性"
+                    : draft.lifestyle.gender === "other"
+                      ? "その他"
+                      : draft.lifestyle.gender === "unspecified"
+                        ? "回答しない"
+                        : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "年齢・性別未入力（参考分析）"}
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
               SOXAI画像 {draft.images.length} 枚 · 生活習慣データ付き
               {draft.lifestyle.clientId ? " · 既存クライアントに紐づけ" : ""}
             </p>

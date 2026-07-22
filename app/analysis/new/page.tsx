@@ -21,9 +21,16 @@ import {
   setExtractionDraft,
 } from "@/lib/analysis-session";
 import {
+  CLIENT_GENDER_OPTIONS,
+  emptyClientProfileBasics,
+  parseOptionalAge,
+  type ClientProfileBasics,
+} from "@/lib/client-profile";
+import {
   getClientById,
   getClientListItems,
   type ClientListItem,
+  type StoredClient,
 } from "@/lib/repositories/client-repository";
 import {
   collectedMetricKeys,
@@ -210,6 +217,20 @@ function composeAlcoholSummary(alcohol: {
   return parts.join(" / ");
 }
 
+function applyClientProfile(client: StoredClient): ClientProfileBasics {
+  return {
+    age: typeof client.age === "number" ? String(client.age) : "",
+    gender: client.gender ?? "",
+    heightCm: typeof client.heightCm === "number" ? String(client.heightCm) : "",
+    weightKg: typeof client.weightKg === "number" ? String(client.weightKg) : "",
+    medications: client.medications ?? "",
+    drinkingHabit: client.drinkingHabit ?? "",
+    exerciseHabit: client.exerciseHabit ?? "",
+    snoringNasal: client.snoringNasal ?? "",
+    medicalHistory: client.medicalHistory ?? "",
+  };
+}
+
 export default function NewAnalysisPage() {
   return (
     <Suspense
@@ -250,6 +271,13 @@ function NewAnalysisPageInner() {
   const [clientLocked, setClientLocked] = useState(Boolean(queryClientId));
   const [clientOptions, setClientOptions] = useState<ClientListItem[]>([]);
   const [clientsReady, setClientsReady] = useState(false);
+  const [profile, setProfile] = useState<ClientProfileBasics>(
+    emptyClientProfileBasics(),
+  );
+
+  const updateProfile = (key: keyof ClientProfileBasics, value: string) => {
+    setProfile((current) => ({ ...current, [key]: value }));
+  };
 
   const previewUrls = useMemo(
     () => files.map((file) => URL.createObjectURL(file)),
@@ -274,6 +302,7 @@ function NewAnalysisPageInner() {
             setClientId(client.id);
             setClientName(client.name);
             setClientLocked(true);
+            setProfile(applyClientProfile(client));
           } else {
             setClientId("");
             setClientLocked(false);
@@ -356,7 +385,7 @@ function NewAnalysisPageInner() {
     setError(null);
   };
 
-  const handleClientSelect = (value: string) => {
+  const handleClientSelect = async (value: string) => {
     if (!value) {
       setClientId("");
       setClientName("");
@@ -366,6 +395,12 @@ function NewAnalysisPageInner() {
     if (!selected) return;
     setClientId(selected.id);
     setClientName(selected.name);
+    try {
+      const full = await getClientById(selected.id);
+      if (full) setProfile(applyClientProfile(full));
+    } catch (loadError) {
+      console.error("[analysis/new] failed to load client profile:", loadError);
+    }
   };
 
   const updateOtherExercise = (
@@ -418,6 +453,16 @@ function NewAnalysisPageInner() {
       setError(
         "対象者名と測定日は必須です。クライアントを選択または入力してください。",
       );
+      return;
+    }
+
+    if (!profile.age.trim() || !profile.gender.trim()) {
+      setError("年齢と性別は必須です。クライアント基本情報を入力してください。");
+      return;
+    }
+
+    if (parseOptionalAge(profile.age) == null) {
+      setError("年齢は 0〜130 の数値で入力してください。");
       return;
     }
 
@@ -531,6 +576,15 @@ function NewAnalysisPageInner() {
         clientId: clientId || undefined,
         clientName: resolvedClientName,
         measurementDate,
+        age: profile.age.trim(),
+        gender: profile.gender.trim(),
+        heightCm: profile.heightCm.trim(),
+        weightKg: profile.weightKg.trim(),
+        medications: profile.medications.trim(),
+        drinkingHabit: profile.drinkingHabit.trim(),
+        exerciseHabit: profile.exerciseHabit.trim(),
+        snoringNasal: profile.snoringNasal.trim(),
+        medicalHistory: profile.medicalHistory.trim(),
         bedtime: "",
         wakeTime: "",
         exercise: otherExerciseSummary,
@@ -708,7 +762,9 @@ function NewAnalysisPageInner() {
                     <select
                       className={inputClass}
                       value={clientId}
-                      onChange={(event) => handleClientSelect(event.target.value)}
+                      onChange={(event) => {
+                        void handleClientSelect(event.target.value);
+                      }}
                       disabled={!clientsReady}
                     >
                       <option value="">
@@ -755,6 +811,172 @@ function NewAnalysisPageInner() {
                   </Field>
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* 00b CLIENT PROFILE */}
+          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+              <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                00 · PROFILE
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                クライアント基本情報
+              </h2>
+              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+                年齢・性別は分析精度のため必須です。身長・体重は推奨、その他は任意です。
+              </p>
+            </div>
+            <div className="space-y-8 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+              <FormGroup
+                title="必須"
+                description="Medical Report の評価で年齢・性別を考慮します"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="年齢" required>
+                    <input
+                      name="clientAge"
+                      type="number"
+                      min={0}
+                      max={130}
+                      inputMode="numeric"
+                      required
+                      className={inputClass}
+                      value={profile.age}
+                      onChange={(event) => updateProfile("age", event.target.value)}
+                      placeholder="例：42"
+                    />
+                  </Field>
+                  <Field label="性別" required>
+                    <select
+                      name="clientGender"
+                      required
+                      className={inputClass}
+                      value={profile.gender}
+                      onChange={(event) =>
+                        updateProfile("gender", event.target.value)
+                      }
+                    >
+                      <option value="">選択してください</option>
+                      {CLIENT_GENDER_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </FormGroup>
+
+              <FormGroup
+                title="推奨"
+                description="分かる範囲で入力すると、参考評価の精度が上がります"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="身長（cm）" optional>
+                    <input
+                      name="clientHeightCm"
+                      type="number"
+                      min={1}
+                      max={299}
+                      step="0.1"
+                      inputMode="decimal"
+                      className={inputClass}
+                      value={profile.heightCm}
+                      onChange={(event) =>
+                        updateProfile("heightCm", event.target.value)
+                      }
+                      placeholder="例：165"
+                    />
+                  </Field>
+                  <Field label="体重（kg）" optional>
+                    <input
+                      name="clientWeightKg"
+                      type="number"
+                      min={1}
+                      max={499}
+                      step="0.1"
+                      inputMode="decimal"
+                      className={inputClass}
+                      value={profile.weightKg}
+                      onChange={(event) =>
+                        updateProfile("weightKg", event.target.value)
+                      }
+                      placeholder="例：58"
+                    />
+                  </Field>
+                </div>
+              </FormGroup>
+
+              <FormGroup
+                title="任意"
+                description="日常の習慣・既往。当日の飲酒・運動・鼻づまりとは別に扱います"
+              >
+                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <Field label="服薬" optional>
+                    <input
+                      name="clientMedications"
+                      type="text"
+                      className={inputClass}
+                      value={profile.medications}
+                      onChange={(event) =>
+                        updateProfile("medications", event.target.value)
+                      }
+                      placeholder="例：なし / 睡眠導入剤 など"
+                    />
+                  </Field>
+                  <Field label="飲酒習慣" optional>
+                    <input
+                      name="clientDrinkingHabit"
+                      type="text"
+                      className={inputClass}
+                      value={profile.drinkingHabit}
+                      onChange={(event) =>
+                        updateProfile("drinkingHabit", event.target.value)
+                      }
+                      placeholder="例：週2回程度 / ほぼ飲まない"
+                    />
+                  </Field>
+                  <Field label="運動習慣" optional>
+                    <input
+                      name="clientExerciseHabit"
+                      type="text"
+                      className={inputClass}
+                      value={profile.exerciseHabit}
+                      onChange={(event) =>
+                        updateProfile("exerciseHabit", event.target.value)
+                      }
+                      placeholder="例：週3回ウォーキング"
+                    />
+                  </Field>
+                  <Field label="いびき・鼻づまり" optional>
+                    <input
+                      name="clientSnoringNasal"
+                      type="text"
+                      className={inputClass}
+                      value={profile.snoringNasal}
+                      onChange={(event) =>
+                        updateProfile("snoringNasal", event.target.value)
+                      }
+                      placeholder="例：いびきあり / 鼻づまりしやすい"
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="既往歴" optional>
+                      <textarea
+                        name="clientMedicalHistory"
+                        rows={3}
+                        className={textareaClass}
+                        value={profile.medicalHistory}
+                        onChange={(event) =>
+                          updateProfile("medicalHistory", event.target.value)
+                        }
+                        placeholder="例：特になし / 高血圧の指摘あり など（診断断定には使いません）"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </FormGroup>
             </div>
           </section>
 
@@ -1489,7 +1711,7 @@ function NewAnalysisPageInner() {
                 画像を読み取り、結果を確認する
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                必須：SOXAI画像（最大{MAX_FILES}枚）・対象者名・測定日。各画像を個別解析して統合後、確認画面へ進みます。
+                必須：SOXAI画像（最大{MAX_FILES}枚）・対象者名・測定日・年齢・性別。各画像を個別解析して統合後、確認画面へ進みます。
               </p>
 
               <button
