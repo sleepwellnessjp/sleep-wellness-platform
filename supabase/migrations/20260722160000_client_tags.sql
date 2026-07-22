@@ -1,13 +1,18 @@
 -- ============================================================
--- create_client_with_profile / ensure_client_profile
--- Migration: 20260722150000_create_client_with_profile
--- Extended: 20260722160000_client_tags (p_tags)
---
--- clients は最小情報のみ（id / owner_id / name / name_kana / memo / tags / created_at）。
--- 年齢・身長・体重・性別・職業・健康情報は client_profiles へ。
--- 作成は単一トランザクションで行い、途中失敗時はロールバックする。
+-- clients.tags — 講師向けラベル（検索・絞り込み用）
+-- Migration: 20260722160000_client_tags
 -- ============================================================
 
+alter table public.clients
+  add column if not exists tags text[] not null default '{}';
+
+comment on column public.clients.tags is
+  '講師向けクライアントタグ（例: 夜勤, 高血圧）。自由入力可。';
+
+create index if not exists clients_tags_gin_idx
+  on public.clients using gin (tags);
+
+-- create_client_with_profile に tags を追加
 create or replace function public.create_client_with_profile(
   p_name text,
   p_name_kana text default null,
@@ -35,12 +40,12 @@ begin
     raise exception 'Name is required';
   end if;
 
+  -- 空文字・前後空白を除去し、重複を排除
   select coalesce(array_agg(distinct btrim(t)), '{}')
   into v_tags
   from unnest(v_tags) as t
   where btrim(t) <> '';
 
-  -- 同名（owner 内・大小無視・空白正規化）があれば既存を返し、profile を確保
   select c.*
   into v_client
   from public.clients c
@@ -78,62 +83,12 @@ end;
 $$;
 
 comment on function public.create_client_with_profile(text, text, text, text[]) is
-  'clients（最小カラム + tags）と空の client_profiles を同一トランザクションで作成。失敗時はロールバック。';
+  'clients（最小カラム + tags）と空の client_profiles を同一トランザクションで作成。';
 
-create or replace function public.ensure_client_profile(
-  p_client_id uuid
-)
-returns public.client_profiles
-language plpgsql
-security invoker
-set search_path = public
-as $$
-declare
-  v_uid uuid := auth.uid();
-  v_client public.clients;
-  v_profile public.client_profiles;
-begin
-  if v_uid is null then
-    raise exception 'Not authenticated';
-  end if;
-
-  select c.*
-  into v_client
-  from public.clients c
-  where c.id = p_client_id
-    and c.owner_id = v_uid;
-
-  if not found then
-    raise exception 'Client not found';
-  end if;
-
-  select p.*
-  into v_profile
-  from public.client_profiles p
-  where p.client_id = p_client_id
-    and p.owner_id = v_uid;
-
-  if found then
-    return v_profile;
-  end if;
-
-  insert into public.client_profiles (client_id, owner_id, basic)
-  values (
-    v_client.id,
-    v_uid,
-    jsonb_build_object('fullName', v_client.name)
-  )
-  returning * into v_profile;
-
-  return v_profile;
-end;
-$$;
-
-comment on function public.ensure_client_profile(uuid) is
-  'client_profiles が無ければ空行を作成して返す。';
+-- 旧シグネチャ向け grant を整理し、新シグネチャを公開
+revoke all on function public.create_client_with_profile(text, text, text) from public;
+revoke all on function public.create_client_with_profile(text, text, text) from authenticated;
+drop function if exists public.create_client_with_profile(text, text, text);
 
 revoke all on function public.create_client_with_profile(text, text, text, text[]) from public;
 grant execute on function public.create_client_with_profile(text, text, text, text[]) to authenticated;
-
-revoke all on function public.ensure_client_profile(uuid) from public;
-grant execute on function public.ensure_client_profile(uuid) to authenticated;

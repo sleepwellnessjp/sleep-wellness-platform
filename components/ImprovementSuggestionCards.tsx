@@ -8,6 +8,7 @@ import {
   type ImprovementPriority,
   type ImprovementSuggestion,
 } from "@/lib/improvement-suggestions";
+import { formatImprovementStars } from "@/lib/improvement-priority";
 import type { StoredAnalysis } from "@/lib/client-store";
 import {
   createCustomMenuItem,
@@ -22,22 +23,17 @@ const PRIORITY_STYLE: Record<
   ImprovementPriority,
   { color: string; bg: string; border: string }
 > = {
-  最優先: {
+  今すぐ改善: {
     color: "#a33a3a",
     bg: "rgba(163, 58, 58, 0.08)",
     border: "rgba(163, 58, 58, 0.22)",
   },
-  高: {
+  今週改善: {
     color: "#b45a1a",
     bg: "rgba(180, 90, 26, 0.08)",
     border: "rgba(180, 90, 26, 0.24)",
   },
-  中: {
-    color: "#9a7b12",
-    bg: "rgba(154, 123, 18, 0.08)",
-    border: "rgba(154, 123, 18, 0.24)",
-  },
-  低: {
+  余裕があれば: {
     color: "#315f68",
     bg: "rgba(49, 95, 104, 0.08)",
     border: "rgba(49, 95, 104, 0.2)",
@@ -83,7 +79,10 @@ function SuggestionCard({
                 borderColor: priorityStyle.border,
               }}
             >
-              優先度 · {suggestion.priority}
+              <span className="mr-1.5 tracking-[0.06em]" aria-hidden>
+                {formatImprovementStars(suggestion.stars)}
+              </span>
+              {suggestion.priority}
             </span>
             <span className="rounded-full bg-[#071426]/5 px-3 py-1 text-[13px] font-semibold tracking-[-0.02em] text-[#071426]">
               {suggestion.currentValue}
@@ -197,7 +196,7 @@ export default function ImprovementSuggestionCards({
               AI改善提案
             </h2>
             <p className="mt-2 max-w-2xl text-[14px] leading-6 text-slate-500 sm:text-sm">
-              最新の分析データに基づくルールベースの改善提案です。カードから改善メニューへ追加できます。
+              効果が高い順に最大5件。すべてを一度に変える必要はありません。カードから改善メニューへ追加できます。
             </p>
           </div>
           <p

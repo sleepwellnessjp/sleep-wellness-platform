@@ -82,6 +82,7 @@ export type Database = {
           phone: string | null;
           registered_at: string | null;
           memo: string | null;
+          tags: string[];
           created_at: string;
           updated_at: string;
         };
@@ -96,6 +97,7 @@ export type Database = {
           phone?: string | null;
           registered_at?: string | null;
           memo?: string | null;
+          tags?: string[];
           created_at?: string;
           updated_at?: string;
         };
@@ -110,10 +112,114 @@ export type Database = {
           phone?: string | null;
           registered_at?: string | null;
           memo?: string | null;
+          tags?: string[];
           created_at?: string;
           updated_at?: string;
         };
         Relationships: [];
+      };
+      client_guidance_notes: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          content: string;
+          note_date: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          content: string;
+          note_date?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          content?: string;
+          note_date?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_guidance_notes_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_appointments: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          title: string;
+          start_date: string;
+          start_time: string | null;
+          duration_minutes: number;
+          time_zone: string;
+          location_type: string;
+          location: string;
+          description: string;
+          google_event_id: string | null;
+          google_calendar_id: string | null;
+          sync_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          title?: string;
+          start_date: string;
+          start_time?: string | null;
+          duration_minutes?: number;
+          time_zone?: string;
+          location_type?: string;
+          location?: string;
+          description?: string;
+          google_event_id?: string | null;
+          google_calendar_id?: string | null;
+          sync_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          title?: string;
+          start_date?: string;
+          start_time?: string | null;
+          duration_minutes?: number;
+          time_zone?: string;
+          location_type?: string;
+          location?: string;
+          description?: string;
+          google_event_id?: string | null;
+          google_calendar_id?: string | null;
+          sync_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_appointments_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       client_profiles: {
         Row: {
@@ -990,6 +1096,7 @@ export type Database = {
           p_name: string;
           p_name_kana?: string | null;
           p_memo?: string | null;
+          p_tags?: string[] | null;
         };
         Returns: Database["public"]["Tables"]["clients"]["Row"];
       };

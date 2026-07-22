@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import ClientTagsEditor from "@/components/ClientTagsEditor";
 import InstructorNav from "@/components/InstructorNav";
 import {
   Field,
@@ -19,6 +20,7 @@ export default function NewClientPage() {
   const [name, setName] = useState("");
   const [nameKana, setNameKana] = useState("");
   const [memo, setMemo] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -38,6 +40,7 @@ export default function NewClientPage() {
         name: trimmed,
         nameKana: nameKana.trim() || undefined,
         memo: memo.trim() || undefined,
+        tags,
         registeredAt: new Date().toISOString().slice(0, 10),
       });
 
@@ -99,6 +102,19 @@ export default function NewClientPage() {
               onChange={(event) => setNameKana(event.target.value)}
               placeholder="例：やまだ たろう"
             />
+          </Field>
+          <Field
+            label="タグ"
+            hint="一覧検索や絞り込みに使えます。自由入力も可能です。"
+          >
+            <div className="mt-2">
+              <ClientTagsEditor
+                value={tags}
+                onChange={setTags}
+                disabled={saving}
+                compact
+              />
+            </div>
           </Field>
           <Field label="担当者メモ">
             <textarea

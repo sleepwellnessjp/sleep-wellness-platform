@@ -112,10 +112,31 @@ OPENAI_API_KEY=sk-xxxxxxxx
 
 を実行してください。
 
-- `clients` … **最小情報のみ**（`id` / `owner_id` / `name` / `name_kana` / `memo` / `created_at`）
+- `clients` … **最小情報のみ**（`id` / `owner_id` / `name` / `name_kana` / `memo` / `tags` / `created_at`）
 - 年齢・身長・体重・性別・職業・健康情報 … `client_profiles`
 - `create_client_with_profile` … clients + 空 profile を同一トランザクションで作成（失敗時ロールバック）
 - `ensure_client_profile` … profile 未作成時に自動生成
+
+### 4-6. クライアントタグ（推奨・追加）
+
+`supabase/client-tags.sql`（または `supabase/migrations/20260722160000_client_tags.sql`）
+
+を実行してください。
+
+- `clients.tags` … `text[]`（例: 夜勤 / 高血圧 / 自由入力）
+- 一覧のテキスト検索・タグ絞り込みで利用
+- `create_client_with_profile` に `p_tags` を追加
+
+### 4-7. 指導メモ・次回予定（推奨・追加）
+
+`supabase/client-guidance-notes.sql`（または `supabase/migrations/20260722170000_client_guidance_notes.sql`）
+
+`supabase/client-appointments.sql`（または `supabase/migrations/20260722180000_client_appointments.sql`）
+
+を実行してください。
+
+- `client_guidance_notes` … クライアント詳細の日時付き指導メモ
+- `client_appointments` … 次回予定（日付・時刻・場所・メモ）。Google Calendar 連携用フィールド付き
 
 ---
 

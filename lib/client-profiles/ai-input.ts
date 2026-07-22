@@ -3,11 +3,13 @@
  *
  * 優先順位（高い順）:
  * 1. SOXAI 当日実測（confirmed metrics）
- * 2. 分析日ごとの当日情報（day_context）— 今回は未実装フォーム、空可
+ * 2. 分析日ごとの生活習慣（day_context / フォーム）
  * 3. クライアント固定プロフィール
- * 4. 気象データ — 将来
- * 5. 一般的な参考基準 — プロンプト側
+ * 4. 前回分析（比較用）
+ * 5. 気象データ — 将来
+ * 6. 一般的な参考基準 — プロンプト側
  *
+ * 分析出力は必ず 数値 → 【根拠】 → 改善提案 の順。
  * 未入力は除外。推測・断定しない。
  */
 
@@ -27,8 +29,32 @@ export type AnalysisAiInputPriority =
   | "soxai_measured"
   | "day_context"
   | "fixed_profile"
+  | "previous_analysis"
   | "weather"
   | "general_reference";
+
+/** 前回分析の要約（比較用。無い場合は省略） */
+export type PreviousAnalysisForAi = {
+  analysisDate: string;
+  sleepScore: number | null;
+  wellnessScore: number;
+  /** 主要メトリクスのみ（空除外） */
+  keyMetrics?: Partial<AnalysisMetrics>;
+  summary?: string;
+  /** 前回の AIカルテ（変化記録） */
+  karteSummary?: string;
+  /** @deprecated 旧レポート互換 */
+  evidence?: string[];
+  goodPoints?: string[];
+  /** 前回の改善提案テキスト（重要度ラベルなしの本文のみ） */
+  improvements?: string[];
+  nextComparisonPoints?: string[];
+  /**
+   * 前回の「次回までのおすすめ」（行動目標）。
+   * checked=true は達成として講師が記録したもの。
+   */
+  recommendationsUntilNext?: Array<{ text: string; checked: boolean }>;
+};
 
 export type AnalysisAiInput = {
   schemaVersion: 1;
@@ -38,15 +64,67 @@ export type AnalysisAiInput = {
   clientName?: string;
   /** 1. SOXAI 確認済みメトリクス（空項目は除外済み） */
   soxaiMetrics?: Partial<AnalysisMetrics>;
-  /** 2. 当日情報（空の場合は省略） */
+  /** 2. 当日の生活習慣（day_context / フォーム由来） */
   dayContext?: Partial<AnalysisDayContext>;
   /** 3. 固定プロフィール（未入力除外の構造化オブジェクト） */
   fixedProfile?: Record<string, unknown>;
   /** 固定プロフィールの短い事実要約（評価なし） */
   fixedProfileSummary?: string;
-  /** 4. 気象（将来） */
+  /** 4. 前回分析（比較用。初回は省略） */
+  previousAnalysis?: PreviousAnalysisForAi;
+  /** 5. 気象（将来） */
   weather?: Record<string, unknown>;
   notesForModel: string[];
+};
+
+/** 分析フォームの生活習慣入力（day_context への写像用） */
+export type LifestyleFormForDayContext = {
+  measurementDate?: string;
+  medications?: string;
+  yoga?: string;
+  yogaDone?: string;
+  yogaDuration?: string;
+  yogaTime?: string;
+  yogaNotes?: string;
+  pilates?: string;
+  pilatesDone?: string;
+  pilatesDuration?: string;
+  pilatesTime?: string;
+  pilatesNotes?: string;
+  exercise?: string;
+  otherExerciseDone?: string;
+  otherExerciseName?: string;
+  otherExerciseDuration?: string;
+  otherExerciseTime?: string;
+  otherExerciseNotes?: string;
+  bathing?: string;
+  alcohol?: string;
+  alcoholDrank?: string;
+  alcoholType?: string;
+  alcoholAmount?: string;
+  alcoholEndTime?: string;
+  alcoholNotes?: string;
+  caffeine?: string;
+  caffeineDone?: string;
+  caffeineType?: string;
+  caffeineAmount?: string;
+  caffeineTime?: string;
+  caffeineNotes?: string;
+  stress?: string;
+  meals?: string;
+  breakfastEaten?: string;
+  breakfastTime?: string;
+  breakfastContent?: string;
+  lunchEaten?: string;
+  lunchTime?: string;
+  lunchContent?: string;
+  dinnerEaten?: string;
+  dinnerTime?: string;
+  dinnerContent?: string;
+  work?: string;
+  condition?: string;
+  nasalCongestion?: string;
+  notes?: string;
 };
 
 function omitEmptyDeep(value: unknown): unknown {
@@ -247,6 +325,324 @@ function compactDayContext(
   return keys.length > 0 ? cleaned : undefined;
 }
 
+function joinFilled(parts: Array<string | undefined>, sep = " / "): string {
+  return parts
+    .map((p) => p?.trim())
+    .filter((p): p is string => Boolean(p))
+    .join(sep);
+}
+
+/**
+ * 分析フォームの生活習慣を AnalysisDayContext へ写像する。
+ * 既存 dayContext があればそちらを優先し、空欄のみフォームで補完。
+ */
+export function buildDayContextFromLifestyle(
+  lifestyle: LifestyleFormForDayContext | null | undefined,
+  existing?: AnalysisDayContext | null,
+): AnalysisDayContext | null {
+  if (!lifestyle && !existing) return null;
+
+  const yesNone = (value: string | undefined) => {
+    if (value === "yes") return "あり";
+    if (value === "none") return "なし";
+    return value?.trim() || undefined;
+  };
+
+  const alcoholAmount = joinFilled([
+    yesNone(lifestyle?.alcoholDrank),
+    lifestyle?.alcoholType,
+    lifestyle?.alcoholAmount,
+    lifestyle?.alcoholEndTime
+      ? `終了 ${lifestyle.alcoholEndTime.trim()}`
+      : undefined,
+    lifestyle?.alcoholNotes,
+    lifestyle?.alcohol,
+  ]);
+
+  const caffeineLast = joinFilled([
+    yesNone(lifestyle?.caffeineDone),
+    lifestyle?.caffeineType,
+    lifestyle?.caffeineAmount,
+    lifestyle?.caffeineTime,
+    lifestyle?.caffeineNotes,
+    lifestyle?.caffeine,
+  ]);
+
+  const exerciseParts = [
+    lifestyle?.yogaDone === "yes" || lifestyle?.yoga?.trim()
+      ? joinFilled([
+          "ヨガ",
+          lifestyle?.yogaDuration
+            ? `${lifestyle.yogaDuration.trim()}分`
+            : undefined,
+          lifestyle?.yogaTime,
+          lifestyle?.yogaNotes,
+          lifestyle?.yoga,
+        ])
+      : lifestyle?.yogaDone === "none"
+        ? "ヨガなし"
+        : undefined,
+    lifestyle?.pilatesDone === "yes" || lifestyle?.pilates?.trim()
+      ? joinFilled([
+          "ピラティス",
+          lifestyle?.pilatesDuration
+            ? `${lifestyle.pilatesDuration.trim()}分`
+            : undefined,
+          lifestyle?.pilatesTime,
+          lifestyle?.pilatesNotes,
+          lifestyle?.pilates,
+        ])
+      : lifestyle?.pilatesDone === "none"
+        ? "ピラティスなし"
+        : undefined,
+    lifestyle?.otherExerciseDone === "yes" || lifestyle?.exercise?.trim()
+      ? joinFilled([
+          lifestyle?.otherExerciseName || "その他運動",
+          lifestyle?.otherExerciseDuration
+            ? `${lifestyle.otherExerciseDuration.trim()}分`
+            : undefined,
+          lifestyle?.otherExerciseTime,
+          lifestyle?.otherExerciseNotes,
+          lifestyle?.exercise,
+        ])
+      : lifestyle?.otherExerciseDone === "none"
+        ? "その他運動なし"
+        : undefined,
+    lifestyle?.bathing?.trim()
+      ? `入浴: ${lifestyle.bathing.trim()}`
+      : undefined,
+    lifestyle?.work?.trim() ? `仕事: ${lifestyle.work.trim()}` : undefined,
+  ].filter(Boolean) as string[];
+
+  const mealsFromForm = [
+    {
+      label: "朝食",
+      eaten: yesNone(lifestyle?.breakfastEaten),
+      time: lifestyle?.breakfastTime?.trim() || undefined,
+      content: lifestyle?.breakfastContent?.trim() || undefined,
+    },
+    {
+      label: "昼食",
+      eaten: yesNone(lifestyle?.lunchEaten),
+      time: lifestyle?.lunchTime?.trim() || undefined,
+      content: lifestyle?.lunchContent?.trim() || undefined,
+    },
+    {
+      label: "夕食",
+      eaten: yesNone(lifestyle?.dinnerEaten),
+      time: lifestyle?.dinnerTime?.trim() || undefined,
+      content: lifestyle?.dinnerContent?.trim() || undefined,
+    },
+  ].filter((m) => m.eaten || m.time || m.content);
+
+  const fromForm: AnalysisDayContext = {
+    schemaVersion: 1,
+    analysisDate: lifestyle?.measurementDate?.trim() || undefined,
+    previousDayAlcoholAmount: alcoholAmount || undefined,
+    caffeineLastIntakeTime: caffeineLast || undefined,
+    meals:
+      mealsFromForm.length > 0
+        ? mealsFromForm
+        : lifestyle?.meals?.trim()
+          ? [{ label: "食事", content: lifestyle.meals.trim() }]
+          : undefined,
+    exerciseSummary:
+      exerciseParts.length > 0 ? exerciseParts.join("。") : undefined,
+    exerciseEndTime:
+      joinFilled([
+        lifestyle?.otherExerciseTime,
+        lifestyle?.yogaTime,
+        lifestyle?.pilatesTime,
+      ]) || undefined,
+    stressSelf: lifestyle?.stress?.trim() || undefined,
+    condition: lifestyle?.condition?.trim() || undefined,
+    nasalCongestion: lifestyle?.nasalCongestion?.trim() || undefined,
+    medicationsToday: lifestyle?.medications?.trim() || undefined,
+    notes: lifestyle?.notes?.trim() || undefined,
+  };
+
+  const prefer = <T,>(a: T | undefined | null, b: T | undefined | null): T | undefined => {
+    if (a === undefined || a === null || a === "") return b ?? undefined;
+    return a;
+  };
+
+  const result: AnalysisDayContext = {
+    schemaVersion: 1,
+    analysisDate: prefer(existing?.analysisDate, fromForm.analysisDate),
+    weatherRegionChoice: existing?.weatherRegionChoice,
+    weatherRegionCustom: existing?.weatherRegionCustom,
+    weatherRecordId: existing?.weatherRecordId,
+    previousDayAlcoholAmount: prefer(
+      existing?.previousDayAlcoholAmount,
+      fromForm.previousDayAlcoholAmount,
+    ),
+    caffeineLastIntakeTime: prefer(
+      existing?.caffeineLastIntakeTime,
+      fromForm.caffeineLastIntakeTime,
+    ),
+    waterIntakeMl: existing?.waterIntakeMl,
+    totalFluidMl: existing?.totalFluidMl,
+    meals:
+      existing?.meals && existing.meals.length > 0
+        ? existing.meals
+        : fromForm.meals,
+    exerciseSummary: prefer(existing?.exerciseSummary, fromForm.exerciseSummary),
+    exerciseEndTime: prefer(existing?.exerciseEndTime, fromForm.exerciseEndTime),
+    heatActivityDurationMinutes: existing?.heatActivityDurationMinutes,
+    sweatAmount: existing?.sweatAmount,
+    changedClothes: existing?.changedClothes,
+    showered: existing?.showered,
+    cooldownDurationMinutes: existing?.cooldownDurationMinutes,
+    movedImmediatelyAfter: existing?.movedImmediatelyAfter,
+    homeTemperatureC: existing?.homeTemperatureC,
+    homeHumidityPercent: existing?.homeHumidityPercent,
+    bedroomTemperatureC: existing?.bedroomTemperatureC,
+    bedroomHumidityPercent: existing?.bedroomHumidityPercent,
+    workplaceTemperatureC: existing?.workplaceTemperatureC,
+    workplaceHumidityPercent: existing?.workplaceHumidityPercent,
+    environmentEvents: existing?.environmentEvents,
+    stressSelf: prefer(existing?.stressSelf, fromForm.stressSelf),
+    condition: prefer(existing?.condition, fromForm.condition),
+    nasalCongestion: prefer(
+      existing?.nasalCongestion,
+      fromForm.nasalCongestion,
+    ),
+    medicationsToday: prefer(
+      existing?.medicationsToday,
+      fromForm.medicationsToday,
+    ),
+    notes: prefer(existing?.notes, fromForm.notes),
+  };
+
+  return compactDayContext(result) ? result : null;
+}
+
+const PREVIOUS_METRIC_KEYS: Array<keyof AnalysisMetrics> = [
+  "sleepScore",
+  "sleepDuration",
+  "sleepEfficiency",
+  "deepSleep",
+  "deepSleepRate",
+  "remSleep",
+  "awakenings",
+  "sleepDebt",
+  "sleepLatency",
+  "hrv",
+  "restingHeartRate",
+  "stress",
+  "spo2",
+  "bedtime",
+  "wakeTime",
+];
+
+/** 前回分析を AI 用に圧縮（未入力・空は除外） */
+export function compactPreviousAnalysisForAi(input: {
+  analysisDate?: string;
+  sleepScore?: number | null;
+  wellnessScore?: number | null;
+  metrics?: AnalysisMetrics | Partial<AnalysisMetrics> | null;
+  summary?: string;
+  karteSummary?: string;
+  evidence?: string[];
+  goodPoints?: string[];
+  improvements?: Array<string | { text?: string; stars?: number }>;
+  nextComparisonPoints?: string[];
+  recommendationsUntilNext?: Array<
+    string | { text?: string; checked?: boolean }
+  >;
+} | null | undefined): PreviousAnalysisForAi | undefined {
+  if (!input) return undefined;
+  const analysisDate = input.analysisDate?.trim();
+  if (!analysisDate) return undefined;
+
+  const keyMetrics: Record<string, unknown> = {};
+  const metrics = input.metrics;
+  if (metrics) {
+    for (const key of PREVIOUS_METRIC_KEYS) {
+      const value = metrics[key];
+      if (key === "sleepScore") {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          keyMetrics[key] = value;
+        }
+        continue;
+      }
+      if (typeof value === "string" && value.trim()) {
+        keyMetrics[key] = value.trim();
+      }
+    }
+  }
+
+  const evidence = (input.evidence ?? [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  const goodPoints = (input.goodPoints ?? [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const improvements = (input.improvements ?? [])
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object" && typeof item.text === "string") {
+        return item.text.trim();
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .slice(0, 5);
+  const nextComparisonPoints = (input.nextComparisonPoints ?? [])
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  const recommendationsUntilNext = (input.recommendationsUntilNext ?? [])
+    .map((item) => {
+      if (typeof item === "string") {
+        const text = item.trim();
+        return text ? { text, checked: false } : null;
+      }
+      if (item && typeof item === "object" && typeof item.text === "string") {
+        const text = item.text.trim();
+        return text ? { text, checked: item.checked === true } : null;
+      }
+      return null;
+    })
+    .filter(
+      (item): item is { text: string; checked: boolean } => item != null,
+    )
+    .slice(0, 5);
+
+  return {
+    analysisDate,
+    sleepScore:
+      typeof input.sleepScore === "number" && Number.isFinite(input.sleepScore)
+        ? input.sleepScore
+        : null,
+    wellnessScore:
+      typeof input.wellnessScore === "number" &&
+      Number.isFinite(input.wellnessScore)
+        ? input.wellnessScore
+        : 0,
+    keyMetrics:
+      Object.keys(keyMetrics).length > 0
+        ? (keyMetrics as Partial<AnalysisMetrics>)
+        : undefined,
+    summary: input.summary?.trim() || undefined,
+    karteSummary: input.karteSummary?.trim() || undefined,
+    evidence: evidence.length > 0 ? evidence : undefined,
+    goodPoints: goodPoints.length > 0 ? goodPoints : undefined,
+    improvements: improvements.length > 0 ? improvements : undefined,
+    nextComparisonPoints:
+      nextComparisonPoints.length > 0 ? nextComparisonPoints : undefined,
+    recommendationsUntilNext:
+      recommendationsUntilNext.length > 0
+        ? recommendationsUntilNext
+        : undefined,
+  };
+}
+
 function compactFixedProfile(
   sections: ClientProfileSections | null | undefined,
 ): Record<string, unknown> | undefined {
@@ -289,113 +685,337 @@ function compactFixedProfile(
   return omitEmptyDeep(payload) as Record<string, unknown> | undefined;
 }
 
+const AI_COMMENT_MIN_CHARS = 100;
+const AI_COMMENT_MAX_CHARS = 200;
+
+export type ProfileAiFocusStars = 1 | 2 | 3 | 4 | 5;
+
+export type ProfileAiFocusItem = {
+  label: string;
+  stars: ProfileAiFocusStars;
+};
+
+/** AI分析用プロフィール要約（診断ではない） */
+export type ProfileAiSummaryStructured = {
+  lifestyle: string[];
+  sleepFactors: string[];
+  focusItems: ProfileAiFocusItem[];
+};
+
+function isTruthyHabit(value: string | undefined): boolean {
+  if (!value?.trim()) return false;
+  const v = value.trim();
+  return !["なし", "ない", "無し", "無", "no", "none", "0", "飲まない", "吸わない"].includes(
+    v.toLowerCase(),
+  );
+}
+
+function looksHeavyDrinking(frequency: string, amount: string): boolean {
+  const text = `${frequency}${amount}`;
+  return /毎日|ほぼ毎日|週[3-7三四五六七]|多め|多い|ボトル|升|500|缶[2-9]|杯[3-9]/.test(
+    text,
+  );
+}
+
+function looksIrregularWork(style: string): boolean {
+  return /不規則|シフト|夜勤|交代|フレックス|早朝/.test(style);
+}
+
+function looksSufficientExercise(frequency: string): boolean {
+  return /毎日|ほぼ毎日|週[3-7三四五六七]|十分|多い/.test(frequency);
+}
+
+function looksLowExercise(frequency: string): boolean {
+  return /なし|ない|ほぼなし|まれ|週[0-1零一二]|月/.test(frequency);
+}
+
+function resolveOccupation(s: ClientProfileSections): string {
+  return (
+    s.work.occupationCustom?.trim() ||
+    (s.work.occupationPreset && s.work.occupationPreset !== "その他"
+      ? s.work.occupationPreset
+      : "")
+  );
+}
+
+function heatContext(s: ClientProfileSections): {
+  hasHeat: boolean;
+  heatTypes: string[];
+  yogaLike: boolean;
+} {
+  const heatTypes = [
+    ...(s.heatExposure.heatEnvironmentTypes ?? []),
+    s.heatExposure.heatEnvironmentOther?.trim() || "",
+  ].filter(Boolean);
+  const attrs = (s.work.environmentAttributeIds ?? []).map(attributeLabel);
+  const heatAttr = attrs.some((label) => /高温|ホット|熱/.test(label));
+  const occupation = resolveOccupation(s);
+  const yogaLike =
+    /ホットヨガ|ヨガ|ピラティス/.test(occupation) ||
+    heatTypes.some((t) => /ヨガ|ピラティス/.test(t)) ||
+    (s.exercise.types ?? []).some((t) => /ヨガ|ピラティス/.test(t));
+  const hasHeat =
+    s.heatExposure.worksInHeat === true ||
+    heatTypes.length > 0 ||
+    heatAttr ||
+    /ホットヨガ|サウナ|厨房|温浴|岩盤|製鉄|溶接|焼き/.test(occupation);
+  return { hasHeat, heatTypes, yogaLike };
+}
+
+function takeWithinBudget(items: string[], maxChars: number, maxItems = 3): string[] {
+  const selected: string[] = [];
+  let total = 0;
+  for (const item of items) {
+    if (selected.length >= maxItems) break;
+    const next = total + item.length + (selected.length > 0 ? 1 : 0);
+    if (selected.length > 0 && next > maxChars) break;
+    selected.push(item);
+    total = next;
+  }
+  return selected;
+}
+
 /**
- * 固定プロフィールから事実のみの短い要約を生成（保存しない・評価しない）。
- * 未入力は含めない。
+ * AI分析用プロフィール要約（構造化）。
+ * 診断ではなく、分析時に参照する事実ベースの整理。
+ * 本文（生活スタイル＋影響要素）はおおよそ 100〜200 文字。
+ */
+export function buildProfileAiSummaryStructured(
+  sections: ClientProfileSections | null | undefined,
+): ProfileAiSummaryStructured | null {
+  if (!sections) return null;
+
+  const s = sanitizeProfileNumbers(sections);
+  const occupation = resolveOccupation(s);
+  const { hasHeat, heatTypes, yogaLike } = heatContext(s);
+  const workStyle = s.work.workStyle?.trim() ?? "";
+  const irregular =
+    (workStyle && looksIrregularWork(workStyle)) ||
+    (s.work.nightShiftsPerMonth != null && s.work.nightShiftsPerMonth > 0);
+  const drinkFreq = s.lifestyle.drinkingFrequency?.trim() ?? "";
+  const drinkAmount = s.lifestyle.drinkingAmountPerOccasion?.trim() ?? "";
+  const drinks =
+    isTruthyHabit(drinkFreq) || isTruthyHabit(drinkAmount);
+  const heavyDrink = drinks && looksHeavyDrinking(drinkFreq, drinkAmount);
+  const exerciseFreq = s.exercise.frequency?.trim() ?? "";
+  const exerciseTypes = [
+    ...(s.exercise.types ?? []),
+    s.exercise.typeOther?.trim() || "",
+  ].filter(Boolean);
+  const nasal = isTruthyHabit(s.health.nasalCongestionHabitual);
+  const snoring = isTruthyHabit(s.health.snoring);
+  const pollen = isTruthyHabit(s.health.pollenAllergy);
+  const caffeine = s.caffeine.entries?.[0];
+  const lateCaffeine =
+    Boolean(caffeine?.type?.trim()) &&
+    ((caffeine?.lastIntakeTimeTypical?.trim() &&
+      /1[5-9]|2[0-3]|午後|夜|夕方/.test(caffeine.lastIntakeTimeTypical)) ||
+      caffeine?.intakeAfterEvening === true);
+  const workStress =
+    Boolean(s.work.workStressSelf?.trim()) &&
+    /高|強|多|ストレスが|張り|負担/.test(s.work.workStressSelf ?? "");
+
+  // --- 【生活スタイル】 ---
+  const lifestyleCandidates: string[] = [];
+
+  if (yogaLike && /指導|インストラクター|講師/.test(occupation)) {
+    lifestyleCandidates.push("ヨガ・ピラティス指導を中心とした活動");
+  } else if (yogaLike) {
+    lifestyleCandidates.push("ヨガ・ピラティスを中心とした活動");
+  } else if (occupation) {
+    lifestyleCandidates.push(`${occupation}を中心とした活動`);
+  }
+
+  if (irregular) {
+    lifestyleCandidates.push("勤務時間は不規則");
+  } else if (workStyle) {
+    lifestyleCandidates.push(`勤務は${workStyle}`);
+  }
+
+  if (exerciseFreq) {
+    if (looksSufficientExercise(exerciseFreq)) {
+      lifestyleCandidates.push("日常的な運動量は多い");
+    } else if (looksLowExercise(exerciseFreq)) {
+      lifestyleCandidates.push("日常的な運動量は少なめ");
+    } else {
+      lifestyleCandidates.push(`運動習慣は${exerciseFreq}`);
+    }
+  } else if (exerciseTypes.length > 0 && !yogaLike) {
+    lifestyleCandidates.push(`${exerciseTypes[0]}などの運動習慣あり`);
+  }
+
+  if (
+    attrsActivePhysical(s) &&
+    !lifestyleCandidates.some((line) => /運動量/.test(line))
+  ) {
+    lifestyleCandidates.push("身体活動量が多い勤務傾向");
+  }
+
+  // --- 【睡眠へ影響しそうな要素】 ---
+  const factorCandidates: string[] = [];
+
+  if (heavyDrink) {
+    factorCandidates.push("飲酒量がやや多い");
+  } else if (drinks) {
+    factorCandidates.push(
+      drinkAmount
+        ? `飲酒習慣あり（${drinkFreq || "頻度不明"}・${drinkAmount}）`
+        : `飲酒頻度は${drinkFreq}`,
+    );
+  }
+
+  if (nasal) {
+    factorCandidates.push("鼻づまりがある");
+  } else if (snoring) {
+    factorCandidates.push("いびきの自覚がある");
+  } else if (pollen) {
+    factorCandidates.push("花粉症があり鼻閉が出やすい日がある");
+  }
+
+  if (hasHeat) {
+    if (heatTypes.some((t) => /ヨガ/.test(t)) || /ホットヨガ|ヨガ/.test(occupation)) {
+      factorCandidates.push("高温環境で活動する日が多い");
+    } else if (heatTypes.length > 0) {
+      factorCandidates.push(`${heatTypes[0]}など高温環境での活動がある`);
+    } else {
+      factorCandidates.push("高温環境で活動する日が多い");
+    }
+  }
+
+  if (lateCaffeine) {
+    factorCandidates.push("カフェインの摂取時刻が遅めの傾向");
+  }
+
+  if (workStress) {
+    factorCandidates.push("仕事由来のストレスを感じやすい傾向");
+  }
+
+  if (s.heatExposure.movesImmediatelyAfterWork === true) {
+    factorCandidates.push("活動後すぐに移動する傾向");
+  }
+
+  // 本文 100〜200 文字に収める
+  const lifestyle = takeWithinBudget(lifestyleCandidates, 90, 3);
+  let sleepFactors = takeWithinBudget(factorCandidates, 110, 3);
+  let bodyChars =
+    [...lifestyle, ...sleepFactors].join("").length +
+    Math.max(0, lifestyle.length + sleepFactors.length - 1);
+
+  if (bodyChars < AI_COMMENT_MIN_CHARS) {
+    for (const item of factorCandidates) {
+      if (sleepFactors.includes(item)) continue;
+      if (sleepFactors.length >= 3) break;
+      const next =
+        bodyChars + item.length + (lifestyle.length + sleepFactors.length > 0 ? 1 : 0);
+      if (next > AI_COMMENT_MAX_CHARS) break;
+      sleepFactors = [...sleepFactors, item];
+      bodyChars = next;
+      if (bodyChars >= AI_COMMENT_MIN_CHARS) break;
+    }
+  }
+
+  // --- 【AIが分析時に重視する項目】 ---
+  const focusItems: ProfileAiFocusItem[] = [];
+  const pushFocus = (label: string, stars: ProfileAiFocusStars) => {
+    if (focusItems.some((item) => item.label === label)) return;
+    if (focusItems.length >= 4) return;
+    focusItems.push({ label, stars });
+  };
+
+  if (heavyDrink) pushFocus("飲酒量", 5);
+  else if (drinks) pushFocus("飲酒習慣", 4);
+
+  if (irregular) pushFocus("不規則勤務", 5);
+  else if (workStyle && /夜勤|早朝/.test(workStyle)) pushFocus("勤務リズム", 4);
+
+  if (nasal) pushFocus("鼻づまり", 4);
+  else if (snoring) pushFocus("いびき", 3);
+  else if (pollen) pushFocus("花粉症", 3);
+
+  if (hasHeat) pushFocus("高温環境", 4);
+  if (lateCaffeine) pushFocus("カフェイン時刻", 3);
+  if (workStress) pushFocus("仕事ストレス", 3);
+
+  focusItems.sort((a, b) => b.stars - a.stars);
+
+  if (
+    lifestyle.length === 0 &&
+    sleepFactors.length === 0 &&
+    focusItems.length === 0
+  ) {
+    return null;
+  }
+
+  return { lifestyle, sleepFactors, focusItems };
+}
+
+function attrsActivePhysical(s: ClientProfileSections): boolean {
+  const attrs = (s.work.environmentAttributeIds ?? []).map(attributeLabel);
+  const traits = s.work.traits ?? [];
+  return [...attrs, ...traits].some((label) =>
+    /身体活動量が多い|立ち仕事|歩く仕事|重い物/.test(label),
+  );
+}
+
+export function renderFocusStars(stars: ProfileAiFocusStars): string {
+  return "★".repeat(stars) + "☆".repeat(5 - stars);
+}
+
+/**
+ * 後方互換: フラットな箇条書き（生活スタイル＋影響要素）。
+ */
+export function buildProfileAiCommentBullets(
+  sections: ClientProfileSections | null | undefined,
+): string[] {
+  const summary = buildProfileAiSummaryStructured(sections);
+  if (!summary) {
+    return ["固定プロフィールの入力が少なく、要約できる特徴はまだ少ない"];
+  }
+  return [...summary.lifestyle, ...summary.sleepFactors];
+}
+
+/** 構造化要約をテキストへ（UI・AI入力共通） */
+export function formatProfileAiSummaryStructured(
+  summary: ProfileAiSummaryStructured,
+): string {
+  const blocks: string[] = [];
+
+  if (summary.lifestyle.length > 0) {
+    blocks.push(
+      `【生活スタイル】\n${summary.lifestyle.map((item) => `・${item}`).join("\n")}`,
+    );
+  }
+  if (summary.sleepFactors.length > 0) {
+    blocks.push(
+      `【睡眠へ影響しそうな要素】\n${summary.sleepFactors.map((item) => `・${item}`).join("\n")}`,
+    );
+  }
+  if (summary.focusItems.length > 0) {
+    blocks.push(
+      `【AIが分析時に重視する項目】\n${summary.focusItems
+        .map((item) => `${renderFocusStars(item.stars)} ${item.label}`)
+        .join("\n")}`,
+    );
+  }
+
+  return blocks.join("\n\n");
+}
+
+/** @deprecated formatProfileAiSummaryStructured を使用 */
+export function formatProfileAiComment(bullets: string[]): string {
+  return bullets.map((item) => `・${item}`).join("\n");
+}
+
+/**
+ * 固定プロフィールから事実ベースの短い要約を生成（評価・診断はしない）。
+ * 未入力は含めない。確認画面の AI コメントと同じ根拠を使う。
  */
 export function summarizeFixedProfileForAi(
   sections: ClientProfileSections | null | undefined,
 ): string {
-  if (!sections) return "";
-
-  const s = sanitizeProfileNumbers(sections);
-  const sentences: string[] = [];
-
-  const age = s.basic.ageYears;
-  const gender = s.basic.gender
-    ? formatGenderLabel(s.basic.gender) || s.basic.gender
-    : "";
-  const occupationForSummary =
-    s.work.occupationCustom?.trim() ||
-    (s.work.occupationPreset && s.work.occupationPreset !== "その他"
-      ? s.work.occupationPreset
-      : "");
-
-  const identity: string[] = [];
-  if (age != null && gender) identity.push(`${age}歳${gender}`);
-  else if (age != null) identity.push(`${age}歳`);
-  else if (gender) identity.push(String(gender));
-  if (occupationForSummary) identity.push(occupationForSummary);
-  if (identity.length === 1) sentences.push(`${identity[0]}。`);
-  else if (identity.length >= 2) {
-    sentences.push(`${identity[0]}。${identity.slice(1).join("。")}。`);
-  }
-
-  const attrs = (s.work.environmentAttributeIds ?? []).map(attributeLabel);
-  if (attrs.length > 0) {
-    sentences.push(`${attrs.join("・")}の傾向がある。`);
-  }
-
-  if (s.heatExposure.worksInHeat === true) {
-    const types = [
-      ...(s.heatExposure.heatEnvironmentTypes ?? []),
-      s.heatExposure.heatEnvironmentOther?.trim() || "",
-    ].filter(Boolean);
-    const duration = s.heatExposure.exposureDurationMinutes;
-    let heat = "高温環境（ホットヨガ・サウナ・厨房など）での活動がある";
-    if (types.length) heat = `${types.join("・")}など暑い環境での活動がある`;
-    if (duration != null) heat += `（目安${duration}分）`;
-    sentences.push(`${heat}。`);
-  }
-
-  if (s.heatExposure.movesImmediatelyAfterWork === true) {
-    sentences.push("活動後すぐに移動する傾向がある。");
-  } else if (
-    s.heatExposure.cooldownDurationMinutes != null &&
-    s.heatExposure.cooldownDurationMinutes > 0
-  ) {
-    sentences.push(
-      `活動後に涼しい場所で休む時間がある（目安${s.heatExposure.cooldownDurationMinutes}分）。`,
-    );
-  }
-
-  if (s.lifestyle.drinkingFrequency?.trim()) {
-    sentences.push(`飲酒頻度は${s.lifestyle.drinkingFrequency.trim()}。`);
-  }
-
-  const caffeine = s.caffeine.entries?.[0];
-  if (caffeine?.type?.trim()) {
-    let c = `${caffeine.type.trim()}`;
-    if (caffeine.amountNote?.trim()) c += `を${caffeine.amountNote.trim()}`;
-    if (caffeine.lastIntakeTimeTypical?.trim()) {
-      c += `、最後は${caffeine.lastIntakeTimeTypical.trim()}頃`;
-    }
-    sentences.push(`${c}。`);
-  }
-
-  if (s.hydration.totalFluidMl != null) {
-    sentences.push(`普段の水分摂取は約${s.hydration.totalFluidMl}mL/日。`);
-  }
-
-  if (s.exercise.frequency?.trim()) {
-    const types = [
-      ...(s.exercise.types ?? []),
-      s.exercise.typeOther?.trim() || "",
-    ].filter(Boolean);
-    let ex = `運動習慣は${s.exercise.frequency.trim()}`;
-    if (types.length) ex += `（${types.join("・")}）`;
-    sentences.push(`${ex}。`);
-  }
-
-  const healthBits: string[] = [];
-  if (s.health.nasalCongestionHabitual?.trim()) {
-    healthBits.push(`鼻づまり（${s.health.nasalCongestionHabitual.trim()}）`);
-  }
-  if (s.health.pollenAllergy?.trim()) healthBits.push("花粉症");
-  if (s.health.allergies?.trim()) healthBits.push("アレルギー");
-  if (s.health.snoring?.trim()) healthBits.push("いびき");
-  if (healthBits.length) sentences.push(`${healthBits.join("・")}あり。`);
-
-  const bedTemp = s.sleepEnvironment.bedroomBedtimeTemperatureC;
-  const bedHum = s.sleepEnvironment.bedroomBedtimeHumidityPercent;
-  if (bedTemp != null || bedHum != null) {
-    const env: string[] = [];
-    if (bedTemp != null) env.push(`${bedTemp}℃`);
-    if (bedHum != null) env.push(`湿度${bedHum}%`);
-    sentences.push(`寝室は${env.join("、")}。`);
-  }
-
-  return sentences.join("").replace(/。。+/g, "。").trim();
+  const summary = buildProfileAiSummaryStructured(sections);
+  if (!summary) return "";
+  return formatProfileAiSummaryStructured(summary);
 }
 
 export type BuildAnalysisAiInputArgs = {
@@ -404,19 +1024,34 @@ export type BuildAnalysisAiInputArgs = {
   clientName?: string;
   soxaiMetrics?: AnalysisMetrics | null;
   dayContext?: AnalysisDayContext | null;
+  /** フォーム生活習慣（dayContext が空のとき補完） */
+  lifestyleForm?: LifestyleFormForDayContext | null;
   fixedProfile?: ClientProfileSections | null;
+  previousAnalysis?: PreviousAnalysisForAi | null;
   weather?: Record<string, unknown> | null;
 };
 
 /**
  * Medical / Visual / PDF が将来同じ分析結果を使うための共通 AI 入力 JSON
+ *
+ * 統合ソース:
+ * 1. SOXAI 実測
+ * 2. 生活習慣（当日 / day_context）
+ * 3. 固定プロフィール
+ * 4. 前回分析
  */
 export function buildAnalysisAiInput(
   args: BuildAnalysisAiInputArgs,
 ): AnalysisAiInput {
   const soxaiMetrics = compactSoxaiMetrics(args.soxaiMetrics ?? null);
-  const dayContext = compactDayContext(args.dayContext ?? null);
+  const dayContext = compactDayContext(
+    buildDayContextFromLifestyle(
+      args.lifestyleForm ?? null,
+      args.dayContext ?? null,
+    ) ?? args.dayContext ?? null,
+  );
   const fixedProfile = compactFixedProfile(args.fixedProfile ?? null);
+  const previousAnalysis = args.previousAnalysis || undefined;
   const weather =
     args.weather && Object.keys(args.weather).length > 0
       ? (omitEmptyDeep(args.weather) as Record<string, unknown> | undefined)
@@ -427,9 +1062,14 @@ export function buildAnalysisAiInput(
   );
 
   const notesForModel = [
-    "優先順位: SOXAI実測 > 当日情報 > 固定プロフィール > 気象 > 一般参考基準",
+    "優先順位: SOXAI実測 > 当日生活習慣 > 固定プロフィール > 前回分析 > 気象 > 一般参考基準",
+    "分析は必ず 数値 → 【根拠】 → 改善提案 の順で書く。根拠なしの改善提案は禁止。",
+    "改善提案は効果が高い順・最大5件。stars:5=今すぐ改善 / 4=今週改善 / 3=余裕があれば。全部を一度に改善しろとは言わない。",
     "未入力項目は触れない。推測・断定しない。",
-    "固定プロフィールは普段の傾向。当日の状態と混同しない。",
+    "固定プロフィール要約は【生活スタイル】【睡眠へ影響しそうな要素】【AIが分析時に重視する項目】の構成。診断ではなく分析参照用。",
+    "固定プロフィールは普段の傾向。当日の生活習慣と混同しない。",
+    "前回分析がある場合は差分を可能性として参照する。無い場合は触れない。",
+    "前回の recommendationsUntilNext（行動目標）がある場合は達成・未達を可能性として参照し、今回の行動目標に活かす。",
     "医療診断・病名の断定はしない。",
   ];
 
@@ -439,6 +1079,7 @@ export function buildAnalysisAiInput(
       "soxai_measured",
       "day_context",
       "fixed_profile",
+      "previous_analysis",
       "weather",
       "general_reference",
     ],
@@ -449,6 +1090,7 @@ export function buildAnalysisAiInput(
     dayContext,
     fixedProfile,
     fixedProfileSummary: fixedProfileSummary || undefined,
+    previousAnalysis: previousAnalysis || undefined,
     weather,
     notesForModel,
   };

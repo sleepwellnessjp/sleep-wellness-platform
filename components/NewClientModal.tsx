@@ -2,6 +2,7 @@
 
 import { FormEvent, useId, useState } from "react";
 import { useRouter } from "next/navigation";
+import ClientTagsEditor from "@/components/ClientTagsEditor";
 import {
   createClient,
   type CreateClientInput,
@@ -30,6 +31,7 @@ const emptyForm = (): FormState => ({
   nameKana: "",
   registeredAt: new Date().toISOString().slice(0, 10),
   memo: "",
+  tags: [],
 });
 
 /** 簡易登録モーダル（氏名必須）。詳細は /clients/[id]/profile へ */
@@ -153,6 +155,20 @@ function NewClientModalForm({
               placeholder="例：やまだ たろう"
             />
           </label>
+
+          <div>
+            <span className="text-sm font-semibold text-slate-600">タグ</span>
+            <div className="mt-2">
+              <ClientTagsEditor
+                value={form.tags ?? []}
+                onChange={(tags) =>
+                  setForm((current) => ({ ...current, tags }))
+                }
+                disabled={saving}
+                compact
+              />
+            </div>
+          </div>
 
           <label className="block">
             <span className="text-sm font-semibold text-slate-600">担当者メモ</span>

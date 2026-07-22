@@ -10,29 +10,49 @@ import {
   useSyncExternalStore,
 } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
+import AiFollowAlerts from "@/components/AiFollowAlerts";
+import WellnessRadarChart from "@/components/WellnessRadarChart";
+import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextCard";
 import {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
 } from "@/components/SoxaiVisualCharts";
 import {
   AnalysisResult,
+  formatImprovementStars,
   hydrateAnalysisSession,
+  improvementPriorityLabel,
   loadAnalysisGraphs,
   loadAnalysisImages,
   loadAnalysisResult,
+  WELLNESS_CATEGORY_LABELS,
+  type ImprovementItem,
+  type WellnessCategoryKey,
 } from "@/lib/analysis-session";
+import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
 import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import { formatGenderLabel, hasAgeAndGender } from "@/lib/client-profile";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import {
+  analysisResultToStoredShape,
+  buildPreviousComparisonSummary,
+  findPreviousAnalysis,
+  previousComparisonToneColor,
+  type PreviousComparisonSummary,
+} from "@/lib/previous-comparison";
+import { pickBrandClosingMessage } from "@/lib/brand-closing-messages";
+import { getClientProfile } from "@/lib/repositories/client-profile-repository";
+import {
   getAnalysisById,
+  getClientById,
   recordPdfDownload,
 } from "@/lib/repositories/client-repository";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
+const GOLD_LIGHT = "#d8b36a";
 
-function takeItems(items: string[] | undefined, max: number): string[] {
+function takeItems<T>(items: T[] | undefined, max: number): T[] {
   if (!items?.length) return [];
   return items.slice(0, max);
 }
@@ -146,6 +166,136 @@ function BulletList({ items }: { items: string[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function ImprovementsList({ items }: { items: ImprovementItem[] }) {
+  if (items.length === 0) {
+    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+  }
+
+  return (
+    <ul className="space-y-3.5">
+      {items.map((item, index) => (
+        <li
+          key={`${index}-${item.stars}-${item.text.slice(0, 24)}`}
+          className="rounded-xl border border-[#071426]/08 bg-[#fafaf8] px-3.5 py-3 sm:px-4"
+        >
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+            <span
+              className="text-[13px] font-semibold tracking-[0.04em] tabular-nums"
+              style={{ color: GOLD }}
+              aria-hidden
+            >
+              {formatImprovementStars(item.stars)}
+            </span>
+            <span
+              className="text-[12px] font-semibold tracking-[-0.01em] sm:text-[13px]"
+              style={{ color: NAVY }}
+            >
+              {improvementPriorityLabel(item.stars)}
+            </span>
+          </div>
+          <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
+            {renderRichText(item.text)}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const RANKING_MARKS = ["①", "②", "③", "④", "⑤"] as const;
+
+function TodaysRecommendationsList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+  }
+
+  return (
+    <ol className="space-y-2.5">
+      {items.map((item, index) => (
+        <li
+          key={`${index}-${item.slice(0, 24)}`}
+          className="flex gap-3 text-[15px] leading-7 text-slate-700 sm:text-base"
+        >
+          <span
+            className="w-[1.5rem] shrink-0 text-[1.05rem] font-semibold tabular-nums"
+            style={{ color: NAVY }}
+            aria-hidden
+          >
+            {RANKING_MARKS[index] ?? `${index + 1}.`}
+          </span>
+          <span className="min-w-0 font-medium" style={{ color: NAVY }}>
+            {item}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function InstituteBrandComment({ seed }: { seed: string }) {
+  const message = pickBrandClosingMessage(seed);
+
+  return (
+    <section
+      className="report-brand-comment relative mt-6 overflow-hidden rounded-2xl border border-[#8a6a2d]/25 sm:mt-7"
+      style={{
+        background:
+          "linear-gradient(165deg, #fbf9f4 0%, #f7f3ea 42%, #f3eee4 100%)",
+        boxShadow:
+          "0 18px 48px -36px rgba(7,20,38,.28), inset 0 1px 0 rgba(255,255,255,.72)",
+      }}
+    >
+      <div
+        className="pointer-events-none absolute inset-x-5 top-0 h-px sm:inset-x-7"
+        style={{
+          background: `linear-gradient(90deg, transparent, ${GOLD_LIGHT}, transparent)`,
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-y-4 left-0 w-px sm:inset-y-5"
+        style={{
+          background: `linear-gradient(180deg, transparent, ${GOLD}55, transparent)`,
+        }}
+        aria-hidden
+      />
+
+      <div className="relative px-5 py-7 text-center sm:px-8 sm:py-9">
+        <p
+          className="text-[10px] font-semibold tracking-[0.28em]"
+          style={{ color: GOLD }}
+        >
+          FROM THE INSTITUTE
+        </p>
+        <h2
+          className="mt-2.5 text-[15px] font-semibold tracking-[-0.02em] sm:text-base"
+          style={{ color: NAVY }}
+        >
+          Sleep Wellness Institute Japan コメント
+        </h2>
+        <div
+          className="mx-auto mt-4 h-px w-12 sm:mt-5"
+          style={{
+            background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
+          }}
+          aria-hidden
+        />
+
+        <div className="mx-auto mt-5 max-w-[28rem] space-y-4 sm:mt-6 sm:space-y-5">
+          {message.paragraphs.map((paragraph, index) => (
+            <p
+              key={index}
+              className="whitespace-pre-line text-[14px] leading-[1.85] tracking-[0.02em] text-slate-600 sm:text-[15px] sm:leading-[1.95]"
+            >
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -286,8 +436,62 @@ export default function AnalysisResultPage() {
   return <ResultContent result={result} images={images} graphs={graphs} />;
 }
 
+function PreviousComparisonSection({
+  summary,
+  clientId,
+}: {
+  summary: PreviousComparisonSummary;
+  clientId?: string;
+}) {
+  return (
+    <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-4 sm:mt-6 sm:px-5">
+      <SectionLabel title="前回との比較" eyebrow="VS PREVIOUS" />
+      <p className="mb-3 text-[13px] leading-6 text-slate-500">
+        前回より
+        {summary.previousDate ? (
+          <span className="ml-1.5 text-slate-400">
+            （{formatDateLabel(summary.previousDate)}）
+          </span>
+        ) : null}
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+        {summary.items.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-xl border border-[#071426]/10 bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
+          >
+            <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
+              {item.label}
+            </p>
+            <p
+              className="mt-1 text-[1.05rem] font-semibold tracking-[-0.03em] sm:text-[1.12rem]"
+              style={{ color: previousComparisonToneColor(item.tone) }}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[13px] leading-6 text-slate-500">
+        {summary.profileNote}
+      </p>
+      {clientId ? (
+        <p className="mt-2 no-print">
+          <Link
+            href={`/clients/${encodeURIComponent(clientId)}/compare`}
+            className="text-[13px] font-medium underline-offset-2 hover:underline"
+            style={{ color: GOLD }}
+          >
+            詳しい前後比較を見る
+          </Link>
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ResultContent({
-  result,
+  result: initialResult,
   images,
   graphs,
 }: {
@@ -295,35 +499,126 @@ function ResultContent({
   images: string[];
   graphs: SoxaiGraphBundle;
 }) {
+  const [result, setResult] = useState(initialResult);
+  const [previousComparison, setPreviousComparison] =
+    useState<PreviousComparisonSummary | null>(null);
+  const [followAlerts, setFollowAlerts] = useState<AiFollowAlert[]>([]);
+
+  useEffect(() => {
+    setResult(initialResult);
+  }, [initialResult]);
+
+  useEffect(() => {
+    const clientId = result.clientId?.trim();
+    if (!clientId) {
+      setPreviousComparison(null);
+      setFollowAlerts(
+        buildAiFollowAlerts({
+          analyses: [analysisResultToStoredShape(result)],
+        }),
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all([
+      getClientById(clientId),
+      getClientProfile(clientId).catch(() => null),
+    ])
+      .then(([client, profile]) => {
+        if (cancelled) return;
+
+        if (!client) {
+          setPreviousComparison(null);
+          setFollowAlerts(
+            buildAiFollowAlerts({
+              analyses: [analysisResultToStoredShape(result)],
+            }),
+          );
+          return;
+        }
+
+        const previous = findPreviousAnalysis(
+          client.analyses,
+          result.analysisId,
+        );
+        const current =
+          client.analyses.find((item) => item.id === result.analysisId) ??
+          analysisResultToStoredShape(result);
+
+        if (!previous) {
+          setPreviousComparison(null);
+        } else {
+          setPreviousComparison(
+            buildPreviousComparisonSummary(previous, current),
+          );
+        }
+
+        // 最新分析として現在結果を先頭に揃える（未保存セッション対応）
+        const analysesForAlerts = client.analyses.some(
+          (item) => item.id === current.id,
+        )
+          ? client.analyses
+          : [current, ...client.analyses];
+
+        setFollowAlerts(
+          buildAiFollowAlerts({
+            analyses: analysesForAlerts,
+            profile,
+            tags: client.tags,
+          }),
+        );
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load previous analysis:", error);
+        if (!cancelled) {
+          setPreviousComparison(null);
+          setFollowAlerts(
+            buildAiFollowAlerts({
+              analyses: [analysisResultToStoredShape(result)],
+            }),
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
+
   // OCR→統合→確認で確定した単一ソース（Medical / Visual / PDF 共通）
   const confirmedMetrics = result.metrics;
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
-  const improvements = takeItems(result.improvements, 5).map((item) =>
-    clampLine(item, 160),
+  const categoryScores = result.categoryScores;
+  const categoryKeys = Object.keys(
+    WELLNESS_CATEGORY_LABELS,
+  ) as WellnessCategoryKey[];
+  const goodPoints = takeItems(result.goodPoints, 4).map((item) =>
+    clampLine(item, 80),
   );
+  const improvements = takeItems(result.improvements, 5).map((item) => ({
+    ...item,
+    text: clampLine(item.text, 160),
+  }));
+  const todaysRecommendations = takeItems(
+    result.todaysRecommendations,
+    3,
+  ).map((item) => clampLine(item, 48));
+  const nextComparisonPoints = takeItems(
+    result.nextComparisonPoints,
+    4,
+  ).map((item) => clampLine(item, 80));
   const summaryText = clampLine(result.summary || "", 200);
-  const sleepAnalysisText = clampLine(
-    clampSentences(
-      result.sleepAnalysis ||
-        result.sleepCharacteristics ||
-        result.dataInsight ||
-        "",
-      10,
-    ),
-    900,
+  const karteSummaryText = clampLine(result.karteSummary || "", 200);
+  const profileRelationText = clampLine(
+    clampSentences(result.profileRelation || result.lifestyleRelation || "", 6),
+    320,
   );
-  const autonomicText = clampLine(
-    clampSentences(result.autonomicAssessment || "", 8),
-    560,
-  );
-  const recoveryText = clampLine(
-    clampSentences(result.recoveryAssessment || "", 8),
-    560,
-  );
-  const melatoninYogaText = clampLine(
-    clampSentences(result.melatoninYoga || "", 10),
-    720,
+  const scoreCommentText = clampLine(
+    clampSentences(result.scoreComment || "", 5),
+    240,
   );
   const cautionText = clampLine(result.caution ?? "", 120);
   const disclaimerText = clampLine(
@@ -384,16 +679,19 @@ function ResultContent({
                   className="report-title mt-4 text-[1.5rem] font-semibold tracking-[-0.04em] sm:mt-5 sm:text-[1.9rem]"
                   style={{ color: NAVY }}
                 >
-                  Sleep Wellness Medical Report
+                  Sleep Wellness Expert Report
                 </h1>
+                <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
+                  Sleep Wellness Institute Japan 専門家レポート
+                </p>
               </div>
 
               <div className="report-score-block shrink-0 text-right">
                 <p
-                  className="text-[10px] font-semibold tracking-[0.22em] sm:text-[11px]"
+                  className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
                   style={{ color: GOLD }}
                 >
-                  WELLNESS SCORE
+                  睡眠ウェルネススコア
                 </p>
                 <p
                   className="report-score mt-1 text-[2.8rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
@@ -403,6 +701,10 @@ function ResultContent({
                 </p>
                 <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
                   / 100
+                </p>
+                <p className="mt-2 max-w-[9.5rem] text-[10px] leading-4 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
+                  Sleep Wellness Platform 独自指標
+                  <span className="block">（SOXAIスコアとは別）</span>
                 </p>
               </div>
             </div>
@@ -470,40 +772,145 @@ function ResultContent({
             </div>
           </section>
 
-          <section className="report-assessment mt-6 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-7 sm:px-5 sm:py-5">
-            <SectionLabel title="① 総合評価" eyebrow="OVERVIEW" />
+          {previousComparison ? (
+            <PreviousComparisonSection
+              summary={previousComparison}
+              clientId={result.clientId}
+            />
+          ) : null}
+
+          {followAlerts.length > 0 ? (
+            <div className="mt-5 sm:mt-6">
+              <AiFollowAlerts alerts={followAlerts} compact />
+            </div>
+          ) : null}
+
+          {karteSummaryText ? (
+            <section className="report-panel mt-5 rounded-xl border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-4 sm:mt-6 sm:px-5">
+              <SectionLabel title="AIカルテ · クライアントの変化" eyebrow="AI KARTE" />
+              <p className="mt-1 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+                Sleep Wellness Institute Japan 独自カルテ。分析履歴に時系列で保存されます。
+              </p>
+              <div className="report-summary mt-3">
+                <FormattedAiText text={karteSummaryText} />
+              </div>
+              {result.clientId?.trim() ? (
+                <Link
+                  href={`/clients/${encodeURIComponent(result.clientId.trim())}`}
+                  className="mt-3 inline-flex text-[12px] font-medium transition hover:opacity-80"
+                  style={{ color: GOLD }}
+                >
+                  カルテの時系列を見る
+                </Link>
+              ) : null}
+            </section>
+          ) : null}
+
+          <section className="report-panel mt-6 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-7 sm:px-5">
+            <SectionLabel
+              title="① 今回の睡眠で良かった点"
+              eyebrow="STRENGTHS"
+            />
+            <BulletList items={goodPoints} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel
+              title="② 改善が期待できるポイント"
+              eyebrow="IMPROVE"
+            />
+            <p className="mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+              効果が高い順に最大5件。すべてを一度に変える必要はありません。
+            </p>
+            <ImprovementsList items={improvements} />
+          </section>
+
+          <section className="report-assessment mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-6 sm:px-5 sm:py-5">
+            <SectionLabel title="③ 総合評価" eyebrow="OVERVIEW" />
             <div className="report-summary mt-1">
               <FormattedAiText text={summaryText || "—"} />
             </div>
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="② 睡眠分析" eyebrow="SLEEP ANALYSIS" />
-            <FormattedAiText text={sleepAnalysisText || "—"} />
+            <SectionLabel
+              title="④ プロフィールとの関連"
+              eyebrow="PROFILE"
+            />
+            <FormattedAiText text={profileRelationText || "—"} />
+          </section>
+
+          <section className="report-wellness-radar mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-6 sm:px-5 sm:py-5">
+            <SectionLabel
+              title="⑤ 睡眠ウェルネススコア"
+              eyebrow="WELLNESS SCORE"
+            />
+            <p className="mt-1 text-[13px] leading-6 text-slate-500 sm:text-[14px]">
+              プロフィール・生活習慣・運動・ストレス・睡眠環境・測定データを総合した独自指標です（SOXAIスコアとは別）。
+            </p>
+            {scoreCommentText ? (
+              <div className="mt-3">
+                <FormattedAiText text={scoreCommentText} />
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-col items-center gap-5 sm:mt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+              <WellnessRadarChart scores={categoryScores} />
+              <ul className="grid w-full max-w-[220px] grid-cols-2 gap-2.5 sm:max-w-[240px]">
+                {categoryKeys.map((key) => (
+                  <li
+                    key={key}
+                    className="rounded-xl border border-[#071426]/10 bg-white px-3 py-2.5"
+                  >
+                    <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400">
+                      {WELLNESS_CATEGORY_LABELS[key]}
+                    </p>
+                    <p
+                      className="mt-0.5 text-[1.15rem] font-semibold tracking-[-0.03em]"
+                      style={{ color: NAVY }}
+                    >
+                      {categoryScores[key]}
+                      <span className="ml-0.5 text-[11px] font-medium tracking-normal text-slate-400">
+                        /100
+                      </span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="③ 自律神経評価" eyebrow="AUTONOMIC" />
-            <FormattedAiText text={autonomicText || "—"} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="④ 回復力評価" eyebrow="RECOVERY" />
-            <FormattedAiText text={recoveryText || "—"} />
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="⑤ 改善ポイント" eyebrow="IMPROVE" />
-            <BulletList items={improvements} />
+            <SectionLabel title="⑥ 今日のおすすめ" eyebrow="TODAY" />
+            <p className="mb-3 text-[13px] leading-6 text-slate-500">
+              今日実践できる内容を優先順位順に3つだけ示しています。
+            </p>
+            <TodaysRecommendationsList items={todaysRecommendations} />
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
             <SectionLabel
-              title="⑥ メラトニンヨガ™の視点"
-              eyebrow="MELATONIN YOGA"
+              title="⑦ 次回比較ポイント"
+              eyebrow="NEXT CHECK"
             />
-            <FormattedAiText text={melatoninYogaText || "—"} />
+            <p className="mb-3 text-[13px] leading-6 text-slate-500">
+              次回の分析で、前回と比べて見てほしい観点です。
+            </p>
+            <BulletList items={nextComparisonPoints} />
           </section>
+
+          <RecommendationsUntilNextCard
+            result={result}
+            onUpdated={(goals) =>
+              setResult((current) => ({
+                ...current,
+                recommendationsUntilNext: goals,
+              }))
+            }
+          />
+
+          <InstituteBrandComment
+            seed={`${result.analysisId ?? ""}|${result.measurementDate ?? ""}|${result.clientId ?? ""}`}
+          />
 
           {(cautionText || disclaimerText) && (
             <section className="report-disclaimer mt-5 border-t border-[#071426]/12 pt-4 sm:mt-6">

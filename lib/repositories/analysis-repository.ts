@@ -8,6 +8,7 @@ export {
   getComparableClients,
   createClient,
   saveAnalysisToRepository,
+  updateAnalysisRecommendationsUntilNext,
   recordPdfDownload,
   analysisSleepScore,
   formatDisplayDate,

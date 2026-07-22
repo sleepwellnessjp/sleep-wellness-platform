@@ -2,13 +2,23 @@
 
 import type { ReactNode } from "react";
 import {
+  formatAiImportanceStars,
+  getProfileAiImportance,
+  type AiImportanceStars,
+} from "@/lib/client-profiles/ai-importance";
+import { numberToInputValue } from "@/lib/client-profiles/display";
+import {
+  PROFILE_HINTS,
+  PROFILE_LABELS,
+  type ProfileLabelKey,
+} from "@/lib/client-profiles/labels";
+import {
   htmlMaxForRule,
   htmlMinForRule,
   NUMBER_RULES,
   parseOptionalNumber as parseValidatedNumber,
   type NumberRule,
 } from "@/lib/client-profiles/validation";
-import { numberToInputValue } from "@/lib/client-profiles/display";
 
 export const NAVY = "#071426";
 export const GOLD = "#8a6a2d";
@@ -16,26 +26,63 @@ export const GOLD = "#8a6a2d";
 export const inputClass =
   "mt-2 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
 
+export const inputEmptyReadonlyClass =
+  "mt-2 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[15px] font-semibold text-[#C48A2D]";
+
 export const textareaClass =
   "mt-2 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
 
+/** 控えめで高級感のある重要度表示（重要項目のみ） */
+export function AiImportanceMark({
+  stars,
+  className = "",
+}: {
+  stars: AiImportanceStars | undefined | null;
+  className?: string;
+}) {
+  const mark = formatAiImportanceStars(stars);
+  if (!mark) return null;
+
+  return (
+    <span
+      className={`font-serif text-[11px] font-normal tracking-[0.14em] text-[#8a6a2d]/80 ${className}`}
+      title="AI分析への重要度"
+      aria-label={`AI分析への重要度 ${stars} / 5`}
+    >
+      {mark}
+    </span>
+  );
+}
+
 export function Field({
   label,
+  labelKey,
   required,
   unit,
   hint,
   children,
 }: {
-  label: string;
+  label?: string;
+  /** 指定するとラベル・補足・AI重要度を共通定義から解決 */
+  labelKey?: ProfileLabelKey;
   required?: boolean;
   unit?: string;
   hint?: string;
   children: ReactNode;
 }) {
+  const resolvedLabel =
+    label ?? (labelKey ? PROFILE_LABELS[labelKey] : "");
+  const resolvedHint =
+    hint ?? (labelKey ? PROFILE_HINTS[labelKey] : undefined);
+  const importance = labelKey
+    ? getProfileAiImportance(labelKey)
+    : undefined;
+
   return (
     <label className="block">
       <span className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-[#071426] sm:text-sm">
-        {label}
+        {resolvedLabel}
+        <AiImportanceMark stars={importance} />
         {required ? (
           <span className="text-[11px] font-medium text-[#8a6a2d]">必須</span>
         ) : (
@@ -47,8 +94,10 @@ export function Field({
           </span>
         ) : null}
       </span>
-      {hint ? (
-        <span className="mt-0.5 block text-[11px] text-slate-400">{hint}</span>
+      {resolvedHint ? (
+        <span className="mt-0.5 block text-[11px] text-slate-400">
+          {resolvedHint}
+        </span>
       ) : null}
       {children}
     </label>

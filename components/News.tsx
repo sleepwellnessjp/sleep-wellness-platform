@@ -1,39 +1,5 @@
 import Link from "next/link";
-
-const newsItems = [
-  {
-    date: "2026.10.01",
-    category: "EVENT",
-    title: "ヨガフェスタ横浜2026登壇",
-    description:
-      "睡眠科学とヨガを融合した「メラトニンヨガ™」をテーマに登壇予定。実践とデータから、眠りを整えるヒントをお届けします。",
-    href: "#contact",
-  },
-  {
-    date: "2026.08.01",
-    category: "ACADEMY",
-    title: "メラトニンヨガ™養成講座",
-    description:
-      "睡眠ウェルネスを実践・指導できるインストラクター育成プログラムを開講。科学と身体知を学べる講座です。",
-    href: "#academy",
-  },
-  {
-    date: "2026.06.15",
-    category: "PROJECT",
-    title: "SOXAI共同プロジェクト",
-    description:
-      "ウェアラブルデータを活用した睡眠ウェルネス分析・実証プロジェクトを推進。個人と組織の眠りを可視化します。",
-    href: "#analysis",
-  },
-  {
-    date: "2026.04.01",
-    category: "PLATFORM",
-    title: "Sleep Wellness Platform公開予定",
-    description:
-      "睡眠分析・学習・実践を統合するSleep Wellness Platformを公開予定。エコシステム全体をつなぐ基盤です。",
-    href: "#vision",
-  },
-];
+import { SWIJ_NEWS_ITEMS } from "@/lib/swij-news";
 
 export default function News() {
   return (
@@ -61,7 +27,7 @@ export default function News() {
         </div>
 
         <div className="mt-14 grid gap-5 sm:mt-16 sm:grid-cols-2 sm:gap-6 xl:grid-cols-4 lg:mt-20">
-          {newsItems.map((item) => (
+          {SWIJ_NEWS_ITEMS.map((item) => (
             <article
               key={item.title}
               className="group flex flex-col rounded-[24px] border border-slate-200 bg-[#fafaf8] p-7 shadow-[0_18px_60px_-40px_rgba(15,23,42,0.16)] transition-all duration-300 hover:-translate-y-2 hover:border-[#315f68]/20 hover:bg-white hover:shadow-[0_35px_90px_-40px_rgba(15,23,42,0.24)] sm:p-8"

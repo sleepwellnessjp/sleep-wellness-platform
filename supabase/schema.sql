@@ -17,7 +17,7 @@ create table if not exists public.profiles (
 -- ============================================================
 -- clients
 -- ============================================================
--- App 書き込み対象（最小）: id / owner_id / name / name_kana(furigana) / memo / created_at
+-- App 書き込み対象（最小）: id / owner_id / name / name_kana(furigana) / memo / tags / created_at
 -- 年齢・身長・体重・性別・職業・健康情報は client_profiles へ保存する。
 -- 下記の birth_date / gender / email 等は後方互換のためのレガシー列（新規書き込みしない）。
 create table if not exists public.clients (
@@ -31,12 +31,14 @@ create table if not exists public.clients (
   phone text,
   registered_at date,
   memo text,
+  tags text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists clients_owner_id_idx on public.clients (owner_id);
 create index if not exists clients_owner_updated_idx on public.clients (owner_id, updated_at desc);
+create index if not exists clients_tags_gin_idx on public.clients using gin (tags);
 
 -- ============================================================
 -- analyses

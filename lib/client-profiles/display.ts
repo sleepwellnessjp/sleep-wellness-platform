@@ -1,6 +1,6 @@
 /**
  * 固定プロフィールの画面表示ヘルパー
- * 未入力（null / undefined / "" / NaN / ルール外）→「—」
+ * 未入力（null / undefined / "" / NaN / ルール外）→「未入力」
  * 有効な 0 はそのまま表示する
  */
 
@@ -10,7 +10,13 @@ import {
   type NumberRule,
 } from "@/lib/client-profiles/validation";
 
-export const EMPTY_DISPLAY = "—";
+export const EMPTY_DISPLAY = "未入力";
+
+/** 未入力表示のスタイル（背景・文字色） */
+export const EMPTY_DISPLAY_STYLE = {
+  background: "#FFF8EC",
+  color: "#C48A2D",
+} as const;
 
 /**
  * 数値の未入力判定（デフォルト: 0以上の非負数）。
@@ -37,7 +43,7 @@ export function displayProfileNumber(
 }
 
 /**
- * 画面表示用。未入力は「—」、0 は "0"。
+ * 画面表示用。未入力は「未入力」、0 は "0"。
  * 数値の負数はデフォルトで未入力扱い（-1 などを出さない）。
  * 温度は numberRule: NUMBER_RULES.temperatureC を渡す。
  */
