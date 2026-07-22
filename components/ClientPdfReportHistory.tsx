@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import EmptyState from "@/components/ui/EmptyState";
+import { GOLD, NAVY } from "@/components/ui/tokens";
 import {
   buildClientPdfReports,
   formatPdfReportShortDate,
@@ -8,9 +10,6 @@ import {
   type ClientPdfReport,
 } from "@/lib/client-pdf-reports";
 import type { StoredAnalysis } from "@/lib/client-store";
-
-const NAVY = "#071426";
-const GOLD = "#8a6a2d";
 
 type Props = {
   analyses: StoredAnalysis[];
@@ -38,7 +37,6 @@ function ReportActions({
         ダウンロード
       </Link>
 
-      {/* 共有機能用スロット：onShare または share.enabled で表示 */}
       {onShare || report.share?.enabled ? (
         <button
           type="button"
@@ -89,20 +87,13 @@ export default function ClientPdfReportHistory({ analyses, onShare }: Props) {
 
   if (reports.length === 0) {
     return (
-      <div className="flex min-h-[160px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#8a6a2d]/25 bg-[#faf7f1]/50 px-6 py-10 text-center">
-        <p
-          className="text-[11px] font-semibold tracking-[0.22em]"
-          style={{ color: GOLD }}
-        >
-          PDF HISTORY
-        </p>
-        <p className="mt-3 text-sm font-semibold" style={{ color: NAVY }}>
-          まだPDFレポートがありません
-        </p>
-        <p className="mt-2 max-w-sm text-[13px] leading-6 text-slate-500">
-          分析を作成すると、ここに Sleep Report が一覧表示されます。
-        </p>
-      </div>
+      <EmptyState
+        compact
+        illustration="history"
+        eyebrow="PDF HISTORY"
+        title="まだPDFレポートがありません"
+        description="分析を作成すると、ここに Sleep Report が一覧表示されます。"
+      />
     );
   }
 

@@ -94,7 +94,7 @@ create policy "client_appointments_insert_own"
     auth.uid() = owner_id
     and exists (
       select 1 from public.clients c
-      where c.id = client_id and c.owner_id = auth.uid()
+      where c.id = client_id and c.instructor_id = auth.uid()
     )
   );
 
@@ -107,7 +107,7 @@ create policy "client_appointments_update_own"
     auth.uid() = owner_id
     and exists (
       select 1 from public.clients c
-      where c.id = client_id and c.owner_id = auth.uid()
+      where c.id = client_id and c.instructor_id = auth.uid()
     )
   );
 
