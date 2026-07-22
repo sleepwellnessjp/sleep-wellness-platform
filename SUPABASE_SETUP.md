@@ -84,6 +84,39 @@ OPENAI_API_KEY=sk-xxxxxxxx
 
 > 既に Platform V1 を適用済みのプロジェクトでも、この SQL を追加実行してください。
 > `/setup` 画面で「3. 分析永続化」が Ready になるまで再確認してください。
+
+### 4-4. 環境属性・測定 provider・本人ベースライン（拡張）
+
+`supabase/occupation-environment-baselines.sql`（または `supabase/migrations/20260722140000_occupation_environment_baselines.sql`）
+
+追加されるもの:
+
+- `occupation_master` … **環境属性**（高温・立ち仕事・夜勤・粉塵等。職業名ではない。AI は属性のみ参照）
+- `client_occupation_attributes` … クライアント固定の属性紐づけ
+- `environment_event_master` … 旅行・ホテル・飛行機・新幹線・出張・キャンプ等（将来追加可能）
+- `analysis_environment_events` … 分析日ごとの環境イベント
+- `client_metric_baselines` … 本人基準（設計上 当日/7/30/90/180/365 日。現行 SQL は 30/90 から後方互換拡張）
+- `analyses.personal_baseline` … 分析時点スナップショット
+
+設計メモ（v2）: `docs/design-occupation-environment-baselines.md`
+
+- AI は職業名ではなく環境属性を優先（例: パン職人 → 高温・立ち仕事・早朝勤務・粉塵）
+- 測定値は `provider`（soxai / apple_watch / garmin / oura / manual 等）を持てる拡張構造
+- 一般基準は最後の補助評価のみ
+
+### 4-5. クライアントプロフィール分離（必須・追加）
+
+`supabase/client-profile-v2.sql`（または `supabase/migrations/20260722120000_client_profile_v2.sql`）のあと、
+
+`supabase/create-client-with-profile.sql`（または `supabase/migrations/20260722150000_create_client_with_profile.sql`）
+
+を実行してください。
+
+- `clients` … **最小情報のみ**（`id` / `owner_id` / `name` / `name_kana` / `memo` / `created_at`）
+- 年齢・身長・体重・性別・職業・健康情報 … `client_profiles`
+- `create_client_with_profile` … clients + 空 profile を同一トランザクションで作成（失敗時ロールバック）
+- `ensure_client_profile` … profile 未作成時に自動生成
+
 ---
 
 ## 5. メール認証の設定
