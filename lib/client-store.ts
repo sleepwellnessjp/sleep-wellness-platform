@@ -40,6 +40,17 @@ export type StoredClient = {
   nameKana?: string;
   birthDate?: string;
   gender?: string;
+  /** 年齢（分析時必須） */
+  age?: number;
+  /** 身長 cm（推奨） */
+  heightCm?: number;
+  /** 体重 kg（推奨） */
+  weightKg?: number;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
   email?: string;
   phone?: string;
   memo?: string;
@@ -59,11 +70,39 @@ export type CreateClientInput = {
   nameKana?: string;
   birthDate?: string;
   gender?: string;
+  age?: string | number;
+  heightCm?: string | number;
+  weightKg?: string | number;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
   email?: string;
   phone?: string;
   registeredAt?: string;
   memo?: string;
 };
+
+function parseOptionalInt(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.trim());
+    if (Number.isFinite(n)) return Math.round(n);
+  }
+  return undefined;
+}
+
+function parseOptionalFloat(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.trim());
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
 
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
@@ -117,6 +156,14 @@ function readRawClients(): StoredClient[] {
         nameKana: asOptionalString(client.nameKana),
         birthDate: asOptionalString(client.birthDate),
         gender: asOptionalString(client.gender),
+        age: parseOptionalInt(client.age),
+        heightCm: parseOptionalFloat(client.heightCm),
+        weightKg: parseOptionalFloat(client.weightKg),
+        medications: asOptionalString(client.medications),
+        drinkingHabit: asOptionalString(client.drinkingHabit),
+        exerciseHabit: asOptionalString(client.exerciseHabit),
+        snoringNasal: asOptionalString(client.snoringNasal),
+        medicalHistory: asOptionalString(client.medicalHistory),
         email: asOptionalString(client.email),
         phone: asOptionalString(client.phone),
         memo: asOptionalString(client.memo),
@@ -221,19 +268,20 @@ function buildSeedClients(): StoredClient[] {
     summary: string,
   ): AnalysisResult => ({
     summary,
-    sleepCharacteristics:
-      "今回確認できた範囲では、睡眠時間と睡眠効率に数値が取得できています。深い睡眠の時間も確認できました。HRV・SpO₂・体内時計は数値として触れますが、単日のため状態の断定は控え、推移の確認が大切です。",
+    sleepAnalysis:
+      "今回確認できた睡眠時間と睡眠効率、深い睡眠・REM・覚醒のバランスを関連づけると、睡眠の連続性に整える余地がある可能性があります。HRVや安静時心拍、SpO₂、体内時計もあわせて見ると、回復の土台は保たれつつ、入眠前後の切り替えが睡眠負債や覚醒に影響している可能性があります。単日のため、数日の推移確認が大切です。",
+    autonomicAssessment:
+      "HRV・安静時心拍・測定ストレスをあわせて見ると、今回は交感神経寄りに傾いている可能性と、休息側への切り替え余地が同時に見えます。単独指標での断定はせず、生活リズムとあわせた推移確認が有用です。",
+    recoveryAssessment:
+      "睡眠の質・身体回復・疲労回復の観点では、深い睡眠と効率の数値が回復の土台を支えている一方、覚醒や睡眠負債がある場合は翌日の疲労感につながりやすい可能性があります。単日評価のため、回復の傾向は連続データで確かめましょう。",
     improvements: [
-      "優先1：入眠前の切り替え時間に改善余地があります",
-      "優先2：睡眠効率の数値を踏まえ、就寝前の光・刺激の調整を検討します",
-    ],
-    actionPlan: [
-      "最優先：就寝90分前の照明を落とす",
-      "短い呼吸法を2セット",
-      "夕食終了から入眠まで2時間以上空ける",
+      "優先1：入眠前60分の光刺激を抑え、切り替え時間をつくる",
+      "優先2：3:6呼吸で副交感神経側への切り替えを促す",
+      "優先3：就寝90〜60分前のぬるめ入浴で体温リズムを整える",
+      "優先4：翌朝同じ時刻に起き、朝の光を数分取り入れる",
     ],
     melatoninYoga:
-      "就寝前10分のメラトニンヨガ™を推奨します。前半3分はゆっくりとした動き、次に3:6呼吸を5分、最後に静かな休息を2分行います。無理に眠ろうとせず、呼吸と身体感覚を整えることを目的とします。",
+      "メラトニンヨガ™の視点では、今回は光・呼吸・入浴の整えが中心になります。就寝前は強い光を控え、3:6呼吸で神経系の切り替えを促し、必要に応じてぬるめの入浴と短い瞑想を組み合わせます。無理に眠ろうとせず、身体感覚を整えることを目的とします。",
     score,
     scoreBreakdown: {
       sleepDuration: 4,
@@ -617,6 +665,14 @@ export function createClient(input: CreateClientInput): StoredClient {
     nameKana: asOptionalString(input.nameKana),
     birthDate: asOptionalString(input.birthDate),
     gender: asOptionalString(input.gender),
+    age: parseOptionalInt(input.age),
+    heightCm: parseOptionalFloat(input.heightCm),
+    weightKg: parseOptionalFloat(input.weightKg),
+    medications: asOptionalString(input.medications),
+    drinkingHabit: asOptionalString(input.drinkingHabit),
+    exerciseHabit: asOptionalString(input.exerciseHabit),
+    snoringNasal: asOptionalString(input.snoringNasal),
+    medicalHistory: asOptionalString(input.medicalHistory),
     email: asOptionalString(input.email),
     phone: asOptionalString(input.phone),
     memo: asOptionalString(input.memo),
@@ -626,6 +682,75 @@ export function createClient(input: CreateClientInput): StoredClient {
   clients.push(client);
   writeClients(clients);
   return client;
+}
+
+/** 既存クライアントの基本情報を更新（ローカル） */
+export function updateClientProfile(
+  clientId: string,
+  input: Partial<CreateClientInput>,
+): StoredClient | null {
+  const clients = loadClients();
+  const index = clients.findIndex((item) => item.id === clientId);
+  if (index < 0) return null;
+
+  const current = clients[index];
+  const next: StoredClient = {
+    ...current,
+    name:
+      input.name !== undefined && input.name.trim()
+        ? input.name.trim()
+        : current.name,
+    nameKana:
+      input.nameKana !== undefined
+        ? asOptionalString(input.nameKana)
+        : current.nameKana,
+    birthDate:
+      input.birthDate !== undefined
+        ? asOptionalString(input.birthDate)
+        : current.birthDate,
+    gender:
+      input.gender !== undefined
+        ? asOptionalString(input.gender)
+        : current.gender,
+    age: input.age !== undefined ? parseOptionalInt(input.age) : current.age,
+    heightCm:
+      input.heightCm !== undefined
+        ? parseOptionalFloat(input.heightCm)
+        : current.heightCm,
+    weightKg:
+      input.weightKg !== undefined
+        ? parseOptionalFloat(input.weightKg)
+        : current.weightKg,
+    medications:
+      input.medications !== undefined
+        ? asOptionalString(input.medications)
+        : current.medications,
+    drinkingHabit:
+      input.drinkingHabit !== undefined
+        ? asOptionalString(input.drinkingHabit)
+        : current.drinkingHabit,
+    exerciseHabit:
+      input.exerciseHabit !== undefined
+        ? asOptionalString(input.exerciseHabit)
+        : current.exerciseHabit,
+    snoringNasal:
+      input.snoringNasal !== undefined
+        ? asOptionalString(input.snoringNasal)
+        : current.snoringNasal,
+    medicalHistory:
+      input.medicalHistory !== undefined
+        ? asOptionalString(input.medicalHistory)
+        : current.medicalHistory,
+    email:
+      input.email !== undefined ? asOptionalString(input.email) : current.email,
+    phone:
+      input.phone !== undefined ? asOptionalString(input.phone) : current.phone,
+    memo: input.memo !== undefined ? asOptionalString(input.memo) : current.memo,
+  };
+
+  clients[index] = next;
+  writeClients(clients);
+  return next;
 }
 
 export function analysisSleepScore(analysis: StoredAnalysis): number | null {
@@ -702,6 +827,22 @@ export function saveAnalysisToClientStore(
     };
     clients.push(client);
   }
+
+  // 分析時に入力した基本情報をクライアントへ反映
+  client.age = parseOptionalInt(result.age) ?? client.age;
+  client.gender = asOptionalString(result.gender) ?? client.gender;
+  client.heightCm = parseOptionalFloat(result.heightCm) ?? client.heightCm;
+  client.weightKg = parseOptionalFloat(result.weightKg) ?? client.weightKg;
+  client.medications =
+    asOptionalString(result.medications) ?? client.medications;
+  client.drinkingHabit =
+    asOptionalString(result.drinkingHabit) ?? client.drinkingHabit;
+  client.exerciseHabit =
+    asOptionalString(result.exerciseHabit) ?? client.exerciseHabit;
+  client.snoringNasal =
+    asOptionalString(result.snoringNasal) ?? client.snoringNasal;
+  client.medicalHistory =
+    asOptionalString(result.medicalHistory) ?? client.medicalHistory;
 
   const analysisId = createId("analysis");
   const analysis: StoredAnalysis = {

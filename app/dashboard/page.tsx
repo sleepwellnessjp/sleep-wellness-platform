@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import AuthStatusBar from "@/components/AuthStatusBar";
-import NewClientModal from "@/components/NewClientModal";
 import PlatformStatusCard from "@/components/PlatformStatusCard";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
 import { usePlatformMe } from "@/lib/platform/use-platform-me";
@@ -71,7 +70,6 @@ function TrendGlyph({ item }: { item: RecentAnalysisItem }) {
 export default function InstructorDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
   const [ready, setReady] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const { data: platformMe } = usePlatformMe();
 
   const refresh = async () => {
@@ -190,14 +188,13 @@ export default function InstructorDashboardPage() {
             >
               比較レポート
             </Link>
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
+            <Link
+              href="/clients/new"
               className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-5 py-2.5 text-[13px] font-semibold transition hover:bg-[#f5efe4] sm:text-sm"
               style={{ color: GOLD }}
             >
               新規クライアント登録
-            </button>
+            </Link>
           </div>
         </header>
 
@@ -530,14 +527,6 @@ export default function InstructorDashboardPage() {
           </>
         )}
       </div>
-
-      <NewClientModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onCreated={() => {
-          void refresh();
-        }}
-      />
     </main>
   );
 }

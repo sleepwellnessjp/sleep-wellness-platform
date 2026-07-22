@@ -12,6 +12,7 @@ import {
   recordPdfDownload as recordLocalPdfDownload,
   rememberLastSavedAnalysisRef,
   saveAnalysisToClientStore as saveLocalAnalysis,
+  updateClientProfile as updateLocalClientProfile,
   type ClientListItem,
   type CreateClientInput,
   type PdfHistoryEntry,
@@ -19,6 +20,10 @@ import {
   type StoredAnalysis,
   type StoredClient,
 } from "@/lib/client-store";
+import {
+  parseOptionalAge,
+  parseOptionalPositiveNumber,
+} from "@/lib/client-profile";
 import {
   buildStructuredMetrics,
   parseStructuredFromStorage,
@@ -54,6 +59,14 @@ type DbClientRow = {
   name_kana: string | null;
   birth_date: string | null;
   gender: string | null;
+  age?: number | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  medications?: string | null;
+  drinking_habit?: string | null;
+  exercise_habit?: string | null;
+  snoring_nasal?: string | null;
+  medical_history?: string | null;
   email: string | null;
   phone: string | null;
   registered_at: string | null;
@@ -176,9 +189,10 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
       })
     : normalizeAnalysisResult({
         summary: "",
-        sleepCharacteristics: "",
+        sleepAnalysis: "",
+        autonomicAssessment: "",
+        recoveryAssessment: "",
         improvements: [],
-        actionPlan: [],
         melatoninYoga: "",
         score: 0,
         scoreBreakdown: {
@@ -226,6 +240,23 @@ function mapDbClient(row: DbClientRow, analyses: StoredAnalysis[]): StoredClient
     nameKana: row.name_kana ?? undefined,
     birthDate: row.birth_date ?? undefined,
     gender: row.gender ?? undefined,
+    age:
+      typeof row.age === "number" && Number.isFinite(row.age)
+        ? Math.round(row.age)
+        : undefined,
+    heightCm:
+      typeof row.height_cm === "number" && Number.isFinite(row.height_cm)
+        ? row.height_cm
+        : undefined,
+    weightKg:
+      typeof row.weight_kg === "number" && Number.isFinite(row.weight_kg)
+        ? row.weight_kg
+        : undefined,
+    medications: row.medications?.trim() || undefined,
+    drinkingHabit: row.drinking_habit?.trim() || undefined,
+    exerciseHabit: row.exercise_habit?.trim() || undefined,
+    snoringNasal: row.snoring_nasal?.trim() || undefined,
+    medicalHistory: row.medical_history?.trim() || undefined,
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
     memo: row.memo ?? undefined,
@@ -235,6 +266,60 @@ function mapDbClient(row: DbClientRow, analyses: StoredAnalysis[]): StoredClient
       return b.analysisDate.localeCompare(a.analysisDate);
     }),
   };
+}
+
+function profilePayloadFromInput(input: Partial<CreateClientInput>): {
+  age?: number | null;
+  gender?: string | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  medications?: string;
+  drinking_habit?: string;
+  exercise_habit?: string;
+  snoring_nasal?: string;
+  medical_history?: string;
+} {
+  const payload: {
+    age?: number | null;
+    gender?: string | null;
+    height_cm?: number | null;
+    weight_kg?: number | null;
+    medications?: string;
+    drinking_habit?: string;
+    exercise_habit?: string;
+    snoring_nasal?: string;
+    medical_history?: string;
+  } = {};
+
+  if (input.age !== undefined) {
+    payload.age = parseOptionalAge(String(input.age));
+  }
+  if (input.gender !== undefined) {
+    payload.gender = input.gender.trim() || null;
+  }
+  if (input.heightCm !== undefined) {
+    payload.height_cm = parseOptionalPositiveNumber(String(input.heightCm));
+  }
+  if (input.weightKg !== undefined) {
+    payload.weight_kg = parseOptionalPositiveNumber(String(input.weightKg));
+  }
+  if (input.medications !== undefined) {
+    payload.medications = input.medications.trim() || "";
+  }
+  if (input.drinkingHabit !== undefined) {
+    payload.drinking_habit = input.drinkingHabit.trim() || "";
+  }
+  if (input.exerciseHabit !== undefined) {
+    payload.exercise_habit = input.exerciseHabit.trim() || "";
+  }
+  if (input.snoringNasal !== undefined) {
+    payload.snoring_nasal = input.snoringNasal.trim() || "";
+  }
+  if (input.medicalHistory !== undefined) {
+    payload.medical_history = input.medicalHistory.trim() || "";
+  }
+
+  return payload;
 }
 
 export type AnalysisHistoryListItem = {
@@ -517,11 +602,23 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
     name,
     name_kana: input.nameKana?.trim() || null,
     birth_date: input.birthDate?.trim() || null,
-    gender: input.gender?.trim() || null,
     email: input.email?.trim() || null,
     phone: input.phone?.trim() || null,
     registered_at: registeredAt,
     memo: input.memo?.trim() || null,
+    age: parseOptionalAge(input.age == null ? "" : String(input.age)),
+    gender: input.gender?.trim() || null,
+    height_cm: parseOptionalPositiveNumber(
+      input.heightCm == null ? "" : String(input.heightCm),
+    ),
+    weight_kg: parseOptionalPositiveNumber(
+      input.weightKg == null ? "" : String(input.weightKg),
+    ),
+    medications: input.medications?.trim() || "",
+    drinking_habit: input.drinkingHabit?.trim() || "",
+    exercise_habit: input.exerciseHabit?.trim() || "",
+    snoring_nasal: input.snoringNasal?.trim() || "",
+    medical_history: input.medicalHistory?.trim() || "",
   };
 
   console.info("[client-repository] createClient insert payload:", payload);
@@ -541,6 +638,71 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
     throw new Error("登録結果を取得できませんでした。");
   }
 
+  notifyClientsUpdated();
+  return mapDbClient(data as DbClientRow, []);
+}
+
+export async function updateClientProfile(
+  clientId: string,
+  input: Partial<CreateClientInput>,
+): Promise<StoredClient | null> {
+  const auth = await getSupabaseAuth();
+  if (!auth) return updateLocalClientProfile(clientId, input);
+
+  const { supabase, userId } = auth;
+  const patch: {
+    name?: string;
+    age?: number | null;
+    gender?: string | null;
+    height_cm?: number | null;
+    weight_kg?: number | null;
+    medications?: string;
+    drinking_habit?: string;
+    exercise_habit?: string;
+    snoring_nasal?: string;
+    medical_history?: string;
+    name_kana?: string | null;
+    birth_date?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    memo?: string | null;
+  } = { ...profilePayloadFromInput(input) };
+
+  if (input.name !== undefined) {
+    const nextName = input.name.trim();
+    if (nextName) patch.name = nextName;
+  }
+  if (input.nameKana !== undefined) {
+    patch.name_kana = input.nameKana.trim() || null;
+  }
+  if (input.birthDate !== undefined) {
+    patch.birth_date = input.birthDate.trim() || null;
+  }
+  if (input.email !== undefined) {
+    patch.email = input.email.trim() || null;
+  }
+  if (input.phone !== undefined) {
+    patch.phone = input.phone.trim() || null;
+  }
+  if (input.memo !== undefined) {
+    patch.memo = input.memo.trim() || null;
+  }
+
+  const { data, error } = await supabase
+    .from("clients")
+    .update(patch)
+    .eq("owner_id", userId)
+    .eq("id", clientId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    // マイグレーション未適用でも分析は続行できるよう、ログのみ
+    console.error("[client-repository] updateClientProfile failed:", error);
+    return null;
+  }
+
+  if (!data) return null;
   notifyClientsUpdated();
   return mapDbClient(data as DbClientRow, []);
 }
@@ -638,6 +800,15 @@ export async function saveAnalysisToRepository(
           owner_id: userId,
           name,
           registered_at: analysisDate,
+          age: parseOptionalAge(result.age ?? ""),
+          gender: result.gender?.trim() || null,
+          height_cm: parseOptionalPositiveNumber(result.heightCm ?? ""),
+          weight_kg: parseOptionalPositiveNumber(result.weightKg ?? ""),
+          medications: result.medications?.trim() || "",
+          drinking_habit: result.drinkingHabit?.trim() || "",
+          exercise_habit: result.exerciseHabit?.trim() || "",
+          snoring_nasal: result.snoringNasal?.trim() || "",
+          medical_history: result.medicalHistory?.trim() || "",
         })
         .select("id")
         .single();
@@ -649,12 +820,27 @@ export async function saveAnalysisToRepository(
     }
   }
 
+  if (clientId) {
+    await updateClientProfile(clientId, {
+      age: result.age,
+      gender: result.gender,
+      heightCm: result.heightCm,
+      weightKg: result.weightKg,
+      medications: result.medications,
+      drinkingHabit: result.drinkingHabit,
+      exerciseHabit: result.exerciseHabit,
+      snoringNasal: result.snoringNasal,
+      medicalHistory: result.medicalHistory,
+    });
+  }
+
   const reportPayload = {
     medical: {
       summary: result.summary,
-      sleepCharacteristics: result.sleepCharacteristics,
+      sleepAnalysis: result.sleepAnalysis,
+      autonomicAssessment: result.autonomicAssessment,
+      recoveryAssessment: result.recoveryAssessment,
       improvements: result.improvements,
-      actionPlan: result.actionPlan,
       melatoninYoga: result.melatoninYoga,
       score: result.score,
       scoreBreakdown: result.scoreBreakdown,
