@@ -1,4 +1,4 @@
 export const AI_ROUTES = {
   insights: "/insights",
-  instructorInsightAnchor: "/dashboard#insight",
+  instructorInsightAnchor: "/dashboard#advice",
 } as const;

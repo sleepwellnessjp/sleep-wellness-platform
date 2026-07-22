@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import AdminShell from "@/components/AdminShell";
+import ExecutiveDashboard from "@/components/ExecutiveDashboard";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, TEAL } from "@/components/ui/tokens";
@@ -90,6 +91,10 @@ export default function AdminDashboardPage() {
         </Link>
       }
     >
+      <section className="mb-10" id="executive">
+        <ExecutiveDashboard />
+      </section>
+
       <section className="mb-10">
         <p
           className="text-[10px] font-semibold tracking-[0.2em]"
@@ -141,26 +146,34 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-slate-600">{error}</p>
         </SectionCard>
       ) : stats ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {CARDS.map((card) => (
-            <article
-              key={card.key}
-              className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.18)]"
-            >
-              <p
-                className="text-[10px] font-semibold tracking-[0.2em]"
-                style={{ color: GOLD }}
+        <div>
+          <p
+            className="mb-4 text-[10px] font-semibold tracking-[0.2em]"
+            style={{ color: GOLD }}
+          >
+            OPERATIONS KPIs
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {CARDS.map((card) => (
+              <article
+                key={card.key}
+                className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.18)]"
               >
-                {card.label.toUpperCase()}
-              </p>
-              <p
-                className="mt-4 text-3xl font-semibold tracking-[-0.04em]"
-                style={{ color: NAVY }}
-              >
-                {card.format(stats)}
-              </p>
-            </article>
-          ))}
+                <p
+                  className="text-[10px] font-semibold tracking-[0.2em]"
+                  style={{ color: GOLD }}
+                >
+                  {card.label.toUpperCase()}
+                </p>
+                <p
+                  className="mt-4 text-3xl font-semibold tracking-[-0.04em]"
+                  style={{ color: NAVY }}
+                >
+                  {card.format(stats)}
+                </p>
+              </article>
+            ))}
+          </div>
         </div>
       ) : null}
     </AdminShell>
