@@ -1,6 +1,6 @@
 /**
- * 勤務環境属性（職業名より優先して保存する）
- * Phase 2 固定プロフィールのトグル一覧
+ * 仕事の環境・特徴（職業名より優先して保存する）
+ * 固定プロフィールのトグル一覧（当日の状態は day_context）
  */
 
 export const WORK_ENVIRONMENT_ATTRIBUTES = [
@@ -11,18 +11,21 @@ export const WORK_ENVIRONMENT_ATTRIBUTES = [
   { id: "pc_work", label: "パソコン作業" },
   { id: "smartphone_work", label: "スマートフォン作業" },
   { id: "interpersonal", label: "対人対応" },
-  { id: "heat_high", label: "高温" },
-  { id: "humidity_high", label: "高湿度" },
-  { id: "cold_low", label: "低温" },
+  {
+    id: "heat_high",
+    label: "高温環境（ホットヨガ・サウナ・厨房など）",
+  },
+  { id: "humidity_high", label: "湿度が高い" },
+  { id: "cold_low", label: "寒い環境" },
   { id: "outdoor_work", label: "屋外" },
-  { id: "fire_oven", label: "火、炉、オーブン" },
-  { id: "smoke_exposure", label: "煙" },
-  { id: "dust_exposure", label: "粉塵" },
-  { id: "noise", label: "騒音" },
+  { id: "fire_oven", label: "火・炉・オーブンの近く" },
+  { id: "smoke_exposure", label: "煙が多い" },
+  { id: "dust_exposure", label: "粉塵が多い" },
+  { id: "noise", label: "騒音がある" },
   { id: "early_shift", label: "早朝勤務" },
   { id: "night_shift", label: "夜間勤務" },
   { id: "limited_breaks", label: "休憩が取りにくい" },
-  { id: "moves_immediately", label: "勤務後すぐに移動" },
+  { id: "moves_immediately", label: "終了後すぐに移動した" },
 ] as const;
 
 export type WorkEnvironmentAttributeId =
