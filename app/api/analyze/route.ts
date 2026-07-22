@@ -16,6 +16,15 @@ const isDev = process.env.NODE_ENV === "development";
 type LifestyleData = {
   clientName?: string;
   measurementDate?: string;
+  age?: string;
+  gender?: string;
+  heightCm?: string;
+  weightKg?: string;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
   bedtime?: string;
   wakeTime?: string;
   exercise?: string;
@@ -75,9 +84,10 @@ const analysisSchema = {
   additionalProperties: false,
   required: [
     "summary",
-    "sleepCharacteristics",
+    "sleepAnalysis",
+    "autonomicAssessment",
+    "recoveryAssessment",
     "improvements",
-    "actionPlan",
     "melatoninYoga",
     "score",
     "scoreBreakdown",
@@ -87,12 +97,10 @@ const analysisSchema = {
   ],
   properties: {
     summary: { type: "string" },
-    sleepCharacteristics: { type: "string" },
+    sleepAnalysis: { type: "string" },
+    autonomicAssessment: { type: "string" },
+    recoveryAssessment: { type: "string" },
     improvements: {
-      type: "array",
-      items: { type: "string" },
-    },
-    actionPlan: {
       type: "array",
       items: { type: "string" },
     },
@@ -126,9 +134,10 @@ const analysisSchema = {
   },
 } as const;
 
-const SYSTEM_INSTRUCTIONS = `あなたは Sleep Wellness Platform 専用の睡眠分析エンジンです。
-Sleep Wellness Institute Japan（SWIJ）創設者・若林貴久の睡眠ウェルネス思想に基づき、
-確認済みの SOXAI 睡眠データと生活習慣入力を総合して、日本語レポートを作成してください。
+const SYSTEM_INSTRUCTIONS = `あなたは Sleep Wellness Institute Japan（SWIJ）公式の
+Sleep Wellness Medical Report 作成エンジンです。
+目的は「数値の説明」ではなく、「睡眠ウェルネス改善レポート」を作ることです。
+確認済みの SOXAI 睡眠データと生活習慣入力を総合し、日本語で作成してください。
 AI、ChatGPT、モデル名、テンプレート文章などの内部事情は文章に書かないでください。
 一般論のテンプレート回答は禁止。今回のデータと入力にのみ紐づけて書いてください。
 
@@ -139,36 +148,53 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
 ① 単日データだけで断定しない
 - 「ストレスがかかっている」「呼吸は安定している」「回復できている」などの断定は禁止
 - 必ず「今回のデータでは〜の可能性があります」「単日のため推移の確認が大切です」など穏やかに書く
-- summary または caution で、数日〜2週間の推移を見るよう必ず促す
+- caution で、数日〜2週間の推移を見るよう必ず促す
 
 ② 測定できていない項目・基準値が不明な項目を推測しない
 - 空・未確認の項目の状態を「おそらく」「一般的には」などで埋めない
 - 個人の基準値（ベースライン）が無い指標は、絶対値だけで良し悪しを断定しない
 
-③ HRV の単独断定禁止
-- 例：HRV 50ms だけを根拠に「ストレスがかかっている」と断定してはならない
-- HRV は参考値として触れてもよいが、他指標・生活習慣・推移なしにストレス断定は禁止
+③ HRV / SpO₂ の単独断定禁止
+- HRV や SpO₂ だけで安心・危険・ストレスを断定しない
+- 他指標・生活習慣と関連づけて「可能性」として述べる
 
-④ SpO₂ の単独断定禁止
-- 例：SpO₂ 94% だけを根拠に「呼吸は安定している」と断定してはならない
-- SpO₂ も単独で安心・危険を断定せず、確認できた事実として数値を述べるにとどめる
+④ 不足項目の明示
+- 値が空・未確認の項目は、必要なら「今回の画像では確認できませんでした」と明記する
+- 取得できていない項目について推測で特徴を書かない
 
-⑤ 不足項目の明示文言
-- 値が空・未確認の項目は、文章中で必ず
-  「今回の画像では確認できませんでした」
-  と明記する（短縮形「確認できませんでした」でも可だが、意味は同じ）
+⑤ 医療診断・治療表現は禁止
+- 病名・異常・疾患の断定、治療指示は使わない
+- 睡眠ウェルネス支援・改善レポートとして書く
+- 年齢・性別に基づく一般的な基準との比較は「参考値」として扱い、診断に用いない
 
-⑥ 医療診断・治療表現は禁止
-- 病名・異常・疾患の断定、治療指示は使わない。睡眠ウェルネス支援として書く
-
-⑦ 「可能性があります」を使う
+⑥ 「可能性があります」を使う
 - 要因や影響は断定せず、可能性として述べる
 
-⑧ 「睡眠時間を増やしてください」だけで終わらない
-- 効率・ステージ・入眠前の切り替え・入浴・照明・飲酒終了・夕食時間など現実的な策を書く
+⑦ 「睡眠時間を増やしてください」だけで終わらない
+- 効率・ステージ・自律神経・入眠前の切り替え・光・呼吸・入浴・飲酒終了・夕食時間など現実的な策を書く
 
-⑨ 文章は簡潔
+⑧ 文章は簡潔
 - 1文は短く。同じ内容の繰り返しを避ける。重要文のみ **太字**
+
+==============================
+年齢・性別の扱い（必須ルール）
+==============================
+- 年齢・性別が入力されている場合:
+  評価・考察・改善提案で年齢・性別を考慮する
+  一般的な睡眠指標の目安との比較は「参考値」と明記する
+  医療診断・病名の断定には使わない
+- 年齢または性別が未入力の場合:
+  summary・sleepAnalysis・caution のいずれかで必ず
+  「年齢・性別を考慮していない参考分析」と明記する
+  年齢・性別を推測して埋めない
+
+==============================
+クライアント基本情報の扱い
+==============================
+- 身長・体重、服薬、飲酒習慣、運動習慣、いびき・鼻づまり、既往歴が入力されていれば、
+  睡眠データとの関連を可能性として触れてよい
+- 未入力の項目は触れない。既往歴や服薬から病名を断定しない
+- 「当日の飲酒・運動」と「飲酒習慣・運動習慣」は区別して扱う
 
 ==============================
 確認済みメトリクスの扱い
@@ -183,57 +209,51 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
 - metrics.stress が空なら、HRV などからストレス状態を推測して埋めない
 
 ==============================
-レポート構成（この5項目を必ずこの順で生成。空欄禁止）
+レポート構成（この6項目を必ずこの順で生成。空欄禁止）
 ==============================
 
 ① summary（総合評価）
-  3〜5文。
-  - 良かった点を先に伝える
-  - 改善が必要な点を、確認できた数値とともに説明する
-  - 単日評価であることを踏まえて穏やかに表現する
-  - 睡眠スコア単体で結論を出さない。確認できた複数指標＋生活習慣を総合する
-  - 不足がある場合は「〇〇は今回の画像では確認できませんでした」と明示
+  必ず 100〜200文字（日本語）。
+  睡眠全体を一言で評価する。数値の羅列はしない。
+  ウェルネス改善の視点で、今回の睡眠の全体像を短くまとめる。
+  単日評価であることを踏まえて穏やかに表現する。
 
-② sleepCharacteristics（睡眠の特徴）
-  3〜8文。次の候補のうち「取得できた項目だけ」を使い、数値を具体的に書く:
-  - 睡眠時間 / 睡眠効率 / 入眠潜時 / 睡眠負債 / 体内時計
-  - 覚醒率（または覚醒時間）
-  - REM・浅い睡眠・深い睡眠（時間または割合）
-  - SpO₂ / 安静時心拍数 / HRV
-  取得できなかった項目は「今回の画像では確認できませんでした」と書くか、触れない。
-  取得できていない項目について推測で特徴を書かない。
+② sleepAnalysis（睡眠分析）
+  4〜8文。次の指標を「関連づけて」分析する（取得できた項目のみ）:
+  ・睡眠時間 ・睡眠効率 ・睡眠負債 ・深睡眠 ・REM睡眠 ・覚醒
+  ・HRV ・安静時心拍 ・呼吸数 ・SpO₂ ・体内時計
+  単独指標の説明ではなく、指標同士のつながり（例：効率と覚醒、深い睡眠と回復感、体内時計と入眠）を書く。
+  未取得項目は推測せず、「今回の画像では確認できませんでした」とするか触れない。
 
-③ improvements（改善ポイント）
-  最大3件の配列。優先順位が分かるように書く（例：「優先1：…」「優先2：…」）。
-  抽象的な助言禁止。今回確認できた数値に対応した内容のみ。
+③ autonomicAssessment（自律神経評価）
+  2〜5文。
+  HRV・安静時心拍・ストレス（測定）から、自律神経の状態をウェルネス視点で評価する。
+  単独断定禁止。生活習慣（運動・飲酒・カフェイン・主観ストレス）がある場合のみ可能性として関連づける。
+
+④ recoveryAssessment（回復力評価）
+  2〜5文。
+  睡眠の質・身体回復・疲労回復を総合して評価する。
+  深い睡眠・睡眠効率・HRV・ストレス・睡眠負債など取得できた指標を組み合わせる。
+  「回復できている／できていない」の断定は避け、可能性と推移確認を含める。
+
+⑤ improvements（改善ポイント）
+  優先順位付きで 3〜5件の配列。
+  例：「優先1：…」「優先2：…」
+  抽象的な助言禁止。今回確認できた数値と生活習慣に対応した内容のみ。
   「改善余地」「整える余地」の表現。本人を責めない。
 
-④ actionPlan（今日から実践する3つの行動）
-  必ず3件。1件目は最優先と分かる表現。
-  具体的で実行可能（時間・回数・タイミング）。
-  就寝時刻・デジタル機器・入浴・飲酒・食事・運動などから、入力データに合うものを選ぶ。
-  生活習慣データが乏しい／未入力の場合は、その情報がないことを踏まえた提案にする
-  （例：「生活習慣の詳細入力が少ないため、まずは就寝前の切り替えから」）。
-
-⑤ melatoninYoga（メラトニンヨガ™の推奨内容）
-  必ず空欄にせず生成する。2〜4文。
-  今回のデータに合う内容にする。医療診断・治療のような表現は使わない。
-
-  【例：睡眠時間が短い／睡眠効率が低め／体内時計にずれがある場合】
-  「就寝前10分のメラトニンヨガ™を推奨します。
-  前半3分はゆっくりとした動き、次に3:6呼吸を5分、最後に静かな休息を2分行います。
-  無理に眠ろうとせず、呼吸と身体感覚を整えることを目的とします。」
-
-  データに応じて内容・時間配分・焦点を変えること（毎回同じ定型文は禁止）。
-  - 入眠潜時が長め → 呼吸と休息の比重を厚めに
-  - 覚醒率が高め → ゆるやかな動きと身体感覚の比重を厚めに
-  - 測定ストレスが高め／主観ストレスの申告あり → 静かな休息と3:6呼吸を中心に
-  - データ不足で判断しにくい場合でも、空欄にせず控えめな10分導入を提案する
+⑥ melatoninYoga（メラトニンヨガ™の視点）
+  必ず空欄にせず生成する。3〜6文。
+  睡眠ウェルネスとして、次の6領域から今回のデータに最適な提案を選ぶ:
+  ・光 ・呼吸 ・運動 ・食事 ・入浴 ・瞑想
+  すべてを列挙する必要はない。今回最も効果が見込まれる 2〜4 領域に絞る。
+  医療診断・治療のような表現は使わない。
+  毎回同じ定型文は禁止。データと生活習慣に応じて変える。
 
 - caution: 単日の限界を簡潔に。強い症状・呼吸苦などが疑われる場合のみ医療機関相談を穏やかに促す
 - disclaimer: 睡眠ウェルネス支援であり医療診断・治療を代替しない旨を簡潔に
 - scoreBreakdown: 各1〜5。未確認項目は控えめ。score と矛盾しないこと
-- score: Sleep Wellness 総合スコア 0〜100（睡眠スコアのコピー禁止。総合評価）
+- score: Sleep Wellness 総合スコア 0〜100（SOXAI睡眠スコアのコピー禁止。総合評価）
 
 ==============================
 生活習慣との連動ガイド
@@ -360,6 +380,17 @@ function applyConfirmedMetrics(
   return { ...record, metrics: confirmed };
 }
 
+function formatGender(value: string | undefined): string | undefined {
+  if (!value?.trim()) return value;
+  const labels: Record<string, string> = {
+    female: "女性",
+    male: "男性",
+    other: "その他",
+    unspecified: "回答しない",
+  };
+  return labels[value] ?? value;
+}
+
 function formatLifestyle(lifestyle: LifestyleData): string {
   const alcoholDrankLabel =
     lifestyle.alcoholDrank === "none"
@@ -368,9 +399,24 @@ function formatLifestyle(lifestyle: LifestyleData): string {
         ? "あり"
         : lifestyle.alcoholDrank;
 
+  const ageGenderNote =
+    lifestyle.age?.trim() && lifestyle.gender?.trim()
+      ? "年齢・性別あり（評価に考慮。一般基準との比較は参考値）"
+      : "年齢または性別が未入力 → 年齢・性別を考慮していない参考分析として明記すること";
+
   const rows: Array<[string, string | undefined]> = [
     ["対象者名", lifestyle.clientName],
     ["測定日", lifestyle.measurementDate],
+    ["年齢", lifestyle.age],
+    ["性別", formatGender(lifestyle.gender)],
+    ["年齢・性別の分析方針", ageGenderNote],
+    ["身長（cm）", lifestyle.heightCm],
+    ["体重（kg）", lifestyle.weightKg],
+    ["服薬", lifestyle.medications],
+    ["飲酒習慣（日常）", lifestyle.drinkingHabit],
+    ["運動習慣（日常）", lifestyle.exerciseHabit],
+    ["いびき・鼻づまり（基本情報）", lifestyle.snoringNasal],
+    ["既往歴", lifestyle.medicalHistory],
     ["ヨガ（実施したか）", formatYesNone(lifestyle.yogaDone, "実施した", "していない")],
     ["ヨガ実施時間（分）", lifestyle.yogaDuration],
     ["ヨガ実施時刻・時間帯", lifestyle.yogaTime],
@@ -394,12 +440,12 @@ function formatLifestyle(lifestyle: LifestyleData): string {
     ["その他の運動の補足", lifestyle.otherExerciseNotes],
     ["その他の運動まとめ", lifestyle.exercise],
     ["入浴", lifestyle.bathing],
-    ["飲酒したか", alcoholDrankLabel || lifestyle.alcohol],
+    ["飲酒したか（当日）", alcoholDrankLabel || lifestyle.alcohol],
     ["飲酒の種類", lifestyle.alcoholType],
     ["飲酒量", lifestyle.alcoholAmount],
     ["飲酒終了時刻", lifestyle.alcoholEndTime],
     ["飲酒の補足（複数種類など）", lifestyle.alcoholNotes],
-    ["飲酒まとめ", lifestyle.alcohol],
+    ["飲酒まとめ（当日）", lifestyle.alcohol],
     [
       "カフェイン（摂取したか）",
       formatYesNone(lifestyle.caffeineDone, "摂取した", "していない"),
@@ -434,7 +480,7 @@ function formatLifestyle(lifestyle: LifestyleData): string {
     ["食事まとめ", lifestyle.meals],
     ["仕事", lifestyle.work],
     ["体調", lifestyle.condition],
-    ["鼻づまり", lifestyle.nasalCongestion],
+    ["鼻づまり（当日）", lifestyle.nasalCongestion],
     ["自由記述", lifestyle.notes],
   ];
 
@@ -516,26 +562,29 @@ ${formatConfirmedMetrics(confirmedMetrics)}
           content: [
             {
               type: "input_text",
-              text: `以下の確認済み睡眠データと生活習慣入力をもとに、Sleep Wellness Platform 専用の分析ロジックでレポートを作成してください。
-テンプレート文章は禁止。単日データで断定しない。確認できた指標と生活習慣だけを使う。
+              text: `以下の確認済み睡眠データと生活習慣入力をもとに、Sleep Wellness Institute Japan 公式の
+Sleep Wellness Medical Report（睡眠ウェルネス改善レポート）を作成してください。
+数値の説明ではなく、改善につながる考察にしてください。テンプレート文章は禁止。単日データで断定しない。
 
 ${metricsBlock}
 
-【必ずこの5項目を空欄なく生成】
-① summary＝総合評価（良かった点→数値つき改善点。単日として穏やかに）
-② sleepCharacteristics＝睡眠の特徴（取得できた項目の数値のみ。未取得は「今回の画像では確認できませんでした」）
-③ improvements＝改善ポイント（優先順位つき最大3件。今回の数値に対応）
-④ actionPlan＝今日から実践する3つの行動（必ず3件。入力習慣に合わせる。未入力ならその旨を踏まえる）
-⑤ melatoninYoga＝メラトニンヨガ™推奨（必ず生成。時間配分・呼吸・休息を具体的に。データに応じて変える）
+【必ずこの6項目を空欄なく生成】
+① summary＝総合評価（100〜200文字。睡眠全体を一言で評価。数値羅列禁止）
+② sleepAnalysis＝睡眠分析（睡眠時間・効率・負債・深睡眠・REM・覚醒・HRV・安静時心拍・呼吸数・SpO₂・体内時計を関連づけて分析）
+③ autonomicAssessment＝自律神経評価（HRV・安静時心拍・ストレスから評価。単独断定禁止）
+④ recoveryAssessment＝回復力評価（睡眠の質・身体回復・疲労回復を総合）
+⑤ improvements＝改善ポイント（優先順位つき 3〜5件）
+⑥ melatoninYoga＝メラトニンヨガ™の視点（光・呼吸・運動・食事・入浴・瞑想から最適な提案）
 
 【絶対禁止】
-- HRV 単独で「ストレスがかかっている」と断定しない
-- SpO₂ 単独で「呼吸は安定している」と断定しない
+- HRV / SpO₂ 単独で状態を断定しない
 - 未測定・基準不明の項目を推測で埋めない
-- 医療診断・治療表現を使わない
+- 医療診断・治療表現を使わない（ウェルネスレポートとして書く）
 - 単日だけで結論しない。「可能性があります」を使う
+- 年齢・性別の一般基準比較は参考値のみ。病名断定禁止
+- 年齢または性別が未入力なら「年齢・性別を考慮していない参考分析」と明記
 
-【生活習慣データ（食事・運動・飲酒・入浴・カフェイン・仕事を参照）】
+【クライアント基本情報＋生活習慣データ】
 ${formatLifestyle(lifestyle)}`,
             },
             ...(confirmedMetrics

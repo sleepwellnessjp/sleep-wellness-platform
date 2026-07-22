@@ -27,6 +27,16 @@ type LifestyleData = {
   clientId?: string;
   clientName: string;
   measurementDate: string;
+  /** クライアント基本情報 */
+  age?: string;
+  gender?: string;
+  heightCm?: string;
+  weightKg?: string;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
   bedtime: string;
   wakeTime: string;
   exercise: string;
@@ -125,15 +135,17 @@ export type ScoreBreakdown = {
 };
 
 export type AnalysisResult = {
-  /** ①総合評価 */
+  /** ①総合評価（100〜200文字） */
   summary: string;
-  /** ②睡眠の特徴 */
-  sleepCharacteristics: string;
-  /** ③改善ポイント */
+  /** ②睡眠分析（指標を関連付けた考察） */
+  sleepAnalysis: string;
+  /** ③自律神経評価（HRV・安静時心拍・ストレス） */
+  autonomicAssessment: string;
+  /** ④回復力評価（睡眠の質・身体回復・疲労回復） */
+  recoveryAssessment: string;
+  /** ⑤改善ポイント（優先順位付き 3〜5件） */
   improvements: string[];
-  /** ④今日から実践する3つの行動 */
-  actionPlan: string[];
-  /** ⑤メラトニンヨガ™の推奨内容 */
+  /** ⑥メラトニンヨガ™の視点（光・呼吸・運動・食事・入浴・瞑想） */
   melatoninYoga: string;
   score: number;
   scoreBreakdown: ScoreBreakdown;
@@ -147,17 +159,31 @@ export type AnalysisResult = {
   clientId?: string;
   clientName?: string;
   measurementDate?: string;
+  /** クライアント基本情報（Medical Report 用） */
+  age?: string;
+  gender?: string;
+  heightCm?: string;
+  weightKg?: string;
+  medications?: string;
+  drinkingHabit?: string;
+  exerciseHabit?: string;
+  snoringNasal?: string;
+  medicalHistory?: string;
   /** 保存済み分析の再表示用 ID */
   analysisId?: string;
   /** 項目別 OCR 信頼度（保存用） */
   ocrConfidence?: MetricConfidenceMap;
+  /** @deprecated 旧スキーマ互換 → sleepAnalysis */
+  sleepCharacteristics?: string;
+  /** @deprecated 旧スキーマ互換 */
+  actionPlan?: string[];
   /** @deprecated 旧スキーマ互換 */
   goodPoints?: string[];
-  /** @deprecated 旧スキーマ互換 → sleepCharacteristics */
+  /** @deprecated 旧スキーマ互換 → sleepAnalysis */
   dataInsight?: string;
   /** @deprecated 旧スキーマ互換 */
   lifestyleRelation?: string;
-  /** @deprecated 旧スキーマ互換 → actionPlan */
+  /** @deprecated 旧スキーマ互換 */
   tomorrowPlan?: string[];
 };
 
@@ -223,10 +249,30 @@ type LegacyAnalysisFields = {
   actions?: unknown;
   yoga?: unknown;
   closingSummary?: unknown;
+  sleepAnalysis?: unknown;
   sleepCharacteristics?: unknown;
+  autonomicAssessment?: unknown;
+  recoveryAssessment?: unknown;
   actionPlan?: unknown;
   melatoninYoga?: unknown;
 };
+
+/** 総合評価を 100〜200 文字に整える（短すぎる場合はそのまま） */
+function normalizeSummaryLength(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= 200) return trimmed;
+  // 文末付近で切る
+  const slice = trimmed.slice(0, 200);
+  const lastPunct = Math.max(
+    slice.lastIndexOf("。"),
+    slice.lastIndexOf("！"),
+    slice.lastIndexOf("？"),
+    slice.lastIndexOf("."),
+  );
+  if (lastPunct >= 100) return slice.slice(0, lastPunct + 1);
+  return `${slice.trimEnd()}…`;
+}
 
 export function normalizeAnalysisResult(
   raw: AnalysisResult & LegacyAnalysisFields,
@@ -234,6 +280,15 @@ export function normalizeAnalysisResult(
     clientId?: string;
     clientName?: string;
     measurementDate?: string;
+    age?: string;
+    gender?: string;
+    heightCm?: string;
+    weightKg?: string;
+    medications?: string;
+    drinkingHabit?: string;
+    exerciseHabit?: string;
+    snoringNasal?: string;
+    medicalHistory?: string;
   },
 ): AnalysisResult {
   const score =
@@ -241,7 +296,10 @@ export function normalizeAnalysisResult(
       ? Math.max(0, Math.min(100, Math.round(raw.score)))
       : 0;
 
-  const sleepCharacteristics = (() => {
+  const sleepAnalysis = (() => {
+    if (typeof raw.sleepAnalysis === "string" && raw.sleepAnalysis.trim()) {
+      return raw.sleepAnalysis.trim();
+    }
     if (
       typeof raw.sleepCharacteristics === "string" &&
       raw.sleepCharacteristics.trim()
@@ -257,12 +315,22 @@ export function normalizeAnalysisResult(
     return "";
   })();
 
+  const autonomicAssessment =
+    typeof raw.autonomicAssessment === "string"
+      ? raw.autonomicAssessment.trim()
+      : "";
+
+  const recoveryAssessment =
+    typeof raw.recoveryAssessment === "string"
+      ? raw.recoveryAssessment.trim()
+      : "";
+
   const actionPlan = (() => {
-    const plan = normalizeStringList(raw.actionPlan, 3);
+    const plan = normalizeStringList(raw.actionPlan, 5);
     if (plan.length > 0) return plan;
-    const legacy = normalizeStringList(raw.tomorrowPlan, 3);
+    const legacy = normalizeStringList(raw.tomorrowPlan, 5);
     if (legacy.length > 0) return legacy;
-    return normalizeStringList(raw.actions, 3);
+    return normalizeStringList(raw.actions, 5);
   })();
 
   const melatoninYoga = (() => {
@@ -272,31 +340,34 @@ export function normalizeAnalysisResult(
     if (typeof raw.yoga === "string" && raw.yoga.trim()) {
       return raw.yoga.trim();
     }
-    // 空欄禁止：モデル欠落時の最低限フォールバック
     return [
-      "就寝前10分のメラトニンヨガ™を推奨します。",
-      "前半3分はゆっくりとした動き、次に3:6呼吸を5分、最後に静かな休息を2分行います。",
-      "無理に眠ろうとせず、呼吸と身体感覚を整えることを目的とします。",
+      "今回のデータでは、光・呼吸・入浴の整えから始めるのがよい可能性があります。",
+      "就寝前は強い光を控え、3:6呼吸で副交感神経側への切り替えを促します。",
+      "必要に応じてぬるめの入浴と短い瞑想を組み合わせ、無理に眠ろうとせず身体感覚を整えます。",
     ].join("\n");
   })();
 
-  const improvements = normalizeStringList(raw.improvements, 3);
-
-  const ensuredActionPlan = (() => {
-    if (actionPlan.length >= 3) return actionPlan.slice(0, 3);
-    const defaults = [
-      "最優先：就寝60分前からスマートフォンなどの強い光を控え、入眠前の切り替え時間をつくる",
-      "入浴またはぬるめのシャワーを就寝90〜60分前に済ませる",
-      "翌朝同じ時刻に起き、朝の光を数分取り入れる",
-    ];
-    return [...actionPlan, ...defaults].slice(0, 3);
+  const improvements = (() => {
+    const list = normalizeStringList(raw.improvements, 5);
+    if (list.length >= 3) return list;
+    // 旧 actionPlan を補完に使う
+    if (list.length > 0 && actionPlan.length > 0) {
+      return [...list, ...actionPlan].slice(0, 5);
+    }
+    if (list.length > 0) return list;
+    return actionPlan.slice(0, 5);
   })();
 
+  const summary = normalizeSummaryLength(
+    typeof raw.summary === "string" ? raw.summary : "",
+  );
+
   return {
-    summary: typeof raw.summary === "string" ? raw.summary.trim() : "",
-    sleepCharacteristics,
+    summary,
+    sleepAnalysis,
+    autonomicAssessment,
+    recoveryAssessment,
     improvements,
-    actionPlan: ensuredActionPlan,
     melatoninYoga,
     score,
     scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
@@ -310,15 +381,26 @@ export function normalizeAnalysisResult(
     clientId: extras?.clientId ?? raw.clientId,
     clientName: extras?.clientName ?? raw.clientName,
     measurementDate: extras?.measurementDate ?? raw.measurementDate,
+    age: extras?.age ?? raw.age,
+    gender: extras?.gender ?? raw.gender,
+    heightCm: extras?.heightCm ?? raw.heightCm,
+    weightKg: extras?.weightKg ?? raw.weightKg,
+    medications: extras?.medications ?? raw.medications,
+    drinkingHabit: extras?.drinkingHabit ?? raw.drinkingHabit,
+    exerciseHabit: extras?.exerciseHabit ?? raw.exerciseHabit,
+    snoringNasal: extras?.snoringNasal ?? raw.snoringNasal,
+    medicalHistory: extras?.medicalHistory ?? raw.medicalHistory,
     analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
-    // 旧UI互換
+    // 旧UI・保存互換
+    sleepCharacteristics: sleepAnalysis,
+    actionPlan: actionPlan.length > 0 ? actionPlan : improvements.slice(0, 3),
     goodPoints: normalizeStringList(raw.goodPoints, 3),
-    dataInsight: sleepCharacteristics,
+    dataInsight: sleepAnalysis,
     lifestyleRelation:
       typeof raw.lifestyleRelation === "string"
         ? raw.lifestyleRelation.trim()
         : normalizeStringList(raw.possibleFactors, 3).join(" "),
-    tomorrowPlan: ensuredActionPlan,
+    tomorrowPlan: actionPlan.length > 0 ? actionPlan : improvements.slice(0, 3),
   };
 }
 
@@ -812,6 +894,15 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       clientId: payload.lifestyle.clientId,
       clientName: payload.lifestyle.clientName,
       measurementDate: payload.lifestyle.measurementDate,
+      age: payload.lifestyle.age,
+      gender: payload.lifestyle.gender,
+      heightCm: payload.lifestyle.heightCm,
+      weightKg: payload.lifestyle.weightKg,
+      medications: payload.lifestyle.medications,
+      drinkingHabit: payload.lifestyle.drinkingHabit,
+      exerciseHabit: payload.lifestyle.exerciseHabit,
+      snoringNasal: payload.lifestyle.snoringNasal,
+      medicalHistory: payload.lifestyle.medicalHistory,
     });
 
     // OCR→確認で確定した confirmedMetrics / graphs を単一の数値根拠として強制採用

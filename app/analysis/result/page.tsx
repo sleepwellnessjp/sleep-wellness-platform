@@ -22,6 +22,7 @@ import {
   loadAnalysisResult,
 } from "@/lib/analysis-session";
 import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import { formatGenderLabel, hasAgeAndGender } from "@/lib/client-profile";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import {
   getAnalysisById,
@@ -59,15 +60,6 @@ function formatDateLabel(value?: string): string {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
   return `${match[1]}.${match[2]}.${match[3]}`;
-}
-
-function splitTomorrowPlan(plan: string[]): {
-  primary: string | null;
-  next: string[];
-} {
-  const limited = takeItems(plan, 3).map((item) => clampLine(item, 90));
-  if (limited.length === 0) return { primary: null, next: [] };
-  return { primary: limited[0], next: limited.slice(1) };
 }
 
 /** Markdown風 **太字** を描画 */
@@ -307,25 +299,31 @@ function ResultContent({
   const confirmedMetrics = result.metrics;
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
-  const improvements = takeItems(result.improvements, 3).map((item) =>
-    clampLine(item, 140),
+  const improvements = takeItems(result.improvements, 5).map((item) =>
+    clampLine(item, 160),
   );
-  const actionPlan = takeItems(
-    result.actionPlan?.length ? result.actionPlan : result.tomorrowPlan,
-    3,
-  ).map((item) => clampLine(item, 140));
-  const { primary: primaryPlan, next: nextPlans } = splitTomorrowPlan(actionPlan);
-  const summaryText = clampLine(clampSentences(result.summary, 8), 560);
-  const characteristicsText = clampLine(
+  const summaryText = clampLine(result.summary || "", 200);
+  const sleepAnalysisText = clampLine(
     clampSentences(
-      result.sleepCharacteristics || result.dataInsight || "",
+      result.sleepAnalysis ||
+        result.sleepCharacteristics ||
+        result.dataInsight ||
+        "",
       10,
     ),
-    720,
+    900,
+  );
+  const autonomicText = clampLine(
+    clampSentences(result.autonomicAssessment || "", 8),
+    560,
+  );
+  const recoveryText = clampLine(
+    clampSentences(result.recoveryAssessment || "", 8),
+    560,
   );
   const melatoninYogaText = clampLine(
-    clampSentences(result.melatoninYoga || "", 8),
-    520,
+    clampSentences(result.melatoninYoga || "", 10),
+    720,
   );
   const cautionText = clampLine(result.caution ?? "", 120);
   const disclaimerText = clampLine(
@@ -426,7 +424,28 @@ function ResultContent({
                   {formatDateLabel(result.measurementDate)}
                 </span>
               </p>
+              <p>
+                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                  AGE
+                </span>
+                <span className="font-medium" style={{ color: NAVY }}>
+                  {result.age?.trim() ? `${result.age.trim()}歳` : "—"}
+                </span>
+              </p>
+              <p>
+                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                  SEX
+                </span>
+                <span className="font-medium" style={{ color: NAVY }}>
+                  {formatGenderLabel(result.gender) || "—"}
+                </span>
+              </p>
             </div>
+            {!hasAgeAndGender(result) && (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-6 text-amber-900">
+                年齢・性別を考慮していない参考分析
+              </p>
+            )}
           </header>
 
           <section className="report-metrics mt-5 sm:mt-6">
@@ -459,49 +478,28 @@ function ResultContent({
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="② 睡眠の特徴" eyebrow="CHARACTERISTICS" />
-            <FormattedAiText text={characteristicsText || "—"} />
+            <SectionLabel title="② 睡眠分析" eyebrow="SLEEP ANALYSIS" />
+            <FormattedAiText text={sleepAnalysisText || "—"} />
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="③ 改善ポイント" eyebrow="IMPROVE" />
+            <SectionLabel title="③ 自律神経評価" eyebrow="AUTONOMIC" />
+            <FormattedAiText text={autonomicText || "—"} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="④ 回復力評価" eyebrow="RECOVERY" />
+            <FormattedAiText text={recoveryText || "—"} />
+          </section>
+
+          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+            <SectionLabel title="⑤ 改善ポイント" eyebrow="IMPROVE" />
             <BulletList items={improvements} />
           </section>
 
           <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
             <SectionLabel
-              title="④ 今日から実践する3つの行動"
-              eyebrow="ACTION"
-            />
-            {primaryPlan && (
-              <div
-                className="border-l-[3px] pl-4"
-                style={{ borderColor: GOLD }}
-              >
-                <p
-                  className="text-[10px] font-semibold tracking-[0.18em]"
-                  style={{ color: GOLD }}
-                >
-                  最優先
-                </p>
-                <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
-                  {renderRichText(primaryPlan)}
-                </p>
-              </div>
-            )}
-            {nextPlans.length > 0 && (
-              <div className={primaryPlan ? "mt-3.5" : undefined}>
-                <BulletList items={nextPlans} />
-              </div>
-            )}
-            {!primaryPlan && nextPlans.length === 0 && (
-              <p className="text-[15px] leading-7 text-slate-400">—</p>
-            )}
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel
-              title="⑤ メラトニンヨガ™の推奨内容"
+              title="⑥ メラトニンヨガ™の視点"
               eyebrow="MELATONIN YOGA"
             />
             <FormattedAiText text={melatoninYogaText || "—"} />
