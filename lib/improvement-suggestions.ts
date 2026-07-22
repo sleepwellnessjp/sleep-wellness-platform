@@ -1,5 +1,10 @@
 import type { StoredAnalysis } from "@/lib/client-store";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
+import {
+  improvementPriorityLabel,
+  type ImprovementPriorityLabel,
+  type ImprovementPriorityStars,
+} from "@/lib/improvement-priority";
 
 export type SuggestionMetricKey =
   | "sleepScore"
@@ -10,7 +15,7 @@ export type SuggestionMetricKey =
   | "hrv"
   | "spo2";
 
-export type ImprovementPriority = "最優先" | "高" | "中" | "低";
+export type ImprovementPriority = ImprovementPriorityLabel;
 
 export type ImprovementSuggestion = {
   id: SuggestionMetricKey;
@@ -20,10 +25,13 @@ export type ImprovementSuggestion = {
   reason: string;
   recommendedMethods: string[];
   priority: ImprovementPriority;
+  stars: ImprovementPriorityStars;
   priorityRank: number;
   expectedImprovement: string;
   menuLabels: string[];
 };
+
+const MAX_SUGGESTIONS = 5;
 
 function parseNumber(value: string): number | null {
   const match = value.trim().match(/-?\d+(?:\.\d+)?/);
@@ -69,17 +77,18 @@ function displayOrDash(value: string | number | null | undefined): string {
   return "—";
 }
 
-function priorityRank(priority: ImprovementPriority): number {
-  switch (priority) {
-    case "最優先":
-      return 0;
-    case "高":
-      return 1;
-    case "中":
-      return 2;
-    case "低":
-      return 3;
-  }
+function fromStars(stars: ImprovementPriorityStars): {
+  priority: ImprovementPriority;
+  priorityRank: number;
+  stars: ImprovementPriorityStars;
+} {
+  const priority = improvementPriorityLabel(stars);
+  return {
+    stars,
+    priority,
+    // 高い星ほど先（rank 小）
+    priorityRank: 5 - stars,
+  };
 }
 
 function buildSleepScoreSuggestion(
@@ -88,8 +97,9 @@ function buildSleepScoreSuggestion(
   if (score == null) return null;
   if (score >= 80) return null;
 
-  const priority: ImprovementPriority =
-    score < 60 ? "最優先" : score < 70 ? "高" : "中";
+  const { priority, priorityRank, stars } = fromStars(
+    score < 60 ? 5 : score < 70 ? 4 : 3,
+  );
 
   return {
     id: "sleepScore",
@@ -108,7 +118,8 @@ function buildSleepScoreSuggestion(
       "就寝前の入浴で体温降下を促す",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "2〜4週間でスコア5〜10点の改善が期待できます。",
     menuLabels: ["メラトニンヨガ™", "入浴", "スマホ制限", "呼吸法"],
   };
@@ -121,8 +132,9 @@ function buildSleepDurationSuggestion(
   if (minutes == null) return null;
   if (minutes >= 420) return null;
 
-  const priority: ImprovementPriority =
-    minutes < 300 ? "最優先" : minutes < 360 ? "高" : "中";
+  const { priority, priorityRank, stars } = fromStars(
+    minutes < 300 ? 5 : minutes < 360 ? 4 : 3,
+  );
 
   return {
     id: "sleepDuration",
@@ -139,7 +151,8 @@ function buildSleepDurationSuggestion(
       "午後以降のカフェイン摂取を控える",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "睡眠時間30〜60分の増加とスコアの安定が期待できます。",
     menuLabels: ["朝日を浴びる", "カフェイン制限", "スマホ制限"],
   };
@@ -159,10 +172,9 @@ function buildDeepSleepSuggestion(
   const lowMinutes = minutes != null && minutes < 60;
   if (!lowRate && !lowMinutes) return null;
 
-  const priority: ImprovementPriority =
-    (rate != null && rate < 12) || (minutes != null && minutes < 45)
-      ? "高"
-      : "中";
+  const { priority, priorityRank, stars } = fromStars(
+    (rate != null && rate < 12) || (minutes != null && minutes < 45) ? 4 : 3,
+  );
 
   return {
     id: "deepSleep",
@@ -177,7 +189,8 @@ function buildDeepSleepSuggestion(
       "就寝前の刺激（スマホ・強い光）を減らす",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "深睡眠率2〜5%ポイントの改善が期待できます。",
     menuLabels: ["メラトニンヨガ™", "入浴", "スマホ制限"],
   };
@@ -190,8 +203,9 @@ function buildSleepEfficiencySuggestion(
   if (efficiency == null) return null;
   if (efficiency >= 88) return null;
 
-  const priority: ImprovementPriority =
-    efficiency < 75 ? "高" : efficiency < 82 ? "中" : "低";
+  const { priority, priorityRank, stars } = fromStars(
+    efficiency < 75 ? 4 : 3,
+  );
 
   return {
     id: "sleepEfficiency",
@@ -208,7 +222,8 @@ function buildSleepEfficiencySuggestion(
       "就寝・起床時刻を一定に保つ",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "睡眠効率3〜8%ポイントの改善が期待できます。",
     menuLabels: ["スマホ制限", "呼吸法", "入浴"],
   };
@@ -233,8 +248,9 @@ function buildAwakeningsSuggestion(
     return null;
   }
 
-  const priority: ImprovementPriority =
-    highMinutes || highRate ? "高" : "中";
+  const { priority, priorityRank, stars } = fromStars(
+    highMinutes || highRate ? 4 : 3,
+  );
 
   return {
     id: "awakenings",
@@ -249,7 +265,8 @@ function buildAwakeningsSuggestion(
       "寝室環境（温度・湿度・光）を整える",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "覚醒時間20〜40%の減少が期待できます。",
     menuLabels: ["呼吸法", "アルコール制限", "メラトニンヨガ™"],
   };
@@ -262,8 +279,9 @@ function buildHrvSuggestion(
   if (hrv == null) return null;
   if (hrv >= 50) return null;
 
-  const priority: ImprovementPriority =
-    hrv < 30 ? "高" : hrv < 40 ? "中" : "低";
+  const { priority, priorityRank, stars } = fromStars(
+    hrv < 30 ? 4 : 3,
+  );
 
   return {
     id: "hrv",
@@ -278,7 +296,8 @@ function buildHrvSuggestion(
       "規則正しい睡眠リズムを維持する",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "HRV 5〜15%の改善と回復力の向上が期待できます。",
     menuLabels: ["メラトニンヨガ™", "瞑想", "ストレッチ"],
   };
@@ -291,8 +310,9 @@ function buildSpo2Suggestion(
   if (spo2 == null) return null;
   if (spo2 >= 96) return null;
 
-  const priority: ImprovementPriority =
-    spo2 < 92 ? "最優先" : spo2 < 94 ? "高" : "中";
+  const { priority, priorityRank, stars } = fromStars(
+    spo2 < 92 ? 5 : spo2 < 94 ? 4 : 3,
+  );
 
   return {
     id: "spo2",
@@ -309,13 +329,14 @@ function buildSpo2Suggestion(
       "横向き寝や枕の高さを調整する",
     ],
     priority,
-    priorityRank: priorityRank(priority),
+    stars,
+    priorityRank,
     expectedImprovement: "SpO₂ 1〜2%ポイントの改善が期待できます。",
     menuLabels: ["呼吸法", "アルコール制限", "ストレッチ"],
   };
 }
 
-/** 最新分析データからルールベースの改善提案を生成 */
+/** 最新分析データからルールベースの改善提案を生成（重要度順・最大5件） */
 export function buildImprovementSuggestions(
   analysis: StoredAnalysis | null,
 ): ImprovementSuggestion[] {
@@ -342,7 +363,9 @@ export function buildImprovementSuggestions(
     buildSpo2Suggestion(metrics),
   ].filter((item): item is ImprovementSuggestion => item !== null);
 
-  return suggestions.sort((a, b) => a.priorityRank - b.priorityRank);
+  return suggestions
+    .sort((a, b) => a.priorityRank - b.priorityRank || b.stars - a.stars)
+    .slice(0, MAX_SUGGESTIONS);
 }
 
 /** 提案のメニュー項目を改善メニューに反映 */

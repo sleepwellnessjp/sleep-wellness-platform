@@ -2,7 +2,10 @@ import type { AnalysisMetrics, AnalysisResult } from "@/lib/analysis-session";
 import {
   normalizeAnalysisResult,
   normalizeMetrics,
+  normalizeRecommendationsUntilNext,
 } from "@/lib/analysis-session";
+import { buildClientSearchText } from "@/lib/client-search";
+import { normalizeClientTags } from "@/lib/client-tags";
 import {
   createClient as createLocalClient,
   getClientById as getLocalClientById,
@@ -10,6 +13,7 @@ import {
   recordPdfDownload as recordLocalPdfDownload,
   rememberLastSavedAnalysisRef,
   saveAnalysisToClientStore as saveLocalAnalysis,
+  updateAnalysisRecommendationsUntilNext as updateLocalAnalysisRecommendationsUntilNext,
   updateClientProfile as updateLocalClientProfile,
   type ClientListItem,
   type CreateClientInput,
@@ -46,7 +50,7 @@ type SupabaseAuth = {
 
 /**
  * clients テーブルの最小情報
- * 書き込み対象: id / owner_id / name / name_kana(furigana) / memo / created_at
+ * 書き込み対象: id / owner_id / name / name_kana(furigana) / memo / tags / created_at
  * 年齢・身長・体重・性別・職業・健康情報は client_profiles へ。
  * birth_date / gender / email 等はレガシー列（読み取り互換のみ）。
  */
@@ -61,6 +65,7 @@ type DbClientRow = {
   phone?: string | null;
   registered_at?: string | null;
   memo: string | null;
+  tags?: string[] | null;
   created_at: string;
   updated_at?: string;
 };
@@ -192,11 +197,14 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
       })
     : normalizeAnalysisResult({
         summary: "",
-        sleepAnalysis: "",
-        autonomicAssessment: "",
-        recoveryAssessment: "",
+        karteSummary: "",
+        goodPoints: [],
         improvements: [],
-        melatoninYoga: "",
+        profileRelation: "",
+        scoreComment: "",
+        todaysRecommendations: [],
+        nextComparisonPoints: [],
+        recommendationsUntilNext: [],
         score: 0,
         scoreBreakdown: {
           sleepDuration: 3,
@@ -346,6 +354,10 @@ function mapDbClient(
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
     memo: row.memo ?? undefined,
+    tags: (() => {
+      const tags = normalizeClientTags(row.tags);
+      return tags.length > 0 ? tags : undefined;
+    })(),
     analyses: [...analyses].sort((a, b) => {
       const byCreated = b.createdAt.localeCompare(a.createdAt);
       if (byCreated !== 0) return byCreated;
@@ -354,16 +366,18 @@ function mapDbClient(
   };
 }
 
-/** clients へ書いてよい最小カラムのみ（name / furigana / memo） */
+/** clients へ書いてよい最小カラムのみ（name / furigana / memo / tags） */
 function clientsCorePatchFromInput(input: Partial<CreateClientInput>): {
   name?: string;
   name_kana?: string | null;
   memo?: string | null;
+  tags?: string[];
 } {
   const patch: {
     name?: string;
     name_kana?: string | null;
     memo?: string | null;
+    tags?: string[];
   } = {};
 
   if (input.name !== undefined) {
@@ -375,6 +389,9 @@ function clientsCorePatchFromInput(input: Partial<CreateClientInput>): {
   }
   if (input.memo !== undefined) {
     patch.memo = input.memo.trim() || null;
+  }
+  if (input.tags !== undefined) {
+    patch.tags = normalizeClientTags(input.tags);
   }
 
   return patch;
@@ -691,6 +708,8 @@ function toClientListItems(clients: StoredClient[]): ClientListItem[] {
         registeredAt: client.registeredAt,
         latestSleepScore: latest?.sleepScore ?? latest?.wellnessScore ?? null,
         latestAnalysisDate: latest?.analysisDate ?? null,
+        tags: client.tags ?? [],
+        searchText: buildClientSearchText(client),
       };
     })
     .sort((a, b) => {
@@ -803,12 +822,14 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
   const auth = await getSupabaseAuth();
   const name = input.name.trim();
   if (!name) throw new Error("氏名は必須です。");
+  const tags = normalizeClientTags(input.tags);
 
   if (!auth) {
     const client = createLocalClient({
       name,
       nameKana: input.nameKana,
       memo: input.memo,
+      tags,
       registeredAt: input.registeredAt,
     });
     const { upsertClientProfile } = await import(
@@ -834,6 +855,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       p_name: name,
       p_name_kana: nameKana,
       p_memo: memo,
+      p_tags: tags,
     },
   );
 
@@ -872,16 +894,39 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       row = existing;
       await ensureClientProfileRow(auth, existing.id, existing.name);
     } else {
-      const { data, error } = await supabase
+      let data: DbClientRow | null = null;
+      let error: { message?: string } | null = null;
+
+      const withTags = await supabase
         .from("clients")
         .insert({
           owner_id: userId,
           name,
           name_kana: nameKana,
           memo,
+          tags,
         })
         .select("*")
         .single();
+
+      data = (withTags.data as DbClientRow | null) ?? null;
+      error = withTags.error;
+
+      // tags 列未適用環境向けフォールバック
+      if (error && (error.message ?? "").includes("tags")) {
+        const withoutTags = await supabase
+          .from("clients")
+          .insert({
+            owner_id: userId,
+            name,
+            name_kana: nameKana,
+            memo,
+          })
+          .select("*")
+          .single();
+        data = (withoutTags.data as DbClientRow | null) ?? null;
+        error = withoutTags.error;
+      }
 
       if (error) {
         throw formatSupabaseError(error, "createClient:insert");
@@ -890,7 +935,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
         throw new Error("登録結果を取得できませんでした。");
       }
 
-      row = data as DbClientRow;
+      row = data;
 
       try {
         await ensureClientProfileRow(auth, row.id, row.name);
@@ -907,6 +952,31 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
 
   if (!row) {
     throw new Error("登録結果を取得できませんでした。");
+  }
+
+  // RPC が tags 未対応の場合に備え、作成後に tags を同期
+  if (tags.length > 0) {
+    const currentTags = normalizeClientTags(row.tags);
+    const tagsMatch =
+      currentTags.length === tags.length &&
+      tags.every((tag, index) => currentTags[index] === tag);
+    if (!tagsMatch) {
+      const { data: patched, error: tagsError } = await supabase
+        .from("clients")
+        .update({ tags })
+        .eq("owner_id", userId)
+        .eq("id", row.id)
+        .select("*")
+        .maybeSingle();
+      if (!tagsError && patched) {
+        row = patched as DbClientRow;
+      } else if (tagsError) {
+        console.warn(
+          "[client-repository] createClient: tags update skipped:",
+          tagsError.message,
+        );
+      }
+    }
   }
 
   // 詳細（年齢・身長等）は client_profiles のみへ
@@ -1172,13 +1242,17 @@ export async function saveAnalysisToRepository(
   const reportPayload = {
     medical: {
       summary: result.summary,
-      sleepAnalysis: result.sleepAnalysis,
-      autonomicAssessment: result.autonomicAssessment,
-      recoveryAssessment: result.recoveryAssessment,
+      karteSummary: result.karteSummary,
+      goodPoints: result.goodPoints,
       improvements: result.improvements,
-      melatoninYoga: result.melatoninYoga,
+      profileRelation: result.profileRelation,
+      scoreComment: result.scoreComment,
+      todaysRecommendations: result.todaysRecommendations,
+      nextComparisonPoints: result.nextComparisonPoints,
+      recommendationsUntilNext: result.recommendationsUntilNext,
       score: result.score,
       scoreBreakdown: result.scoreBreakdown,
+      categoryScores: result.categoryScores,
       metrics,
       structured,
       caution: result.caution,
@@ -1351,4 +1425,117 @@ export async function recordPdfDownload(
     return;
   }
   // PDF 履歴は Supabase 初版では localStorage 互換のためスキップ（将来拡張）
+}
+
+/**
+ * 認定講師による「次回までのおすすめ」の編集・チェック状態を保存。
+ * analyses.ai_result / report_payload を更新する。
+ */
+export async function updateAnalysisRecommendationsUntilNext(
+  analysisId: string,
+  goals: AnalysisResult["recommendationsUntilNext"],
+): Promise<boolean> {
+  const normalized = normalizeRecommendationsUntilNext(goals);
+
+  const auth = await getSupabaseAuth();
+  if (!auth) {
+    return updateLocalAnalysisRecommendationsUntilNext(analysisId, normalized);
+  }
+
+  const { supabase, userId } = auth;
+  const { data: row, error: lookupError } = await supabase
+    .from("analyses")
+    .select("id, ai_result, report_payload")
+    .eq("owner_id", userId)
+    .eq("id", analysisId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error(
+      "[client-repository] updateAnalysisRecommendationsUntilNext lookup failed:",
+      lookupError,
+    );
+    return false;
+  }
+  if (!row) {
+    return updateLocalAnalysisRecommendationsUntilNext(analysisId, normalized);
+  }
+
+  const existingResult =
+    row.ai_result && typeof row.ai_result === "object"
+      ? normalizeAnalysisResult({
+          ...(row.ai_result as AnalysisResult),
+          analysisId,
+        })
+      : null;
+
+  if (!existingResult) {
+    return false;
+  }
+
+  const nextResult: AnalysisResult = {
+    ...existingResult,
+    recommendationsUntilNext: normalized,
+    analysisId,
+  };
+
+  const existingPayload =
+    row.report_payload &&
+    typeof row.report_payload === "object" &&
+    !Array.isArray(row.report_payload)
+      ? (row.report_payload as Record<string, unknown>)
+      : {};
+  const existingMedical =
+    existingPayload.medical &&
+    typeof existingPayload.medical === "object" &&
+    !Array.isArray(existingPayload.medical)
+      ? (existingPayload.medical as Record<string, unknown>)
+      : {};
+
+  const nextPayload = {
+    ...existingPayload,
+    medical: {
+      ...existingMedical,
+      recommendationsUntilNext: normalized,
+    },
+  };
+
+  const { error: updateError } = await supabase
+    .from("analyses")
+    .update({
+      ai_result: nextResult,
+      report_payload: nextPayload,
+    } as never)
+    .eq("owner_id", userId)
+    .eq("id", analysisId);
+
+  if (updateError) {
+    // report_payload 未適用環境向け: ai_result のみ更新
+    const message = updateError.message ?? "";
+    if (message.includes("report_payload")) {
+      const { error: fallbackError } = await supabase
+        .from("analyses")
+        .update({ ai_result: nextResult } as never)
+        .eq("owner_id", userId)
+        .eq("id", analysisId);
+      if (fallbackError) {
+        console.error(
+          "[client-repository] updateAnalysisRecommendationsUntilNext fallback failed:",
+          fallbackError,
+        );
+        return false;
+      }
+    } else {
+      console.error(
+        "[client-repository] updateAnalysisRecommendationsUntilNext failed:",
+        updateError,
+      );
+      return false;
+    }
+  }
+
+  // ローカルキャッシュも同期
+  updateLocalAnalysisRecommendationsUntilNext(analysisId, normalized);
+  notifyClientsUpdated();
+  return true;
 }

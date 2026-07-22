@@ -21,11 +21,23 @@ import type {
   ClientProfileSections,
 } from "@/lib/client-profiles/types";
 import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
+import {
+  improvementTexts,
+  normalizeImprovements,
+  type ImprovementItem,
+} from "@/lib/improvement-priority";
 
 export type { AnalysisMetrics };
 export type { SoxaiGraphBundle };
 export type { MetricConfidenceMap };
+export type { ImprovementItem };
 export { normalizeMetrics };
+export {
+  formatImprovementStars,
+  improvementPriorityLabel,
+  normalizeImprovements,
+  improvementTexts,
+} from "@/lib/improvement-priority";
 
 type LifestyleData = {
   /** 既存クライアントから開始した場合の ID（Supabase / ローカル保存用） */
@@ -157,21 +169,94 @@ export type ScoreBreakdown = {
   recovery: ScoreStars;
 };
 
+/**
+ * Sleep Wellness Platform 独自のカテゴリースコア（各 0〜100）。
+ * SOXAI 睡眠スコアとは別指標。総合の睡眠ウェルネススコアを4軸で可視化する。
+ */
+export type WellnessCategoryScores = {
+  /** 身体：睡眠ステージ・回復・SpO₂・運動・健康など */
+  body: number;
+  /** 心：HRV・ストレス・自律神経など */
+  mind: number;
+  /** 生活：飲酒・カフェイン・食事・勤務リズム・運動タイミングなど */
+  lifestyle: number;
+  /** 環境：寝室・室温湿度・寝具・職場環境など */
+  environment: number;
+};
+
+export const WELLNESS_CATEGORY_LABELS = {
+  body: "身体",
+  mind: "心",
+  lifestyle: "生活",
+  environment: "環境",
+} as const satisfies Record<keyof WellnessCategoryScores, string>;
+
+export type WellnessCategoryKey = keyof WellnessCategoryScores;
+
+/** 睡眠へ影響している要因ランキング（推定・断定ではない） */
+export type SleepFactorRankingItem = {
+  /** 短い要因名（例: 飲酒、勤務時間、睡眠負債） */
+  factor: string;
+  /** 今回の睡眠への影響度の可能性（1〜5） */
+  stars: ScoreStars;
+};
+
+/**
+ * 改善効果予測（Wellness Score への予測インパクト）。
+ * 絶対値ではなく予測レンジ。生活改善の参考であり医療診断ではない。
+ */
+export type ImprovementEffectPrediction = {
+  /** 短い改善アクション（例: 飲酒量を減らす、鼻づまり改善） */
+  action: string;
+  /** 予測レンジ下限（点） */
+  minPoints: number;
+  /** 予測レンジ上限（点）。必ず minPoints より大きい */
+  maxPoints: number;
+};
+
+/** ⑧次回までのおすすめ（行動目標）。チェック状態を次回比較に使う */
+export type NextActionGoal = {
+  id: string;
+  text: string;
+  checked: boolean;
+};
+
 export type AnalysisResult = {
-  /** ①総合評価（100〜200文字） */
+  /** ③総合評価（短段落・100〜200文字）。必ず良かった点から書き始める */
   summary: string;
-  /** ②睡眠分析（指標を関連付けた考察） */
-  sleepAnalysis: string;
-  /** ③自律神経評価（HRV・安静時心拍・ストレス） */
-  autonomicAssessment: string;
-  /** ④回復力評価（睡眠の質・身体回復・疲労回復） */
-  recoveryAssessment: string;
-  /** ⑤改善ポイント（優先順位付き 3〜5件） */
-  improvements: string[];
-  /** ⑥メラトニンヨガ™の視点（光・呼吸・運動・食事・入浴・瞑想） */
-  melatoninYoga: string;
+  /**
+   * Sleep Wellness Institute Japan 独自 AIカルテ（クライアントの変化・100〜200文字）。
+   * 分析履歴に時系列保存する。summary（今回評価）とは別役割。
+   */
+  karteSummary: string;
+  /** ①今回の睡眠で良かった点（2〜4件の短文）。必須・省略禁止 */
+  goodPoints: string[];
+  /** ②改善が期待できるポイント（重要度順・最大5件） */
+  improvements: ImprovementItem[];
+  /** ④プロフィールとの関連（短段落。普段の傾向と今回データのつながり） */
+  profileRelation: string;
+  /**
+   * ⑤睡眠ウェルネススコアの解説（短段落）。
+   * 数値そのものは score / categoryScores で保持。
+   */
+  scoreComment: string;
+  /**
+   * ⑥今日のおすすめ（必ず3件・優先順位順）。
+   * 今日実践できる短文アクションのみ。
+   */
+  todaysRecommendations: string[];
+  /** ⑦次回比較ポイント（2〜4件。次回分析で見るべき観点） */
+  nextComparisonPoints: string[];
+  /**
+   * ⑧次回までのおすすめ（行動目標・3〜5件）。
+   * 認定講師がチェック・編集でき、次回分析時の比較用に保存する。
+   */
+  recommendationsUntilNext: NextActionGoal[];
+  /** Sleep Wellness Platform 独自の総合スコア（0〜100）。SOXAI睡眠スコアとは別 */
   score: number;
   scoreBreakdown: ScoreBreakdown;
+  /** 身体 / 心 / 生活 / 環境（各 0〜100）。レーダーチャート用 */
+  categoryScores: WellnessCategoryScores;
   metrics: AnalysisMetrics;
   /** OCRグラフ（Medical / Visual / PDF 共通） */
   graphs?: SoxaiGraphBundle;
@@ -196,17 +281,31 @@ export type AnalysisResult = {
   analysisId?: string;
   /** 項目別 OCR 信頼度（保存用） */
   ocrConfidence?: MetricConfidenceMap;
+  /** @deprecated 旧スキーマ互換 → 本文には使わない */
+  sleepAnalysis?: string;
+  /** @deprecated 旧スキーマ互換 */
+  autonomicAssessment?: string;
+  /** @deprecated 旧スキーマ互換 */
+  recoveryAssessment?: string;
+  /** @deprecated 旧スキーマ互換 */
+  evidenceTitle?: string;
+  /** @deprecated 旧スキーマ互換 */
+  evidence?: string[];
+  /** @deprecated 旧スキーマ互換 */
+  sleepFactorRanking?: SleepFactorRankingItem[];
+  /** @deprecated 旧スキーマ互換 */
+  improvementEffectPredictions?: ImprovementEffectPrediction[];
+  /** @deprecated 旧スキーマ互換 */
+  melatoninYoga?: string;
   /** @deprecated 旧スキーマ互換 → sleepAnalysis */
   sleepCharacteristics?: string;
   /** @deprecated 旧スキーマ互換 */
   actionPlan?: string[];
-  /** @deprecated 旧スキーマ互換 */
-  goodPoints?: string[];
   /** @deprecated 旧スキーマ互換 → sleepAnalysis */
   dataInsight?: string;
-  /** @deprecated 旧スキーマ互換 */
+  /** @deprecated 旧スキーマ互換 → profileRelation */
   lifestyleRelation?: string;
-  /** @deprecated 旧スキーマ互換 */
+  /** @deprecated 旧スキーマ互換 → nextComparisonPoints */
   tomorrowPlan?: string[];
 };
 
@@ -258,6 +357,55 @@ export function normalizeScoreBreakdown(
   };
 }
 
+function clampScore100(value: unknown, fallback: number): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value)
+      : fallback;
+  return Math.max(0, Math.min(100, n));
+}
+
+function starsToScore100(stars: ScoreStars): number {
+  return Math.round((stars / 5) * 100);
+}
+
+function averageScore100(values: number[]): number {
+  if (values.length === 0) return 0;
+  return Math.round(
+    values.reduce((sum, value) => sum + value, 0) / values.length,
+  );
+}
+
+/**
+ * カテゴリースコアを正規化。未提供時は scoreBreakdown / 総合スコアから補完
+ *（旧保存結果・デモデータ互換）。
+ */
+export function normalizeCategoryScores(
+  raw: Partial<WellnessCategoryScores> | undefined,
+  score: number,
+  breakdown: ScoreBreakdown,
+): WellnessCategoryScores {
+  const fallbackBody = averageScore100([
+    starsToScore100(breakdown.sleepDuration),
+    starsToScore100(breakdown.sleepEfficiency),
+    starsToScore100(breakdown.deepSleep),
+    starsToScore100(breakdown.spo2),
+    starsToScore100(breakdown.recovery),
+  ]);
+  const fallbackMind = averageScore100([
+    starsToScore100(breakdown.hrv),
+    starsToScore100(breakdown.stress),
+    starsToScore100(breakdown.recovery),
+  ]);
+
+  return {
+    body: clampScore100(raw?.body, fallbackBody || score),
+    mind: clampScore100(raw?.mind, fallbackMind || score),
+    lifestyle: clampScore100(raw?.lifestyle, score),
+    environment: clampScore100(raw?.environment, score),
+  };
+}
+
 function normalizeStringList(items: unknown, max: number): string[] {
   if (!Array.isArray(items)) return [];
   return items
@@ -265,6 +413,81 @@ function normalizeStringList(items: unknown, max: number): string[] {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, max);
+}
+
+const RANKING_CIRCLED = ["①", "②", "③", "④", "⑤"] as const;
+
+/** ★★★★☆ 形式（1〜5すべて表示） */
+export function formatSleepFactorStars(stars: ScoreStars): string {
+  const filled = Math.max(1, Math.min(5, Math.round(stars))) as ScoreStars;
+  return `${"★".repeat(filled)}${"☆".repeat(5 - filled)}`;
+}
+
+export function formatSleepFactorRankingLine(
+  item: SleepFactorRankingItem,
+  index: number,
+): string {
+  const mark = RANKING_CIRCLED[index] ?? `${index + 1}.`;
+  return `${mark}${item.factor} ${formatSleepFactorStars(item.stars)}`;
+}
+
+export function normalizeSleepFactorRanking(
+  raw: unknown,
+): SleepFactorRankingItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: SleepFactorRankingItem[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const record = entry as { factor?: unknown; stars?: unknown };
+    const factor = asString(record.factor).trim().slice(0, 40);
+    if (!factor) continue;
+    items.push({
+      factor,
+      stars: clampStars(record.stars, 3),
+    });
+    if (items.length >= 5) break;
+  }
+  return items;
+}
+
+function clampPointDelta(value: unknown, fallback: number): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value)
+      : fallback;
+  return Math.max(1, Math.min(30, n));
+}
+
+/** 「＋4〜8点」形式 */
+export function formatImprovementEffectRange(
+  item: ImprovementEffectPrediction,
+): string {
+  return `＋${item.minPoints}〜${item.maxPoints}点`;
+}
+
+export function normalizeImprovementEffectPredictions(
+  raw: unknown,
+): ImprovementEffectPrediction[] {
+  if (!Array.isArray(raw)) return [];
+  const items: ImprovementEffectPrediction[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const record = entry as {
+      action?: unknown;
+      minPoints?: unknown;
+      maxPoints?: unknown;
+    };
+    const action = asString(record.action).trim().slice(0, 40);
+    if (!action) continue;
+    let minPoints = clampPointDelta(record.minPoints, 2);
+    let maxPoints = clampPointDelta(record.maxPoints, minPoints + 2);
+    if (maxPoints <= minPoints) {
+      maxPoints = Math.min(30, minPoints + 2);
+    }
+    items.push({ action, minPoints, maxPoints });
+    if (items.length >= 5) break;
+  }
+  return items;
 }
 
 type LegacyAnalysisFields = {
@@ -278,7 +501,75 @@ type LegacyAnalysisFields = {
   recoveryAssessment?: unknown;
   actionPlan?: unknown;
   melatoninYoga?: unknown;
+  goodPoints?: unknown;
+  profileRelation?: unknown;
+  lifestyleRelation?: unknown;
+  scoreComment?: unknown;
+  nextComparisonPoints?: unknown;
+  tomorrowPlan?: unknown;
+  evidence?: unknown;
+  evidenceTitle?: unknown;
+  sleepFactorRanking?: unknown;
+  improvementEffectPredictions?: unknown;
+  todaysRecommendations?: unknown;
+  recommendationsUntilNext?: unknown;
+  improvements?: unknown;
+  karteSummary?: unknown;
 };
+
+function createNextActionGoalId(): string {
+  try {
+    return `goal-${crypto.randomUUID()}`;
+  } catch {
+    return `goal-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+}
+
+function trimActionGoalText(text: string): string {
+  const cleaned = text
+    .replace(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[\.．、:：\s]*/, "")
+    .trim();
+  if (cleaned.length <= 60) return cleaned;
+  return `${cleaned.slice(0, 59).trimEnd()}…`;
+}
+
+/** 次回までのおすすめ（3〜5件）を正規化。string[] / オブジェクト両対応 */
+export function normalizeRecommendationsUntilNext(
+  raw: unknown,
+): NextActionGoal[] {
+  if (!Array.isArray(raw)) return [];
+  const items: NextActionGoal[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      const text = trimActionGoalText(entry);
+      if (!text) continue;
+      items.push({
+        id: createNextActionGoalId(),
+        text,
+        checked: false,
+      });
+    } else if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      const record = entry as {
+        id?: unknown;
+        text?: unknown;
+        checked?: unknown;
+      };
+      const text = trimActionGoalText(asString(record.text));
+      if (!text) continue;
+      const id =
+        typeof record.id === "string" && record.id.trim()
+          ? record.id.trim()
+          : createNextActionGoalId();
+      items.push({
+        id,
+        text,
+        checked: record.checked === true,
+      });
+    }
+    if (items.length >= 5) break;
+  }
+  return items;
+}
 
 /** 総合評価を 100〜200 文字に整える（短すぎる場合はそのまま） */
 function normalizeSummaryLength(text: string): string {
@@ -298,7 +589,10 @@ function normalizeSummaryLength(text: string): string {
 }
 
 export function normalizeAnalysisResult(
-  raw: AnalysisResult & LegacyAnalysisFields,
+  raw: Omit<AnalysisResult, "categoryScores" | "goodPoints"> & {
+    categoryScores?: Partial<WellnessCategoryScores>;
+    goodPoints?: string[];
+  } & LegacyAnalysisFields,
   extras?: {
     clientId?: string;
     clientName?: string;
@@ -363,37 +657,132 @@ export function normalizeAnalysisResult(
     if (typeof raw.yoga === "string" && raw.yoga.trim()) {
       return raw.yoga.trim();
     }
-    return [
-      "今回のデータでは、光・呼吸・入浴の整えから始めるのがよい可能性があります。",
-      "就寝前は強い光を控え、3:6呼吸で副交感神経側への切り替えを促します。",
-      "必要に応じてぬるめの入浴と短い瞑想を組み合わせ、無理に眠ろうとせず身体感覚を整えます。",
-    ].join("\n");
+    return "";
   })();
 
   const improvements = (() => {
-    const list = normalizeStringList(raw.improvements, 5);
-    if (list.length >= 3) return list;
-    // 旧 actionPlan を補完に使う
-    if (list.length > 0 && actionPlan.length > 0) {
-      return [...list, ...actionPlan].slice(0, 5);
+    const list = normalizeImprovements(raw.improvements, 5);
+    if (list.length >= 1) return list;
+    if (actionPlan.length > 0) {
+      return normalizeImprovements(actionPlan, 5);
     }
+    return [];
+  })();
+  const improvementTextList = improvementTexts(improvements);
+
+  const goodPoints = (() => {
+    const list = normalizeStringList(raw.goodPoints, 4);
     if (list.length > 0) return list;
-    return actionPlan.slice(0, 5);
+    // 旧結果互換: evidence / sleepAnalysis から補完しにくいため空でも可
+    return [];
+  })();
+
+  const profileRelation = (() => {
+    if (typeof raw.profileRelation === "string" && raw.profileRelation.trim()) {
+      return raw.profileRelation.trim();
+    }
+    if (
+      typeof raw.lifestyleRelation === "string" &&
+      raw.lifestyleRelation.trim()
+    ) {
+      return raw.lifestyleRelation.trim();
+    }
+    const factors = normalizeStringList(raw.possibleFactors, 3).join(" ");
+    return factors;
+  })();
+
+  const scoreComment = (() => {
+    if (typeof raw.scoreComment === "string" && raw.scoreComment.trim()) {
+      return raw.scoreComment.trim();
+    }
+    return "";
+  })();
+
+  const nextComparisonPoints = (() => {
+    const list = normalizeStringList(raw.nextComparisonPoints, 4);
+    if (list.length > 0) return list;
+    const fromTomorrow = normalizeStringList(raw.tomorrowPlan, 4);
+    if (fromTomorrow.length > 0) return fromTomorrow;
+    return improvementTextList.slice(0, 3);
+  })();
+
+  const evidence = normalizeStringList(raw.evidence, 6);
+  const evidenceTitle = (() => {
+    const title = asString(raw.evidenceTitle).trim();
+    if (title) return title;
+    if (evidence.length > 0) return "今回の睡眠に影響した可能性がある要因";
+    return "";
+  })();
+
+  const sleepFactorRanking = (() => {
+    const normalized = normalizeSleepFactorRanking(raw.sleepFactorRanking);
+    if (normalized.length > 0) return normalized;
+    return evidence.slice(0, 5).map((factor, index) => ({
+      factor: factor.replace(/^(優先\d+[:：]\s*)/, "").slice(0, 40),
+      stars: clampStars(5 - index, 3),
+    }));
+  })();
+
+  const improvementEffectPredictions = normalizeImprovementEffectPredictions(
+    raw.improvementEffectPredictions,
+  );
+
+  const todaysRecommendations = (() => {
+    const list = normalizeStringList(raw.todaysRecommendations, 3)
+      .map((item) =>
+        item
+          .replace(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[\.．、:：\s]*/, "")
+          .trim(),
+      )
+      .map((item) =>
+        item.length > 48 ? `${item.slice(0, 47).trimEnd()}…` : item,
+      )
+      .filter(Boolean);
+    if (list.length >= 3) return list.slice(0, 3);
+    const fromImprovements = improvementTextList
+      .map((item) =>
+        item.length > 48 ? `${item.slice(0, 47).trimEnd()}…` : item,
+      )
+      .filter(Boolean);
+    return [...list, ...fromImprovements].slice(0, 3);
+  })();
+
+  const recommendationsUntilNext = (() => {
+    const list = normalizeRecommendationsUntilNext(
+      raw.recommendationsUntilNext,
+    );
+    if (list.length >= 3) return list.slice(0, 5);
+    // 旧結果互換: 空のまま（今日のおすすめとは役割が異なるため補完しない）
+    return list;
   })();
 
   const summary = normalizeSummaryLength(
     typeof raw.summary === "string" ? raw.summary : "",
   );
 
+  const karteSummary = normalizeSummaryLength(
+    typeof raw.karteSummary === "string" ? raw.karteSummary : "",
+  );
+
+  const scoreBreakdown = normalizeScoreBreakdown(raw.scoreBreakdown, score);
+
   return {
     summary,
-    sleepAnalysis,
-    autonomicAssessment,
-    recoveryAssessment,
+    karteSummary,
+    goodPoints,
     improvements,
-    melatoninYoga,
+    profileRelation,
+    scoreComment,
+    todaysRecommendations,
+    nextComparisonPoints,
+    recommendationsUntilNext,
     score,
-    scoreBreakdown: normalizeScoreBreakdown(raw.scoreBreakdown, score),
+    scoreBreakdown,
+    categoryScores: normalizeCategoryScores(
+      raw.categoryScores,
+      score,
+      scoreBreakdown,
+    ),
     metrics: normalizeMetrics(raw.metrics),
     graphs: normalizeGraphBundle(raw.graphs ?? emptyGraphBundle()),
     extractedMetrics: raw.extractedMetrics
@@ -415,15 +804,25 @@ export function normalizeAnalysisResult(
     medicalHistory: extras?.medicalHistory ?? raw.medicalHistory,
     analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
     // 旧UI・保存互換
+    sleepAnalysis,
+    autonomicAssessment,
+    recoveryAssessment,
+    evidenceTitle,
+    evidence,
+    sleepFactorRanking,
+    improvementEffectPredictions,
+    melatoninYoga,
     sleepCharacteristics: sleepAnalysis,
-    actionPlan: actionPlan.length > 0 ? actionPlan : improvements.slice(0, 3),
-    goodPoints: normalizeStringList(raw.goodPoints, 3),
+    actionPlan:
+      actionPlan.length > 0 ? actionPlan : improvementTextList.slice(0, 3),
     dataInsight: sleepAnalysis,
-    lifestyleRelation:
-      typeof raw.lifestyleRelation === "string"
-        ? raw.lifestyleRelation.trim()
-        : normalizeStringList(raw.possibleFactors, 3).join(" "),
-    tomorrowPlan: actionPlan.length > 0 ? actionPlan : improvements.slice(0, 3),
+    lifestyleRelation: profileRelation,
+    tomorrowPlan:
+      nextComparisonPoints.length > 0
+        ? nextComparisonPoints
+        : actionPlan.length > 0
+          ? actionPlan
+          : improvementTextList.slice(0, 3),
   };
 }
 

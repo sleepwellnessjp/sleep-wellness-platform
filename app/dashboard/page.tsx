@@ -1,29 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import AiFollowAlerts, {
+  type AiFollowAlertItem,
+} from "@/components/AiFollowAlerts";
 import InstructorNav from "@/components/InstructorNav";
-import AuthStatusBar from "@/components/AuthStatusBar";
-import PlatformStatusCard from "@/components/PlatformStatusCard";
 import SchemaSetupBanner from "@/components/SchemaSetupBanner";
+import { buildAiFollowAlerts } from "@/lib/ai-follow-alerts";
 import { usePlatformMe } from "@/lib/platform/use-platform-me";
-import { formatDisplayDate, loadClients } from "@/lib/repositories/client-repository";
+import {
+  appointmentDisplayTitle,
+  formatLocationTypeLabel,
+  listTodayOwnerAppointments,
+  type ClientAppointment,
+} from "@/lib/repositories/client-appointments-repository";
+import {
+  formatDisplayDate,
+  loadClients,
+  type StoredClient,
+} from "@/lib/repositories/client-repository";
 import {
   computeDashboardStatsFromClients,
   type DashboardStats,
   type RecentAnalysisItem,
-  type ScoreBucketKey,
 } from "@/lib/dashboard-stats";
+import { SWIJ_NEWS_ITEMS } from "@/lib/swij-news";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
+const GOLD_SOFT = "rgba(184, 146, 66, 0.12)";
+const GOLD_BORDER = "rgba(138, 106, 45, 0.28)";
+const TEAL = "#315f68";
 
-const BUCKET_LABELS: Array<{ key: ScoreBucketKey; label: string }> = [
-  { key: "80+", label: "80以上" },
-  { key: "70-79", label: "70〜79" },
-  { key: "60-69", label: "60〜69" },
-  { key: "59-", label: "59以下" },
-];
+type TodayScheduleItem = {
+  appointment: ClientAppointment;
+  clientName: string;
+};
+
+type ClientPreview = {
+  id: string;
+  name: string;
+  latestSleepScore: number | null;
+  latestAnalysisDate: string | null;
+};
 
 function emptyStats(): DashboardStats {
   return {
@@ -36,49 +56,182 @@ function emptyStats(): DashboardStats {
     recentAnalyses: [],
     distribution: { "80+": 0, "70-79": 0, "60-69": 0, "59-": 0 },
     compareClientId: null,
+    retention: {
+      months3: { rate: null, eligibleCount: 0, retainedCount: 0 },
+      months6: { rate: null, eligibleCount: 0, retainedCount: 0 },
+      churnRate: null,
+      churnCount: 0,
+      analyzedCount: 0,
+      frequency: { perMonth: null, avgDaysBetween: null },
+    },
   };
 }
 
-function TrendGlyph({ item }: { item: RecentAnalysisItem }) {
-  if (item.trend === "improved") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[#0f6b5c]">
-        <span aria-hidden>↑</span>
-        <span className="font-semibold">+{item.delta}</span>
-      </span>
-    );
+function greetingForNow(date = new Date()): string {
+  const hour = date.getHours();
+  if (hour < 5) return "こんばんは";
+  if (hour < 11) return "おはようございます";
+  if (hour < 18) return "こんにちは";
+  return "こんばんは";
+}
+
+function formatSenseiName(displayName: string | null | undefined): string {
+  const cleaned = displayName?.trim();
+  if (!cleaned) return "インストラクター先生";
+  if (cleaned.endsWith("先生")) return cleaned;
+  return `${cleaned}先生`;
+}
+
+function toSanName(fullName: string): string {
+  const trimmed = fullName.trim();
+  if (!trimmed) return "クライアント";
+  if (/\s/.test(trimmed)) {
+    return `${trimmed.split(/\s+/)[0]}さん`;
   }
-  if (item.trend === "worsened") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[#a33a3a]">
-        <span aria-hidden>↓</span>
-        <span className="font-semibold">{item.delta}</span>
-      </span>
-    );
+  if (trimmed.length >= 3) return `${trimmed.slice(0, 2)}さん`;
+  return `${trimmed}さん`;
+}
+
+function uniqueRecentClients(
+  items: RecentAnalysisItem[],
+  limit = 5,
+): RecentAnalysisItem[] {
+  const seen = new Set<string>();
+  const result: RecentAnalysisItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.clientId)) continue;
+    seen.add(item.clientId);
+    result.push(item);
+    if (result.length >= limit) break;
   }
-  if (item.trend === "unchanged") {
-    return (
-      <span className="inline-flex items-center gap-1 text-slate-400">
-        <span aria-hidden>→</span>
-        <span className="font-semibold">0</span>
-      </span>
-    );
+  return result;
+}
+
+function buildClientNameMap(clients: StoredClient[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const client of clients) {
+    map.set(client.id, client.name);
   }
-  return <span className="text-slate-300">—</span>;
+  return map;
+}
+
+function buildTodaySchedule(
+  appointments: ClientAppointment[],
+  nameById: Map<string, string>,
+): TodayScheduleItem[] {
+  return appointments.map((appointment) => ({
+    appointment,
+    clientName: nameById.get(appointment.clientId) ?? "クライアント",
+  }));
+}
+
+function buildDashboardAlerts(clients: StoredClient[]): AiFollowAlertItem[] {
+  const items: AiFollowAlertItem[] = [];
+  for (const client of clients) {
+    if (!client.analyses.length) continue;
+    const alerts = buildAiFollowAlerts({
+      analyses: client.analyses,
+      tags: client.tags,
+    });
+    for (const alert of alerts) {
+      items.push({
+        ...alert,
+        id: `${client.id}:${alert.id}`,
+        href: `/clients/${encodeURIComponent(client.id)}`,
+        clientLabel: toSanName(client.name),
+      });
+    }
+  }
+  return items.slice(0, 6);
+}
+
+function buildClientPreviews(clients: StoredClient[], limit = 6): ClientPreview[] {
+  return [...clients]
+    .sort((a, b) => {
+      const dateA = a.analyses[0]?.createdAt ?? a.registeredAt;
+      const dateB = b.analyses[0]?.createdAt ?? b.registeredAt;
+      return dateB.localeCompare(dateA);
+    })
+    .slice(0, limit)
+    .map((client) => ({
+      id: client.id,
+      name: client.name,
+      latestSleepScore: client.analyses[0]?.sleepScore ?? null,
+      latestAnalysisDate: client.analyses[0]?.analysisDate ?? null,
+    }));
+}
+
+function formatTodayLabel(date = new Date()): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
+
+function SectionHeader({
+  title,
+  eyebrow,
+  action,
+}: {
+  title: string;
+  eyebrow: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="min-w-0">
+        <p
+          className="text-[10px] font-semibold tracking-[0.22em]"
+          style={{ color: GOLD }}
+        >
+          {eyebrow}
+        </p>
+        <h2
+          className="mt-1.5 text-lg font-semibold tracking-[-0.03em]"
+          style={{ color: NAVY }}
+        >
+          {title}
+        </h2>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function cardClassName(extra = "") {
+  return `rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-7 sm:py-8 ${extra}`;
 }
 
 export default function InstructorDashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(emptyStats);
+  const [todaySchedule, setTodaySchedule] = useState<TodayScheduleItem[]>([]);
+  const [alerts, setAlerts] = useState<AiFollowAlertItem[]>([]);
+  const [clientPreviews, setClientPreviews] = useState<ClientPreview[]>([]);
   const [ready, setReady] = useState(false);
   const { data: platformMe } = usePlatformMe();
 
   const refresh = async () => {
     try {
-      const clients = await loadClients();
+      const [clients, appointments] = await Promise.all([
+        loadClients(),
+        listTodayOwnerAppointments().catch((error) => {
+          console.error("[dashboard] listTodayOwnerAppointments failed:", error);
+          return [] as ClientAppointment[];
+        }),
+      ]);
+      const nameById = buildClientNameMap(clients);
       setStats(computeDashboardStatsFromClients(clients));
+      setTodaySchedule(buildTodaySchedule(appointments, nameById));
+      setAlerts(buildDashboardAlerts(clients));
+      setClientPreviews(buildClientPreviews(clients));
     } catch (error) {
       console.error("[dashboard] loadClients failed:", error);
       setStats(emptyStats());
+      setTodaySchedule([]);
+      setAlerts([]);
+      setClientPreviews([]);
     }
   };
 
@@ -96,106 +249,61 @@ export default function InstructorDashboardPage() {
     };
   }, []);
 
-  const distributionMax = useMemo(() => {
-    const values = Object.values(stats.distribution);
-    return Math.max(1, ...values);
-  }, [stats.distribution]);
+  const greeting = greetingForNow();
+  const senseiName = formatSenseiName(platformMe?.profile.displayName);
+  const recentClients = useMemo(
+    () => uniqueRecentClients(stats.recentAnalyses, 5),
+    [stats.recentAnalyses],
+  );
+  const todayLabel = formatTodayLabel();
 
-  const compareHref = stats.compareClientId
-    ? `/clients/${stats.compareClientId}/compare`
-    : "/clients";
-
-  const summaryCards = [
-    {
-      label: "登録クライアント数",
-      value: String(stats.clientCount),
-      hint: "名",
-    },
-    {
-      label: "今月の分析件数",
-      value: String(stats.analysesThisMonth),
-      hint: "件",
-    },
-    {
-      label: "平均睡眠スコア",
-      value:
-        stats.averageSleepScore != null ? String(stats.averageSleepScore) : "—",
-      hint: "最新平均",
-    },
-    {
-      label: "改善率",
-      value:
-        stats.improvement.rate != null ? `${stats.improvement.rate}%` : "—",
-      hint:
-        stats.improvement.comparableCount > 0
-          ? `${stats.improvement.improvedCount}/${stats.improvement.comparableCount}名`
-          : "比較可能なし",
-    },
-    {
-      label: "要フォロー人数",
-      value: String(stats.followUpCount),
-      hint: "名",
-    },
-  ];
+  const focusLine = useMemo(() => {
+    if (todaySchedule.length > 0) {
+      return `本日の予定が${todaySchedule.length}件あります。`;
+    }
+    if (alerts.length > 0) {
+      return `フォロー推奨が${alerts.length}件あります。`;
+    }
+    if (stats.followUpCount > 0) {
+      return `フォローが必要なクライアントが${stats.followUpCount}名います。`;
+    }
+    if (stats.clientCount === 0) {
+      return "まずは新規クライアントの登録から始めましょう。";
+    }
+    return "今日は新しい分析やクライアントのフォローから進められます。";
+  }, [
+    todaySchedule.length,
+    alerts.length,
+    stats.followUpCount,
+    stats.clientCount,
+  ]);
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
       <InstructorNav eyebrow="DASHBOARD" />
 
-      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
-        <AuthStatusBar />
+      <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14 lg:py-16">
         <SchemaSetupBanner />
 
-        <header className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p
-              className="text-[11px] font-semibold tracking-[0.28em]"
-              style={{ color: GOLD }}
-            >
-              INSTRUCTOR DASHBOARD
-            </p>
-            <h1
-              className="mt-4 text-[1.85rem] font-semibold tracking-[-0.05em] sm:mt-5 sm:text-4xl lg:text-5xl"
-              style={{ color: NAVY }}
-            >
-              ダッシュボード
-            </h1>
-            <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-              担当クライアントの状態、最近の分析、要フォロー対象、改善状況を
-              一画面で確認できます。
-            </p>
-          </div>
-
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
-            <Link
-              href="/analysis/new"
-              className="inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90 sm:text-sm"
-              style={{ backgroundColor: NAVY }}
-            >
-              新しい睡眠分析
-            </Link>
-            <Link
-              href="/clients"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-[13px] font-semibold transition hover:bg-slate-50 sm:text-sm"
-              style={{ color: NAVY }}
-            >
-              クライアント一覧
-            </Link>
-            <Link
-              href={compareHref}
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-[13px] font-semibold transition hover:bg-slate-50 sm:text-sm"
-              style={{ color: NAVY }}
-            >
-              比較レポート
-            </Link>
-            <Link
-              href="/clients/new"
-              className="inline-flex min-h-11 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-5 py-2.5 text-[13px] font-semibold transition hover:bg-[#f5efe4] sm:text-sm"
-              style={{ color: GOLD }}
-            >
-              新規クライアント登録
-            </Link>
-          </div>
+        <header className="animate-fade-up">
+          <p
+            className="text-[11px] font-semibold tracking-[0.28em]"
+            style={{ color: GOLD }}
+          >
+            TODAY · {todayLabel}
+          </p>
+          <p className="mt-5 text-[1.05rem] font-medium tracking-[-0.02em] text-slate-500 sm:text-lg">
+            {greeting}
+          </p>
+          <h1
+            className="mt-1 text-[2.15rem] font-semibold tracking-[-0.05em] sm:text-5xl"
+            style={{ color: NAVY }}
+          >
+            {senseiName}
+          </h1>
+          <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:text-base">
+            {focusLine}
+          </p>
         </header>
 
         {!ready ? (
@@ -203,328 +311,382 @@ export default function InstructorDashboardPage() {
             読み込み中...
           </p>
         ) : (
-          <>
-            {platformMe && (
-              <section className="mt-10 sm:mt-12">
-                <PlatformStatusCard data={platformMe} compact />
-              </section>
-            )}
-
-            <section className="mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:gap-4 lg:grid-cols-5">
-              {summaryCards.map((card) => (
-                <div
-                  key={card.label}
-                  className="rounded-[24px] border border-slate-200/90 bg-white px-4 py-5 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-5 sm:py-6"
-                >
-                  <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400 sm:tracking-[0.16em]">
-                    {card.label}
-                  </p>
+          <div className="mt-10 space-y-5 sm:mt-12 sm:space-y-6">
+            {/* 1. 今日の予定 */}
+            <section
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "60ms" }}
+            >
+              <SectionHeader
+                title="今日の予定"
+                eyebrow="SCHEDULE"
+                action={
                   <p
-                    className="mt-2 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl"
-                    style={{ color: NAVY }}
+                    className="rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.14em]"
+                    style={{
+                      color: GOLD,
+                      backgroundColor: GOLD_SOFT,
+                      boxShadow: `inset 0 0 0 1px ${GOLD_BORDER}`,
+                    }}
                   >
-                    {card.value}
+                    {todaySchedule.length}件
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-400">{card.hint}</p>
+                }
+              />
+
+              {todaySchedule.length === 0 ? (
+                <div className="rounded-2xl bg-[#fafaf8] px-4 py-8 text-center sm:px-5">
+                  <p className="text-sm leading-7 text-slate-500">
+                    本日の予定はありません。
+                  </p>
+                  <p className="mt-1 text-[13px] text-slate-400">
+                    クライアント詳細から次回予定を登録できます。
+                  </p>
                 </div>
-              ))}
+              ) : (
+                <ul className="space-y-2.5">
+                  {todaySchedule.map(({ appointment, clientName }) => (
+                    <li key={appointment.id}>
+                      <Link
+                        href={`/clients/${encodeURIComponent(appointment.clientId)}`}
+                        className="group flex items-start gap-4 rounded-2xl bg-[#fafaf8] px-4 py-4 transition hover:bg-[#f5f4f0] sm:px-5"
+                      >
+                        <div
+                          className="flex h-12 min-w-12 shrink-0 flex-col items-center justify-center rounded-2xl px-2 text-white"
+                          style={{ backgroundColor: NAVY }}
+                        >
+                          {appointment.startTime ? (
+                            <span className="text-[13px] font-semibold tabular-nums tracking-[-0.03em]">
+                              {appointment.startTime}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-semibold tracking-[0.04em]">
+                              終日
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <p
+                            className="text-[15px] font-semibold tracking-[-0.02em] transition group-hover:opacity-70"
+                            style={{ color: NAVY }}
+                          >
+                            {toSanName(clientName)}
+                          </p>
+                          <p className="mt-1 text-[13px] text-slate-500">
+                            {appointmentDisplayTitle(appointment)}
+                          </p>
+                          <p className="mt-1.5 text-[12px] text-slate-400">
+                            {formatLocationTypeLabel(appointment.locationType)}
+                            {appointment.location.trim()
+                              ? ` · ${appointment.location.trim()}`
+                              : ""}
+                          </p>
+                        </div>
+                        <span
+                          className="mt-3 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#8a6a2d]"
+                          aria-hidden
+                        >
+                          →
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
-            <div className="mt-8 grid gap-6 lg:mt-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-8">
-              <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-7 sm:py-8">
-                <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
-                  <h2
-                    className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
-                    style={{ color: NAVY }}
+            {/* 2. 最近分析 */}
+            <section
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "120ms" }}
+            >
+              <SectionHeader title="最近分析" eyebrow="RECENT" />
+
+              {recentClients.length === 0 ? (
+                <p className="py-8 text-center text-sm leading-7 text-slate-400">
+                  まだ分析がありません。
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {recentClients.map((client) => (
+                    <li key={`${client.clientId}-${client.analysisId}`}>
+                      <Link
+                        href={`/analysis/result?analysisId=${encodeURIComponent(client.analysisId)}`}
+                        className="group flex items-center justify-between gap-4 py-3.5 transition first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0">
+                          <p
+                            className="text-[15px] font-medium tracking-[-0.02em] transition group-hover:opacity-70 sm:text-base"
+                            style={{ color: NAVY }}
+                          >
+                            {client.name}
+                          </p>
+                          <p className="mt-0.5 text-[12px] text-slate-400">
+                            {formatDisplayDate(client.analysisDate)}
+                            {client.trend === "improved"
+                              ? " · 改善"
+                              : client.trend === "worsened"
+                                ? " · 要注意"
+                                : ""}
+                          </p>
+                        </div>
+                        <span className="text-[15px] font-semibold tracking-[-0.02em] tabular-nums text-slate-400 transition group-hover:text-[#8a6a2d]">
+                          {client.sleepScore ?? "—"}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* 3. AIアラート */}
+            <AiFollowAlerts
+              className="animate-fade-up"
+              style={{ animationDelay: "180ms" }}
+              alerts={alerts}
+              title="AIアラート"
+              eyebrow="AI ALERT"
+              description="診断ではありません。今日フォローしたい着眼点です。"
+              emptyMessage="いま優先して見るアラートはありません。"
+              dividedHeader
+            />
+
+            {/* 4. Sleep Wellness Institute Japan News */}
+            <section
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "240ms" }}
+            >
+              <SectionHeader
+                title="Sleep Wellness Institute Japan News"
+                eyebrow="NEWS"
+                action={
+                  <Link
+                    href="/#news"
+                    className="text-[12px] font-semibold underline-offset-4 transition hover:underline"
+                    style={{ color: GOLD }}
                   >
-                    要フォローのクライアント
-                  </h2>
+                    すべて
+                  </Link>
+                }
+              />
+
+              <ul className="space-y-3">
+                {SWIJ_NEWS_ITEMS.slice(0, 3).map((item) => (
+                  <li key={item.title}>
+                    <Link
+                      href={item.href}
+                      className="group block rounded-2xl bg-[#fafaf8] px-4 py-4 transition hover:bg-[#f5f4f0] sm:px-5"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span
+                          className="rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em]"
+                          style={{
+                            color: TEAL,
+                            backgroundColor: "rgba(49, 95, 104, 0.1)",
+                          }}
+                        >
+                          {item.category}
+                        </span>
+                        <time
+                          dateTime={item.date.replace(/\./g, "-")}
+                          className="text-[11px] text-slate-400"
+                        >
+                          {item.date}
+                        </time>
+                      </div>
+                      <p
+                        className="mt-3 text-[15px] font-semibold tracking-[-0.02em] transition group-hover:opacity-70"
+                        style={{ color: NAVY }}
+                      >
+                        {item.title}
+                      </p>
+                      <p className="mt-1.5 line-clamp-2 text-[13px] leading-6 text-slate-500">
+                        {item.description}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            {/* 5. クライアント一覧 */}
+            <section
+              className={`animate-fade-up ${cardClassName()}`}
+              style={{ animationDelay: "300ms" }}
+            >
+              <SectionHeader
+                title="クライアント一覧"
+                eyebrow="CLIENTS"
+                action={
+                  <p className="text-[12px] font-medium text-slate-400">
+                    {stats.clientCount}名
+                  </p>
+                }
+              />
+
+              {clientPreviews.length === 0 ? (
+                <p className="py-8 text-center text-sm leading-7 text-slate-400">
+                  まだクライアントがいません。
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {clientPreviews.map((client) => (
+                    <li key={client.id}>
+                      <Link
+                        href={`/clients/${encodeURIComponent(client.id)}`}
+                        className="group flex items-center justify-between gap-4 py-3.5 transition first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0">
+                          <p
+                            className="text-[15px] font-medium tracking-[-0.02em] transition group-hover:opacity-70"
+                            style={{ color: NAVY }}
+                          >
+                            {client.name}
+                          </p>
+                          <p className="mt-0.5 text-[12px] text-slate-400">
+                            {client.latestAnalysisDate
+                              ? `最終分析 ${formatDisplayDate(client.latestAnalysisDate)}`
+                              : "未分析"}
+                          </p>
+                        </div>
+                        <span className="text-[14px] font-semibold tabular-nums text-slate-400 transition group-hover:text-[#8a6a2d]">
+                          {client.latestSleepScore ?? "—"}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <Link
+                  href="/clients"
+                  className="text-[13px] font-semibold underline-offset-4 transition hover:underline"
+                  style={{ color: GOLD }}
+                >
+                  すべてのクライアントを見る
+                </Link>
+              </div>
+            </section>
+
+            {/* 6. 新規分析 */}
+            <section
+              className="animate-fade-up"
+              style={{ animationDelay: "360ms" }}
+            >
+              <Link
+                href="/analysis/new"
+                className="group flex items-center justify-between gap-4 rounded-[28px] border border-[#071426]/15 bg-[#071426] px-5 py-6 text-white shadow-[0_24px_70px_-42px_rgba(7,20,38,0.55)] transition hover:-translate-y-0.5 hover:opacity-95 sm:px-7 sm:py-7"
+              >
+                <div>
+                  <p className="text-[10px] font-semibold tracking-[0.22em] text-[#d8b36a]">
+                    NEW ANALYSIS
+                  </p>
+                  <p className="mt-3 text-lg font-semibold tracking-[-0.03em] sm:text-xl">
+                    新規分析
+                  </p>
+                  <p className="mt-1.5 text-sm text-white/65">
+                    SOXAIデータから睡眠ウェルネスを分析します
+                  </p>
+                </div>
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 transition group-hover:scale-105"
+                  aria-hidden
+                >
+                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                    <path
+                      d="M3.2 8h9.6M8.8 4.2 12.6 8 8.8 11.8"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </Link>
+            </section>
+
+            {/* 7. 新規クライアント */}
+            <section
+              className="animate-fade-up"
+              style={{ animationDelay: "420ms" }}
+            >
+              <Link
+                href="/clients/new"
+                className="group flex items-center justify-between gap-4 rounded-[28px] border border-[#8a6a2d]/25 bg-gradient-to-br from-[#faf7f1] to-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:border-[#8a6a2d]/40 hover:shadow-[0_24px_70px_-42px_rgba(15,23,42,0.22)] sm:px-7 sm:py-7"
+              >
+                <div>
                   <p
                     className="text-[10px] font-semibold tracking-[0.22em]"
                     style={{ color: GOLD }}
                   >
-                    FOLLOW-UP
+                    NEW CLIENT
                   </p>
-                </div>
-
-                {stats.followUps.length === 0 ? (
-                  <p className="py-10 text-center text-sm leading-7 text-slate-400">
-                    現在、要フォローのクライアントはいません。
-                  </p>
-                ) : (
-                  <ul className="space-y-3">
-                    {stats.followUps.map((item) => (
-                      <li
-                        key={item.clientId}
-                        className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
-                      >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                              <p
-                                className="text-base font-semibold tracking-[-0.02em]"
-                                style={{ color: NAVY }}
-                              >
-                                {item.name}
-                              </p>
-                              <p className="text-[12px] text-slate-400">
-                                {formatDisplayDate(item.latestAnalysisDate)}
-                              </p>
-                            </div>
-                            <p className="mt-2 text-sm text-slate-500">
-                              睡眠スコア{" "}
-                              <span
-                                className="text-lg font-semibold tracking-[-0.03em]"
-                                style={{ color: NAVY }}
-                              >
-                                {item.sleepScore ?? "—"}
-                              </span>
-                            </p>
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                              {item.reasons.map((reason) => (
-                                <span
-                                  key={reason}
-                                  className="rounded-full border border-[#a33a3a]/15 bg-[#a33a3a]/06 px-2.5 py-1 text-[11px] font-medium text-[#a33a3a]"
-                                >
-                                  {reason}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          <Link
-                            href={`/clients/${item.clientId}`}
-                            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full px-5 py-2.5 text-[13px] font-semibold text-white transition hover:opacity-90"
-                            style={{ backgroundColor: NAVY }}
-                          >
-                            詳細を見る
-                          </Link>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <div className="space-y-6 lg:space-y-8">
-                <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-7 sm:py-8">
-                  <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
-                    <h2
-                      className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
-                      style={{ color: NAVY }}
-                    >
-                      改善率
-                    </h2>
-                    <p
-                      className="text-[10px] font-semibold tracking-[0.22em]"
-                      style={{ color: GOLD }}
-                    >
-                      IMPROVEMENT
-                    </p>
-                  </div>
-
                   <p
-                    className="text-4xl font-semibold tracking-[-0.05em] sm:text-5xl"
+                    className="mt-3 text-lg font-semibold tracking-[-0.03em] sm:text-xl"
                     style={{ color: NAVY }}
                   >
-                    {stats.improvement.rate != null
-                      ? `${stats.improvement.rate}%`
-                      : "—"}
+                    新規クライアント
                   </p>
-                  <dl className="mt-5 space-y-2 text-sm text-slate-600">
-                    <div className="flex justify-between gap-3">
-                      <dt>改善したクライアント</dt>
-                      <dd className="font-semibold" style={{ color: NAVY }}>
-                        {stats.improvement.improvedCount}名
-                      </dd>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <dt>比較可能なクライアント</dt>
-                      <dd className="font-semibold" style={{ color: NAVY }}>
-                        {stats.improvement.comparableCount}名
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="mt-4 text-[12px] leading-5 text-slate-400">
-                    2件以上の分析があり、最新スコアが初回より3点以上高い場合を改善と定義しています。
+                  <p className="mt-1.5 text-sm text-slate-500">
+                    プロフィール登録から始めます
                   </p>
-                </section>
-
-                <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-7 sm:py-8">
-                  <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
-                    <h2
-                      className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
-                      style={{ color: NAVY }}
-                    >
-                      睡眠スコア分布
-                    </h2>
-                    <p
-                      className="text-[10px] font-semibold tracking-[0.22em]"
-                      style={{ color: GOLD }}
-                    >
-                      DISTRIBUTION
-                    </p>
-                  </div>
-
-                  <ul className="space-y-4">
-                    {BUCKET_LABELS.map(({ key, label }) => {
-                      const count = stats.distribution[key];
-                      const width = Math.round((count / distributionMax) * 100);
-                      return (
-                        <li key={key}>
-                          <div className="mb-1.5 flex items-center justify-between gap-3 text-[13px]">
-                            <span className="font-medium text-slate-600">
-                              {label}
-                            </span>
-                            <span
-                              className="font-semibold tabular-nums"
-                              style={{ color: NAVY }}
-                            >
-                              {count}名
-                            </span>
-                          </div>
-                          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full transition-[width] duration-500"
-                              style={{
-                                width: `${width}%`,
-                                background:
-                                  key === "59-"
-                                    ? "linear-gradient(90deg, #a33a3a, #c45c5c)"
-                                    : key === "60-69"
-                                      ? "linear-gradient(90deg, #9a7b12, #c4a43a)"
-                                      : `linear-gradient(90deg, ${NAVY}, #315f68)`,
-                              }}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </section>
-              </div>
-            </div>
-
-            <section className="mt-6 rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:mt-8 sm:px-7 sm:py-8">
-              <div className="mb-5 flex items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
-                <h2
-                  className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
-                  style={{ color: NAVY }}
+                </div>
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white transition group-hover:scale-105"
+                  style={{ backgroundColor: NAVY }}
+                  aria-hidden
                 >
-                  最近の分析
-                </h2>
-                <p
-                  className="text-[10px] font-semibold tracking-[0.22em]"
-                  style={{ color: GOLD }}
-                >
-                  RECENT
-                </p>
-              </div>
-
-              {stats.recentAnalyses.length === 0 ? (
-                <p className="py-10 text-center text-sm leading-7 text-slate-400">
-                  まだ分析がありません。新しい睡眠分析から開始してください。
-                </p>
-              ) : (
-                <>
-                  <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full min-w-[720px] border-collapse text-left">
-                      <thead>
-                        <tr className="border-b border-slate-100 text-[11px] font-semibold tracking-[0.14em] text-slate-400">
-                          <th className="pb-3 pr-4 font-semibold">氏名</th>
-                          <th className="pb-3 pr-4 font-semibold">分析日</th>
-                          <th className="pb-3 pr-4 font-semibold">睡眠スコア</th>
-                          <th className="pb-3 pr-4 font-semibold">前回との差</th>
-                          <th className="pb-3 pr-4 font-semibold">総合評価</th>
-                          <th className="pb-3 font-semibold">詳細</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats.recentAnalyses.map((item) => (
-                          <tr
-                            key={`${item.clientId}-${item.analysisId}`}
-                            className="border-b border-slate-50 last:border-b-0"
-                          >
-                            <td
-                              className="py-4 pr-4 text-[15px] font-semibold"
-                              style={{ color: NAVY }}
-                            >
-                              {item.name}
-                            </td>
-                            <td className="py-4 pr-4 text-sm text-slate-500">
-                              {formatDisplayDate(item.analysisDate)}
-                            </td>
-                            <td
-                              className="py-4 pr-4 text-lg font-semibold tracking-[-0.03em]"
-                              style={{ color: NAVY }}
-                            >
-                              {item.sleepScore ?? "—"}
-                            </td>
-                            <td className="py-4 pr-4 text-sm">
-                              <TrendGlyph item={item} />
-                            </td>
-                            <td className="max-w-[240px] py-4 pr-4 text-sm leading-6 text-slate-500">
-                              {item.summary}
-                            </td>
-                            <td className="py-4">
-                              <Link
-                                href={`/analysis/result?analysisId=${encodeURIComponent(item.analysisId)}`}
-                                className="text-[13px] font-semibold underline-offset-4 transition hover:underline"
-                                style={{ color: GOLD }}
-                              >
-                                詳細を見る
-                              </Link>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <ul className="space-y-3 md:hidden">
-                    {stats.recentAnalyses.map((item) => (
-                      <li
-                        key={`${item.clientId}-${item.analysisId}-m`}
-                        className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p
-                              className="font-semibold"
-                              style={{ color: NAVY }}
-                            >
-                              {item.name}
-                            </p>
-                            <p className="mt-1 text-[12px] text-slate-400">
-                              {formatDisplayDate(item.analysisDate)}
-                            </p>
-                          </div>
-                          <p
-                            className="text-xl font-semibold tracking-[-0.04em]"
-                            style={{ color: NAVY }}
-                          >
-                            {item.sleepScore ?? "—"}
-                          </p>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <TrendGlyph item={item} />
-                          <Link
-                            href={`/analysis/result?analysisId=${encodeURIComponent(item.analysisId)}`}
-                            className="text-[13px] font-semibold"
-                            style={{ color: GOLD }}
-                          >
-                            詳細を見る →
-                          </Link>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-slate-500">
-                          {item.summary}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
+                  <svg viewBox="0 0 16 16" className="h-4 w-4">
+                    <path
+                      d="M8 3.2v9.6M3.2 8h9.6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
+              </Link>
             </section>
-          </>
+
+            {/* 8. 設定 */}
+            <section
+              className="animate-fade-up"
+              style={{ animationDelay: "480ms" }}
+            >
+              <Link
+                href="/portal"
+                className="group flex items-center justify-between gap-4 rounded-[28px] border border-slate-200/90 bg-white px-5 py-5 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.18)] transition hover:bg-[#fafaf8] sm:px-7 sm:py-6"
+              >
+                <div>
+                  <p
+                    className="text-[10px] font-semibold tracking-[0.22em]"
+                    style={{ color: GOLD }}
+                  >
+                    SETTINGS
+                  </p>
+                  <p
+                    className="mt-2 text-[15px] font-semibold tracking-[-0.02em] sm:text-base"
+                    style={{ color: NAVY }}
+                  >
+                    設定
+                  </p>
+                  <p className="mt-1 text-[13px] text-slate-500">
+                    認定資格・クレジット・分析履歴を確認
+                  </p>
+                </div>
+                <span
+                  className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-[#8a6a2d]"
+                  aria-hidden
+                >
+                  →
+                </span>
+              </Link>
+            </section>
+          </div>
         )}
       </div>
     </main>

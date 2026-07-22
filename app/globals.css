@@ -201,6 +201,21 @@
     margin-top: 3px !important;
   }
 
+  .report-wellness-radar {
+    margin-top: 3px !important;
+    padding: 4px 6px !important;
+    border-radius: 2px !important;
+  }
+
+  .report-wellness-radar p {
+    font-size: 7pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .report-wellness-radar svg {
+    max-width: 140px !important;
+  }
+
   .report-score-breakdown {
     margin-top: 3px !important;
   }
@@ -301,6 +316,33 @@
   .report-summary .space-y-2\.5 > :not([hidden]) ~ :not([hidden]),
   .report-panel ul.space-y-2 > :not([hidden]) ~ :not([hidden]) {
     margin-top: 0 !important;
+  }
+
+  .report-brand-comment {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 4px !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+  }
+
+  .report-brand-comment > div.relative {
+    padding: 6px 8px !important;
+  }
+
+  .report-brand-comment h2 {
+    margin-top: 2px !important;
+    font-size: 7pt !important;
+  }
+
+  .report-brand-comment p {
+    font-size: 6pt !important;
+    line-height: 1.35 !important;
+  }
+
+  .report-brand-comment .space-y-4 > :not([hidden]) ~ :not([hidden]),
+  .report-brand-comment .sm\:space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 3px !important;
   }
 
   .report-powered {

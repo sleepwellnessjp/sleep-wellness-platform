@@ -16,8 +16,10 @@ import {
 } from "@/lib/analysis-session";
 import {
   buildAnalysisAiInput,
+  compactPreviousAnalysisForAi,
   logAnalysisAiInputInDev,
 } from "@/lib/client-profiles";
+import { getClientById } from "@/lib/repositories/client-repository";
 import { graphPanelCount } from "@/lib/soxai-graphs";
 import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
 import {
@@ -33,8 +35,14 @@ import { CRITICAL_OCR_KEYS, isCriticalOcrKey } from "@/lib/soxai-screen";
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
+const inputEmptyClass =
+  "mt-2.5 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[15px] text-[#C48A2D] outline-none transition duration-300 placeholder:text-[#C48A2D] focus:border-[#C48A2D] focus:bg-white focus:text-[#071426] focus:ring-4 focus:ring-[#C48A2D]/15 sm:px-5 sm:py-4 sm:text-base";
+
 const inputReadonlyClass =
   "mt-2.5 w-full rounded-2xl border border-[#315f68]/20 bg-[#f4f7f7] px-4 py-3.5 text-[15px] text-[#071426] sm:px-5 sm:py-4 sm:text-base";
+
+const inputReadonlyEmptyClass =
+  "mt-2.5 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[15px] font-semibold text-[#C48A2D] sm:px-5 sm:py-4 sm:text-base";
 
 const inputConflictClass =
   "mt-2.5 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:px-5 sm:py-4 sm:text-base";
@@ -92,15 +100,15 @@ function statusBadge(status: FieldStatus) {
       };
     case "no_explicit":
       return {
-        label: "画像に明示値なし",
+        label: "未入力",
         className:
-          "rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500",
+          "rounded-full bg-[#FFF8EC] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#C48A2D]",
       };
     case "manual_needed":
       return {
         label: "手入力が必要",
         className:
-          "rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-500",
+          "rounded-full bg-[#FFF8EC] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#C48A2D]",
       };
   }
 }
@@ -215,6 +223,32 @@ export default function ConfirmExtractionPage() {
       }
     }
 
+    let previousAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
+    const clientId = draft.lifestyle.clientId?.trim();
+    if (clientId) {
+      try {
+        const client = await getClientById(clientId);
+        const prior = client?.analyses?.[0];
+        if (prior) {
+          previousAnalysis = compactPreviousAnalysisForAi({
+            analysisDate: prior.analysisDate,
+            sleepScore: prior.sleepScore,
+            wellnessScore: prior.wellnessScore,
+            metrics: prior.metrics ?? prior.result?.metrics,
+            summary: prior.result?.summary,
+            karteSummary: prior.result?.karteSummary,
+            evidence: prior.result?.evidence,
+            goodPoints: prior.result?.goodPoints,
+            improvements: prior.result?.improvements,
+            nextComparisonPoints: prior.result?.nextComparisonPoints,
+            recommendationsUntilNext: prior.result?.recommendationsUntilNext,
+          });
+        }
+      } catch {
+        // オフライン時は前回なしで継続
+      }
+    }
+
     setPendingAnalysisRequest({
       lifestyle: draft.lifestyle,
       images: draft.images,
@@ -231,7 +265,9 @@ export default function ConfirmExtractionPage() {
           clientName: draft.lifestyle.clientName,
           soxaiMetrics: normalizeMetrics(confirmed),
           dayContext: draft.dayContext ?? null,
+          lifestyleForm: draft.lifestyle,
           fixedProfile: draft.fixedProfile ?? null,
+          previousAnalysis,
         });
         logAnalysisAiInputInDev(aiInput);
         return aiInput;
@@ -306,16 +342,18 @@ export default function ConfirmExtractionPage() {
                 ? inputConflictClass
                 : status === "low_confidence"
                   ? inputLowConfidenceClass
-                  : inputClass
+                  : present
+                    ? inputClass
+                    : inputEmptyClass
             }
-            placeholder={field.placeholder}
+            placeholder={present ? field.placeholder : "未入力"}
           />
         ) : (
           <input
             type="text"
             readOnly
-            value={present ? value : "データ未取得"}
-            className={inputReadonlyClass}
+            value={present ? value : "未入力"}
+            className={present ? inputReadonlyClass : inputReadonlyEmptyClass}
             tabIndex={-1}
           />
         )}
@@ -401,13 +439,15 @@ export default function ConfirmExtractionPage() {
               </span>
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-4 text-center sm:px-4">
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-slate-400 sm:text-[11px]">
-              画像に無し
+          <div className="rounded-2xl border border-[#C48A2D]/25 bg-[#FFF8EC] px-3 py-4 text-center sm:px-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-[#C48A2D] sm:text-[11px]">
+              未入力
             </p>
-            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#C48A2D] sm:text-2xl">
               {missingCount}
-              <span className="ml-1 text-sm font-medium text-slate-400">項目</span>
+              <span className="ml-1 text-sm font-medium text-[#C48A2D]/70">
+                項目
+              </span>
             </p>
           </div>
           <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">

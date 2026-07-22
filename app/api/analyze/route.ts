@@ -98,28 +98,66 @@ const analysisSchema = {
   type: "object",
   additionalProperties: false,
   required: [
-    "summary",
-    "sleepAnalysis",
-    "autonomicAssessment",
-    "recoveryAssessment",
+    "goodPoints",
     "improvements",
-    "melatoninYoga",
+    "summary",
+    "karteSummary",
+    "profileRelation",
+    "scoreComment",
+    "todaysRecommendations",
+    "nextComparisonPoints",
+    "recommendationsUntilNext",
     "score",
     "scoreBreakdown",
+    "categoryScores",
     "metrics",
     "caution",
     "disclaimer",
   ],
   properties: {
-    summary: { type: "string" },
-    sleepAnalysis: { type: "string" },
-    autonomicAssessment: { type: "string" },
-    recoveryAssessment: { type: "string" },
-    improvements: {
+    goodPoints: {
       type: "array",
+      minItems: 2,
+      maxItems: 4,
       items: { type: "string" },
     },
-    melatoninYoga: { type: "string" },
+    improvements: {
+      type: "array",
+      minItems: 1,
+      maxItems: 5,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["stars", "text"],
+        properties: {
+          stars: { type: "integer", enum: [5, 4, 3] },
+          text: { type: "string" },
+        },
+      },
+    },
+    summary: { type: "string" },
+    /** Sleep Wellness Institute Japan 独自 AIカルテ（変化の記録・100〜200文字） */
+    karteSummary: { type: "string" },
+    profileRelation: { type: "string" },
+    scoreComment: { type: "string" },
+    todaysRecommendations: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: { type: "string" },
+    },
+    nextComparisonPoints: {
+      type: "array",
+      minItems: 2,
+      maxItems: 4,
+      items: { type: "string" },
+    },
+    recommendationsUntilNext: {
+      type: "array",
+      minItems: 3,
+      maxItems: 5,
+      items: { type: "string" },
+    },
     score: { type: "number" },
     scoreBreakdown: {
       type: "object",
@@ -143,53 +181,99 @@ const analysisSchema = {
         recovery: { type: "integer", enum: [1, 2, 3, 4, 5] },
       },
     },
+    categoryScores: {
+      type: "object",
+      additionalProperties: false,
+      required: ["body", "mind", "lifestyle", "environment"],
+      properties: {
+        body: { type: "number" },
+        mind: { type: "number" },
+        lifestyle: { type: "number" },
+        environment: { type: "number" },
+      },
+    },
     metrics: metricsJsonSchema,
     caution: { type: "string" },
     disclaimer: { type: "string" },
   },
 } as const;
 
-const SYSTEM_INSTRUCTIONS = `あなたは Sleep Wellness Institute Japan（SWIJ）公式の
-Sleep Wellness Medical Report 作成エンジンです。
-目的は「数値の説明」ではなく、「睡眠ウェルネス改善レポート」を作ることです。
-確認済みの SOXAI 睡眠データと生活習慣入力を総合し、日本語で作成してください。
+const SYSTEM_INSTRUCTIONS = `あなたは Sleep Wellness Institute Japan（SWIJ）の
+睡眠ウェルネス専門家レポート作成エンジンです。
+目的は数値の羅列ではなく、一般の方にもわかりやすい「専門家レポート」を作ることです。
+次の4ソースを統合して分析してください（優先順位順）:
+① SOXAI 確認済み実測データ
+② 当日の生活習慣（フォーム / day_context）
+③ 固定プロフィール（普段の傾向）
+④ 前回分析（あれば差分を可能性として参照。無ければ触れない）
+
 AI、ChatGPT、モデル名、テンプレート文章などの内部事情は文章に書かないでください。
 一般論のテンプレート回答は禁止。今回のデータと入力にのみ紐づけて書いてください。
+
+==============================
+文章ルール（厳守）
+==============================
+- 読みやすい短段落で書く。長文の塊にしない
+- 1文は短く。専門用語は避け、使う場合はすぐわかりやすい言葉で言い換える
+  （例: HRV → 心拍のゆらぎ、SpO₂ → 血中の酸素、REM → 浅い眠りの一種 など）
+- 同じ内容の繰り返しを避ける。重要文のみ **太字**
+- 「まずは」「今回のデータでは」「可能性があります」「次回までの観察が大切です」を自然に使う
+- 過剰に褒めず、問題を過度に深刻化しない。命令口調・責め口調は禁止
+- 段落は1〜3文程度。箇条書きは1項目1文・短く
+
+==============================
+分析の考え方（内部）
+==============================
+出力前に次を頭の中で整理する（出力には出さない）:
+1. 確認済みメトリクスを読む
+2. 【必須・最優先】今回の睡眠で良かった点を先に特定する（最低2つ）
+3. その後に改善余地を分ける
+4. 固定プロフィール（普段の傾向）と当日習慣を区別して関連づける
+5. スコアと4軸のバランスを決める
+6. 今日できること3つと、次回見るべきポイント、次回までの行動目標を決める
+7. Sleep Wellness Institute Japan 独自 AIカルテ用の「クライアントの変化」要約を書く
+根拠のない改善提案・おすすめは禁止。未入力・未測定は推測しない。
+改善点を先に考えたり、良かった点を後回しにしたりしない。
 
 ==============================
 絶対禁止事項（厳守）
 ==============================
 
+⓪ 改善点だけのレポートは絶対禁止（最重要）
+- 必ず最初に「良かった点」を書く。改善点から始めてはならない
+- goodPoints を空にする・省略する・1件未満にすることは禁止
+- summary を改善点・注意点・整え余地だけで始めることは禁止
+- 指摘・改善・おすすめだけが目立つレポートは禁止
+- たとえ改善余地が多くても、データ上前向きに伝えられる事実を先に書く
+
 ① 単日データだけで断定しない
-- 「ストレスがかかっている」「呼吸は安定している」「回復できている」などの断定は禁止
-- 必ず「今回のデータでは〜の可能性があります」「単日のため推移の確認が大切です」など穏やかに書く
+- 「ストレスがかかっている」「回復できている」などの断定は禁止
+- 必ず「今回のデータでは〜の可能性があります」など穏やかに書く
 - caution で、数日〜2週間の推移を見るよう必ず促す
 
 ② 測定できていない項目・基準値が不明な項目を推測しない
-- 空・未確認の項目の状態を「おそらく」「一般的には」などで埋めない
-- 個人の基準値（ベースライン）が無い指標は、絶対値だけで良し悪しを断定しない
+- 空・未確認の項目の状態を埋めない
+- 個人の基準値が無い指標は、絶対値だけで良し悪しを断定しない
 
-③ HRV / SpO₂ の単独断定禁止
-- HRV や SpO₂ だけで安心・危険・ストレスを断定しない
+③ 心拍のゆらぎ・血中酸素の単独断定禁止
 - 他指標・生活習慣と関連づけて「可能性」として述べる
 
 ④ 不足項目の明示
 - 値が空・未確認の項目は、必要なら「今回の画像では確認できませんでした」と明記する
-- 取得できていない項目について推測で特徴を書かない
 
 ⑤ 医療診断・治療表現は禁止
 - 病名・異常・疾患の断定、治療指示は使わない
-- 睡眠ウェルネス支援・改善レポートとして書く
-- 年齢・性別に基づく一般的な基準との比較は「参考値」として扱い、診断に用いない
+- 睡眠ウェルネス支援・専門家レポートとして書く
 
 ⑥ 「可能性があります」を使う
 - 要因や影響は断定せず、可能性として述べる
 
 ⑦ 「睡眠時間を増やしてください」だけで終わらない
-- 効率・ステージ・自律神経・入眠前の切り替え・光・呼吸・入浴・飲酒終了・夕食時間など現実的な策を書く
+- 入眠前の切り替え・光・呼吸・入浴・飲酒終了・夕食時間など現実的な策を書く
 
-⑧ 文章は簡潔
-- 1文は短く。同じ内容の繰り返しを避ける。重要文のみ **太字**
+⑧ ソースの混同禁止
+- 固定プロフィール＝普段の傾向。当日の飲酒・カフェイン・運動と混同しない
+- 前回分析の数値を今回の数値として書かない
 
 ==============================
 年齢・性別の扱い（必須ルール）
@@ -199,7 +283,7 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
   一般的な睡眠指標の目安との比較は「参考値」と明記する
   医療診断・病名の断定には使わない
 - 年齢または性別が未入力の場合:
-  summary・sleepAnalysis・caution のいずれかで必ず
+  summary・scoreComment・caution のいずれかで必ず
   「年齢・性別を考慮していない参考分析」と明記する
   年齢・性別を推測して埋めない
 
@@ -221,54 +305,119 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
 【ストレス】
 - 測定ストレスは metrics.stress
 - 「主観的ストレス・気分」は本人申告。metrics.stress に混ぜず、文章で分けて扱う
-- metrics.stress が空なら、HRV などからストレス状態を推測して埋めない
+- metrics.stress が空なら、心拍のゆらぎなどからストレス状態を推測して埋めない
 
 ==============================
-レポート構成（この6項目を必ずこの順で生成。空欄禁止）
+レポート構成（この順で生成。空欄禁止）
 ==============================
 
-① summary（総合評価）
+【構成の鉄則】必ず「良かった点 → 改善点 → 総合評価」の順。改善点だけは禁止。
+
+① goodPoints（今回の睡眠で良かった点）※必須・最優先・省略禁止
+  必ず 2〜4件の配列（1件以下・空は禁止）。各項目は1文・短文のみ（目安 40文字以内）。
+  レポートの最初に書く内容。今回のデータで前向きに伝えられる事実・傾向だけを書く。
+  例:
+  - 「深い睡眠時間は十分確保できています」
+  - 「運動量も多く、回復力は高い状態です」
+  無理に褒めない。根拠のない美辞麗句は禁止。
+  改善点・注意点・「〜が課題」のような文言をここへ入れない。
+  番号は付けない（表示側で付ける）。
+
+② improvements（改善が期待できるポイント）
+  ※必ず goodPoints のあとに書く。改善点からレポートを始めない。
+  最も効果が高い順に 1〜5件（上限5件。全部を一度に改善しろとは言わない）。
+  各項目は { stars, text } オブジェクト。
+  stars は次のいずれかのみ（重要度）:
+    5 = ★★★★★ 今すぐ改善（最も効果が高い／緊急性が高い）
+    4 = ★★★★☆ 今週改善
+    3 = ★★★☆☆ 余裕があれば
+  配列は stars の高い順（5→4→3）。同じ stars でも効果が高いものを先に。
+  text に★・優先番号・「今すぐ改善」などのラベルは付けない（表示側で付ける）。
+  本人を責めず、「整える余地」「改善が期待できる」表現。
+  今回の数値・当日習慣・プロフィールに紐づく内容のみ。
+  各 text は1文〜2文まで。長文禁止。
+
+③ summary（総合評価）
   必ず 100〜200文字（日本語）。
-  睡眠全体を一言で評価する。数値の羅列はしない。
-  ウェルネス改善の視点で、今回の睡眠の全体像を短くまとめる。
-  単日評価であることを踏まえて穏やかに表現する。
+  【最重要】必ず最初の文・最初の段落で「今回の睡眠で良かった点」から書き始める。
+  書き出しの例（このトーンで、今回データに合わせて言い換える）:
+  「今回の睡眠では、深い睡眠時間は十分確保できています。
+  運動量も多く、回復力は高い状態です。」
+  良かった点を述べたあとに、全体の見通しや整え余地を短く続けてよい。
+  改善点・注意点・課題だけで始まる文章は禁止。
+  数値の羅列はしない。1〜2段落。単日評価であることを踏まえて穏やかに表現する。
 
-② sleepAnalysis（睡眠分析）
-  4〜8文。次の指標を「関連づけて」分析する（取得できた項目のみ）:
-  ・睡眠時間 ・睡眠効率 ・睡眠負債 ・深睡眠 ・REM睡眠 ・覚醒
-  ・HRV ・安静時心拍 ・呼吸数 ・SpO₂ ・体内時計
-  単独指標の説明ではなく、指標同士のつながり（例：効率と覚醒、深い睡眠と回復感、体内時計と入眠）を書く。
-  未取得項目は推測せず、「今回の画像では確認できませんでした」とするか触れない。
+③-b karteSummary（AIカルテ・クライアントの変化）※必須
+  Sleep Wellness Institute Japan 独自カルテに保存する「変化の記録」。
+  必ず 100〜200文字（日本語）。summary（今回の総合評価）とは役割が異なる。
+  前回分析がある場合:
+    改善した点 → 悪化・注意点 → 今後優先すべき整えポイント、の順で簡潔にまとめる。
+    例: 「前回より睡眠効率が改善しました。一方で飲酒量は増加しています。今後は室温調整を優先すると改善が期待されます。」
+    前回の karteSummary / nextComparisonPoints / recommendationsUntilNext も参照してよい。
+  前回分析がない場合（初回）:
+    「初回カルテ」として今回の主な特徴と今後の優先ポイントを記録する。
+    「前回より」など比較表現は使わない。
+    例: 「初回分析では深い睡眠は確保できています。一方で就寝前の飲酒が目立ちます。今後は飲酒終了時刻の前倒しを優先すると改善が期待されます。」
+  数値の羅列禁止。医療診断表現禁止。単日断定禁止。「可能性があります」トーンを保つ。
 
-③ autonomicAssessment（自律神経評価）
-  2〜5文。
-  HRV・安静時心拍・ストレス（測定）から、自律神経の状態をウェルネス視点で評価する。
-  単独断定禁止。生活習慣（運動・飲酒・カフェイン・主観ストレス）がある場合のみ可能性として関連づける。
+④ profileRelation（プロフィールとの関連）
+  2〜4短段落（全体でおおむね 120〜220文字）。
+  固定プロフィール（普段の傾向）と今回の睡眠データのつながりをわかりやすく書く。
+  プロフィール未入力の場合は「今回はプロフィール情報が少ないため、測定データ中心の参考見解です」と短く述べる。
+  当日の一時的な習慣と普段の傾向を混同しない。
 
-④ recoveryAssessment（回復力評価）
-  2〜5文。
-  睡眠の質・身体回復・疲労回復を総合して評価する。
-  深い睡眠・睡眠効率・HRV・ストレス・睡眠負債など取得できた指標を組み合わせる。
-  「回復できている／できていない」の断定は避け、可能性と推移確認を含める。
+⑤ scoreComment（睡眠ウェルネススコアの解説）
+  2〜3短段落（全体でおおむね 80〜160文字）。
+  score（0〜100）と身体/心/生活/環境のバランスを、一般の方向けにやさしく説明する。
+  SOXAI睡眠スコアとの違いには触れなくてよい（UI側で表示）。
+  数値の羅列は避け、「どの軸が支えになっているか／どこに整え余地があるか」を伝える。
 
-⑤ improvements（改善ポイント）
-  優先順位付きで 3〜5件の配列。
-  例：「優先1：…」「優先2：…」
-  抽象的な助言禁止。今回確認できた数値と生活習慣に対応した内容のみ。
-  「改善余地」「整える余地」の表現。本人を責めない。
+⑥ todaysRecommendations（今日のおすすめ）※必須・厳守
+  必ずちょうど 3件の配列。2件以下・4件以上は禁止。
+  優先順位が高い順（1件目が最優先）。
+  ユーザーが「今日」実践できる具体アクションのみ。長期計画・抽象論・一般論は禁止。
+  各項目は1文・短文のみ（目安 40文字以内）。長文禁止。説明・理由・補足を足さない。
+  番号（①②③）は付けない（表示側で付ける）。文末は「ましょう」などやさしい提案形でよい。
+  例:
+  - 「今日は飲酒を350mL減らしましょう」
+  - 「運動後は必ず着替えましょう」
+  - 「寝室温度を25℃にしましょう」
+  improvements と整合させる。根拠に無い提案は禁止。
+  今回の入力に無い習慣を無理に入れない。
 
-⑥ melatoninYoga（メラトニンヨガ™の視点）
-  必ず空欄にせず生成する。3〜6文。
-  睡眠ウェルネスとして、次の6領域から今回のデータに最適な提案を選ぶ:
-  ・光 ・呼吸 ・運動 ・食事 ・入浴 ・瞑想
-  すべてを列挙する必要はない。今回最も効果が見込まれる 2〜4 領域に絞る。
-  医療診断・治療のような表現は使わない。
-  毎回同じ定型文は禁止。データと生活習慣に応じて変える。
+⑦ nextComparisonPoints（次回比較ポイント）
+  2〜4件の配列。各項目は1文・短文（目安 40文字以内）。
+  次回の分析で「前回と比べて見るべき観点」を書く。
+  例: 「深い睡眠の割合の変化」「就寝前の飲酒終了時刻」「心拍のゆらぎの推移」
+  行動指示ではなく、観察・比較の観点にする。番号は付けない。
+
+⑧ recommendationsUntilNext（次回までのおすすめ＝行動目標）※必須
+  必ず 3〜5件の配列。2件以下・6件以上は禁止。
+  次回分析までに継続して取り組む行動目標のみ。
+  todaysRecommendations（今日だけ）や nextComparisonPoints（観察観点）と役割を混ぜない。
+  各項目は1文・短文のみ（目安 40文字以内）。長文・抽象論・一般論は禁止。
+  番号は付けない。文末は「〜する」「〜を続ける」など実践できる目標形でよい。
+  例:
+  - 「就寝90分前までに入浴を終える」
+  - 「平日の起床時刻を揃える」
+  - 「午後のカフェインを控える」
+  improvements / todaysRecommendations と整合させる。根拠に無い提案は禁止。
+  前回分析に recommendationsUntilNext がある場合は、達成・未達の可能性を踏まえつつ、今回のデータに合う目標を新たに書く（前回の文言をそのままコピーしない）。
 
 - caution: 単日の限界を簡潔に。強い症状・呼吸苦などが疑われる場合のみ医療機関相談を穏やかに促す
 - disclaimer: 睡眠ウェルネス支援であり医療診断・治療を代替しない旨を簡潔に
 - scoreBreakdown: 各1〜5。未確認項目は控えめ。score と矛盾しないこと
-- score: Sleep Wellness 総合スコア 0〜100（SOXAI睡眠スコアのコピー禁止。総合評価）
+- score: Sleep Wellness Platform 独自の「睡眠ウェルネススコア」0〜100。
+  SOXAI睡眠スコアのコピー禁止。以下を総合して評価する:
+  ・プロフィール（固定） ・生活習慣（当日＋習慣） ・運動 ・ストレス（測定＋主観） ・睡眠環境 ・SOXAI実測
+  SOXAIスコアとは別物の独自指標である
+- categoryScores: 睡眠ウェルネススコアを4カテゴリーに分解した各0〜100点。レーダーチャート用。
+  ・body（身体）: 睡眠時間・効率・深い睡眠・浅い眠りの一種（REM）・血中酸素・安静時心拍・回復・運動・健康（鼻づまり等）
+  ・mind（心）: 心拍のゆらぎ・測定ストレス・主観ストレス・休息への切り替え・睡眠の満足感
+  ・lifestyle（生活）: 飲酒・喫煙・カフェイン・食事・勤務リズム・運動タイミング・就寝起床の規則性
+  ・environment（環境）: 寝室温度湿度・寝具・光・騒音・職場高温・環境イベントなど
+  未入力・未測定の軸は過度に高くせず、総合 score と大きく矛盾しないこと
+  4軸の平均がおおむね score ±8 点程度に収まるよう整合させる
 
 ==============================
 生活習慣との連動ガイド
@@ -276,16 +425,14 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
 - 飲酒あり／終了が遅い → 終了時刻の前倒しや量の調整の可能性
 - 食事（遅い夕食・欠食） → 入眠との間隔の可能性（欠食だけで断定しない）
 - 運動／ヨガ／ピラティス → 実施時刻と回復の関係（効果は断定しない）
-- 仕事の負荷・長時間 → 入眠前の切り替え不足の可能性
-- カフェイン（午後以降） → 入眠潜時・浅い睡眠への影響の可能性
+- 仕事の負荷・長時間・不規則 → 入眠前の切り替え不足の可能性
+- カフェイン（午後以降） → 入眠のしやすさ・浅い睡眠への影響の可能性
+- 鼻づまり → 呼吸・途中覚醒への影響の可能性
 - 当てはまらない習慣・未入力は無理に触れない
 
 ==============================
-文章の口調
+出力
 ==============================
-- やさしく実践的。専門用語は短く意味を補う
-- 「まずは」「今回のデータでは」「可能性があります」「推移を確認しましょう」を自然に使う
-- 過剰に褒めず、問題を過度に深刻化しない。命令口調・責め口調は禁止
 - 出力は指定の JSON スキーマのみ`;
 
 function validateBody(body: unknown): {
@@ -567,26 +714,55 @@ export async function POST(request: Request) {
   const images = validated.images.map(normalizeImageDataUrl);
   const confirmedMetrics = validated.metrics;
 
-  const aiInput =
-    validated.aiInput ??
-    buildAnalysisAiInput({
-      analysisDate: lifestyle.measurementDate,
-      clientName: lifestyle.clientName,
-      soxaiMetrics: confirmedMetrics ?? null,
-      dayContext: validated.dayContext ?? null,
-      fixedProfile: validated.fixedProfile ?? null,
-    });
+  const aiInput = buildAnalysisAiInput({
+    analysisDate:
+      validated.aiInput?.analysisDate ?? lifestyle.measurementDate,
+    clientId: validated.aiInput?.clientId,
+    clientName:
+      validated.aiInput?.clientName ?? lifestyle.clientName,
+    soxaiMetrics: confirmedMetrics ?? null,
+    dayContext: validated.aiInput?.dayContext
+      ? (validated.aiInput.dayContext as AnalysisDayContext)
+      : validated.dayContext ?? null,
+    lifestyleForm: lifestyle,
+    fixedProfile: validated.fixedProfile ?? null,
+    previousAnalysis: validated.aiInput?.previousAnalysis ?? null,
+  });
+
+  // クライアント側で付けた要約・構造化プロフィールがあれば優先
+  if (validated.aiInput?.fixedProfileSummary) {
+    aiInput.fixedProfileSummary = validated.aiInput.fixedProfileSummary;
+  }
+  if (validated.aiInput?.fixedProfile) {
+    aiInput.fixedProfile = validated.aiInput.fixedProfile;
+  }
+  if (validated.aiInput?.previousAnalysis) {
+    aiInput.previousAnalysis = validated.aiInput.previousAnalysis;
+  }
 
   logAnalysisAiInputInDev(aiInput);
 
   const fixedProfileBlock = aiInput.fixedProfileSummary
-    ? `【固定プロフィール要約（普段の傾向。当日データより優先度は低い。未記載は触れない・推測禁止）】
+    ? `【③ 固定プロフィール（普段の傾向・分析参照用。診断ではない。当日データより優先度は低い。未記載は触れない・推測禁止）】
+構成: 生活スタイル / 睡眠へ影響しそうな要素 / AIが分析時に重視する項目
 ${aiInput.fixedProfileSummary}
 
 【固定プロフィール構造化データ（未入力除外済み）】
 ${JSON.stringify(aiInput.fixedProfile ?? {}, null, 2)}`
-    : `【固定プロフィール】
+    : `【③ 固定プロフィール】
 未取得または未入力のため、固定プロフィールに基づく言及は行わない。`;
+
+  const dayContextBlock = aiInput.dayContext
+    ? `【② 当日の生活習慣（day_context。固定プロフィールの「普段」と混同しない）】
+${JSON.stringify(aiInput.dayContext, null, 2)}`
+    : `【② 当日の生活習慣（構造化）】
+構造化 day_context は未取得。下記のフォーム入力を当日情報として使う。`;
+
+  const previousBlock = aiInput.previousAnalysis
+    ? `【④ 前回分析（比較用。差分は可能性としてのみ。今回の数値に上書きしない）】
+${JSON.stringify(aiInput.previousAnalysis, null, 2)}`
+    : `【④ 前回分析】
+前回分析なし。前回比較には触れない。`;
 
   try {
     const client = new OpenAI({
@@ -596,12 +772,12 @@ ${JSON.stringify(aiInput.fixedProfile ?? {}, null, 2)}`
     });
 
     const metricsBlock = confirmedMetrics
-      ? `【確認済みメトリクス（分析の唯一の数値根拠。上書き・推測禁止）】
+      ? `【① SOXAI 確認済みメトリクス（分析の唯一の数値根拠。上書き・推測禁止）】
 ${formatConfirmedMetrics(confirmedMetrics)}
 
 出力 metrics には上記をそのまま反映すること。
 「今回の画像では確認できませんでした」の項目は推測で埋めず、文章でも同じ文言で明示する。`
-      : `【画像解析 — 最大限抽出】
+      : `【① 画像解析 — 最大限抽出】
 画像に存在する数値・時刻はすべて読み取り、手入力より優先する。推測禁止。読めない項目は ""、sleepScore は null。
 抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / REM睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス`;
 
@@ -614,34 +790,61 @@ ${formatConfirmedMetrics(confirmedMetrics)}
           content: [
             {
               type: "input_text",
-              text: `以下の確認済み睡眠データと生活習慣入力をもとに、Sleep Wellness Institute Japan 公式の
-Sleep Wellness Medical Report（睡眠ウェルネス改善レポート）を作成してください。
-数値の説明ではなく、改善につながる考察にしてください。テンプレート文章は禁止。単日データで断定しない。
+              text: `以下の4ソースを統合し、Sleep Wellness Institute Japan の
+睡眠ウェルネス専門家レポートを作成してください。
 
-優先順位: SOXAI実測 > 当日情報 > 固定プロフィール > 気象 > 一般参考基準。
-固定プロフィールに無い項目は推測しない。
+必須の思考順: 数値を読む → 【最優先】良かった点を先に特定（最低2つ） → その後に改善余地 → プロフィールとの関連 → スコア解説 → 今日のおすすめ → 次回比較ポイント → 次回までの行動目標。
+改善点だけのレポートは絶対禁止。必ず最初に良かった点を書く。
+根拠のない改善提案・おすすめは禁止。テンプレート文章は禁止。単日データで断定しない。
+文章は短段落・わかりやすい言葉で。専門用語は避けるか言い換える。
+
+優先順位: SOXAI実測 > 当日生活習慣 > 固定プロフィール > 前回分析 > 気象 > 一般参考基準。
+固定プロフィールに無い項目は推測しない。前回が無い場合は前回比較に触れない。
+前回の recommendationsUntilNext（行動目標）がある場合は、checked（達成）/未達成を可能性として参照し、今回の目標に活かす。数値として上書きしない。
 
 ${metricsBlock}
 
+${dayContextBlock}
+
 ${fixedProfileBlock}
 
-【必ずこの6項目を空欄なく生成】
-① summary＝総合評価（100〜200文字。睡眠全体を一言で評価。数値羅列禁止）
-② sleepAnalysis＝睡眠分析（睡眠時間・効率・負債・深睡眠・REM・覚醒・HRV・安静時心拍・呼吸数・SpO₂・体内時計を関連づけて分析）
-③ autonomicAssessment＝自律神経評価（HRV・安静時心拍・ストレスから評価。単独断定禁止）
-④ recoveryAssessment＝回復力評価（睡眠の質・身体回復・疲労回復を総合）
-⑤ improvements＝改善ポイント（優先順位つき 3〜5件）
-⑥ melatoninYoga＝メラトニンヨガ™の視点（光・呼吸・運動・食事・入浴・瞑想から最適な提案）
+${previousBlock}
+
+【必ずこの順で空欄なく生成】
+① goodPoints＝今回の睡眠で良かった点（必ず2〜4件の短文。省略・空・1件以下は禁止。レポートの最初）
+  例: 「深い睡眠時間は十分確保できています」「運動量も多く、回復力は高い状態です」
+② improvements＝改善が期待できるポイント（重要度順・最大5件。{stars:5|4|3, text}。全部改善しろとは言わない。goodPoints の後に書く）
+  stars: 5=今すぐ改善 / 4=今週改善 / 3=余裕があれば。効果が高い順。text に★やラベルは付けない。
+③ summary＝総合評価（100〜200文字）。必ず最初に良かった点から書き始める。改善点だけで始めない。
+  例のトーン: 「今回の睡眠では、深い睡眠時間は十分確保できています。運動量も多く、回復力は高い状態です。」のあと、整え余地を短く続ける。
+③-b karteSummary＝AIカルテ・クライアントの変化（100〜200文字）。SWIJ独自カルテ用。
+  前回あり: 改善→悪化・注意→今後の優先、の順。例「前回より睡眠効率が改善しました。一方で飲酒量は増加しています。今後は室温調整を優先すると改善が期待されます。」
+  初回: 「前回より」比較は禁止。特徴＋今後の優先を記録。
+  summary の言い換え禁止。変化記録として書く。
+④ profileRelation＝プロフィールとの関連（短段落）
+⑤ scoreComment＝睡眠ウェルネススコアの解説（短段落）＋ score / categoryScores / scoreBreakdown
+⑥ todaysRecommendations＝今日のおすすめ（必ずちょうど3件。今日実践できる短文のみ）
+⑦ nextComparisonPoints＝次回比較ポイント（2〜4件。次回見るべき観点の短文）
+⑧ recommendationsUntilNext＝次回までのおすすめ（行動目標・必ず3〜5件。継続して取り組む短文）
 
 【絶対禁止】
-- HRV / SpO₂ 単独で状態を断定しない
+- 改善点だけのレポート（良かった点を書かない／後回しにする／summary を改善点だけで始める）
+- goodPoints が空・1件以下・改善点の言い換えになっていること
+- karteSummary が空・100文字未満・200文字超であること
+- 前回があるのに karteSummary で変化に触れないこと／初回なのに「前回より」と書くこと
+- todaysRecommendations が 3件以外であること（必ずちょうど3件）
+- todaysRecommendations に長文・抽象論・今日できない内容を書くこと
+- recommendationsUntilNext が 3〜5件以外であること
+- recommendationsUntilNext に今日だけの内容・観察観点だけの文言を書くこと
+- 専門用語だらけの長文レポートにすること
+- 心拍のゆらぎ・血中酸素だけで状態を断定しない
 - 未測定・基準不明の項目を推測で埋めない
-- 医療診断・治療表現を使わない（ウェルネスレポートとして書く）
+- 医療診断・治療表現を使わない
 - 単日だけで結論しない。「可能性があります」を使う
 - 年齢・性別の一般基準比較は参考値のみ。病名断定禁止
 - 年齢または性別が未入力なら「年齢・性別を考慮していない参考分析」と明記
 
-【クライアント基本情報＋生活習慣データ（当日入力を含む）】
+【クライアント基本情報＋生活習慣フォーム（当日入力を含む。固定プロフィールと区別）】
 ${formatLifestyle(lifestyle)}`,
             },
             ...(confirmedMetrics

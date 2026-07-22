@@ -15,10 +15,12 @@ import {
   htmlMaxForRule,
   htmlMinForRule,
   inputClass,
+  inputEmptyReadonlyClass,
   numberToInput,
   parseOptionalNumber,
   textareaClass,
 } from "@/components/client-profile/form-ui";
+import ProfileCompletionCard from "@/components/client-profile/ProfileCompletionCard";
 import { CLIENT_GENDER_OPTIONS } from "@/lib/client-profile";
 import {
   CAFFEINE_TYPE_OPTIONS,
@@ -247,7 +249,31 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
           <p className="mt-3 text-[15px] leading-7 text-slate-500">
             固定情報のみ入力します。当日情報は含めません。必須は氏名のみです。
           </p>
+          <p className="mx-auto mt-3 max-w-md text-[12px] leading-6 text-slate-400 sm:text-[13px]">
+            <span
+              className="font-serif tracking-[0.14em]"
+              style={{ color: GOLD }}
+            >
+              ★★★☆☆
+            </span>
+            <span className="ml-2">
+              はAI分析への重要度です。わかる範囲で入力いただくと、分析の精度が高まります。
+            </span>
+          </p>
         </header>
+
+        <div className="mb-8">
+          <ProfileCompletionCard
+            sections={sections}
+            derivedAgeYears={derivedAge}
+            onSelectMissing={(field) => {
+              const index = PROFILE_STEPS.findIndex(
+                (item) => item.id === field.stepId,
+              );
+              if (index >= 0) setStep(index);
+            }}
+          />
+        </div>
 
         <nav
           aria-label="プロフィール入力ステップ"
@@ -435,8 +461,10 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               <Field label="BMI" hint="自動計算">
                 <input
                   readOnly
-                  className={inputClass}
-                  value={derivedBmi != null ? String(derivedBmi) : "—"}
+                  className={
+                    derivedBmi != null ? inputClass : inputEmptyReadonlyClass
+                  }
+                  value={derivedBmi != null ? String(derivedBmi) : "未入力"}
                   tabIndex={-1}
                 />
               </Field>
@@ -541,7 +569,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
             )}
-            <Field label="勤務形態">
+            <Field labelKey="workStyle">
               <select
                 className={inputClass}
                 value={sections.work.workStyle ?? ""}
@@ -561,7 +589,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               </select>
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="勤務開始時刻">
+              <Field labelKey="workStartTime">
                 <input
                   type="time"
                   className={inputClass}
@@ -574,7 +602,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="勤務終了時刻">
+              <Field labelKey="workEndTime">
                 <input
                   type="time"
                   className={inputClass}
@@ -587,7 +615,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="週の勤務日数" unit="日">
+              <Field labelKey="workDaysPerWeek" unit="日">
                 <input
                   type="number"
                   min={0}
@@ -605,7 +633,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="夜勤回数" unit="回/月">
+              <Field labelKey="nightShiftsPerMonth" unit="回/月">
                 <input
                   type="number"
                   min={0}
@@ -626,7 +654,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               </Field>
             </div>
             <Field
-              label={PROFILE_LABELS.workStressSelf}
+              labelKey="workStressSelf"
               hint={PROFILE_HINTS.workStressSelf}
             >
               <textarea
@@ -675,7 +703,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 );
               })}
             </div>
-            <Field label={PROFILE_LABELS.environmentTraitsOther}>
+            <Field labelKey="environmentTraitsOther">
               <input
                 className={inputClass}
                 value={sections.work.traitsOther ?? ""}
@@ -697,7 +725,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             description="普段の傾向を入力します。その日ごとの状態は分析時に別途扱います。"
           >
             <Field
-              label={PROFILE_LABELS.worksInHeat}
+              labelKey="worksInHeat"
               hint={PROFILE_HINTS.worksInHeat}
             >
               <BoolSelect
@@ -711,7 +739,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               />
             </Field>
             <Field
-              label={PROFILE_LABELS.heatEnvironmentTypes}
+              labelKey="heatEnvironmentTypes"
               hint={PROFILE_HINTS.heatEnvironmentTypes}
             >
               <div className="mt-2 flex flex-wrap gap-2">
@@ -743,7 +771,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 })}
               </div>
             </Field>
-            <Field label={PROFILE_LABELS.heatEnvironmentOther}>
+            <Field labelKey="heatEnvironmentOther">
               <input
                 className={inputClass}
                 value={sections.heatExposure.heatEnvironmentOther ?? ""}
@@ -760,7 +788,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
-                label={PROFILE_LABELS.heatRoomTemperatureC}
+                labelKey="heatRoomTemperatureC"
                 hint={PROFILE_HINTS.heatRoomTemperatureC}
               >
                 <input
@@ -788,7 +816,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.heatHumidityPercent}
+                labelKey="heatHumidityPercent"
                 hint={PROFILE_HINTS.heatHumidityPercent}
               >
                 <input
@@ -815,7 +843,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.exposureDurationMinutes}
+                labelKey="exposureDurationMinutes"
                 hint={PROFILE_HINTS.exposureDurationMinutes}
               >
                 <input
@@ -839,7 +867,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.sweatAmount}
+                labelKey="sweatAmount"
                 hint={PROFILE_HINTS.sweatAmount}
               >
                 <input
@@ -858,7 +886,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.waterIntakeDuringWorkMl}
+                labelKey="waterIntakeDuringWorkMl"
                 hint={PROFILE_HINTS.waterIntakeDuringWorkMl}
               >
                 <input
@@ -881,7 +909,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label={PROFILE_LABELS.breakCount}>
+              <Field labelKey="breakCount">
                 <input
                   type="number"
                   min={0}
@@ -901,7 +929,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
-                label={PROFILE_LABELS.changesClothesAfterWork}
+                labelKey="changesClothesAfterWork"
                 hint={PROFILE_HINTS.changesClothesAfterWork}
               >
                 <BoolSelect
@@ -918,7 +946,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.showerAfterWork}
+                labelKey="showerAfterWork"
                 hint={PROFILE_HINTS.showerAfterWork}
               >
                 <BoolSelect
@@ -932,7 +960,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.cooldownDurationMinutes}
+                labelKey="cooldownDurationMinutes"
                 hint={PROFILE_HINTS.cooldownDurationMinutes}
               >
                 <input
@@ -956,7 +984,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.movesImmediatelyAfterWork}
+                labelKey="movesImmediatelyAfterWork"
                 hint={PROFILE_HINTS.movesImmediatelyAfterWork}
               >
                 <BoolSelect
@@ -1045,7 +1073,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
             </div>
-            <Field label="混雑">
+            <Field labelKey="crowdingLevel">
               <input
                 className={inputClass}
                 value={sections.commute.crowdingLevel ?? ""}
@@ -1059,7 +1087,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               />
             </Field>
             <Field
-              label={PROFILE_LABELS.commuteStressSelf}
+              labelKey="commuteStressSelf"
               hint={PROFILE_HINTS.commuteStressSelf}
             >
               <textarea
@@ -1084,7 +1112,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
           <SectionCard title="6. 生活習慣" description="固定の習慣です。当日分は別フォームです。">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field
-                label={PROFILE_LABELS.drinkingFrequency}
+                labelKey="drinkingFrequency"
                 hint={PROFILE_HINTS.drinkingFrequency}
               >
                 <select
@@ -1108,7 +1136,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   ))}
                 </select>
               </Field>
-              <Field label={PROFILE_LABELS.drinkingAmountPerOccasion}>
+              <Field labelKey="drinkingAmountPerOccasion">
                 <input
                   className={inputClass}
                   value={sections.lifestyle.drinkingAmountPerOccasion ?? ""}
@@ -1124,7 +1152,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   placeholder="例：ビール500ml"
                 />
               </Field>
-              <Field label={PROFILE_LABELS.smokingType}>
+              <Field labelKey="smokingType">
                 <select
                   className={inputClass}
                   value={sections.lifestyle.smokingType ?? ""}
@@ -1151,7 +1179,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4">
               <p className="text-sm font-semibold text-[#071426]">カフェイン</p>
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <Field label={PROFILE_LABELS.caffeineType}>
+                <Field labelKey="caffeineType">
                   <select
                     className={inputClass}
                     value={sections.caffeine.entries?.[0]?.type ?? ""}
@@ -1176,7 +1204,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                     ))}
                   </select>
                 </Field>
-                <Field label={PROFILE_LABELS.caffeineAmount}>
+                <Field labelKey="caffeineAmount">
                   <input
                     className={inputClass}
                     value={sections.caffeine.entries?.[0]?.amountNote ?? ""}
@@ -1195,7 +1223,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                     placeholder="例：1日2杯"
                   />
                 </Field>
-                <Field label={PROFILE_LABELS.caffeineLastIntakeTime}>
+                <Field labelKey="caffeineLastIntakeTime">
                   <input
                     type="time"
                     className={inputClass}
@@ -1216,7 +1244,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                     }
                   />
                 </Field>
-                <Field label={PROFILE_LABELS.caffeineDecaf}>
+                <Field labelKey="caffeineDecaf">
                   <BoolSelect
                     value={sections.caffeine.entries?.[0]?.isDecaf}
                     onChange={(next) =>
@@ -1243,15 +1271,15 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             <div className="grid gap-4 sm:grid-cols-2">
               {(
                 [
-                  ["水、ミネラルウォーター", "waterMl"],
-                  ["お茶類", "teaMl"],
-                  ["コーヒー、紅茶", "coffeeTeaMl"],
-                  ["スポーツドリンク", "sportsDrinkMl"],
-                  ["アルコール", "alcoholMl"],
-                  ["その他", "otherBeverageMl"],
+                  ["水、ミネラルウォーター", "waterMl", "hydrationWaterMl"],
+                  ["お茶類", "teaMl", "hydrationTeaMl"],
+                  ["コーヒー、紅茶", "coffeeTeaMl", "hydrationCoffeeTeaMl"],
+                  ["スポーツドリンク", "sportsDrinkMl", "hydrationSportsDrinkMl"],
+                  ["アルコール", "alcoholMl", "hydrationAlcoholMl"],
+                  ["その他", "otherBeverageMl", "hydrationOtherMl"],
                 ] as const
-              ).map(([label, key]) => (
-                <Field key={key} label={label} unit="mL">
+              ).map(([label, key, labelKey]) => (
+                <Field key={key} label={label} labelKey={labelKey} unit="mL">
                   <input
                     type="number"
                     min={0}
@@ -1270,21 +1298,27 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 </Field>
               ))}
             </div>
-            <Field label={PROFILE_LABELS.hydrationTotalMl} hint="保存時に自動合計">
+            <Field labelKey="hydrationTotalMl" hint="保存時に自動合計">
               <input
                 readOnly
-                className={inputClass}
+                className={
+                  sections.hydration.totalFluidMl != null &&
+                  Number.isFinite(sections.hydration.totalFluidMl) &&
+                  sections.hydration.totalFluidMl >= 0
+                    ? inputClass
+                    : inputEmptyReadonlyClass
+                }
                 value={
                   sections.hydration.totalFluidMl != null &&
                   Number.isFinite(sections.hydration.totalFluidMl) &&
                   sections.hydration.totalFluidMl >= 0
                     ? String(sections.hydration.totalFluidMl)
-                    : "—"
+                    : "未入力"
                 }
                 tabIndex={-1}
               />
             </Field>
-            <Field label={PROFILE_LABELS.preSleep2hFluidMl}>
+            <Field labelKey="preSleep2hFluidMl">
               <input
                 type="number"
                 min={0}
@@ -1302,7 +1336,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={PROFILE_LABELS.nocturia}>
+              <Field labelKey="nocturia">
                 <BoolSelect
                   value={sections.hydration.nocturia}
                   onChange={(next) =>
@@ -1314,7 +1348,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.nighttimeUrinationCount}
+                labelKey="nighttimeUrinationCount"
                 hint={PROFILE_HINTS.nighttimeUrinationCount}
               >
                 <input
@@ -1341,7 +1375,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
 
         {current?.id === "exercise" && (
           <SectionCard title="8. 運動" description="固定の運動習慣です。">
-            <Field label="頻度">
+            <Field labelKey="exerciseFrequency">
               <input
                 className={inputClass}
                 value={sections.exercise.frequency ?? ""}
@@ -1383,7 +1417,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 })}
               </div>
             </Field>
-            <Field label="種類（自由入力）">
+            <Field labelKey="exerciseTypeOther">
               <input
                 className={inputClass}
                 value={sections.exercise.typeOther ?? ""}
@@ -1396,7 +1430,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={PROFILE_LABELS.exerciseDurationMinutes}>
+              <Field labelKey="exerciseDurationMinutes">
                 <input
                   type="number"
                   min={0}
@@ -1413,7 +1447,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label={PROFILE_LABELS.exerciseIntensity}>
+              <Field labelKey="exerciseIntensity">
                 <input
                   className={inputClass}
                   value={sections.exercise.intensity ?? ""}
@@ -1426,7 +1460,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   placeholder="例：低め / 中程度 / 高め"
                 />
               </Field>
-              <Field label={PROFILE_LABELS.exerciseEndTime}>
+              <Field labelKey="exerciseEndTime">
                 <input
                   type="time"
                   className={inputClass}
@@ -1443,7 +1477,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.exerciseInHeat}
+                labelKey="exerciseInHeat"
                 hint={PROFILE_HINTS.exerciseInHeat}
               >
                 <BoolSelect
@@ -1457,7 +1491,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.exerciseSweatAmount}
+                labelKey="exerciseSweatAmount"
                 hint={PROFILE_HINTS.exerciseSweatAmount}
               >
                 <input
@@ -1471,7 +1505,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label={PROFILE_LABELS.fluidAfterExercise}>
+              <Field labelKey="fluidAfterExercise">
                 <input
                   className={inputClass}
                   value={sections.exercise.fluidAfterExercise ?? ""}
@@ -1486,7 +1520,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label={PROFILE_LABELS.changesClothesAfterExercise}>
+              <Field labelKey="changesClothesAfterExercise">
                 <BoolSelect
                   value={sections.exercise.changesClothesAfter}
                   onChange={(next) =>
@@ -1497,7 +1531,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label={PROFILE_LABELS.showerAfterExercise}>
+              <Field labelKey="showerAfterExercise">
                 <BoolSelect
                   value={sections.exercise.showerAfter}
                   onChange={(next) =>
@@ -1509,7 +1543,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.exerciseCooldownMinutes}
+                labelKey="exerciseCooldownMinutes"
                 hint={PROFILE_HINTS.exerciseCooldownMinutes}
               >
                 <input
@@ -1531,7 +1565,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 />
               </Field>
               <Field
-                label={PROFILE_LABELS.movesImmediatelyAfterExercise}
+                labelKey="movesImmediatelyAfterExercise"
                 hint={PROFILE_HINTS.movesImmediatelyAfterExercise}
               >
                 <BoolSelect
@@ -1569,7 +1603,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   ["慢性疼痛", "chronicPain"],
                 ] as const
               ).map(([label, key]) => (
-                <Field key={key} label={label}>
+                <Field key={key} labelKey={key} label={label}>
                   <input
                     className={inputClass}
                     value={sections.health[key] ?? ""}
@@ -1603,7 +1637,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
         {current?.id === "sleep" && (
           <SectionCard title="10. 睡眠・生活環境" description="普段の環境です。当日実測は含めません。">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="普段の就寝時刻">
+              <Field labelKey="typicalBedtime">
                 <input
                   type="time"
                   className={inputClass}
@@ -1619,7 +1653,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="普段の起床時刻">
+              <Field labelKey="typicalWakeTime">
                 <input
                   type="time"
                   className={inputClass}
@@ -1635,7 +1669,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="昼寝">
+              <Field labelKey="napHabit">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.napHabit ?? ""}
@@ -1650,7 +1684,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="日中の眠気">
+              <Field labelKey="daytimeSleepiness">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.daytimeSleepiness ?? ""}
@@ -1665,7 +1699,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="睡眠満足度">
+              <Field labelKey="sleepSatisfaction">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.sleepSatisfaction ?? ""}
@@ -1680,7 +1714,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="同居家族">
+              <Field labelKey="cohabitants">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.cohabitants ?? ""}
@@ -1695,7 +1729,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="小さな子ども">
+              <Field labelKey="youngChildren">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.youngChildren ?? ""}
@@ -1710,7 +1744,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="介護">
+              <Field labelKey="caregiving">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.caregiving ?? ""}
@@ -1725,7 +1759,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   }
                 />
               </Field>
-              <Field label="ペット">
+              <Field labelKey="pets">
                 <input
                   className={inputClass}
                   value={sections.sleepEnvironment.pets ?? ""}
@@ -1776,18 +1810,8 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                     NUMBER_RULES.humidity,
                   ],
                 ] as const
-              ).map(([label, key, rule]) => (
-                <Field
-                  key={key}
-                  label={label}
-                  hint={
-                    key === "bedroomBedtimeTemperatureC"
-                      ? PROFILE_HINTS.bedroomBedtimeTemperatureC
-                      : key === "bedroomBedtimeHumidityPercent"
-                        ? PROFILE_HINTS.bedroomBedtimeHumidityPercent
-                        : undefined
-                  }
-                >
+              ).map(([, key, rule]) => (
+                <Field key={key} labelKey={key}>
                   <input
                     type="number"
                     step="0.1"
@@ -1822,7 +1846,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   ["遮光カーテン", "blackoutCurtain"],
                 ] as const
               ).map(([label, key]) => (
-                <Field key={key} label={label}>
+                <Field key={key} labelKey={key} label={label}>
                   <BoolSelect
                     value={sections.sleepEnvironment.bedroomControls?.[key]}
                     onChange={(next) =>

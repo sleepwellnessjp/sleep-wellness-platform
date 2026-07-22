@@ -1,8 +1,12 @@
 import {
   normalizeMetrics,
+  normalizeRecommendationsUntilNext,
   type AnalysisMetrics,
   type AnalysisResult,
+  type NextActionGoal,
 } from "@/lib/analysis-session";
+import { buildClientSearchText } from "@/lib/client-search";
+import { normalizeClientTags } from "@/lib/client-tags";
 import {
   buildStructuredMetrics,
   type StructuredSleepMetrics,
@@ -54,6 +58,8 @@ export type StoredClient = {
   email?: string;
   phone?: string;
   memo?: string;
+  /** Free-form labels for filtering (local / future-ready). */
+  tags?: string[];
   analyses: StoredAnalysis[];
 };
 
@@ -63,6 +69,9 @@ export type ClientListItem = {
   registeredAt: string;
   latestSleepScore: number | null;
   latestAnalysisDate: string | null;
+  tags: string[];
+  /** Precomputed haystack for fast realtime search. */
+  searchText: string;
 };
 
 export type CreateClientInput = {
@@ -82,6 +91,7 @@ export type CreateClientInput = {
   phone?: string;
   registeredAt?: string;
   memo?: string;
+  tags?: string[];
 };
 
 function parseOptionalInt(value: unknown): number | undefined {
@@ -123,6 +133,11 @@ function asOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function asOptionalTags(value: unknown): string[] | undefined {
+  const tags = normalizeClientTags(value);
+  return tags.length > 0 ? tags : undefined;
 }
 
 /** 新しい順（保存日時 createdAt 優先、同日時は測定日） */
@@ -167,6 +182,7 @@ function readRawClients(): StoredClient[] {
         email: asOptionalString(client.email),
         phone: asOptionalString(client.phone),
         memo: asOptionalString(client.memo),
+        tags: asOptionalTags(client.tags),
         analyses: Array.isArray(client.analyses)
           ? sortAnalyses(
               client.analyses.map((analysis) => ({
@@ -200,10 +216,40 @@ function patchDemoClientAnalyses(clients: StoredClient[]): StoredClient[] {
 
   const patched = clients.map((client) => {
     const seed = seedById.get(client.id);
-    if (!seed || client.analyses.length >= 2) return client;
+    if (!seed) return client;
+
+    // デモ用シードの分析履歴が増えた場合は丸ごと補完
+    if (client.analyses.length < seed.analyses.length) {
+      return {
+        ...client,
+        memo: client.memo ?? seed.memo,
+        tags: client.tags?.length ? client.tags : seed.tags,
+        drinkingHabit: client.drinkingHabit ?? seed.drinkingHabit,
+        analyses: sortAnalyses(seed.analyses),
+      };
+    }
+
+    // 既存デモ分析（analysis-demo-*）はシード内容で同期し、アラート例を最新化
+    const seedAnalysisById = new Map(
+      seed.analyses.map((analysis) => [analysis.id, analysis]),
+    );
+    let changed = false;
+    const nextAnalyses = client.analyses.map((analysis) => {
+      const seedAnalysis = seedAnalysisById.get(analysis.id);
+      if (!seedAnalysis || !analysis.id.startsWith("analysis-demo-")) {
+        return analysis;
+      }
+      changed = true;
+      return seedAnalysis;
+    });
+
+    if (!changed) return client;
     return {
       ...client,
-      analyses: sortAnalyses(seed.analyses),
+      memo: client.memo ?? seed.memo,
+      tags: client.tags?.length ? client.tags : seed.tags,
+      drinkingHabit: client.drinkingHabit ?? seed.drinkingHabit,
+      analyses: sortAnalyses(nextAnalyses),
     };
   });
 
@@ -268,20 +314,61 @@ function buildSeedClients(): StoredClient[] {
     summary: string,
   ): AnalysisResult => ({
     summary,
-    sleepAnalysis:
-      "今回確認できた睡眠時間と睡眠効率、深い睡眠・REM・覚醒のバランスを関連づけると、睡眠の連続性に整える余地がある可能性があります。HRVや安静時心拍、SpO₂、体内時計もあわせて見ると、回復の土台は保たれつつ、入眠前後の切り替えが睡眠負債や覚醒に影響している可能性があります。単日のため、数日の推移確認が大切です。",
-    autonomicAssessment:
-      "HRV・安静時心拍・測定ストレスをあわせて見ると、今回は交感神経寄りに傾いている可能性と、休息側への切り替え余地が同時に見えます。単独指標での断定はせず、生活リズムとあわせた推移確認が有用です。",
-    recoveryAssessment:
-      "睡眠の質・身体回復・疲労回復の観点では、深い睡眠と効率の数値が回復の土台を支えている一方、覚醒や睡眠負債がある場合は翌日の疲労感につながりやすい可能性があります。単日評価のため、回復の傾向は連続データで確かめましょう。",
-    improvements: [
-      "優先1：入眠前60分の光刺激を抑え、切り替え時間をつくる",
-      "優先2：3:6呼吸で副交感神経側への切り替えを促す",
-      "優先3：就寝90〜60分前のぬるめ入浴で体温リズムを整える",
-      "優先4：翌朝同じ時刻に起き、朝の光を数分取り入れる",
+    karteSummary: summary.slice(0, 200),
+    goodPoints: [
+      "睡眠の土台はおおむね保たれている可能性があります",
+      "深い睡眠が一定量とれています",
+      "朝の起床リズムに大きな乱れは見られません",
     ],
-    melatoninYoga:
-      "メラトニンヨガ™の視点では、今回は光・呼吸・入浴の整えが中心になります。就寝前は強い光を控え、3:6呼吸で神経系の切り替えを促し、必要に応じてぬるめの入浴と短い瞑想を組み合わせます。無理に眠ろうとせず、身体感覚を整えることを目的とします。",
+    improvements: [
+      {
+        stars: 5,
+        text: "入眠前60分の強い光を控え、切り替え時間をつくる",
+      },
+      {
+        stars: 4,
+        text: "就寝前にゆっくりした呼吸で体を休める準備をする",
+      },
+      {
+        stars: 4,
+        text: "就寝90〜60分前のぬるめ入浴で体温リズムを整える",
+      },
+      {
+        stars: 3,
+        text: "翌朝同じ時刻に起き、朝の光を数分取り入れる",
+      },
+    ],
+    profileRelation:
+      "普段の生活傾向と今回の測定をあわせて見ると、入眠前の切り替えが睡眠の連続性に影響している可能性があります。\n当日だけの一時的な習慣と、日頃のリズムは分けて考えると整理しやすいです。",
+    scoreComment:
+      "今回の睡眠ウェルネススコアは、身体と心のバランスを中心に評価しています。\n生活や環境の軸にも整え余地があり、数日の推移を見ると傾向がよりはっきりします。",
+    todaysRecommendations: [
+      "入眠前60分は強い光を控えましょう",
+      "就寝前にゆっくりした呼吸を3分しましょう",
+      "起床時刻をいつも通りに固定しましょう",
+    ],
+    nextComparisonPoints: [
+      "深い睡眠の割合の変化",
+      "入眠前の光・切り替え時間",
+      "心拍のゆらぎの推移",
+    ],
+    recommendationsUntilNext: [
+      {
+        id: "goal-demo-1",
+        text: "就寝90分前までに入浴を終える",
+        checked: false,
+      },
+      {
+        id: "goal-demo-2",
+        text: "平日の起床時刻を揃える",
+        checked: false,
+      },
+      {
+        id: "goal-demo-3",
+        text: "入眠前60分は強い光を控える",
+        checked: false,
+      },
+    ],
     score,
     scoreBreakdown: {
       sleepDuration: 4,
@@ -291,6 +378,12 @@ function buildSeedClients(): StoredClient[] {
       stress: 3,
       spo2: 5,
       recovery: 4,
+    },
+    categoryScores: {
+      body: Math.max(0, Math.min(100, score - 2)),
+      mind: Math.max(0, Math.min(100, score + 1)),
+      lifestyle: Math.max(0, Math.min(100, score - 4)),
+      environment: Math.max(0, Math.min(100, score + 3)),
     },
     metrics: sampleMetrics(score),
     caution: "単日データのため、数日の推移も確認しましょう。",
@@ -305,6 +398,7 @@ function buildSeedClients(): StoredClient[] {
       id: "client-demo-yamada",
       name: "山田 太郎",
       registeredAt: isoDaysAgo(45),
+      tags: ["企業契約", "飲酒"],
       analyses: [
         {
           id: "analysis-demo-yamada-1",
@@ -369,6 +463,7 @@ function buildSeedClients(): StoredClient[] {
       id: "client-demo-sato",
       name: "佐藤 美咲",
       registeredAt: isoDaysAgo(28),
+      tags: ["ホットヨガ", "花粉症"],
       analyses: [
         {
           id: "analysis-demo-sato-1",
@@ -421,31 +516,36 @@ function buildSeedClients(): StoredClient[] {
       id: "client-demo-suzuki",
       name: "鈴木 健",
       registeredAt: isoDaysAgo(35),
+      tags: ["夜勤", "アスリート"],
       analyses: [
         {
           id: "analysis-demo-suzuki-1",
           analysisDate: dateDaysAgo(1),
           createdAt: isoDaysAgo(1),
-          sleepScore: 82,
-          wellnessScore: 84,
-          metrics: sampleMetrics(82, {
-            sleepDuration: "7時間12分",
-            sleepEfficiency: "90%",
-            deepSleep: "1時間22分",
-            deepSleepRate: "20%",
-            awakenings: "22分",
-            awakeningRate: "5%",
-            sleepLatency: "9分",
-            hrv: "48 ms",
-            restingHeartRate: "54 bpm",
-            stress: "24",
+          sleepScore: 68,
+          wellnessScore: 70,
+          metrics: sampleMetrics(68, {
+            sleepDuration: "6時間05分",
+            sleepEfficiency: "84%",
+            deepSleep: "58分",
+            deepSleepRate: "15%",
+            awakenings: "42分",
+            awakeningRate: "11%",
+            sleepLatency: "16分",
+            hrv: "38 ms",
+            restingHeartRate: "58 bpm",
+            stress: "38",
           }),
-          result: sampleResult(
-            "鈴木 健",
-            dateDaysAgo(1),
-            84,
-            "睡眠スコアと深睡眠が改善し、回復の質が高い夜でした。",
-          ),
+          result: {
+            ...sampleResult(
+              "鈴木 健",
+              dateDaysAgo(1),
+              70,
+              "前回より睡眠スコアが下がり、夜勤の増加も生活リズムに影響している可能性があります。",
+            ),
+            karteSummary:
+              "前回より回復が弱まりました。夜勤の増加がうかがえるため、シフトと睡眠のバランスを次回フォローで確認すると良いでしょう。",
+          },
           pdfHistory: [
             {
               id: "pdf-demo-suzuki-1",
@@ -517,42 +617,87 @@ function buildSeedClients(): StoredClient[] {
       nameKana: "たなか ゆうこ",
       registeredAt: isoDaysAgo(60),
       memo: "要フォロー確認用デモ",
+      tags: ["高齢者", "高血圧", "睡眠薬"],
+      drinkingHabit: "週4〜5回",
       analyses: [
         {
           id: "analysis-demo-tanaka-1",
-          analysisDate: dateDaysAgo(35),
-          createdAt: isoDaysAgo(35),
-          sleepScore: 55,
-          wellnessScore: 58,
-          metrics: sampleMetrics(55, {
-            sleepDuration: "5時間20分",
-            sleepEfficiency: "74%",
-            awakenings: "1時間18分",
-            awakeningRate: "22%",
+          analysisDate: dateDaysAgo(7),
+          createdAt: isoDaysAgo(7),
+          sleepScore: 54,
+          wellnessScore: 56,
+          metrics: sampleMetrics(54, {
+            sleepDuration: "4時間42分",
+            sleepEfficiency: "72%",
+            awakenings: "1時間24分",
+            awakeningRate: "24%",
             spo2: "93%",
-            deepSleep: "38分",
-            deepSleepRate: "12%",
-            sleepLatency: "32分",
-            hrv: "28 ms",
-            restingHeartRate: "68 bpm",
-            stress: "58",
-            sleepDebt: "-2時間10分",
+            deepSleep: "32分",
+            deepSleepRate: "11%",
+            sleepLatency: "36分",
+            hrv: "26 ms",
+            restingHeartRate: "70 bpm",
+            stress: "62",
+            sleepDebt: "-2時間30分",
           }),
-          result: sampleResult(
-            "田中 優子",
-            dateDaysAgo(35),
-            58,
-            "睡眠スコアとSpO₂、中途覚醒にフォローの余地があります。",
-          ),
+          result: {
+            ...sampleResult(
+              "田中 優子",
+              dateDaysAgo(7),
+              56,
+              "前回より睡眠のまとまりが弱まり、飲酒量の増加も見られます。回復の土台づくりを優先すると良いでしょう。",
+            ),
+            karteSummary:
+              "3回連続で睡眠スコアが低下しています。一方で飲酒量は増加しており、睡眠時間も5時間を下回る夜が続いています。生活リズムの確認を次回フォローでおすすめします。",
+            improvements: [
+              {
+                stars: 5,
+                text: "飲酒量が増加しているため、就寝3時間前までの終了を意識する",
+              },
+              {
+                stars: 5,
+                text: "睡眠時間が短い夜が続く場合は、就寝時刻を30分早めに設定する",
+              },
+              {
+                stars: 4,
+                text: "中途覚醒が多いため、入眠前の光と室温を整える",
+              },
+            ],
+          },
           pdfHistory: [],
         },
         {
           id: "analysis-demo-tanaka-2",
-          analysisDate: dateDaysAgo(48),
-          createdAt: isoDaysAgo(48),
-          sleepScore: 62,
-          wellnessScore: 64,
-          metrics: sampleMetrics(62, {
+          analysisDate: dateDaysAgo(21),
+          createdAt: isoDaysAgo(21),
+          sleepScore: 61,
+          wellnessScore: 63,
+          metrics: sampleMetrics(61, {
+            sleepDuration: "4時間55分",
+            sleepEfficiency: "76%",
+            awakenings: "1時間05分",
+            awakeningRate: "18%",
+            spo2: "94%",
+            stress: "52",
+            deepSleep: "40分",
+            sleepLatency: "28分",
+          }),
+          result: sampleResult(
+            "田中 優子",
+            dateDaysAgo(21),
+            63,
+            "睡眠時間が短く、前回よりスコアが下がっています。回復の余地があります。",
+          ),
+          pdfHistory: [],
+        },
+        {
+          id: "analysis-demo-tanaka-3",
+          analysisDate: dateDaysAgo(35),
+          createdAt: isoDaysAgo(35),
+          sleepScore: 68,
+          wellnessScore: 70,
+          metrics: sampleMetrics(68, {
+            sleepDuration: "5時間40分",
             awakenings: "52分",
             awakeningRate: "14%",
             spo2: "95%",
@@ -560,9 +705,29 @@ function buildSeedClients(): StoredClient[] {
           }),
           result: sampleResult(
             "田中 優子",
-            dateDaysAgo(48),
-            64,
+            dateDaysAgo(35),
+            70,
             "やや改善の兆しはあるものの、回復はまだ安定していません。",
+          ),
+          pdfHistory: [],
+        },
+        {
+          id: "analysis-demo-tanaka-4",
+          analysisDate: dateDaysAgo(49),
+          createdAt: isoDaysAgo(49),
+          sleepScore: 74,
+          wellnessScore: 76,
+          metrics: sampleMetrics(74, {
+            sleepDuration: "6時間20分",
+            awakenings: "38分",
+            spo2: "96%",
+            stress: "36",
+          }),
+          result: sampleResult(
+            "田中 優子",
+            dateDaysAgo(49),
+            76,
+            "睡眠の土台は保たれており、深睡眠にも良い兆しがありました。",
           ),
           pdfHistory: [],
         },
@@ -610,6 +775,8 @@ export function getClientListItems(): ClientListItem[] {
         registeredAt: client.registeredAt,
         latestSleepScore: latest?.sleepScore ?? latest?.wellnessScore ?? null,
         latestAnalysisDate: latest?.analysisDate ?? null,
+        tags: client.tags ?? [],
+        searchText: buildClientSearchText(client),
       };
     })
     .sort((a, b) => {
@@ -676,6 +843,7 @@ export function createClient(input: CreateClientInput): StoredClient {
     email: asOptionalString(input.email),
     phone: asOptionalString(input.phone),
     memo: asOptionalString(input.memo),
+    tags: asOptionalTags(input.tags),
     analyses: [],
   };
 
@@ -746,6 +914,8 @@ export function updateClientProfile(
     phone:
       input.phone !== undefined ? asOptionalString(input.phone) : current.phone,
     memo: input.memo !== undefined ? asOptionalString(input.memo) : current.memo,
+    tags:
+      input.tags !== undefined ? asOptionalTags(input.tags) : current.tags,
   };
 
   clients[index] = next;
@@ -938,6 +1108,35 @@ export function recordPdfDownload(
   ];
 
   writeClients(clients);
+}
+
+/** ローカル保存の分析結果に「次回までのおすすめ」を反映 */
+export function updateAnalysisRecommendationsUntilNext(
+  analysisId: string,
+  goals: NextActionGoal[],
+): boolean {
+  if (!canUseStorage()) return false;
+
+  const clients = loadClients();
+  const normalized = normalizeRecommendationsUntilNext(goals);
+  let found = false;
+
+  for (const client of clients) {
+    const analysis = client.analyses.find((item) => item.id === analysisId);
+    if (!analysis) continue;
+    analysis.result = {
+      ...analysis.result,
+      recommendationsUntilNext: normalized,
+      analysisId,
+      clientId: client.id,
+    };
+    found = true;
+    break;
+  }
+
+  if (!found) return false;
+  writeClients(clients);
+  return true;
 }
 
 export function formatDisplayDate(value?: string | null): string {
