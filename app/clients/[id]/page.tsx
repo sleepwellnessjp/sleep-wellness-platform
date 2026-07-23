@@ -5,6 +5,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import {
+  BORDER,
+  CARD_SHADOW,
+  MUTED,
+  NAVY,
+  SURFACE,
+} from "@/components/ui/tokens";
+import {
   ACTIVITY_KIND_LABELS,
   clientInitials,
   formatDetailDate,
@@ -17,13 +24,6 @@ import {
   type ClientDetail,
   type ClientDetailActivityKind,
 } from "@/lib/client-detail";
-
-const NAVY = "#0F172A";
-const SURFACE = "#FFFFFF";
-const MUTED = "#64748B";
-const BORDER = "rgba(15, 23, 42, 0.08)";
-const CARD_SHADOW =
-  "0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px -24px rgba(15, 23, 42, 0.18)";
 
 function ProfileAvatar({ client }: { client: ClientDetail }) {
   if (client.avatarUrl) {
@@ -201,10 +201,10 @@ export default function ClientDetailPage() {
     };
   }, [id]);
 
-  const analysisHref = `/analysis/new?clientId=${encodeURIComponent(id)}`;
-  const journeyHref = `/programs/${encodeURIComponent(id)}`;
+  const analysisHref = `/analysis?clientId=${encodeURIComponent(id)}`;
+  const journeyHref = `/journey?clientId=${encodeURIComponent(id)}`;
   const reportHref = `/reports`;
-  const homeworkHref = `/clients/${encodeURIComponent(id)}#notes`;
+  const homeworkHref = `/homework?clientId=${encodeURIComponent(id)}`;
 
   if (!ready) {
     return (

@@ -6,6 +6,7 @@
 import { isAdminRole } from "@/lib/platform/constants";
 import { getCurrentProfile } from "@/lib/platform/platform-service";
 import type { PlatformProfile } from "@/lib/platform/types";
+import { clientsInstructorFilterColumn, resolveClientsInstructorColumn } from "@/lib/supabase/clients-instructor-column";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   buildSwiInsightsOverview,
@@ -63,10 +64,11 @@ async function loadScopedClientIds(
     return { scope: "platform", clientIds: null };
   }
 
+  const instructorCol = await resolveClientsInstructorColumn(supabase);
   const { data, error } = await supabase
     .from("clients")
     .select("id")
-    .eq("instructor_id", profile.id)
+    .eq(clientsInstructorFilterColumn(instructorCol), profile.id)
     .limit(5000);
 
   if (error) throw new Error(error.message);

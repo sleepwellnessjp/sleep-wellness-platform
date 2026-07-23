@@ -32,7 +32,7 @@ export default function OsNav({
           <Link
             key={`${item.href}-${item.label}`}
             href={item.href}
-            className={`rounded-2xl px-3.5 py-2 text-[12px] font-semibold tracking-[-0.01em] transition sm:px-4 sm:text-[13px] ${
+            className={`rounded-2xl px-2.5 py-2 text-[11px] font-semibold tracking-[-0.01em] transition sm:px-3.5 sm:text-[12px] lg:px-4 lg:text-[13px] ${
               active
                 ? "text-white"
                 : "text-slate-500 hover:bg-slate-100 hover:text-[#071426]"

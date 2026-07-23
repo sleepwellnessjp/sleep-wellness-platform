@@ -4,18 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import {
+  BORDER,
+  CARD_SHADOW,
+  MUTED,
+  NAVY,
+  SUCCESS,
+  SURFACE,
+} from "@/components/ui/tokens";
+import {
   formatFollowUpDate,
   formatScoreDelta,
   formatSenseiName,
   getInstructorDashboard,
   type InstructorDashboardData,
 } from "@/lib/instructor-dashboard";
-
-const NAVY = "#0F172A";
-const SURFACE = "#FFFFFF";
-const MUTED = "#64748B";
-const BORDER = "rgba(15, 23, 42, 0.08)";
-const CARD_SHADOW = "0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px -24px rgba(15, 23, 42, 0.18)";
 
 function greetingForNow(date = new Date()): string {
   const hour = date.getHours();
@@ -27,7 +29,7 @@ function greetingForNow(date = new Date()): string {
 
 function deltaTone(delta: number | null): string {
   if (delta == null) return MUTED;
-  if (delta > 0) return "#0F766E";
+  if (delta > 0) return SUCCESS;
   if (delta < 0) return "#B91C1C";
   return MUTED;
 }
@@ -99,8 +101,15 @@ export default function InstructorDashboardPage() {
                   style={{ borderColor: BORDER }}
                 >
                   <p className="text-sm" style={{ color: MUTED }}>
-                    本日の担当クライアントはありません。
+                    担当クライアントはまだいません。新規登録から始めましょう。
                   </p>
+                  <Link
+                    href="/clients/new"
+                    className="mt-5 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition hover:opacity-90"
+                    style={{ backgroundColor: NAVY }}
+                  >
+                    新規クライアント登録
+                  </Link>
                 </div>
               ) : (
                 <ul className="grid gap-4 sm:grid-cols-2">

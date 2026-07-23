@@ -1,4 +1,5 @@
 export const ANALYSIS_ROUTES = {
+  root: "/analysis",
   new: "/analysis/new",
   confirm: "/analysis/confirm",
   loading: "/analysis/loading",

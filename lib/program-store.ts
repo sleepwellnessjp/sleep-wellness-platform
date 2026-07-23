@@ -258,7 +258,7 @@ function buildSeedPrograms(clients: StoredClient[]): StoredProgram[] {
 
   const seeds: StoredProgram[] = [
     {
-      clientId: "client-demo-yamada",
+      clientId: "client-demo-4",
       startDate: isoDaysAgo(28),
       currentPhase: "生活習慣調整",
       nextFollowUpDate: isoDaysFromNow(5),
@@ -273,7 +273,7 @@ function buildSeedPrograms(clients: StoredClient[]): StoredProgram[] {
       updatedAt: now,
     },
     {
-      clientId: "client-demo-sato",
+      clientId: "client-demo-1",
       startDate: isoDaysAgo(56),
       currentPhase: "プログラム完了",
       nextFollowUpDate: null,
@@ -287,7 +287,7 @@ function buildSeedPrograms(clients: StoredClient[]): StoredProgram[] {
       updatedAt: now,
     },
     {
-      clientId: "client-demo-suzuki",
+      clientId: "client-demo-2",
       startDate: isoDaysAgo(21),
       currentPhase: "睡眠リズム定着",
       nextFollowUpDate: isoDaysFromNow(3),
@@ -302,7 +302,7 @@ function buildSeedPrograms(clients: StoredClient[]): StoredProgram[] {
       updatedAt: now,
     },
     {
-      clientId: "client-demo-tanaka",
+      clientId: "client-demo-3",
       startDate: isoDaysAgo(42),
       currentPhase: "初回面談フォロー",
       nextFollowUpDate: isoDaysAgo(2),

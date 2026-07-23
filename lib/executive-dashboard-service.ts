@@ -4,6 +4,10 @@
 
 import { isAdminRole } from "@/lib/platform/constants";
 import { getCurrentProfile } from "@/lib/platform/platform-service";
+import {
+  clientsInstructorFilterColumn,
+  resolveClientsInstructorColumn,
+} from "@/lib/supabase/clients-instructor-column";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   buildExecutiveDashboard,
@@ -167,10 +171,11 @@ async function loadScopedRawData(profileId: string, isAdmin: boolean) {
     .limit(10000);
 
   if (!isAdmin) {
+    const instructorCol = await resolveClientsInstructorColumn(supabase);
     const { data: owned } = await supabase
       .from("clients")
       .select("id")
-      .eq("instructor_id", profileId)
+      .eq(clientsInstructorFilterColumn(instructorCol), profileId)
       .limit(5000);
     const ids = (owned ?? []).map((row) => String((row as { id: string }).id));
     if (ids.length === 0) {

@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  peekClientsInstructorColumn,
+  resetClientsInstructorColumnCache,
+  resolveClientsInstructorColumn,
+} from "@/lib/supabase/clients-instructor-column";
 import { isMissingTableError, readSupabaseError } from "@/lib/supabase/errors";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -16,16 +21,24 @@ export async function GET() {
       "supabase",
       "analysis-persist-v1.sql",
     );
-    const [sql, platformSql, persistSql] = await Promise.all([
+    const instructorPath = path.join(
+      process.cwd(),
+      "supabase",
+      "clients-instructor-id.sql",
+    );
+    const [sql, platformSql, persistSql, instructorSql] = await Promise.all([
       readFile(schemaPath, "utf8"),
       readFile(platformPath, "utf8"),
       readFile(persistPath, "utf8"),
+      readFile(instructorPath, "utf8"),
     ]);
 
     const supabase = await createServerSupabaseClient();
     let tableReady = false;
     let platformReady = false;
     let persistReady = false;
+    let instructorIdReady = false;
+    let instructorColumn: "instructor_id" | "owner_id" | null = null;
     let probeError: string | null = null;
     let probeCode: string | null = null;
 
@@ -55,12 +68,20 @@ export async function GET() {
         .select("id, confirmed_metrics, report_payload, credits_consumed")
         .limit(1);
       persistReady = !persistError;
+
+      if (tableReady) {
+        resetClientsInstructorColumnCache();
+        instructorColumn = await resolveClientsInstructorColumn(supabase);
+        instructorIdReady = instructorColumn === "instructor_id";
+      }
     }
 
     return NextResponse.json({
       tableReady,
       platformReady,
       persistReady,
+      instructorIdReady,
+      instructorColumn: instructorColumn ?? peekClientsInstructorColumn(),
       missingTable: probeError
         ? isMissingTableError({ code: probeCode, message: probeError })
         : !tableReady,
@@ -69,11 +90,13 @@ export async function GET() {
       sql,
       platformSql,
       persistSql,
+      instructorSql,
       instructions: [
         "Supabase Dashboard → SQL Editor → New query を開く",
         "1) schema.sql を貼り付けて Run",
         "2) platform-v1.sql を貼り付けて Run（クレジット・会員・履歴）",
         "3) analysis-persist-v1.sql を貼り付けて Run（保存強化・二重消費防止）",
+        "4) clients-instructor-id.sql を貼り付けて Run（owner_id → instructor_id）",
         "完了後、このアプリで新規クライアント登録 / 分析を再試行する",
       ],
     });

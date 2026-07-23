@@ -28,6 +28,7 @@ export const MODULE_REGISTRY: readonly ModuleManifest[] = [
     basePath: "/analysis",
     status: "active",
     routes: [
+      "/analysis",
       "/analysis/new",
       "/analysis/confirm",
       "/analysis/loading",
@@ -54,17 +55,17 @@ export const MODULE_REGISTRY: readonly ModuleManifest[] = [
     id: "journey",
     name: "Journey",
     description: "Sleep Wellness Journey™ 改善の物語",
-    basePath: "/client",
+    basePath: "/journey",
     status: "active",
-    routes: ["/client#journey"],
+    routes: ["/journey", "/client#journey"],
   },
   {
     id: "homework",
     name: "Homework",
     description: "宿題の作成・提出・達成率",
-    basePath: "/client",
+    basePath: "/homework",
     status: "active",
-    routes: ["/client#homework", "/programs"],
+    routes: ["/homework", "/client#homework", "/programs"],
   },
   {
     id: "academy",
@@ -133,7 +134,7 @@ export const MODULE_REGISTRY: readonly ModuleManifest[] = [
     name: "Reports",
     description: "PDF / 分析レポート出力",
     basePath: "/reports",
-    status: "planned",
+    status: "beta",
     routes: ["/reports"],
   },
   {

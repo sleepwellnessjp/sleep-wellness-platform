@@ -11,17 +11,20 @@ type SchemaResponse = {
   tableReady?: boolean;
   platformReady?: boolean;
   persistReady?: boolean;
+  instructorIdReady?: boolean;
+  instructorColumn?: "instructor_id" | "owner_id" | null;
   missingTable?: boolean;
   probeError?: string | null;
   probeCode?: string | null;
   sql?: string;
   platformSql?: string;
   persistSql?: string;
+  instructorSql?: string;
   instructions?: string[];
   error?: string;
 };
 
-type SqlKind = "schema" | "platform" | "persist";
+type SqlKind = "schema" | "platform" | "persist" | "instructor";
 
 export default function SetupPage() {
   const [data, setData] = useState<SchemaResponse | null>(null);
@@ -38,6 +41,9 @@ export default function SetupPage() {
       const json = (await res.json()) as SchemaResponse;
       console.info("[setup] schema status:", json);
       setData(json);
+      if (json.tableReady && !json.instructorIdReady) {
+        setPreview("instructor");
+      }
     } catch (error) {
       console.error("[setup] fetch failed:", error);
       setMessage("セットアップ情報の取得に失敗しました。");
@@ -53,13 +59,15 @@ export default function SetupPage() {
   const sqlFor = (kind: SqlKind): string | undefined => {
     if (kind === "schema") return data?.sql;
     if (kind === "platform") return data?.platformSql;
-    return data?.persistSql;
+    if (kind === "persist") return data?.persistSql;
+    return data?.instructorSql;
   };
 
   const labelFor = (kind: SqlKind): string => {
     if (kind === "schema") return "schema.sql";
     if (kind === "platform") return "platform-v1.sql";
-    return "analysis-persist-v1.sql";
+    if (kind === "persist") return "analysis-persist-v1.sql";
+    return "clients-instructor-id.sql";
   };
 
   const copySql = async (kind: SqlKind) => {
@@ -78,6 +86,7 @@ export default function SetupPage() {
   };
 
   const previewSql = sqlFor(preview);
+  const sqlKinds = ["schema", "platform", "persist", "instructor"] as const;
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -96,8 +105,8 @@ export default function SetupPage() {
           データベース初期設定
         </h1>
         <p className="mt-3 text-[15px] leading-7 text-slate-600">
-          第一期卒業生が分析を保存・履歴確認するには、以下 3 つの SQL を
-          この順で実行してください。
+          第一期卒業生が分析を保存・履歴確認するには、以下の SQL をこの順で実行してください。
+          アプリは移行前の owner_id にも一時対応していますが、正規カラムは instructor_id です。
         </p>
 
         <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)]">
@@ -119,6 +128,10 @@ export default function SetupPage() {
               <StatusRow
                 label="3. 分析永続化 (二重消費防止・レポート保存)"
                 ready={Boolean(data?.persistReady)}
+              />
+              <StatusRow
+                label={`4. clients.instructor_id（現在: ${data?.instructorColumn ?? "不明"}）`}
+                ready={Boolean(data?.instructorIdReady)}
               />
             </ul>
           )}
@@ -162,13 +175,14 @@ export default function SetupPage() {
               "1) schema.sql を貼り付けて Run",
               "2) platform-v1.sql を貼り付けて Run",
               "3) analysis-persist-v1.sql を貼り付けて Run",
+              "4) clients-instructor-id.sql を貼り付けて Run",
             ]).map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            {(["schema", "platform", "persist"] as const).map((kind) => (
+            {sqlKinds.map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -191,7 +205,7 @@ export default function SetupPage() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {(["schema", "platform", "persist"] as const).map((kind) => (
+            {sqlKinds.map((kind) => (
               <button
                 key={`preview-${kind}`}
                 type="button"

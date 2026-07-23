@@ -26,15 +26,15 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/settings", label: "System", match: "/admin/settings" },
 ];
 
+/** Version 1.0 Beta — primary instructor navigation */
 const INSTRUCTOR_NAV: OsNavItem[] = [
-  { href: "/dashboard", label: "Home", match: "/dashboard" },
-  { href: "/clients", label: "クライアント", match: "/clients" },
-  { href: "/programs", label: "プログラム", match: "/programs" },
-  { href: "/academy", label: "Academy", match: "/academy" },
-  { href: "/community", label: "Community", match: "/community" },
-  { href: "/insights", label: "Insights", match: "/insights" },
-  { href: "/analysis/new", label: "新規分析", match: "/analysis" },
-  { href: "/portal", label: "ポータル", match: "/portal" },
+  { href: "/dashboard", label: "Dashboard", match: "/dashboard" },
+  { href: "/clients", label: "Clients", match: "/clients" },
+  { href: "/analysis", label: "Analysis", match: "/analysis" },
+  { href: "/journey", label: "Journey", match: "/journey" },
+  { href: "/homework", label: "Homework", match: "/homework" },
+  { href: "/reports", label: "Report", match: "/reports" },
+  { href: "/vision", label: "Vision", match: "/vision" },
 ];
 
 const CLIENT_NAV: OsNavItem[] = [
@@ -126,60 +126,53 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
   if (role === "instructor") {
     return [
       {
-        id: "schedule",
-        eyebrow: "SCHEDULE",
-        title: "今日の予定",
-        description: "カウンセリング・ヨガ・分析予定を確認します。",
-        href: "/dashboard#schedule",
-      },
-      {
-        id: "priority",
-        eyebrow: "PRIORITY",
-        title: "今日の対応",
-        description: "優先対応が必要なクライアントを確認します。",
-        href: "/dashboard#priority",
-      },
-      {
-        id: "summary",
-        eyebrow: "PLATFORM",
-        title: "Platform Summary",
-        description: "担当人数・平均Score・改善率を把握します。",
-        href: "/dashboard#summary",
-      },
-      {
-        id: "activity",
-        eyebrow: "ACTIVITY",
-        title: "最近の活動",
-        description: "分析・宿題・Journey の時系列。",
-        href: "/dashboard#activity",
-      },
-      {
-        id: "advice",
-        eyebrow: "AI ADVICE",
-        title: "今日のAIアドバイス",
-        description: "認定講師向けの今日の着眼点。",
-        href: "/dashboard#advice",
+        id: "dashboard",
+        eyebrow: "DASHBOARD",
+        title: "Dashboard",
+        description: "今日の担当と今週の予定を把握します。",
+        href: "/dashboard",
       },
       {
         id: "clients",
         eyebrow: "CLIENTS",
-        title: "担当クライアント",
+        title: "Clients",
         description: "担当クライアント一覧へ移動します。",
         href: "/clients",
       },
       {
-        id: "academy",
-        eyebrow: "ACADEMY",
-        title: "Academy",
-        description: "学習・試験・資格更新。",
-        href: "/academy",
+        id: "analysis",
+        eyebrow: "ANALYSIS",
+        title: "Analysis",
+        description: "睡眠分析ワークスペースを開きます。",
+        href: "/analysis",
       },
       {
-        id: "community",
-        eyebrow: "COMMUNITY",
-        title: "Community",
-        description: "事例共有・イベント・メッセージ。",
-        href: "/community",
+        id: "journey",
+        eyebrow: "JOURNEY",
+        title: "Journey",
+        description: "Sleep Journey の進捗を確認します。",
+        href: "/journey",
+      },
+      {
+        id: "homework",
+        eyebrow: "HOMEWORK",
+        title: "Homework",
+        description: "宿題とフォローアップを管理します。",
+        href: "/homework",
+      },
+      {
+        id: "reports",
+        eyebrow: "REPORT",
+        title: "Report",
+        description: "分析レポート一覧を確認します。",
+        href: "/reports",
+      },
+      {
+        id: "vision",
+        eyebrow: "VISION",
+        title: "Vision",
+        description: "Sleep Wellness のビジョンを共有します。",
+        href: "/vision",
       },
     ];
   }
@@ -284,7 +277,19 @@ export function isNavItemActive(pathname: string, item: OsNavItem): boolean {
     return pathname === "/programs" || pathname.startsWith("/programs/");
   }
   if (item.match === "/analysis") {
-    return pathname.startsWith("/analysis");
+    return pathname === "/analysis" || pathname.startsWith("/analysis/");
+  }
+  if (item.match === "/journey") {
+    return pathname === "/journey" || pathname.startsWith("/journey/");
+  }
+  if (item.match === "/homework") {
+    return pathname === "/homework" || pathname.startsWith("/homework/");
+  }
+  if (item.match === "/reports") {
+    return pathname === "/reports" || pathname.startsWith("/reports/");
+  }
+  if (item.match === "/vision") {
+    return pathname === "/vision" || pathname.startsWith("/vision/");
   }
   if (item.match.includes("#")) {
     const base = item.match.split("#")[0] ?? item.match;

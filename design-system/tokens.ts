@@ -7,6 +7,10 @@ export {
   TEAL,
   SURFACE,
   SURFACE_WARM,
+  SURFACE_PAGE,
   SUCCESS,
   DANGER,
+  MUTED,
+  BORDER,
+  CARD_SHADOW,
 } from "@/components/ui/tokens";

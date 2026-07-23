@@ -14,7 +14,7 @@ import {
 } from "@/lib/soxai-structured-metrics";
 
 const STORAGE_KEY = "swij-clients-v1";
-const SEED_FLAG_KEY = "swij-clients-seeded-v1";
+const SEED_FLAG_KEY = "swij-clients-seeded-v3";
 const LAST_SAVE_KEY = "swij-last-saved-analysis";
 
 export type PdfHistoryEntry = {
@@ -396,102 +396,46 @@ function buildSeedClients(): StoredClient[] {
 
   return [
     {
-      id: "client-demo-yamada",
-      name: "山田 太郎",
+      id: "client-demo-4",
+      name: "伊藤 翔",
       registeredAt: isoDaysAgo(45),
-      tags: ["企業契約", "飲酒"],
-      analyses: [
-        {
-          id: "analysis-demo-yamada-1",
-          analysisDate: dateDaysAgo(3),
-          createdAt: isoDaysAgo(3),
-          sleepScore: 82,
-          wellnessScore: 84,
-          metrics: sampleMetrics(82),
-          result: sampleResult(
-            "山田 太郎",
-            dateDaysAgo(3),
-            84,
-            "今回のデータでは、回復指標が安定し、全体として良い夜でした。",
-          ),
-          pdfHistory: [
-            {
-              id: "pdf-demo-yamada-1",
-              label: "Sleep Wellness Medical Report",
-              createdAt: isoDaysAgo(3),
-            },
-          ],
-        },
-        {
-          id: "analysis-demo-yamada-2",
-          analysisDate: dateDaysAgo(17),
-          createdAt: isoDaysAgo(17),
-          sleepScore: 74,
-          wellnessScore: 76,
-          metrics: sampleMetrics(74, { stress: "41", hrv: "34 ms" }),
-          result: sampleResult(
-            "山田 太郎",
-            dateDaysAgo(17),
-            76,
-            "やや緊張の残る夜でしたが、睡眠時間自体は確保できています。",
-          ),
-          pdfHistory: [
-            {
-              id: "pdf-demo-yamada-2",
-              label: "Sleep Wellness Medical Report",
-              createdAt: isoDaysAgo(17),
-            },
-          ],
-        },
-        {
-          id: "analysis-demo-yamada-3",
-          analysisDate: dateDaysAgo(31),
-          createdAt: isoDaysAgo(31),
-          sleepScore: 79,
-          wellnessScore: 80,
-          metrics: sampleMetrics(79),
-          result: sampleResult(
-            "山田 太郎",
-            dateDaysAgo(31),
-            80,
-            "ステージバランスは整い始めており、前向きな推移です。",
-          ),
-          pdfHistory: [],
-        },
-      ],
+      age: 29,
+      gender: "male",
+      tags: ["企業契約", "初回"],
+      analyses: [],
     },
     {
-      id: "client-demo-sato",
+      id: "client-demo-1",
       name: "佐藤 美咲",
       registeredAt: isoDaysAgo(28),
       tags: ["ホットヨガ", "花粉症"],
       analyses: [
         {
-          id: "analysis-demo-sato-1",
+          id: "analysis-demo-1-1",
           analysisDate: dateDaysAgo(5),
           createdAt: isoDaysAgo(5),
-          sleepScore: 88,
-          wellnessScore: 90,
-          metrics: sampleMetrics(88, {
-            sleepEfficiency: "91%",
-            deepSleepRate: "21%",
+          sleepScore: 72,
+          wellnessScore: 74,
+          metrics: sampleMetrics(72, {
+            sleepEfficiency: "87%",
+            deepSleepRate: "18%",
           }),
           result: sampleResult(
             "佐藤 美咲",
             dateDaysAgo(5),
-            90,
-            "深い睡眠と効率が高く、回復の質が良い夜でした。",
+            74,
+            "深い睡眠と効率が安定し、回復の質が良い夜でした。",
           ),
           pdfHistory: [
             {
-              id: "pdf-demo-sato-1",
+              id: "pdf-demo-1-1",
               label: "Sleep Wellness Visual Report",
               createdAt: isoDaysAgo(5),
             },
           ],
         },
         {
-          id: "analysis-demo-sato-2",
+          id: "analysis-demo-1-2",
           analysisDate: dateDaysAgo(19),
           createdAt: isoDaysAgo(19),
           sleepScore: 81,
@@ -505,7 +449,7 @@ function buildSeedClients(): StoredClient[] {
           ),
           pdfHistory: [
             {
-              id: "pdf-demo-sato-2",
+              id: "pdf-demo-1-2",
               label: "Sleep Wellness Medical Report",
               createdAt: isoDaysAgo(19),
             },
@@ -514,13 +458,13 @@ function buildSeedClients(): StoredClient[] {
       ],
     },
     {
-      id: "client-demo-suzuki",
-      name: "鈴木 健",
+      id: "client-demo-2",
+      name: "鈴木 健太",
       registeredAt: isoDaysAgo(35),
       tags: ["夜勤", "アスリート"],
       analyses: [
         {
-          id: "analysis-demo-suzuki-1",
+          id: "analysis-demo-2-1",
           analysisDate: dateDaysAgo(1),
           createdAt: isoDaysAgo(1),
           sleepScore: 68,
@@ -539,7 +483,7 @@ function buildSeedClients(): StoredClient[] {
           }),
           result: {
             ...sampleResult(
-              "鈴木 健",
+              "鈴木 健太",
               dateDaysAgo(1),
               70,
               "前回より睡眠スコアが下がり、夜勤の増加も生活リズムに影響している可能性があります。",
@@ -549,14 +493,14 @@ function buildSeedClients(): StoredClient[] {
           },
           pdfHistory: [
             {
-              id: "pdf-demo-suzuki-1",
+              id: "pdf-demo-2-1",
               label: "Sleep Wellness Medical Report",
               createdAt: isoDaysAgo(1),
             },
           ],
         },
         {
-          id: "analysis-demo-suzuki-2",
+          id: "analysis-demo-2-2",
           analysisDate: dateDaysAgo(14),
           createdAt: isoDaysAgo(14),
           sleepScore: 71,
@@ -570,21 +514,21 @@ function buildSeedClients(): StoredClient[] {
             restingHeartRate: "61 bpm",
           }),
           result: sampleResult(
-            "鈴木 健",
+            "鈴木 健太",
             dateDaysAgo(14),
             73,
             "睡眠負債とストレスがやや高めです。生活リズムの調整余地があります。",
           ),
           pdfHistory: [
             {
-              id: "pdf-demo-suzuki-2",
+              id: "pdf-demo-2-2",
               label: "Sleep Wellness Medical Report",
               createdAt: isoDaysAgo(14),
             },
           ],
         },
         {
-          id: "analysis-demo-suzuki-3",
+          id: "analysis-demo-2-3",
           analysisDate: dateDaysAgo(28),
           createdAt: isoDaysAgo(28),
           sleepScore: 65,
@@ -603,7 +547,7 @@ function buildSeedClients(): StoredClient[] {
             sleepDebt: "-1時間40分",
           }),
           result: sampleResult(
-            "鈴木 健",
+            "鈴木 健太",
             dateDaysAgo(28),
             67,
             "入眠潜時と中途覚醒が多く、回復が十分に得られにくい夜でした。",
@@ -613,16 +557,16 @@ function buildSeedClients(): StoredClient[] {
       ],
     },
     {
-      id: "client-demo-tanaka",
-      name: "田中 優子",
-      nameKana: "たなか ゆうこ",
+      id: "client-demo-3",
+      name: "田中 あかり",
+      nameKana: "たなか あかり",
       registeredAt: isoDaysAgo(60),
       memo: "要フォロー確認用デモ",
       tags: ["高齢者", "高血圧", "睡眠薬"],
       drinkingHabit: "週4〜5回",
       analyses: [
         {
-          id: "analysis-demo-tanaka-1",
+          id: "analysis-demo-3-1",
           analysisDate: dateDaysAgo(7),
           createdAt: isoDaysAgo(7),
           sleepScore: 54,
@@ -643,7 +587,7 @@ function buildSeedClients(): StoredClient[] {
           }),
           result: {
             ...sampleResult(
-              "田中 優子",
+              "田中 あかり",
               dateDaysAgo(7),
               56,
               "前回より睡眠のまとまりが弱まり、飲酒量の増加も見られます。回復の土台づくりを優先すると良いでしょう。",
@@ -668,7 +612,7 @@ function buildSeedClients(): StoredClient[] {
           pdfHistory: [],
         },
         {
-          id: "analysis-demo-tanaka-2",
+          id: "analysis-demo-3-2",
           analysisDate: dateDaysAgo(21),
           createdAt: isoDaysAgo(21),
           sleepScore: 61,
@@ -684,7 +628,7 @@ function buildSeedClients(): StoredClient[] {
             sleepLatency: "28分",
           }),
           result: sampleResult(
-            "田中 優子",
+            "田中 あかり",
             dateDaysAgo(21),
             63,
             "睡眠時間が短く、前回よりスコアが下がっています。回復の余地があります。",
@@ -692,7 +636,7 @@ function buildSeedClients(): StoredClient[] {
           pdfHistory: [],
         },
         {
-          id: "analysis-demo-tanaka-3",
+          id: "analysis-demo-3-3",
           analysisDate: dateDaysAgo(35),
           createdAt: isoDaysAgo(35),
           sleepScore: 68,
@@ -705,7 +649,7 @@ function buildSeedClients(): StoredClient[] {
             stress: "44",
           }),
           result: sampleResult(
-            "田中 優子",
+            "田中 あかり",
             dateDaysAgo(35),
             70,
             "やや改善の兆しはあるものの、回復はまだ安定していません。",
@@ -713,7 +657,7 @@ function buildSeedClients(): StoredClient[] {
           pdfHistory: [],
         },
         {
-          id: "analysis-demo-tanaka-4",
+          id: "analysis-demo-3-4",
           analysisDate: dateDaysAgo(49),
           createdAt: isoDaysAgo(49),
           sleepScore: 74,
@@ -725,7 +669,7 @@ function buildSeedClients(): StoredClient[] {
             stress: "36",
           }),
           result: sampleResult(
-            "田中 優子",
+            "田中 あかり",
             dateDaysAgo(49),
             76,
             "睡眠の土台は保たれており、深睡眠にも良い兆しがありました。",
