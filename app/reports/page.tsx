@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
+import ErrorState from "@/components/ui/ErrorState";
 import {
   BORDER,
   CARD_SHADOW,
@@ -13,11 +14,13 @@ import {
   SURFACE_WARM,
   TEAL,
 } from "@/components/ui/tokens";
+import { userMessageFromUnknown } from "@/lib/data-access-errors";
 import {
   formatReportDate,
   getReportsPageData,
   REPORT_STATUS_LABELS,
   type ReportListItem,
+  type ReportsPageData,
   type ReportStatus,
 } from "@/lib/reports-list";
 
@@ -83,13 +86,6 @@ function ReportCard({ report }: { report: ReportListItem }) {
             Journey
           </Link>
           <Link
-            href={`/homework?clientId=${encodeURIComponent(report.clientId)}`}
-            className="rounded-2xl border px-3.5 py-2 text-[12px] font-semibold transition hover:bg-slate-50"
-            style={{ borderColor: BORDER, color: NAVY }}
-          >
-            Homework
-          </Link>
-          <Link
             href={report.href}
             className="rounded-2xl px-3.5 py-2 text-[12px] font-semibold text-white transition hover:opacity-90"
             style={{ backgroundColor: NAVY }}
@@ -103,8 +99,67 @@ function ReportCard({ report }: { report: ReportListItem }) {
 }
 
 export default function ReportsPage() {
-  const data = useMemo(() => getReportsPageData(), []);
+  const [data, setData] = useState<ReportsPageData | null>(null);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | ReportStatus>("all");
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    setLoadError(null);
+
+    void (async () => {
+      try {
+        const next = await getReportsPageData();
+        if (!cancelled) setData(next);
+      } catch (error) {
+        console.error("[reports] getReportsPageData failed:", error);
+        if (!cancelled) {
+          setData(null);
+          setLoadError(userMessageFromUnknown(error));
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!ready) {
+    return (
+      <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
+        <InstructorNav eyebrow="REPORT" />
+        <div
+          className="mx-auto max-w-3xl space-y-4 px-6 py-16 sm:px-10"
+          aria-busy="true"
+          aria-label="読み込み中"
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-28 animate-pulse rounded-3xl bg-slate-100" />
+          ))}
+        </div>
+      </main>
+    );
+  }
+
+  if (!data) {
+    return (
+      <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
+        <InstructorNav eyebrow="REPORT" />
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6">
+          <ErrorState
+            title="レポートを表示できません"
+            message={loadError || "しばらくしてから再度お試しください。"}
+            kind="supabase"
+          />
+        </div>
+      </main>
+    );
+  }
 
   const filtered = data.reports.filter(
     (report) => filter === "all" || report.status === filter,
@@ -174,7 +229,7 @@ export default function ReportsPage() {
               style={{ borderColor: BORDER, backgroundColor: "#fff" }}
             >
               <p className="text-[15px]" style={{ color: MUTED }}>
-                該当するレポートはありません。
+                該当するレポートがありません。睡眠分析を実行するとここに表示されます。
               </p>
             </div>
           ) : (

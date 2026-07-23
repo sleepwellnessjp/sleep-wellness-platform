@@ -6,7 +6,7 @@
 import type { StoredClient } from "@/lib/client-store";
 import { analysisSleepScore, loadClients } from "@/lib/repositories/client-repository";
 import { getNextClientAppointment } from "@/lib/repositories/client-appointments-repository";
-import { listClientHomeworks } from "@/lib/repositories/client-homeworks-repository";
+import { listBetaHomeworks } from "@/lib/repositories/beta-homework-repository";
 import { getProgramDetail } from "@/lib/repositories/program-repository";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -149,8 +149,13 @@ function shortFamilyName(fullName: string): string {
 
 function scoreOf(client: StoredClient): number | null {
   const latest = client.analyses[0];
-  if (!latest) return null;
-  return analysisSleepScore(latest);
+  if (latest) {
+    const fromAnalysis = analysisSleepScore(latest);
+    if (fromAnalysis != null) return fromAnalysis;
+  }
+  return typeof client.currentSleepScore === "number"
+    ? client.currentSleepScore
+    : null;
 }
 
 function scoreDeltaOf(client: StoredClient): number | null {
@@ -206,15 +211,16 @@ async function resolveDisplayName(): Promise<string> {
   return name;
 }
 
-async function nextFollowUpFor(clientId: string): Promise<string | null> {
+async function nextFollowUpFor(client: StoredClient): Promise<string | null> {
+  if (client.nextFollowUpDate) return client.nextFollowUpDate;
   try {
-    const next = await getNextClientAppointment(clientId);
+    const next = await getNextClientAppointment(client.id);
     if (next?.startDate) return next.startDate;
   } catch {
     // appointments 未適用環境は無視
   }
   try {
-    const program = await getProgramDetail(clientId);
+    const program = await getProgramDetail(client.id);
     return program?.nextFollowUpDate ?? null;
   } catch {
     return null;
@@ -244,7 +250,7 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
   const followUpDates = await Promise.all(
     clients.map(async (client) => ({
       client,
-      nextFollowUpDate: await nextFollowUpFor(client.id),
+      nextFollowUpDate: await nextFollowUpFor(client),
     })),
   );
 
@@ -300,10 +306,12 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
   await Promise.all(
     clients.map(async (client) => {
       try {
-        const homeworks = await listClientHomeworks(client.id);
-        homeworkPendingCount += homeworks.filter((hw) => !hw.isCompleted).length;
+        const homeworks = await listBetaHomeworks(client.id);
+        homeworkPendingCount += homeworks.filter(
+          (hw) => hw.status !== "completed",
+        ).length;
       } catch {
-        // homeworks 未適用環境は無視
+        // homework 未適用環境は無視
       }
     }),
   );

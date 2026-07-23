@@ -35,6 +35,7 @@ import {
 } from "@/lib/supabase/clients-instructor-column";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
+import { DataAccessError } from "@/lib/data-access-errors";
 
 export type {
   ClientListItem,
@@ -48,6 +49,7 @@ export type {
 export {
   analysisSleepScore,
   formatDisplayDate,
+  loadLastSavedAnalysisRef,
 } from "@/lib/client-store";
 
 type SupabaseAuth = {
@@ -72,6 +74,10 @@ type DbClientRow = {
   name_kana: string | null;
   birth_date?: string | null;
   gender?: string | null;
+  age?: number | null;
+  start_date?: string | null;
+  next_follow_up_date?: string | null;
+  current_sleep_score?: number | null;
   email?: string | null;
   phone?: string | null;
   registered_at?: string | null;
@@ -355,12 +361,15 @@ function mapDbClient(
   return {
     id: row.id,
     name: row.name,
-    registeredAt: row.registered_at ?? row.created_at.slice(0, 10),
+    registeredAt:
+      row.start_date ??
+      row.registered_at ??
+      row.created_at.slice(0, 10),
     nameKana: row.name_kana ?? undefined,
     // 詳細は client_profiles 優先（clients のレガシー列はフォールバック）
     birthDate: profile?.birthDate ?? row.birth_date ?? undefined,
     gender: profile?.gender ?? row.gender ?? undefined,
-    age: profile?.age,
+    age: profile?.age ?? (typeof row.age === "number" ? row.age : undefined),
     heightCm: profile?.heightCm,
     weightKg: profile?.weightKg,
     medications: profile?.medications,
@@ -371,6 +380,12 @@ function mapDbClient(
     email: row.email ?? undefined,
     phone: row.phone ?? undefined,
     memo: row.memo ?? undefined,
+    startDate: row.start_date ?? undefined,
+    nextFollowUpDate: row.next_follow_up_date ?? undefined,
+    currentSleepScore:
+      typeof row.current_sleep_score === "number"
+        ? row.current_sleep_score
+        : undefined,
     tags: (() => {
       const tags = normalizeClientTags(row.tags);
       return tags.length > 0 ? tags : undefined;
@@ -383,18 +398,24 @@ function mapDbClient(
   };
 }
 
-/** clients へ書いてよい最小カラムのみ（name / furigana / memo / tags） */
+/** clients へ書いてよい最小カラムのみ（name / furigana / memo / tags + Beta 列） */
 function clientsCorePatchFromInput(input: Partial<CreateClientInput>): {
   name?: string;
   name_kana?: string | null;
   memo?: string | null;
   tags?: string[];
+  gender?: string | null;
+  age?: number | null;
+  start_date?: string | null;
 } {
   const patch: {
     name?: string;
     name_kana?: string | null;
     memo?: string | null;
     tags?: string[];
+    gender?: string | null;
+    age?: number | null;
+    start_date?: string | null;
   } = {};
 
   if (input.name !== undefined) {
@@ -406,6 +427,17 @@ function clientsCorePatchFromInput(input: Partial<CreateClientInput>): {
   }
   if (input.memo !== undefined) {
     patch.memo = input.memo.trim() || null;
+  }
+  if (input.gender !== undefined) {
+    patch.gender = input.gender.trim() || null;
+  }
+  if (input.age !== undefined) {
+    const n = parseOptionalProfileNumber(input.age);
+    patch.age = n != null ? Math.round(n) : null;
+  }
+  if (input.registeredAt !== undefined) {
+    const start = input.registeredAt.trim();
+    patch.start_date = /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : null;
   }
   if (input.tags !== undefined) {
     patch.tags = normalizeClientTags(input.tags);
@@ -1048,6 +1080,58 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
     }
   }
 
+  // Version 1.0 Beta 列（age / gender / start_date）を clients に同期
+  const betaPatch = clientsCorePatchFromInput({
+    age: input.age,
+    gender: input.gender,
+    registeredAt: input.registeredAt,
+  });
+  if (
+    betaPatch.age !== undefined ||
+    betaPatch.gender !== undefined ||
+    betaPatch.start_date !== undefined
+  ) {
+    const { data: betaPatched, error: betaError } = await supabase
+      .from("clients")
+      .update({
+        ...(betaPatch.age !== undefined ? { age: betaPatch.age } : {}),
+        ...(betaPatch.gender !== undefined ? { gender: betaPatch.gender } : {}),
+        ...(betaPatch.start_date !== undefined
+          ? { start_date: betaPatch.start_date }
+          : { start_date: new Date().toISOString().slice(0, 10) }),
+      })
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
+      .eq("id", row.id)
+      .select("*")
+      .maybeSingle();
+    if (!betaError && betaPatched) {
+      row = betaPatched as DbClientRow;
+    } else if (betaError) {
+      console.warn(
+        "[client-repository] createClient: beta columns update skipped:",
+        betaError.message,
+      );
+    }
+  } else {
+    // start_date だけは必ず初期化を試みる
+    const { error: startError } = await supabase
+      .from("clients")
+      .update({
+        start_date:
+          row.start_date ??
+          row.registered_at ??
+          row.created_at.slice(0, 10),
+      })
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
+      .eq("id", row.id);
+    if (startError) {
+      console.warn(
+        "[client-repository] createClient: start_date update skipped:",
+        startError.message,
+      );
+    }
+  }
+
   // 詳細（年齢・身長等）は client_profiles のみへ
   try {
     const { upsertClientProfile } = await import(
@@ -1158,7 +1242,15 @@ export async function saveAnalysisToRepository(
   result: AnalysisResult,
 ): Promise<SavedAnalysisRef | null> {
   const auth = await getSupabaseAuth();
-  if (!auth) return saveLocalAnalysis(result);
+  if (!auth) {
+    if (isSupabaseConfigured()) {
+      throw new DataAccessError(
+        "unauthenticated",
+        "ログインが必要です。認定講師アカウントでサインインしてください。",
+      );
+    }
+    return saveLocalAnalysis(result);
+  }
 
   const { supabase, userId } = auth;
 
@@ -1185,6 +1277,24 @@ export async function saveAnalysisToRepository(
         analysisId: String((existingAnalysis as { id: string }).id),
       };
       rememberLastSavedAnalysisRef(existingRef);
+
+      // analyses は保存済みでも sleep_analyses が欠ける場合があるため補完する
+      const metrics = normalizeMetrics(result.metrics);
+      const sleepScore =
+        typeof metrics.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
+          ? metrics.sleepScore
+          : null;
+      const analysisDate =
+        result.measurementDate?.trim() || new Date().toISOString().slice(0, 10);
+      await persistBetaAnalysisSideEffects({
+        auth,
+        clientId: existingRef.clientId,
+        analysisId: existingRef.analysisId,
+        analysisDate,
+        result: { ...result, clientId: existingRef.clientId },
+        metrics,
+        sleepScore,
+      });
       return existingRef;
     }
   }
@@ -1476,6 +1586,15 @@ export async function saveAnalysisToRepository(
         analysisId: (fallbackRow as { id: string }).id,
       };
       rememberLastSavedAnalysisRef(fallbackRef);
+      await persistBetaAnalysisSideEffects({
+        auth,
+        clientId,
+        analysisId: fallbackRef.analysisId,
+        analysisDate,
+        result,
+        metrics,
+        sleepScore,
+      });
       return fallbackRef;
     }
 
@@ -1488,7 +1607,112 @@ export async function saveAnalysisToRepository(
     analysisId: (analysisRow as { id: string }).id,
   };
   rememberLastSavedAnalysisRef(savedRef);
+  await persistBetaAnalysisSideEffects({
+    auth,
+    clientId,
+    analysisId: savedRef.analysisId,
+    analysisDate,
+    result,
+    metrics,
+    sleepScore,
+  });
   return savedRef;
+}
+
+async function persistBetaAnalysisSideEffects(params: {
+  auth: SupabaseAuth;
+  clientId: string;
+  analysisId: string;
+  analysisDate: string;
+  result: AnalysisResult;
+  metrics: AnalysisMetrics;
+  sleepScore: number | null;
+}): Promise<void> {
+  const { auth, clientId, analysisId, analysisDate, result, metrics, sleepScore } =
+    params;
+
+  // clients.current_sleep_score を更新（列未適用時は無視）
+  if (sleepScore != null) {
+    try {
+      const instructorCol = await resolveInstructorColumn(auth);
+      const { error } = await auth.supabase
+        .from("clients")
+        .update({ current_sleep_score: sleepScore })
+        .eq("id", clientId)
+        .eq(clientsInstructorFilterColumn(instructorCol), auth.userId);
+      if (error) {
+        console.warn(
+          "[client-repository] current_sleep_score update skipped:",
+          error.message,
+        );
+      }
+    } catch (scoreError) {
+      console.warn(
+        "[client-repository] current_sleep_score update skipped:",
+        scoreError,
+      );
+    }
+  }
+
+  const { saveSleepAnalysis } = await import(
+    "@/lib/repositories/sleep-analyses-repository"
+  );
+  const lifestyle: Record<string, unknown> = {
+    age: result.age ?? null,
+    gender: result.gender ?? null,
+    heightCm: result.heightCm ?? null,
+    weightKg: result.weightKg ?? null,
+    medications: result.medications ?? null,
+    drinkingHabit: result.drinkingHabit ?? null,
+    exerciseHabit: result.exerciseHabit ?? null,
+    snoringNasal: result.snoringNasal ?? null,
+    medicalHistory: result.medicalHistory ?? null,
+  };
+
+  const sleepAnalysis = await saveSleepAnalysis({
+    id: analysisId,
+    clientId,
+    analysisDate,
+    sleepData: {
+      metrics,
+      score: result.score,
+      graphs: result.graphs ?? null,
+    },
+    lifestyleData: lifestyle,
+    analysisResult: {
+      score: result.score,
+      summary: result.summary,
+      karteSummary: result.karteSummary,
+      goodPoints: result.goodPoints,
+      improvements: result.improvements,
+      profileRelation: result.profileRelation,
+      scoreComment: result.scoreComment,
+      todaysRecommendations: result.todaysRecommendations,
+      nextComparisonPoints: result.nextComparisonPoints,
+      recommendationsUntilNext: result.recommendationsUntilNext,
+      categoryScores: result.categoryScores,
+      clientName: result.clientName,
+      measurementDate: result.measurementDate,
+    },
+  });
+
+  const { saveReport } = await import(
+    "@/lib/repositories/reports-repository"
+  );
+  await saveReport({
+    clientId,
+    analysisId: sleepAnalysis.id,
+    reportData: {
+      title: "Sleep Wellness Report",
+      status: "ready",
+      sleepScore,
+      clientName: result.clientName ?? "クライアント",
+      excerpt: {
+        summary: result.summary,
+        score: result.score,
+      },
+    },
+  });
 }
 
 export async function recordPdfDownload(

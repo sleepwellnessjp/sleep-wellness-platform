@@ -1,7 +1,6 @@
 /**
  * Homework / Follow-up 画面のデータ契約。
- * 現状はダミー＋クライアント詳細の合成。将来 Supabase の
- * client_homeworks / follow_up_records テーブルへ差し替えやすい形。
+ * Supabase の homework / follow_up_records と同期する。
  */
 
 import {
@@ -11,11 +10,26 @@ import {
 } from "@/lib/client-management";
 import { getClientDetail, type ClientDetail } from "@/lib/client-detail";
 import {
+  DataAccessError,
+  userMessageFromUnknown,
+} from "@/lib/data-access-errors";
+import {
   generateAiSleepAnalysisSync,
   toHomeworkDrafts,
   type AiSleepAnalysisInput,
   type HomeworkAiDraft,
 } from "@/lib/ai-analysis";
+import {
+  createFollowUpRecord,
+  listFollowUpRecords,
+} from "@/lib/repositories/follow-up-records-repository";
+import {
+  listBetaHomeworks,
+  syncBetaHomeworks,
+} from "@/lib/repositories/beta-homework-repository";
+import { getInstructorAuth } from "@/lib/repositories/v1-beta-auth";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isMissingTableError } from "@/lib/supabase/errors";
 
 export type HomeworkPriority = "high" | "medium" | "low";
 
@@ -330,7 +344,8 @@ function buildDummyForClient(
   const sleepScore = detail?.sleepScore ?? listItem?.sleepScore ?? 72;
   const instructorName = detail?.instructorName ?? DEFAULT_INSTRUCTOR;
   const avatarUrl = detail?.avatarUrl ?? listItem?.avatarUrl ?? null;
-  const nextFollowUpDate = listItem?.nextFollowUpDate ?? "2026-07-25";
+  const nextFollowUpDate =
+    detail?.nextFollowUpDate ?? listItem?.nextFollowUpDate ?? "2026-07-25";
 
   const homeworks = defaultHomeworks(clientId, name);
   const followUps = defaultFollowUps(clientId);
@@ -350,7 +365,7 @@ function buildDummyForClient(
 
 /**
  * Homework / Follow-up 画面用データを取得。
- * Supabase 未接続時・未取得時はダミーでフォールバック。
+ * Supabase 接続時は homework / follow_up_records から読み込む。
  */
 export async function getHomeworkFollowUp(
   clientId: string | null | undefined,
@@ -367,8 +382,121 @@ export async function getHomeworkFollowUp(
     console.error("[homework-followup] getClientDetail failed:", error);
   }
 
-  // TODO: Supabase client_homeworks / follow_up_records から取得して合成する
-  return buildDummyForClient(id, detail);
+  if (!isSupabaseConfigured()) {
+    return buildDummyForClient(id, detail);
+  }
+
+  const auth = await getInstructorAuth();
+  if (!auth) {
+    if (!detail) {
+      throw new DataAccessError(
+        "unauthenticated",
+        "ログインが必要です。認定講師アカウントでサインインしてください。",
+      );
+    }
+    // セッション切れでも詳細がある場合は空データで返す
+    return {
+      clientId: id,
+      name: detail.name,
+      avatarUrl: detail.avatarUrl,
+      sleepScore: detail.sleepScore,
+      instructorName: detail.instructorName,
+      nextFollowUpDate: detail.nextFollowUpDate,
+      homeworks: [],
+      followUps: [],
+      summary: computeProgressSummary([]),
+    };
+  }
+
+  if (!detail) {
+    throw new DataAccessError(
+      "not_found",
+      "クライアントが見つかりません。一覧から再度選択してください。",
+    );
+  }
+
+  let homeworks: HomeworkItem[] = [];
+  let followUps: FollowUpRecord[] = [];
+
+  try {
+    homeworks = await listBetaHomeworks(id);
+  } catch (error) {
+    if (
+      isMissingTableError(error) ||
+      (error instanceof DataAccessError &&
+        error.message.includes("テーブル"))
+    ) {
+      console.warn("[homework-followup] homework table missing");
+    } else {
+      throw error;
+    }
+  }
+
+  try {
+    followUps = await listFollowUpRecords(id);
+  } catch (error) {
+    if (
+      isMissingTableError(error) ||
+      (error instanceof DataAccessError &&
+        error.message.includes("テーブル"))
+    ) {
+      console.warn("[homework-followup] follow_up_records table missing");
+    } else {
+      throw error;
+    }
+  }
+
+  return {
+    clientId: id,
+    name: detail.name,
+    avatarUrl: detail.avatarUrl,
+    sleepScore: detail.sleepScore,
+    instructorName: detail.instructorName,
+    nextFollowUpDate: detail.nextFollowUpDate,
+    homeworks,
+    followUps,
+    summary: computeProgressSummary(homeworks),
+  };
+}
+
+export async function saveHomeworkList(
+  clientId: string,
+  items: HomeworkItem[],
+): Promise<HomeworkItem[]> {
+  try {
+    return await syncBetaHomeworks(clientId, items);
+  } catch (error) {
+    throw new DataAccessError(
+      "save_failed",
+      userMessageFromUnknown(error),
+    );
+  }
+}
+
+export async function addFollowUpRecord(
+  clientId: string,
+  draft: NewFollowUpDraft,
+): Promise<FollowUpRecord> {
+  const scoreRaw = draft.sleepScore.trim();
+  const parsed = scoreRaw === "" ? null : Number(scoreRaw);
+  try {
+    return await createFollowUpRecord(clientId, {
+      followUpDate: draft.conductedAt,
+      method: draft.method,
+      sleepScore:
+        parsed != null && Number.isFinite(parsed)
+          ? Math.min(100, Math.max(0, Math.round(parsed)))
+          : null,
+      clientChanges: draft.clientChange,
+      instructorNotes: draft.instructorFinding,
+      nextAction: draft.nextAction,
+    });
+  } catch (error) {
+    throw new DataAccessError(
+      "save_failed",
+      userMessageFromUnknown(error),
+    );
+  }
 }
 
 export function createHomeworkId(): string {

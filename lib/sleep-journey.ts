@@ -1,6 +1,6 @@
 /**
  * Sleep Journey 画面のデータ契約。
- * 現状はダミー＋クライアント詳細の合成。将来 Supabase の journey / missions テーブルへ差し替えやすい形。
+ * Supabase の sleep_journeys と同期する。
  */
 
 import {
@@ -10,10 +10,22 @@ import {
 } from "@/lib/client-management";
 import { getClientDetail, type ClientDetail } from "@/lib/client-detail";
 import {
+  DataAccessError,
+  userMessageFromUnknown,
+} from "@/lib/data-access-errors";
+import {
   generateAiSleepAnalysisSync,
   toJourneyExcerpt,
   type AiSleepAnalysisInput,
 } from "@/lib/ai-analysis";
+import {
+  listSleepJourneysForClient,
+  saveSleepJourneyRecord,
+  type SleepJourneyRecord,
+} from "@/lib/repositories/sleep-journeys-repository";
+import { getInstructorAuth, todayInTokyo } from "@/lib/repositories/v1-beta-auth";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isMissingTableError } from "@/lib/supabase/errors";
 
 export type JourneyMilestoneId =
   | "initial"
@@ -248,9 +260,134 @@ function buildDummyForClient(
   };
 }
 
+function recordsToPageData(
+  clientId: string,
+  detail: ClientDetail,
+  records: SleepJourneyRecord[],
+): SleepJourneyPageData {
+  const engine = generateAiSleepAnalysisSync({
+    clientName: detail.name,
+    metrics: {
+      sleepScore: detail.sleepScore,
+      sleepDuration: "—",
+      sleepEfficiency: "—",
+      deepSleep: "—",
+      remSleep: "—",
+      awakenings: "—",
+      hrv: "—",
+      stress: "—",
+      restingHeartRate: "—",
+      circadianRhythm: "—",
+    },
+    lifestyle: {
+      dinner: "—",
+      alcohol: "—",
+      caffeine: "—",
+      exercise: "—",
+      bathing: "—",
+      preBedBehavior: "—",
+    },
+  });
+  const excerpt = toJourneyExcerpt(engine);
+
+  if (records.length === 0) {
+    return {
+      clientId,
+      name: detail.name,
+      avatarUrl: detail.avatarUrl,
+      sleepScore: detail.sleepScore,
+      improvementStartedAt: detail.assignedSince,
+      instructorName: detail.instructorName,
+      milestones: [],
+      trend: [],
+      missions: excerpt.missionTitles.map((title, index) => ({
+        id: `mission-ai-${index + 1}`,
+        title,
+        done: false,
+      })),
+      instructorMessage:
+        detail.notes?.trim() || excerpt.instructorMessage || DEFAULT_MESSAGE,
+      nextGoal: {
+        ...DEFAULT_NEXT_GOAL,
+        sleepScore: Math.min(100, (detail.sleepScore ?? 70) + 6),
+      },
+    };
+  }
+
+  const milestones: JourneyMilestone[] = records.map((record, index) => {
+    const isLast = index === records.length - 1;
+    return {
+      id: (["initial", "week1", "week2", "week4", "week8"] as JourneyMilestoneId[])[
+        Math.min(index, 4)
+      ]!,
+      label:
+        index === 0
+          ? "初回"
+          : index === records.length - 1
+            ? "今回"
+            : `${index}回目`,
+      recordedAt: record.recordedAt,
+      sleepScore: record.sleepScore,
+      instructorComment: record.instructorComment || excerpt.instructorComment,
+      improvementPoints: excerpt.improvementPoints,
+      achievementRate: record.achievementRate ?? 0,
+      status: isLast ? "current" : "completed",
+    };
+  });
+
+  const trend: JourneyTrendPoint[] = records.map((record, index) => ({
+    label: index === 0 ? "初回" : `${index}`,
+    sleepScore: record.sleepScore ?? 0,
+    hrv: record.hrv ?? 0,
+    stress: record.stress ?? 0,
+  }));
+
+  const latest = records[records.length - 1]!;
+  const nextGoal = {
+    sleepScore:
+      typeof latest.nextGoal.sleepScore === "number"
+        ? latest.nextGoal.sleepScore
+        : Math.min(100, (latest.sleepScore ?? 70) + 6),
+    sleepHours:
+      typeof latest.nextGoal.sleepHours === "number"
+        ? latest.nextGoal.sleepHours
+        : DEFAULT_NEXT_GOAL.sleepHours,
+    hrv:
+      typeof latest.nextGoal.hrv === "number"
+        ? latest.nextGoal.hrv
+        : DEFAULT_NEXT_GOAL.hrv,
+    stress:
+      typeof latest.nextGoal.stress === "number"
+        ? latest.nextGoal.stress
+        : DEFAULT_NEXT_GOAL.stress,
+  };
+
+  return {
+    clientId,
+    name: detail.name,
+    avatarUrl: detail.avatarUrl,
+    sleepScore: latest.sleepScore ?? detail.sleepScore,
+    improvementStartedAt: records[0]?.recordedAt ?? detail.assignedSince,
+    instructorName: detail.instructorName,
+    milestones,
+    trend,
+    missions: excerpt.missionTitles.map((title, index) => ({
+      id: `mission-ai-${index + 1}`,
+      title,
+      done: false,
+    })),
+    instructorMessage:
+      latest.instructorComment ||
+      detail.notes?.trim() ||
+      excerpt.instructorMessage ||
+      DEFAULT_MESSAGE,
+    nextGoal,
+  };
+}
+
 /**
  * Sleep Journey 画面用データを取得。
- * Supabase 未接続時・未取得時はダミーでフォールバック。
+ * Supabase 接続時は sleep_journeys から読み込む。
  */
 export async function getSleepJourney(
   clientId: string | null | undefined,
@@ -267,8 +404,72 @@ export async function getSleepJourney(
     console.error("[sleep-journey] getClientDetail failed:", error);
   }
 
-  // TODO: Supabase journey / missions / goals テーブルから取得して合成する
-  return buildDummyForClient(id, detail);
+  if (!isSupabaseConfigured()) {
+    return buildDummyForClient(id, detail);
+  }
+
+  const auth = await getInstructorAuth();
+  if (!auth) {
+    throw new DataAccessError(
+      "unauthenticated",
+      "ログインが必要です。認定講師アカウントでサインインしてください。",
+    );
+  }
+
+  if (!detail) {
+    throw new DataAccessError(
+      "not_found",
+      "クライアントが見つかりません。一覧から再度選択してください。",
+    );
+  }
+
+  try {
+    const records = await listSleepJourneysForClient(id);
+    return recordsToPageData(id, detail, records);
+  } catch (error) {
+    if (
+      isMissingTableError(error) ||
+      (error instanceof DataAccessError &&
+        error.message.includes("テーブル"))
+    ) {
+      console.warn("[sleep-journey] sleep_journeys table missing");
+      return recordsToPageData(id, detail, []);
+    }
+    throw error;
+  }
+}
+
+export async function saveTodayJourneyRecord(params: {
+  clientId: string;
+  sleepScore: number | null;
+  instructorComment: string;
+  nextGoal: JourneyNextGoal;
+  missions: JourneyMission[];
+}): Promise<void> {
+  const doneCount = params.missions.filter((m) => m.done).length;
+  const achievementRate =
+    params.missions.length === 0
+      ? 0
+      : Math.round((doneCount / params.missions.length) * 100);
+
+  try {
+    await saveSleepJourneyRecord({
+      clientId: params.clientId,
+      recordedAt: todayInTokyo(),
+      sleepScore: params.sleepScore,
+      achievementRate,
+      instructorComment: params.instructorComment,
+      nextGoal: {
+        sleepScore: params.nextGoal.sleepScore,
+        sleepHours: params.nextGoal.sleepHours,
+        hrv: params.nextGoal.hrv,
+        stress: params.nextGoal.stress,
+        missions: params.missions,
+      },
+    });
+  } catch (error) {
+    throw new DataAccessError("save_failed", userMessageFromUnknown(error));
+  }
 }
 
 export function formatJourneyDate(isoDate: string | null | undefined): string {
