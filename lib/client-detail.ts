@@ -1,14 +1,6 @@
 /**
  * クライアント詳細 — 表示用データ契約。
- * 現状はダミー。Supabase 接続時は getClientDetail 内を差し替える。
- *
- * 想定テーブル:
- * - clients / client_profiles（氏名・年齢・性別・avatar・担当開始日）
- * - instructors（担当認定講師）
- * - analyses（sleep_score・効率・時間・HRV・ストレス・体内時計）
- * - programs / journeys（初回・現在・目標スコア）
- * - activity_events（分析・レポート・Journey・宿題の履歴）
- * - instructor_notes（講師メモ）
+ * clients / analyses / programs / appointments / guidance notes / homeworks を集約する。
  */
 
 import {
@@ -16,9 +8,20 @@ import {
   GENDER_LABELS,
   clientInitials,
   formatManagementDate,
+  mapGender,
   type ClientGender,
   type ClientManagementItem,
 } from "@/lib/client-management";
+import {
+  analysisSleepScore,
+  getClientById,
+} from "@/lib/repositories/client-repository";
+import { listGuidanceNotes } from "@/lib/repositories/client-guidance-notes-repository";
+import { listClientHomeworks } from "@/lib/repositories/client-homeworks-repository";
+import { getProgramDetail } from "@/lib/repositories/program-repository";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import type { StoredAnalysis, StoredClient } from "@/lib/client-store";
 
 export type ClientDetailMetrics = {
   sleepEfficiency: number | null;
@@ -74,157 +77,139 @@ export const ACTIVITY_KIND_LABELS: Record<ClientDetailActivityKind, string> = {
   homework: "宿題送信",
 };
 
-const DEFAULT_INSTRUCTOR = "山田 先生";
+const DEFAULT_INSTRUCTOR = "認定講師";
 
-/** クライアントごとの詳細ダミー。一覧の ID と揃える。 */
-const DETAIL_OVERRIDES: Record<
-  string,
-  Partial<
-    Pick<
-      ClientDetail,
-      | "assignedSince"
-      | "instructorName"
-      | "metrics"
-      | "progress"
-      | "timeline"
-      | "notes"
-    >
-  >
-> = {
-  "client-demo-1": {
-    assignedSince: "2026-03-12",
-    metrics: {
-      sleepEfficiency: 84,
-      sleepHours: 6.8,
-      hrv: 48,
-      stress: 42,
-      circadianOffsetHours: 1.2,
-    },
-    progress: {
-      initialScore: 58,
-      currentScore: 72,
-      targetScore: 85,
-    },
-    timeline: [
-      {
-        id: "t1-1",
-        kind: "analysis",
-        at: "2026-07-18T10:30:00+09:00",
-        title: "分析実施",
-        description: "Sleep Wellness 分析を完了しました",
-      },
-      {
-        id: "t1-2",
+function parseHours(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const match = value.replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const match = value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function metricsFromAnalysis(analysis: StoredAnalysis | null): ClientDetailMetrics {
+  if (!analysis) {
+    return {
+      sleepEfficiency: null,
+      sleepHours: null,
+      hrv: null,
+      stress: null,
+      circadianOffsetHours: null,
+    };
+  }
+  const m = analysis.metrics;
+  const structured = analysis.structured;
+  return {
+    sleepEfficiency: parseNumber(m.sleepEfficiency),
+    sleepHours: parseHours(m.sleepDuration),
+    hrv: parseNumber(m.hrv),
+      stress:
+      parseNumber(structured?.stressAverage) ??
+      null,
+    circadianOffsetHours: null,
+  };
+}
+
+function progressFromAnalyses(
+  analyses: StoredAnalysis[],
+): ClientDetailProgress {
+  if (analyses.length === 0) {
+    return { initialScore: null, currentScore: null, targetScore: 80 };
+  }
+  const newest = analysisSleepScore(analyses[0]!);
+  const oldest = analysisSleepScore(analyses[analyses.length - 1]!);
+  const current = newest;
+  const initial = oldest;
+  const target =
+    current != null ? Math.min(95, Math.max(70, current + 10)) : 80;
+  return {
+    initialScore: initial,
+    currentScore: current,
+    targetScore: target,
+  };
+}
+
+function timelineFromClient(
+  client: StoredClient,
+  journeyUpdatedAt: string | null,
+  homeworkItems: Array<{ id: string; title: string; at: string }>,
+): ClientDetailActivityItem[] {
+  const items: ClientDetailActivityItem[] = [];
+
+  for (const analysis of client.analyses.slice(0, 8)) {
+    items.push({
+      id: `analysis-${analysis.id}`,
+      kind: "analysis",
+      at: analysis.createdAt || `${analysis.analysisDate}T12:00:00+09:00`,
+      title: "分析実施",
+      description: `Sleep Wellness 分析を完了しました（スコア ${
+        analysisSleepScore(analysis) ?? "—"
+      }）`,
+    });
+    for (const pdf of analysis.pdfHistory.slice(0, 2)) {
+      items.push({
+        id: `report-${pdf.id}`,
         kind: "report",
-        at: "2026-07-18T10:42:00+09:00",
+        at: pdf.createdAt,
         title: "レポート生成",
-        description: "AIレポートとPDFを作成しました",
-      },
-      {
-        id: "t1-3",
-        kind: "journey",
-        at: "2026-07-19T09:15:00+09:00",
-        title: "Journey更新",
-        description: "就寝ルーティンの進捗を更新しました",
-      },
-      {
-        id: "t1-4",
-        kind: "homework",
-        at: "2026-07-20T18:00:00+09:00",
-        title: "宿題送信",
-        description: "就寝90分前のブルーライト制限を送信しました",
-      },
-    ],
-    notes:
-      "起床後の倦怠感が改善傾向。週末の就寝時刻のばらつきが残課題。次回は体内時計のずれを重点確認。",
-  },
-  "client-demo-2": {
-    assignedSince: "2026-04-02",
-    metrics: {
-      sleepEfficiency: 71,
-      sleepHours: 5.9,
-      hrv: 36,
-      stress: 58,
-      circadianOffsetHours: 2.1,
-    },
-    progress: {
-      initialScore: 54,
-      currentScore: 61,
-      targetScore: 80,
-    },
-    timeline: [
-      {
-        id: "t2-1",
-        kind: "analysis",
-        at: "2026-07-15T14:00:00+09:00",
-        title: "分析実施",
-        description: "Sleep Wellness 分析を完了しました",
-      },
-      {
-        id: "t2-2",
-        kind: "report",
-        at: "2026-07-15T14:12:00+09:00",
-        title: "レポート生成",
-        description: "AIレポートを生成しました",
-      },
-      {
-        id: "t2-3",
-        kind: "homework",
-        at: "2026-07-16T11:30:00+09:00",
-        title: "宿題送信",
-        description: "就寝前ストレッチを送信しました",
-      },
-      {
-        id: "t2-4",
-        kind: "journey",
-        at: "2026-07-22T16:40:00+09:00",
-        title: "Journey更新",
-        description: "ストレスケア段階を更新しました",
-      },
-    ],
-    notes:
-      "仕事の残業が多く中途覚醒が続く。HRVが低めのため、休息日の設計を一緒に見直す。",
-  },
-  "client-demo-3": {
-    assignedSince: "2026-02-20",
-    metrics: {
-      sleepEfficiency: 88,
-      sleepHours: 7.2,
-      hrv: 55,
-      stress: 31,
-      circadianOffsetHours: 0.4,
-    },
-    progress: {
-      initialScore: 66,
-      currentScore: 78,
-      targetScore: 88,
-    },
-    timeline: [
-      {
-        id: "t3-1",
-        kind: "analysis",
-        at: "2026-07-20T09:20:00+09:00",
-        title: "分析実施",
-        description: "Sleep Wellness 分析を完了しました",
-      },
-      {
-        id: "t3-2",
-        kind: "report",
-        at: "2026-07-20T09:35:00+09:00",
-        title: "レポート生成",
-        description: "PDFレポートを出力しました",
-      },
-      {
-        id: "t3-3",
-        kind: "journey",
-        at: "2026-07-21T20:10:00+09:00",
-        title: "Journey更新",
-        description: "目標スコア到達に向けた計画を更新しました",
-      },
-    ],
-    notes: "全体的に安定。朝の光浴び習慣が定着。次は深い睡眠の質をさらに底上げ。",
-  },
-};
+        description: pdf.label || "PDFレポートを作成しました",
+      });
+    }
+  }
+
+  if (journeyUpdatedAt) {
+    items.push({
+      id: `journey-${client.id}`,
+      kind: "journey",
+      at: journeyUpdatedAt,
+      title: "Journey更新",
+      description: "Sleep Journey の進捗を更新しました",
+    });
+  }
+
+  for (const hw of homeworkItems) {
+    items.push({
+      id: `homework-${hw.id}`,
+      kind: "homework",
+      at: hw.at,
+      title: "宿題送信",
+      description: hw.title || "宿題を送信しました",
+    });
+  }
+
+  return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 20);
+}
+
+async function resolveInstructorName(): Promise<string> {
+  if (!isSupabaseConfigured()) return DEFAULT_INSTRUCTOR;
+  const supabase = createBrowserClient();
+  if (!supabase) return DEFAULT_INSTRUCTOR;
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return DEFAULT_INSTRUCTOR;
+  const { data } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const name =
+    data && typeof (data as { display_name?: string | null }).display_name === "string"
+      ? (data as { display_name: string }).display_name.trim()
+      : "";
+  if (!name) return DEFAULT_INSTRUCTOR;
+  return name.endsWith("先生") ? name : `${name} 先生`;
+}
 
 function defaultMetrics(score: number | null): ClientDetailMetrics {
   if (score == null) {
@@ -237,11 +222,11 @@ function defaultMetrics(score: number | null): ClientDetailMetrics {
     };
   }
   return {
-    sleepEfficiency: Math.min(95, Math.max(55, score + 8)),
-    sleepHours: Math.round((5.5 + score / 50) * 10) / 10,
-    hrv: Math.round(28 + score / 3),
-    stress: Math.max(20, Math.round(90 - score)),
-    circadianOffsetHours: Math.round((3 - score / 40) * 10) / 10,
+    sleepEfficiency: Math.min(95, Math.max(60, score + 8)),
+    sleepHours: 6.5 + (score - 70) * 0.02,
+    hrv: Math.round(35 + score * 0.2),
+    stress: Math.max(20, 90 - score),
+    circadianOffsetHours: score >= 75 ? 0.5 : 1.2,
   };
 }
 
@@ -291,36 +276,102 @@ function defaultTimeline(item: ClientManagementItem): ClientDetailActivityItem[]
 }
 
 function buildFromListItem(item: ClientManagementItem): ClientDetail {
-  const override = DETAIL_OVERRIDES[item.id];
   return {
     id: item.id,
     name: item.name,
     age: item.age,
     gender: item.gender,
     avatarUrl: item.avatarUrl,
-    assignedSince: override?.assignedSince ?? item.assignedDay,
-    instructorName: override?.instructorName ?? DEFAULT_INSTRUCTOR,
+    assignedSince: item.assignedDay,
+    instructorName: DEFAULT_INSTRUCTOR,
     sleepScore: item.sleepScore,
-    metrics: override?.metrics ?? defaultMetrics(item.sleepScore),
-    progress: override?.progress ?? defaultProgress(item.sleepScore),
-    timeline: override?.timeline ?? defaultTimeline(item),
+    metrics: defaultMetrics(item.sleepScore),
+    progress: defaultProgress(item.sleepScore),
+    timeline: defaultTimeline(item),
     notes:
-      override?.notes ??
       "指導メモはまだありません。セッション後の気づきを記録してください。",
   };
 }
 
 /**
  * クライアント詳細取得。
- * TODO(Supabase): clients を profiles / analyses / programs /
- * activity_events / instructor_notes と結合して ClientDetail を返す。
  */
 export async function getClientDetail(
   id: string,
 ): Promise<ClientDetail | null> {
-  const item = DUMMY_CLIENT_MANAGEMENT_LIST.find((client) => client.id === id);
-  if (!item) return null;
-  return buildFromListItem(item);
+  let client: StoredClient | null = null;
+  try {
+    client = await getClientById(id);
+  } catch (error) {
+    console.error("[client-detail] getClientById failed:", error);
+  }
+
+  if (!client) {
+    if (!isSupabaseConfigured()) {
+      const item = DUMMY_CLIENT_MANAGEMENT_LIST.find((row) => row.id === id);
+      if (!item) return null;
+      return buildFromListItem(item);
+    }
+    return null;
+  }
+
+  const latest = client.analyses[0] ?? null;
+  let journeyUpdatedAt: string | null = null;
+  let notes = client.memo?.trim() || "";
+
+  try {
+    const program = await getProgramDetail(client.id);
+    journeyUpdatedAt = program?.updatedAt ?? null;
+    if (!notes && program?.instructorMemo?.trim()) {
+      notes = program.instructorMemo.trim();
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const guidance = await listGuidanceNotes(client.id);
+    if (guidance.length > 0) {
+      notes = guidance
+        .slice()
+        .reverse()
+        .map((note) => note.content)
+        .join("\n\n");
+    }
+  } catch {
+    // ignore
+  }
+
+  let homeworkItems: Array<{ id: string; title: string; at: string }> = [];
+  try {
+    const homeworks = await listClientHomeworks(client.id);
+    homeworkItems = homeworks.slice(0, 8).map((hw) => ({
+      id: hw.id,
+      title: hw.title,
+      at: hw.createdAt || `${hw.assignedDate}T12:00:00+09:00`,
+    }));
+  } catch {
+    // ignore
+  }
+
+  const instructorName = await resolveInstructorName();
+
+  return {
+    id: client.id,
+    name: client.name,
+    age: typeof client.age === "number" ? client.age : null,
+    gender: mapGender(client.gender),
+    avatarUrl: null,
+    assignedSince: client.registeredAt?.slice(0, 10) ?? null,
+    instructorName,
+    sleepScore: latest ? analysisSleepScore(latest) : null,
+    metrics: metricsFromAnalysis(latest),
+    progress: progressFromAnalyses(client.analyses),
+    timeline: timelineFromClient(client, journeyUpdatedAt, homeworkItems),
+    notes:
+      notes ||
+      "指導メモはまだありません。セッション後の気づきを記録してください。",
+  };
 }
 
 export function formatDetailDate(isoDate: string | null): string {

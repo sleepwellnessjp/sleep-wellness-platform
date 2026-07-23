@@ -45,6 +45,9 @@ export function isInstructorOnlyPath(pathname: string): boolean {
     "/insights",
     "/setup",
     "/analysis",
+    "/journey",
+    "/homework",
+    "/reports",
   ];
   return prefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),

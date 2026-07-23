@@ -15,6 +15,11 @@ import type {
   MembershipStatus,
 } from "@/lib/platform/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  readClientsInstructorId,
+  clientsInstructorFilterColumn,
+  resolveClientsInstructorColumn,
+} from "@/lib/supabase/clients-instructor-column";
 import type { Json } from "@/lib/supabase/database.types";
 import type {
   ActivityLogCategory,
@@ -213,12 +218,13 @@ export async function listAdminInstructors(): Promise<AdminInstructorRow[]> {
   const lastLoginById = new Map<string, string | null>();
 
   if (instructorIds.length > 0) {
+    const instructorCol = await resolveClientsInstructorColumn(supabase);
     const [{ data: clients }, { data: analyses }, { data: profiles }] =
       await Promise.all([
         supabase
           .from("clients")
-          .select("instructor_id")
-          .in("instructor_id", instructorIds),
+          .select(clientsInstructorFilterColumn(instructorCol))
+          .in(clientsInstructorFilterColumn(instructorCol), instructorIds),
         supabase
           .from("analyses")
           .select("owner_id")
@@ -230,7 +236,8 @@ export async function listAdminInstructors(): Promise<AdminInstructorRow[]> {
       ]);
 
     for (const row of clients ?? []) {
-      const id = String((row as { instructor_id: string }).instructor_id);
+      const id = readClientsInstructorId(row as Record<string, unknown>);
+      if (!id) continue;
       clientCountByInstructor.set(
         id,
         (clientCountByInstructor.get(id) ?? 0) + 1,
@@ -277,9 +284,10 @@ export async function listAdminClients(): Promise<AdminClientRow[]> {
   const supabase = await createServerSupabaseClient();
   if (!supabase) return [];
 
+  const instructorCol = await resolveClientsInstructorColumn(supabase);
   const { data: clients } = await supabase
     .from("clients")
-    .select("id, name, instructor_id, registered_at, created_at")
+    .select(`id, name, ${instructorCol}, registered_at, created_at`)
     .order("updated_at", { ascending: false })
     .limit(500);
 
@@ -287,7 +295,9 @@ export async function listAdminClients(): Promise<AdminClientRow[]> {
 
   const instructorIds = [
     ...new Set(
-      clients.map((row) => String((row as { instructor_id: string }).instructor_id)),
+      clients
+        .map((row) => readClientsInstructorId(row as Record<string, unknown>))
+        .filter((id): id is string => Boolean(id)),
     ),
   ];
   const clientIds = clients.map((row) => String((row as { id: string }).id));
@@ -341,10 +351,11 @@ export async function listAdminClients(): Promise<AdminClientRow[]> {
     const r = row as {
       id: string;
       name: string;
-      instructor_id: string;
       registered_at: string | null;
       created_at: string;
     };
+    const instructorId =
+      readClientsInstructorId(row as Record<string, unknown>) ?? "";
     const latest = latestByClient.get(r.id);
     const start = r.registered_at ?? r.created_at;
     const continuityDays = daysBetween(start);
@@ -365,8 +376,8 @@ export async function listAdminClients(): Promise<AdminClientRow[]> {
     return {
       id: r.id,
       name: r.name,
-      instructorId: r.instructor_id,
-      instructorName: instructorName.get(r.instructor_id) ?? "—",
+      instructorId,
+      instructorName: instructorName.get(instructorId) ?? "—",
       sleepWellnessScore: latest?.score ?? null,
       lastAnalysisAt: latest?.at ?? null,
       continuityDays,

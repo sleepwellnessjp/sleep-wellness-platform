@@ -23,6 +23,7 @@ import {
 } from "@/lib/client-profiles/types";
 import { updateClientProfile } from "@/lib/repositories/client-repository";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { clientsInstructorFilterColumn, resolveClientsInstructorColumn } from "@/lib/supabase/clients-instructor-column";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Json } from "@/lib/supabase/database.types";
 import { formatSupabaseError } from "@/lib/supabase/errors";
@@ -43,10 +44,11 @@ async function syncClientsBasicsFromProfile(
       return;
     }
 
+    const instructorCol = await resolveClientsInstructorColumn(auth.supabase);
     const { error } = await auth.supabase
       .from("clients")
       .update({ name: fullName })
-      .eq("instructor_id", auth.userId)
+      .eq(clientsInstructorFilterColumn(instructorCol), auth.userId)
       .eq("id", clientId);
 
     if (error) {
@@ -135,11 +137,12 @@ export async function getClientProfile(
   }
 
   // 他講師のクライアントは閲覧不可（URL 直打ち対策）
+  const instructorCol = await resolveClientsInstructorColumn(auth.supabase);
   const { data: ownedClient, error: ownedError } = await auth.supabase
     .from("clients")
     .select("id")
     .eq("id", clientId)
-    .eq("instructor_id", auth.userId)
+    .eq(clientsInstructorFilterColumn(instructorCol), auth.userId)
     .maybeSingle();
 
   if (ownedError) {

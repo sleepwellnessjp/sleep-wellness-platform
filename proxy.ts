@@ -25,10 +25,9 @@ const PROTECTED_PREFIXES = [
   "/insights",
   "/settings",
   "/setup",
-  "/analysis/new",
-  "/analysis/confirm",
-  "/analysis/loading",
-  "/analysis/result",
+  "/analysis",
+  "/journey",
+  "/homework",
   // Version 3.0 module routes
   "/research",
   "/retreat",
@@ -54,6 +53,9 @@ function isProtectedPath(pathname: string): boolean {
   if (pathname.startsWith("/insights/")) return true;
   if (pathname.startsWith("/settings/")) return true;
   if (pathname.startsWith("/analysis/")) return true;
+  if (pathname.startsWith("/journey/")) return true;
+  if (pathname.startsWith("/homework/")) return true;
+  if (pathname.startsWith("/reports/")) return true;
   if (pathname.startsWith("/developer/")) return true;
   return false;
 }
@@ -204,11 +206,14 @@ export const config = {
     "/settings",
     "/settings/:path*",
     "/setup",
-    "/analysis/new",
-    "/analysis/confirm",
-    "/analysis/loading",
-    "/analysis/result",
-    "/analysis/result/:path*",
+    "/analysis",
+    "/analysis/:path*",
+    "/journey",
+    "/journey/:path*",
+    "/homework",
+    "/homework/:path*",
+    "/reports",
+    "/reports/:path*",
     "/api/platform/:path*",
     "/api/os/:path*",
     "/api/developer/:path*",

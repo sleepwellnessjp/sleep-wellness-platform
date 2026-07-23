@@ -480,10 +480,14 @@ export async function getPlatformMe(): Promise<PlatformMeResponse | null> {
   ];
   const clientNameById = new Map<string, string>();
   if (clientIds.length > 0) {
+    const { clientsInstructorFilterColumn, resolveClientsInstructorColumn } = await import(
+      "@/lib/supabase/clients-instructor-column"
+    );
+    const instructorCol = await resolveClientsInstructorColumn(supabase);
     const { data: clientRows, error: clientError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("instructor_id", profile.id)
+      .eq(clientsInstructorFilterColumn(instructorCol), profile.id)
       .in("id", clientIds);
 
     if (clientError) {

@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
 import {
+  BORDER,
+  CARD_SHADOW,
+  MUTED,
+  NAVY,
+  SURFACE,
+} from "@/components/ui/tokens";
+import {
   CLIENT_MANAGEMENT_PAGE_SIZE,
   GENDER_LABELS,
   clientInitials,
@@ -12,13 +19,6 @@ import {
   getClientManagementList,
   type ClientManagementItem,
 } from "@/lib/client-management";
-
-const NAVY = "#0F172A";
-const SURFACE = "#FFFFFF";
-const MUTED = "#64748B";
-const BORDER = "rgba(15, 23, 42, 0.08)";
-const CARD_SHADOW =
-  "0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px -24px rgba(15, 23, 42, 0.18)";
 
 function PlusIcon({ className }: { className?: string }) {
   return (
@@ -178,7 +178,7 @@ export default function ClientsPage() {
                 onChange={(event) => setNameQuery(event.target.value)}
                 placeholder="氏名"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#F8FAFC] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#0F172A]/08"
+                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
@@ -196,7 +196,7 @@ export default function ClientsPage() {
                 onChange={(event) => setSleepScoreQuery(event.target.value)}
                 placeholder="例: 70"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#F8FAFC] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#0F172A]/08"
+                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
@@ -213,7 +213,7 @@ export default function ClientsPage() {
                 onChange={(event) => setAssignedDayQuery(event.target.value)}
                 placeholder="例: 2026-07-25"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#F8FAFC] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#0F172A]/08"
+                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
@@ -251,11 +251,24 @@ export default function ClientsPage() {
               style={{ borderColor: BORDER }}
             >
               <p className="text-[15px] font-medium" style={{ color: NAVY }}>
-                該当するクライアントがいません
+                {totalCount === 0
+                  ? "担当クライアントはまだいません"
+                  : "該当するクライアントがいません"}
               </p>
               <p className="mt-2 text-sm" style={{ color: MUTED }}>
-                検索条件を変更するか、新規クライアントを登録してください。
+                {totalCount === 0
+                  ? "新規クライアント登録から始めましょう。"
+                  : "検索条件を変更するか、新規クライアントを登録してください。"}
               </p>
+              {totalCount === 0 ? (
+                <Link
+                  href="/clients/new"
+                  className="mt-6 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition hover:opacity-90"
+                  style={{ backgroundColor: NAVY }}
+                >
+                  新規クライアント登録
+                </Link>
+              ) : null}
             </div>
           ) : (
             <ul

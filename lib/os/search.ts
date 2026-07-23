@@ -1,3 +1,5 @@
+import { DEMO_CLIENTS } from "@/lib/demo-clients";
+
 export type OsSearchCategory =
   | "client"
   | "instructor"
@@ -23,21 +25,18 @@ export const OS_SEARCH_CATEGORY_LABELS: Record<OsSearchCategory, string> = {
   event: "イベント",
 };
 
+const DEMO_CLIENT_RESULTS: OsSearchResult[] = DEMO_CLIENTS.slice(0, 4).map(
+  (client) => ({
+    id: client.id,
+    category: "client" as const,
+    title: client.name,
+    subtitle: `担当クライアント · Score ${client.sleepScore ?? "—"}`,
+    href: `/clients/${encodeURIComponent(client.id)}`,
+  }),
+);
+
 const DEMO_INDEX: OsSearchResult[] = [
-  {
-    id: "client-tanaka",
-    category: "client",
-    title: "田中 美咲",
-    subtitle: "担当クライアント · Score 78",
-    href: "/clients",
-  },
-  {
-    id: "client-suzuki",
-    category: "client",
-    title: "鈴木 健太",
-    subtitle: "担当クライアント · Score 65",
-    href: "/clients",
-  },
+  ...DEMO_CLIENT_RESULTS,
   {
     id: "instructor-yamada",
     category: "instructor",

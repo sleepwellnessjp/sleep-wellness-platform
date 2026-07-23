@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
+import InstructorNav from "@/components/InstructorNav";
 import VisionStory from "@/components/VisionStory";
+import { SURFACE } from "@/components/ui/tokens";
 
 export const metadata: Metadata = {
   title: "Vision | Sleep Wellness Institute Japan",
@@ -11,7 +13,8 @@ export const metadata: Metadata = {
 
 export default function VisionPage() {
   return (
-    <main className="min-h-screen bg-white text-[#0F172A]">
+    <main className="min-h-screen" style={{ backgroundColor: SURFACE, color: "#071426" }}>
+      <InstructorNav eyebrow="VISION" />
       <VisionStory />
       <Contact />
       <Footer />

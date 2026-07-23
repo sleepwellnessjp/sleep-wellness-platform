@@ -27,6 +27,12 @@ import {
   parseStructuredFromStorage,
 } from "@/lib/soxai-structured-metrics";
 import { createBrowserClient } from "@/lib/supabase/client";
+import {
+  clientsInstructorFilterColumn,
+  clientsInstructorPayload,
+  resolveClientsInstructorColumn,
+  type ClientsInstructorColumn,
+} from "@/lib/supabase/clients-instructor-column";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 
@@ -58,7 +64,10 @@ type SupabaseAuth = {
  */
 type DbClientRow = {
   id: string;
-  instructor_id: string;
+  /** 正規カラム。migration 未適用時は欠ける */
+  instructor_id?: string;
+  /** 旧カラム。instructor_id へリネーム後は欠ける */
+  owner_id?: string;
   name: string;
   name_kana: string | null;
   birth_date?: string | null;
@@ -71,6 +80,12 @@ type DbClientRow = {
   created_at: string;
   updated_at?: string;
 };
+
+async function resolveInstructorColumn(
+  auth: SupabaseAuth,
+): Promise<ClientsInstructorColumn> {
+  return resolveClientsInstructorColumn(auth.supabase);
+}
 
 type ProfileBasicsOverlay = {
   age?: number;
@@ -589,10 +604,11 @@ export async function listAnalysisHistory(
   if (rows.length === 0) return [];
 
   const clientIds = [...new Set(rows.map((row) => row.client_id))];
+  const instructorCol = await resolveInstructorColumn(auth);
   const { data: clientRows, error: clientError } = await supabase
     .from("clients")
     .select("id, name")
-    .eq("instructor_id", userId)
+    .eq(clientsInstructorFilterColumn(instructorCol), userId)
     .in("id", clientIds);
 
   if (clientError) {
@@ -638,11 +654,12 @@ export async function listAnalysisHistory(
 
 async function fetchClientsFromSupabase(auth: SupabaseAuth): Promise<StoredClient[]> {
   const { supabase, userId } = auth;
+  const instructorCol = await resolveInstructorColumn(auth);
 
   const { data: clientRows, error: clientError } = await supabase
     .from("clients")
     .select("*")
-    .eq("instructor_id", userId)
+    .eq(clientsInstructorFilterColumn(instructorCol), userId)
     .order("updated_at", { ascending: false });
 
   if (clientError) {
@@ -737,12 +754,13 @@ export async function getClientById(id: string): Promise<StoredClient | null> {
   if (!auth) return getLocalClientById(id);
 
   const { supabase, userId } = auth;
+  const instructorCol = await resolveInstructorColumn(auth);
 
-  // instructor_id 一致 + RLS で他講師のクライアントは取得できない
+  // 担当講師一致 + RLS で他講師のクライアントは取得できない
   const { data: clientRow, error: clientError } = await supabase
     .from("clients")
     .select("*")
-    .eq("instructor_id", userId)
+    .eq(clientsInstructorFilterColumn(instructorCol), userId)
     .eq("id", id)
     .maybeSingle();
 
@@ -814,10 +832,11 @@ export async function getAnalysisById(
   if (!analysisRow) return null;
 
   const row = analysisRow as DbAnalysisRow;
+  const instructorCol = await resolveInstructorColumn(auth);
   const { data: clientRow, error: clientError } = await supabase
     .from("clients")
     .select("*")
-    .eq("instructor_id", userId)
+    .eq(clientsInstructorFilterColumn(instructorCol), userId)
     .eq("id", row.client_id)
     .maybeSingle();
 
@@ -894,6 +913,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
   }
 
   const { supabase, userId } = auth;
+  const instructorCol = await resolveInstructorColumn(auth);
   const nameKana = input.nameKana?.trim() || null;
   const memo = input.memo?.trim() || null;
 
@@ -926,7 +946,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
     const { data: existingRows, error: existingError } = await supabase
       .from("clients")
       .select("*")
-      .eq("instructor_id", userId)
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
       .ilike("name", name);
 
     if (existingError) {
@@ -949,12 +969,12 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       const withTags = await supabase
         .from("clients")
         .insert({
-          instructor_id: userId,
+          ...clientsInstructorPayload(instructorCol, userId),
           name,
           name_kana: nameKana,
           memo,
           tags,
-        })
+        } as never)
         .select("*")
         .single();
 
@@ -966,11 +986,11 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
         const withoutTags = await supabase
           .from("clients")
           .insert({
-            instructor_id: userId,
+            ...clientsInstructorPayload(instructorCol, userId),
             name,
             name_kana: nameKana,
             memo,
-          })
+          } as never)
           .select("*")
           .single();
         data = (withoutTags.data as DbClientRow | null) ?? null;
@@ -992,7 +1012,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
         await supabase
           .from("clients")
           .delete()
-          .eq("instructor_id", userId)
+          .eq(clientsInstructorFilterColumn(instructorCol), userId)
           .eq("id", row.id);
         throw profileError;
       }
@@ -1013,7 +1033,7 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
       const { data: patched, error: tagsError } = await supabase
         .from("clients")
         .update({ tags })
-        .eq("instructor_id", userId)
+        .eq(clientsInstructorFilterColumn(instructorCol), userId)
         .eq("id", row.id)
         .select("*")
         .maybeSingle();
@@ -1058,6 +1078,7 @@ export async function updateClientProfile(
   if (!auth) return updateLocalClientProfile(clientId, input);
 
   const { supabase, userId } = auth;
+  const instructorCol = await resolveInstructorColumn(auth);
 
   // clients には最小情報のみ。詳細は client_profiles。
   const patch = clientsCorePatchFromInput(input);
@@ -1067,7 +1088,7 @@ export async function updateClientProfile(
     const { data: updated, error } = await supabase
       .from("clients")
       .update(patch)
-      .eq("instructor_id", userId)
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
       .eq("id", clientId)
       .select("*")
       .maybeSingle();
@@ -1082,7 +1103,7 @@ export async function updateClientProfile(
     const { data: existing, error } = await supabase
       .from("clients")
       .select("*")
-      .eq("instructor_id", userId)
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
       .eq("id", clientId)
       .maybeSingle();
     if (error || !existing) return null;
@@ -1182,13 +1203,14 @@ export async function saveAnalysisToRepository(
       : null;
 
   let clientId: string | null = null;
+  const instructorCol = await resolveInstructorColumn(auth);
 
   const preferredClientId = result.clientId?.trim();
   if (preferredClientId) {
     const { data: ownedClient, error: ownedLookupError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("instructor_id", userId)
+      .eq(clientsInstructorFilterColumn(instructorCol), userId)
       .eq("id", preferredClientId)
       .maybeSingle();
 
@@ -1205,7 +1227,7 @@ export async function saveAnalysisToRepository(
     const { data: existingRows, error: existingLookupError } = await supabase
       .from("clients")
       .select("id, name")
-      .eq("instructor_id", userId);
+      .eq(clientsInstructorFilterColumn(instructorCol), userId);
 
     if (existingLookupError) {
       throw formatSupabaseError(existingLookupError, "saveAnalysis:selectClients");
@@ -1226,9 +1248,9 @@ export async function saveAnalysisToRepository(
       const { data: newClient, error: clientError } = await supabase
         .from("clients")
         .insert({
-          instructor_id: userId,
+          ...clientsInstructorPayload(instructorCol, userId),
           name,
-        })
+        } as never)
         .select("id")
         .single();
 
@@ -1243,7 +1265,7 @@ export async function saveAnalysisToRepository(
         await supabase
           .from("clients")
           .delete()
-          .eq("instructor_id", userId)
+          .eq(clientsInstructorFilterColumn(instructorCol), userId)
           .eq("id", clientId);
         throw profileError;
       }

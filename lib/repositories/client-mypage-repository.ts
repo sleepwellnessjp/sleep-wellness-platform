@@ -17,6 +17,7 @@ import {
   type StoredClient,
 } from "@/lib/client-store";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { readClientsInstructorId } from "@/lib/supabase/clients-instructor-column";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 import {
@@ -38,7 +39,8 @@ export type ClientMypageData = {
 
 type DbClientRow = {
   id: string;
-  instructor_id: string;
+  instructor_id?: string;
+  owner_id?: string;
   name: string;
   name_kana: string | null;
   birth_date?: string | null;
@@ -280,7 +282,9 @@ export async function getMyClientMypage(): Promise<ClientMypageData | null> {
   const client = mapDbClient(clientRow, analyses);
 
   let instructor: ClientInstructorInfo | null = null;
-  const instructorId = clientRow.instructor_id;
+  const instructorId = readClientsInstructorId(
+    clientRow as unknown as Record<string, unknown>,
+  );
   if (instructorId) {
     let profileRow: DbProfileRow | null = null;
     const profileQuery = await supabase
