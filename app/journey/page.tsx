@@ -24,11 +24,14 @@ import {
   clientInitials,
   formatJourneyDate,
   getSleepJourney,
+  saveTodayJourneyRecord,
   type JourneyMilestone,
   type JourneyMission,
   type JourneyTrendPoint,
   type SleepJourneyPageData,
 } from "@/lib/sleep-journey";
+import { userMessageFromUnknown } from "@/lib/data-access-errors";
+import ErrorState from "@/components/ui/ErrorState";
 
 function SectionTitle({
   id,
@@ -268,12 +271,14 @@ function JourneyPageContent() {
   const [data, setData] = useState<SleepJourneyPageData | null>(null);
   const [missions, setMissions] = useState<JourneyMission[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setReady(false);
+    setLoadError(null);
 
     void (async () => {
       try {
@@ -286,6 +291,7 @@ function JourneyPageContent() {
         if (!cancelled) {
           setData(null);
           setMissions([]);
+          setLoadError(userMessageFromUnknown(error));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -309,12 +315,17 @@ function JourneyPageContent() {
     setSaving(true);
     setSavedMessage(null);
     try {
-      // TODO: Supabase に今日のミッション達成状況を保存
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await saveTodayJourneyRecord({
+        clientId: data.clientId,
+        sleepScore: data.sleepScore,
+        instructorComment: data.instructorMessage,
+        nextGoal: data.nextGoal,
+        missions,
+      });
       setSavedMessage("今日の記録を保存しました");
     } catch (error) {
       console.error("[journey] save failed:", error);
-      setSavedMessage("保存に失敗しました。もう一度お試しください。");
+      setSavedMessage(userMessageFromUnknown(error));
     } finally {
       setSaving(false);
     }
@@ -341,16 +352,15 @@ function JourneyPageContent() {
     return (
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="JOURNEY" />
-        <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-6 text-center">
-          <h1
-            className="text-2xl font-semibold tracking-[-0.04em]"
-            style={{ color: NAVY }}
-          >
-            Journeyを表示できません
-          </h1>
-          <p className="mt-3 text-[15px] leading-7" style={{ color: MUTED }}>
-            クライアント詳細から再度お試しください。
-          </p>
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6">
+          <ErrorState
+            title="Journeyを表示できません"
+            message={
+              loadError ||
+              "クライアント詳細から再度お試しください。"
+            }
+            kind="supabase"
+          />
           <Link
             href="/clients"
             className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition hover:opacity-90"

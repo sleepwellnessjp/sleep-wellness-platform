@@ -27,6 +27,7 @@
 tmp-*.json
 tmp-*.pdf
 tmp-*.mjs
+.beta-verify-result.json
 
 # debug
 npm-debug.log*

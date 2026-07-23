@@ -1,6 +1,6 @@
 /**
- * Report 一覧 — Version 1.0 Beta ダミーデータ。
- * DEMO_CLIENTS と同じクライアント ID で画面遷移する。
+ * Report 一覧 — Version 1.0 Beta。
+ * Supabase reports テーブルから読み込む。未設定時のみデモ。
  */
 
 import {
@@ -9,11 +9,23 @@ import {
   type DemoClient,
 } from "@/lib/demo-clients";
 import {
+  DataAccessError,
+  userMessageFromUnknown,
+} from "@/lib/data-access-errors";
+import {
   generateAiSleepAnalysisSync,
   toReportExcerpt,
   type AiSleepAnalysisInput,
   type ReportAiExcerpt,
 } from "@/lib/ai-analysis";
+import { createBrowserClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isMissingTableError } from "@/lib/supabase/errors";
+import {
+  listReportsForInstructor,
+  toReportListItem,
+} from "@/lib/repositories/reports-repository";
+import { getInstructorAuth } from "@/lib/repositories/v1-beta-auth";
 
 export type ReportStatus = "ready" | "draft" | "pending";
 
@@ -70,13 +82,58 @@ function reportForClient(client: DemoClient, index: number): ReportListItem | nu
   };
 }
 
-export function getReportsPageData(): ReportsPageData {
+function getDummyReportsPageData(): ReportsPageData {
   return {
     instructorDisplayName: DEMO_INSTRUCTOR_NAME,
     reports: DEMO_CLIENTS.map((client, index) =>
       reportForClient(client, index),
     ).filter((item): item is ReportListItem => item != null),
   };
+}
+
+export async function getReportsPageData(): Promise<ReportsPageData> {
+  if (!isSupabaseConfigured()) {
+    return getDummyReportsPageData();
+  }
+
+  const auth = await getInstructorAuth();
+  if (!auth) {
+    throw new DataAccessError(
+      "unauthenticated",
+      "ログインが必要です。認定講師アカウントでサインインしてください。",
+    );
+  }
+
+  let instructorDisplayName = "認定講師";
+  try {
+    const supabase = createBrowserClient();
+    if (supabase) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("id", auth.userId)
+        .maybeSingle();
+      const name = (profile as { display_name?: string | null } | null)
+        ?.display_name;
+      if (name?.trim()) instructorDisplayName = name.trim();
+    }
+  } catch {
+    // ignore profile lookup
+  }
+
+  try {
+    const records = await listReportsForInstructor();
+    return {
+      instructorDisplayName,
+      reports: records.map((record) => toReportListItem(record)),
+    };
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      console.warn("[reports-list] reports table missing");
+      return { instructorDisplayName, reports: [] };
+    }
+    throw new DataAccessError("load_failed", userMessageFromUnknown(error));
+  }
 }
 
 export function formatReportDate(isoDate: string): string {

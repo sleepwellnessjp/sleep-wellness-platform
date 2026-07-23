@@ -11,7 +11,11 @@ import {
   runPendingAnalysis,
 } from "@/lib/analysis-session";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { saveAnalysisToRepository } from "@/lib/repositories/client-repository";
+import {
+  loadLastSavedAnalysisRef,
+  saveAnalysisToRepository,
+} from "@/lib/repositories/client-repository";
+import { userMessageFromUnknown } from "@/lib/data-access-errors";
 
 const steps = [
   {
@@ -55,11 +59,16 @@ async function runAnalysisLoadingFlow(): Promise<LoadingFlowResult> {
     savedRef = await saveAnalysisToRepository(result);
   } catch (saveError) {
     console.error("Failed to save analysis:", saveError);
+    // analyses のみ成功し sleep_analyses が失敗した場合でも id を保持し二重保存を防ぐ
+    const lastRef = loadLastSavedAnalysisRef();
+    if (lastRef) {
+      result.clientId = lastRef.clientId;
+      result.analysisId = lastRef.analysisId;
+      hydrateAnalysisSession(result);
+    }
     if (isSupabaseConfigured()) {
       throw new AnalysisError(
-        saveError instanceof Error
-          ? `分析結果の保存に失敗しました。クレジットは消費していません。${saveError.message}`
-          : "分析結果の保存に失敗しました。クレジットは消費していません。",
+        `分析結果の保存に失敗しました。クレジットは消費していません。${userMessageFromUnknown(saveError)}`,
         {
           errorType: "Save Error",
           details:

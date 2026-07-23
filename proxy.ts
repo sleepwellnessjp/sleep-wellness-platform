@@ -41,6 +41,7 @@ const PROTECTED_PREFIXES = [
 ];
 
 function isProtectedPath(pathname: string): boolean {
+  if (pathname === "/setup/beta-verify") return false;
   if (PROTECTED_PREFIXES.some((prefix) => pathname === prefix)) {
     return true;
   }
@@ -52,6 +53,7 @@ function isProtectedPath(pathname: string): boolean {
   if (pathname.startsWith("/community/")) return true;
   if (pathname.startsWith("/insights/")) return true;
   if (pathname.startsWith("/settings/")) return true;
+  if (pathname.startsWith("/setup/")) return true;
   if (pathname.startsWith("/analysis/")) return true;
   if (pathname.startsWith("/journey/")) return true;
   if (pathname.startsWith("/homework/")) return true;
@@ -65,7 +67,8 @@ function needsSessionRefresh(pathname: string): boolean {
     isProtectedPath(pathname) ||
     pathname.startsWith("/api/platform") ||
     pathname.startsWith("/api/os") ||
-    pathname.startsWith("/api/developer")
+    pathname.startsWith("/api/developer") ||
+    pathname.startsWith("/api/setup")
   );
 }
 
@@ -206,6 +209,7 @@ export const config = {
     "/settings",
     "/settings/:path*",
     "/setup",
+    "/setup/:path*",
     "/analysis",
     "/analysis/:path*",
     "/journey",
@@ -217,6 +221,7 @@ export const config = {
     "/api/platform/:path*",
     "/api/os/:path*",
     "/api/developer/:path*",
+    "/api/setup/:path*",
     "/developer",
     "/developer/:path*",
   ],

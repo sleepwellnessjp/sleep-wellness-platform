@@ -97,12 +97,14 @@ async function toManagementItem(
   client: StoredClient,
 ): Promise<ClientManagementItem> {
   const latest = client.analyses[0] ?? null;
-  let nextFollowUpDate: string | null = null;
+  let nextFollowUpDate: string | null = client.nextFollowUpDate ?? null;
   let journeyProgress = 0;
 
   try {
     const next = await getNextClientAppointment(client.id);
-    nextFollowUpDate = next?.startDate ?? null;
+    if (!nextFollowUpDate) {
+      nextFollowUpDate = next?.startDate ?? null;
+    }
   } catch {
     // ignore
   }
@@ -123,13 +125,20 @@ async function toManagementItem(
     // ignore
   }
 
+  const sleepScore =
+    latest
+      ? analysisSleepScore(latest)
+      : typeof client.currentSleepScore === "number"
+        ? client.currentSleepScore
+        : null;
+
   return {
     id: client.id,
     name: client.name,
     age: typeof client.age === "number" ? client.age : null,
     gender: mapGender(client.gender),
     avatarUrl: null,
-    sleepScore: latest ? analysisSleepScore(latest) : null,
+    sleepScore,
     lastAnalysisDate: latest?.analysisDate ?? null,
     nextFollowUpDate,
     assignedDay: nextFollowUpDate,

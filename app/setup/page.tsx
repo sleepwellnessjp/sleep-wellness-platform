@@ -108,6 +108,17 @@ export default function SetupPage() {
           第一期卒業生が分析を保存・履歴確認するには、以下の SQL をこの順で実行してください。
           アプリは移行前の owner_id にも一時対応していますが、正規カラムは instructor_id です。
         </p>
+        <p className="mt-3 text-[14px] leading-6 text-slate-600">
+          Version 1.0 Beta のデータ保存・読み込み確認は{" "}
+          <Link
+            href="/setup/beta-verify"
+            className="font-medium underline underline-offset-2"
+            style={{ color: NAVY }}
+          >
+            /setup/beta-verify
+          </Link>{" "}
+          で実行できます。
+        </p>
 
         <section className="mt-8 rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)]">
           <h2 className="text-lg font-semibold" style={{ color: NAVY }}>

@@ -17,7 +17,8 @@ import {
   getClientById,
 } from "@/lib/repositories/client-repository";
 import { listGuidanceNotes } from "@/lib/repositories/client-guidance-notes-repository";
-import { listClientHomeworks } from "@/lib/repositories/client-homeworks-repository";
+import { listBetaHomeworks } from "@/lib/repositories/beta-homework-repository";
+import { listSleepJourneysForClient } from "@/lib/repositories/sleep-journeys-repository";
 import { getProgramDetail } from "@/lib/repositories/program-repository";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -64,6 +65,8 @@ export type ClientDetail = {
   assignedSince: string | null;
   instructorName: string;
   sleepScore: number | null;
+  /** ISO date YYYY-MM-DD — clients.next_follow_up_date */
+  nextFollowUpDate: string | null;
   metrics: ClientDetailMetrics;
   progress: ClientDetailProgress;
   timeline: ClientDetailActivityItem[];
@@ -285,6 +288,7 @@ function buildFromListItem(item: ClientManagementItem): ClientDetail {
     assignedSince: item.assignedDay,
     instructorName: DEFAULT_INSTRUCTOR,
     sleepScore: item.sleepScore,
+    nextFollowUpDate: item.nextFollowUpDate,
     metrics: defaultMetrics(item.sleepScore),
     progress: defaultProgress(item.sleepScore),
     timeline: defaultTimeline(item),
@@ -330,6 +334,18 @@ export async function getClientDetail(
   }
 
   try {
+    const journeys = await listSleepJourneysForClient(client.id);
+    const latestJourney = journeys[journeys.length - 1];
+    if (latestJourney?.createdAt) {
+      journeyUpdatedAt = latestJourney.createdAt;
+    } else if (latestJourney?.recordedAt) {
+      journeyUpdatedAt = `${latestJourney.recordedAt}T12:00:00+09:00`;
+    }
+  } catch {
+    // sleep_journeys 未適用環境は programs 由来の値を維持
+  }
+
+  try {
     const guidance = await listGuidanceNotes(client.id);
     if (guidance.length > 0) {
       notes = guidance
@@ -344,11 +360,11 @@ export async function getClientDetail(
 
   let homeworkItems: Array<{ id: string; title: string; at: string }> = [];
   try {
-    const homeworks = await listClientHomeworks(client.id);
+    const homeworks = await listBetaHomeworks(client.id);
     homeworkItems = homeworks.slice(0, 8).map((hw) => ({
       id: hw.id,
       title: hw.title,
-      at: hw.createdAt || `${hw.assignedDate}T12:00:00+09:00`,
+      at: `${hw.startDate}T12:00:00+09:00`,
     }));
   } catch {
     // ignore
@@ -364,7 +380,13 @@ export async function getClientDetail(
     avatarUrl: null,
     assignedSince: client.registeredAt?.slice(0, 10) ?? null,
     instructorName,
-    sleepScore: latest ? analysisSleepScore(latest) : null,
+    sleepScore:
+      typeof client.currentSleepScore === "number"
+        ? client.currentSleepScore
+        : latest
+          ? analysisSleepScore(latest)
+          : null,
+    nextFollowUpDate: client.nextFollowUpDate?.trim() || null,
     metrics: metricsFromAnalysis(latest),
     progress: progressFromAnalyses(client.analyses),
     timeline: timelineFromClient(client, journeyUpdatedAt, homeworkItems),

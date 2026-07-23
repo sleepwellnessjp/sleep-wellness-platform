@@ -61,6 +61,12 @@ export type StoredClient = {
   memo?: string;
   /** Free-form labels for filtering (local / future-ready). */
   tags?: string[];
+  /** Version 1.0 Beta: 改善開始日 */
+  startDate?: string;
+  /** Version 1.0 Beta: 次回フォロー予定 */
+  nextFollowUpDate?: string;
+  /** Version 1.0 Beta: 直近 Sleep Score */
+  currentSleepScore?: number;
   analyses: StoredAnalysis[];
 };
 

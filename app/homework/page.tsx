@@ -25,13 +25,14 @@ import {
 import {
   clientInitials,
   computeProgressSummary,
-  draftToFollowUpRecord,
   draftToHomeworkItem,
   emptyFollowUpDraft,
   emptyHomeworkDraft,
   FOLLOW_UP_METHOD_LABELS,
   formatHomeworkDate,
   getHomeworkFollowUp,
+  addFollowUpRecord,
+  saveHomeworkList,
   HOMEWORK_FREQUENCY_LABELS,
   HOMEWORK_PRIORITY_LABELS,
   HOMEWORK_STATUS_LABELS,
@@ -44,6 +45,8 @@ import {
   type NewFollowUpDraft,
   type NewHomeworkDraft,
 } from "@/lib/homework-followup";
+import { userMessageFromUnknown } from "@/lib/data-access-errors";
+import ErrorState from "@/components/ui/ErrorState";
 
 const inputClass =
   "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
@@ -197,6 +200,7 @@ function HomeworkPageContent() {
     emptyFollowUpDraft(),
   );
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [addingFollowUp, setAddingFollowUp] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -204,6 +208,7 @@ function HomeworkPageContent() {
   useEffect(() => {
     let cancelled = false;
     setReady(false);
+    setLoadError(null);
 
     void (async () => {
       try {
@@ -219,6 +224,7 @@ function HomeworkPageContent() {
           setData(null);
           setHomeworks([]);
           setFollowUps([]);
+          setLoadError(userMessageFromUnknown(error));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -265,12 +271,12 @@ function HomeworkPageContent() {
     setSaving(true);
     setStatusMessage(null);
     try {
-      // TODO: Supabase client_homeworks に一括保存
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      const saved = await saveHomeworkList(data.clientId, homeworks);
+      setHomeworks(saved);
       setStatusMessage("課題を保存しました");
     } catch (error) {
       console.error("[homework] save failed:", error);
-      setStatusMessage("保存に失敗しました。もう一度お試しください。");
+      setStatusMessage(userMessageFromUnknown(error));
     } finally {
       setSaving(false);
     }
@@ -285,15 +291,13 @@ function HomeworkPageContent() {
     setAddingFollowUp(true);
     setStatusMessage(null);
     try {
-      const record = draftToFollowUpRecord(data.clientId, followUpDraft);
-      // TODO: Supabase follow_up_records に追加
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      const record = await addFollowUpRecord(data.clientId, followUpDraft);
       setFollowUps((current) => [record, ...current]);
       setFollowUpDraft(emptyFollowUpDraft(data.sleepScore));
       setStatusMessage("フォロー記録を追加しました");
     } catch (error) {
       console.error("[homework] follow-up add failed:", error);
-      setStatusMessage("フォロー記録の追加に失敗しました。");
+      setStatusMessage(userMessageFromUnknown(error));
     } finally {
       setAddingFollowUp(false);
     }
@@ -320,16 +324,15 @@ function HomeworkPageContent() {
     return (
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="HOMEWORK" />
-        <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-6 text-center">
-          <h1
-            className="text-2xl font-semibold tracking-[-0.04em]"
-            style={{ color: NAVY }}
-          >
-            Homeworkを表示できません
-          </h1>
-          <p className="mt-3 text-[15px] leading-7" style={{ color: MUTED }}>
-            クライアント詳細から再度お試しください。
-          </p>
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6">
+          <ErrorState
+            title="Homeworkを表示できません"
+            message={
+              loadError ||
+              "クライアント詳細から再度お試しください。"
+            }
+            kind="supabase"
+          />
           <Link
             href="/clients"
             className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition hover:opacity-90"

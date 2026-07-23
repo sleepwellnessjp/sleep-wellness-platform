@@ -88,6 +88,10 @@ export type Database = {
           name_kana: string | null;
           birth_date: string | null;
           gender: string | null;
+          age: number | null;
+          start_date: string | null;
+          next_follow_up_date: string | null;
+          current_sleep_score: number | null;
           email: string | null;
           phone: string | null;
           registered_at: string | null;
@@ -104,6 +108,10 @@ export type Database = {
           name_kana?: string | null;
           birth_date?: string | null;
           gender?: string | null;
+          age?: number | null;
+          start_date?: string | null;
+          next_follow_up_date?: string | null;
+          current_sleep_score?: number | null;
           email?: string | null;
           phone?: string | null;
           registered_at?: string | null;
@@ -120,6 +128,10 @@ export type Database = {
           name_kana?: string | null;
           birth_date?: string | null;
           gender?: string | null;
+          age?: number | null;
+          start_date?: string | null;
+          next_follow_up_date?: string | null;
+          current_sleep_score?: number | null;
           email?: string | null;
           phone?: string | null;
           registered_at?: string | null;
@@ -164,6 +176,254 @@ export type Database = {
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sleep_analyses: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          analysis_date: string;
+          sleep_data: Json;
+          lifestyle_data: Json;
+          analysis_result: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          analysis_date?: string;
+          sleep_data?: Json;
+          lifestyle_data?: Json;
+          analysis_result?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          analysis_date?: string;
+          sleep_data?: Json;
+          lifestyle_data?: Json;
+          analysis_result?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sleep_analyses_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sleep_journeys: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          recorded_at: string;
+          sleep_score: number | null;
+          hrv: number | null;
+          stress: number | null;
+          achievement_rate: number | null;
+          instructor_comment: string;
+          next_goal: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          recorded_at?: string;
+          sleep_score?: number | null;
+          hrv?: number | null;
+          stress?: number | null;
+          achievement_rate?: number | null;
+          instructor_comment?: string;
+          next_goal?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          recorded_at?: string;
+          sleep_score?: number | null;
+          hrv?: number | null;
+          stress?: number | null;
+          achievement_rate?: number | null;
+          instructor_comment?: string;
+          next_goal?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sleep_journeys_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      homework: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          title: string;
+          description: string;
+          start_date: string;
+          due_date: string;
+          frequency: string;
+          priority: string;
+          status: string;
+          progress: number;
+          client_message: string;
+          instructor_comment: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          title: string;
+          description?: string;
+          start_date?: string;
+          due_date: string;
+          frequency?: string;
+          priority?: string;
+          status?: string;
+          progress?: number;
+          client_message?: string;
+          instructor_comment?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          title?: string;
+          description?: string;
+          start_date?: string;
+          due_date?: string;
+          frequency?: string;
+          priority?: string;
+          status?: string;
+          progress?: number;
+          client_message?: string;
+          instructor_comment?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "homework_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      follow_up_records: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          follow_up_date: string;
+          method: string;
+          sleep_score: number | null;
+          client_changes: string;
+          instructor_notes: string;
+          next_action: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          follow_up_date?: string;
+          method?: string;
+          sleep_score?: number | null;
+          client_changes?: string;
+          instructor_notes?: string;
+          next_action?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          follow_up_date?: string;
+          method?: string;
+          sleep_score?: number | null;
+          client_changes?: string;
+          instructor_notes?: string;
+          next_action?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_records_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      reports: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          analysis_id: string | null;
+          report_data: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          analysis_id?: string | null;
+          report_data?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          analysis_id?: string | null;
+          report_data?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reports_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reports_analysis_id_fkey";
+            columns: ["analysis_id"];
+            isOneToOne: false;
+            referencedRelation: "sleep_analyses";
             referencedColumns: ["id"];
           },
         ];
