@@ -85,8 +85,8 @@ function shuffle<T>(items: T[]): T[] {
     "map: 入眠潜時 → sleepLatency（bedtime に誤マップしない）",
   );
   assert(
-    stages.metrics.remSleep === "0:49",
-    "map: レム睡眠時間 → remSleep（sleepDuration にしない）",
+    stages.metrics.remSleep === "49分",
+    "map: レム睡眠時間 → remSleep（0:49 → 49分）",
   );
   assert(
     !stages.metrics.sleepDuration || stages.metrics.sleepDuration === "",
@@ -180,7 +180,7 @@ function shuffle<T>(items: T[]): T[] {
       merged.restingHeartRate === "64 bpm",
     "5枚実ログ: 安静時心拍数は64（最小52ではない）",
   );
-  assert(merged.remSleep === "0:49", "5枚実ログ: レム睡眠時間は remSleep に保持");
+  assert(merged.remSleep === "49分", "5枚実ログ: レム睡眠時間は remSleep に保持");
   assert(merged.sleepLatency === "12分", "5枚実ログ: 入眠潜時を保持");
 }
 
@@ -572,7 +572,7 @@ function shuffle<T>(items: T[]): T[] {
 
   // 弱ラベルでも兄弟に皮膚温があれば取得
   const weakSkin = mapVisibleReadingsToMetricsDetailed([
-    { label: "皮膚温", value: "—" },
+    { label: "皮膚温", value: "未測定" },
     { label: "平均", value: "+0.25" },
   ]);
   assert(

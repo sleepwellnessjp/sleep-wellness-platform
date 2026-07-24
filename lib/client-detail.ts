@@ -65,6 +65,8 @@ export type ClientDetail = {
   assignedSince: string | null;
   instructorName: string;
   sleepScore: number | null;
+  /** 最新分析 ID（PDF / レポート導線用） */
+  latestAnalysisId: string | null;
   /** ISO date YYYY-MM-DD — clients.next_follow_up_date */
   nextFollowUpDate: string | null;
   metrics: ClientDetailMetrics;
@@ -288,6 +290,7 @@ function buildFromListItem(item: ClientManagementItem): ClientDetail {
     assignedSince: item.assignedDay,
     instructorName: DEFAULT_INSTRUCTOR,
     sleepScore: item.sleepScore,
+    latestAnalysisId: null,
     nextFollowUpDate: item.nextFollowUpDate,
     metrics: defaultMetrics(item.sleepScore),
     progress: defaultProgress(item.sleepScore),
@@ -386,6 +389,7 @@ export async function getClientDetail(
         : latest
           ? analysisSleepScore(latest)
           : null,
+    latestAnalysisId: latest?.id ?? null,
     nextFollowUpDate: client.nextFollowUpDate?.trim() || null,
     metrics: metricsFromAnalysis(latest),
     progress: progressFromAnalyses(client.analyses),

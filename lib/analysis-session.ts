@@ -8,7 +8,6 @@ import {
 } from "@/lib/soxai-metrics";
 import {
   emptyGraphBundle,
-  graphPanelCount,
   type SoxaiGraphBundle,
 } from "@/lib/soxai-graphs";
 import {
@@ -16,6 +15,12 @@ import {
   normalizeVisibleReadings,
 } from "@/lib/soxai-reading-map";
 import type { MetricConfidenceMap } from "@/lib/soxai-merge";
+import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
+import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import {
+  detectMetricConsistencyWarnings,
+  consistencyWarningKeys,
+} from "@/lib/soxai-consistency";
 import type {
   AnalysisDayContext,
   ClientProfileSections,
@@ -127,6 +132,13 @@ export type AnalysisRequest = {
    * Medical / Visual / PDF が同じ分析結果を使うための準備
    */
   aiInput?: AnalysisAiInput;
+  /**
+   * Score-first で先行確定したスコア。AI に渡して scoreComment を整合させる。
+   * 確認済みメトリクスがある場合、画像は送らない。
+   */
+  seedScore?: number;
+  seedScoreBreakdown?: ScoreBreakdown;
+  seedCategoryScores?: WellnessCategoryScores;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -193,6 +205,59 @@ export const WELLNESS_CATEGORY_LABELS = {
 
 export type WellnessCategoryKey = keyof WellnessCategoryScores;
 
+/**
+ * Sleep Wellness Score 4軸の根拠説明（各1〜2行）。
+ * 認定講師が「なぜこの点数か」をそのまま説明できる品質。
+ */
+export type CategoryScoreRationales = {
+  body: string;
+  mind: string;
+  lifestyle: string;
+  environment: string;
+};
+
+/**
+ * メラトニンヨガ™連携提案（SWIJ独自）。
+ * 分析結果から推奨 Phase・呼吸法・入浴・朝の行動を提示する。
+ */
+export type MelatoninYogaPlan = {
+  /** 推奨 Phase（例: Phase 1 入眠導入） */
+  recommendedPhase: string;
+  /** 推奨呼吸法 */
+  breathing: string;
+  /** 推奨入浴 */
+  bathing: string;
+  /** 朝の行動 */
+  morningAction: string;
+};
+
+/**
+ * AIから講師へのカウンセリング提案（構造化）。
+ * クライアント向け行動指示ではない。認定講師がそのままカウンセリングに使える粒度。
+ */
+export type InstructorCounselingPlan = {
+  /** 今回重点的にヒアリングする内容 */
+  hearingTopics: string[];
+  /** 次回比較するデータ */
+  nextComparisonData: string[];
+  /** 生活習慣で確認すること */
+  lifestyleChecks: string[];
+  /** 改善が見込めるポイント */
+  improvementOutlook: string[];
+  /** 注意して観察するポイント */
+  observationPoints: string[];
+};
+
+/**
+ * 分析履歴がある場合の AI 比較解説。
+ */
+export type ComparisonNarrative = {
+  /** 前回分析との変化の解説 */
+  vsPrevious?: string;
+  /** 初回分析との変化の解説（2回目以降で初回と前回が異なる場合） */
+  vsFirst?: string;
+};
+
 /** 睡眠へ影響している要因ランキング（推定・断定ではない） */
 export type SleepFactorRankingItem = {
   /** 短い要因名（例: 飲酒、勤務時間、睡眠負債） */
@@ -225,23 +290,32 @@ export type NextActionGoal = {
 export type HomeworkAchievement = {
   /** 達成件数 */
   checked: number;
-  /** 目標件数（3〜5） */
+  /** 目標件数（4〜6） */
   total: number;
   /** 0〜100（整数）。total が 0 のときは 0 */
   rate: number;
 };
 
+export type AnalysisContentStatus = "pending" | "ready" | "error";
+
 export type AnalysisResult = {
+  /**
+   * Score-first 表示用。pending の間は AIカルテ・宿題・コメントを後から描画する。
+   * 未設定は従来どおり ready 扱い。
+   */
+  contentStatus?: AnalysisContentStatus;
   /** ③総合評価（短段落・100〜200文字）。必ず良かった点から書き始める */
   summary: string;
   /**
-   * Sleep Wellness Institute Japan 独自 AIカルテ（クライアントの変化・100〜200文字）。
+   * Sleep Wellness Insight（旧称 AIカルテ）。
+   * ■今回最も重要な課題 / ■判断の根拠 / ■今回もっとも改善効果が高い行動 の3見出し構成。
+   * 睡眠データ・SOXAI・生活習慣を統合した総合考察。認定講師がそのまま説明できる品質。
    * 分析履歴に時系列保存する。summary（今回評価）とは別役割。
    */
   karteSummary: string;
   /** ①今回の睡眠で良かった点（2〜4件の短文）。必須・省略禁止 */
   goodPoints: string[];
-  /** ②改善が期待できるポイント（重要度順・最大5件） */
+  /** ②改善が期待できるポイント（重要度順・最大5件。whyNow で優先理由） */
   improvements: ImprovementItem[];
   /** ④プロフィールとの関連（短段落。普段の傾向と今回データのつながり） */
   profileRelation: string;
@@ -251,17 +325,39 @@ export type AnalysisResult = {
    */
   scoreComment: string;
   /**
-   * ⑥今日のおすすめ（必ず3件・優先順位順）。
-   * 今日実践できる短文アクションのみ。
+   * 身体・心・生活・環境それぞれの点数根拠（各1〜2行）。
+   */
+  categoryScoreRationales?: CategoryScoreRationales;
+  /**
+   * ⑥今日やる3つ（必ず3件・優先順位順）。
+   * 睡眠データ／体内時計／ストレス／飲酒／運動／生活習慣から毎回異なる個人専用アクション。
    */
   todaysRecommendations: string[];
   /** ⑦次回比較ポイント（2〜4件。次回分析で見るべき観点） */
   nextComparisonPoints: string[];
   /**
-   * ⑧AI宿題（次回までの行動目標・3〜5件）。
-   * 認定講師がチェック・編集でき、達成率とともにカルテへ保存し、次回分析時に比較表示する。
+   * ⑧AI宿題（次回までの行動目標・4〜6件。優先順位付き・今日／今週／継続）。
+   * 分析結果に応じて完全自動生成。固定リスト禁止。
    */
   recommendationsUntilNext: NextActionGoal[];
+  /**
+   * ⑨AIから講師への提案（フラット配列・互換用）。
+   * instructorCounseling があればそこから正規化時に生成する。
+   */
+  instructorSuggestions: string[];
+  /**
+   * ⑨AIから講師への提案（構造化）。
+   * 重点ヒアリング / 次回比較データ / 生活習慣確認 / 改善見込み / 観察ポイント。
+   */
+  instructorCounseling?: InstructorCounselingPlan;
+  /**
+   * メラトニンヨガ™連携提案（推奨 Phase・呼吸法・入浴・朝の行動）。
+   */
+  melatoninYogaPlan?: MelatoninYogaPlan;
+  /**
+   * 前回・初回との比較解説（分析履歴がある場合）。
+   */
+  comparisonNarrative?: ComparisonNarrative;
   /**
    * AI宿題の達成率。goals のチェックから算出して保存する。
    * 未設定時は normalize 時に goals から再計算する。
@@ -327,11 +423,137 @@ export type AnalysisResult = {
 const RESULT_KEY = "swij-analysis-result";
 const IMAGES_KEY = "swij-analysis-images";
 const GRAPHS_KEY = "swij-analysis-graphs";
+const EXTRACTION_DRAFT_KEY = "swij-extraction-draft-v1";
+const PENDING_REQUEST_KEY = "swij-pending-analysis-request-v1";
 const MAX_STORED_IMAGES = 10;
+
+export type ExtractSoxaiResult = {
+  metrics: AnalysisMetrics;
+  conflicts: MetricConflict[];
+  graphs: SoxaiGraphBundle;
+  confidence: MetricConfidenceMap;
+};
+
+export type BackgroundOcrStatus = "idle" | "running" | "ready" | "error";
+
+/** 画像アップロード直後に先行実行する OCR ジョブ（入力中の待ち時間短縮用） */
+type BackgroundOcrJob = {
+  fingerprint: string;
+  promise: Promise<ExtractSoxaiResult>;
+  status: "running" | "ready" | "error";
+  error?: unknown;
+};
 
 let pendingRequest: AnalysisRequest | null = null;
 let extractionDraft: ExtractionDraft | null = null;
 let inFlightAnalysis: Promise<AnalysisResult> | null = null;
+let backgroundOcrJob: BackgroundOcrJob | null = null;
+
+/** 同一画像セットの OCR 結果キャッシュ（再解析防止） */
+const ocrResultCache = new Map<string, ExtractSoxaiResult>();
+const OCR_CACHE_STORAGE_KEY = "swij-soxai-ocr-cache-v1";
+const OCR_CACHE_MAX_ENTRIES = 8;
+
+type AnalysisSessionListener = (result: AnalysisResult) => void;
+const analysisSessionListeners = new Set<AnalysisSessionListener>();
+
+export function subscribeAnalysisSession(
+  listener: AnalysisSessionListener,
+): () => void {
+  analysisSessionListeners.add(listener);
+  return () => {
+    analysisSessionListeners.delete(listener);
+  };
+}
+
+function notifyAnalysisSessionListeners(result: AnalysisResult) {
+  for (const listener of analysisSessionListeners) {
+    try {
+      listener(result);
+    } catch (error) {
+      console.error("Analysis session listener failed:", error);
+    }
+  }
+}
+
+function readOcrCacheFromStorage(fingerprint: string): ExtractSoxaiResult | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(OCR_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<
+      string,
+      {
+        metrics?: unknown;
+        conflicts?: unknown;
+        graphs?: unknown;
+        confidence?: unknown;
+      }
+    >;
+    const entry = parsed[fingerprint];
+    if (!entry || typeof entry !== "object") return null;
+    return {
+      metrics: normalizeMetrics(entry.metrics as AnalysisMetrics),
+      conflicts: normalizeExtractConflicts(entry.conflicts),
+      graphs: normalizeGraphBundle(entry.graphs),
+      confidence: normalizeConfidenceMap(entry.confidence),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeOcrCacheToStorage(
+  fingerprint: string,
+  result: ExtractSoxaiResult,
+) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    const raw = sessionStorage.getItem(OCR_CACHE_STORAGE_KEY);
+    const parsed =
+      raw && raw.trim()
+        ? (JSON.parse(raw) as Record<string, unknown>)
+        : {};
+    parsed[fingerprint] = {
+      metrics: result.metrics,
+      conflicts: result.conflicts,
+      graphs: result.graphs,
+      confidence: result.confidence,
+    };
+    const keys = Object.keys(parsed);
+    if (keys.length > OCR_CACHE_MAX_ENTRIES) {
+      for (const key of keys.slice(0, keys.length - OCR_CACHE_MAX_ENTRIES)) {
+        delete parsed[key];
+      }
+    }
+    sessionStorage.setItem(OCR_CACHE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // quota / private mode — メモリキャッシュのみで継続
+  }
+}
+
+export function getCachedSoxaiExtraction(
+  images: string[],
+): ExtractSoxaiResult | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const fingerprint = soxaiImagesFingerprint(images);
+  const memory = ocrResultCache.get(fingerprint);
+  if (memory) return memory;
+  const stored = readOcrCacheFromStorage(fingerprint);
+  if (stored) {
+    ocrResultCache.set(fingerprint, stored);
+    return stored;
+  }
+  return null;
+}
+
+function rememberSoxaiExtraction(
+  fingerprint: string,
+  result: ExtractSoxaiResult,
+) {
+  ocrResultCache.set(fingerprint, result);
+  writeOcrCacheToStorage(fingerprint, result);
+}
 
 function asString(value: unknown): string {
   if (typeof value === "string") return value;
@@ -528,12 +750,243 @@ type LegacyAnalysisFields = {
   improvementEffectPredictions?: unknown;
   todaysRecommendations?: unknown;
   recommendationsUntilNext?: unknown;
+  instructorSuggestions?: unknown;
+  instructorCounseling?: unknown;
+  categoryScoreRationales?: unknown;
+  melatoninYogaPlan?: unknown;
+  comparisonNarrative?: unknown;
   improvements?: unknown;
   karteSummary?: unknown;
   homeworkAchievement?: unknown;
   /** 旧フィールド互換 */
   achievementRate?: unknown;
 };
+
+function normalizeCategoryScoreRationales(
+  raw: unknown,
+): CategoryScoreRationales | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const pick = (key: keyof CategoryScoreRationales): string => {
+    const value = record[key];
+    if (typeof value !== "string") return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    return trimmed.length > 200
+      ? `${trimmed.slice(0, 199).trimEnd()}…`
+      : trimmed;
+  };
+  const body = pick("body");
+  const mind = pick("mind");
+  const lifestyle = pick("lifestyle");
+  const environment = pick("environment");
+  if (!body && !mind && !lifestyle && !environment) return undefined;
+  return { body, mind, lifestyle, environment };
+}
+
+function normalizeMelatoninYogaPlan(
+  raw: unknown,
+): MelatoninYogaPlan | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const pick = (key: keyof MelatoninYogaPlan): string => {
+    const value = record[key];
+    if (typeof value !== "string") return "";
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    return trimmed.length > 80
+      ? `${trimmed.slice(0, 79).trimEnd()}…`
+      : trimmed;
+  };
+  const recommendedPhase = pick("recommendedPhase");
+  const breathing = pick("breathing");
+  const bathing = pick("bathing");
+  const morningAction = pick("morningAction");
+  if (!recommendedPhase && !breathing && !bathing && !morningAction) {
+    return undefined;
+  }
+  return { recommendedPhase, breathing, bathing, morningAction };
+}
+
+function normalizeComparisonNarrative(
+  raw: unknown,
+): ComparisonNarrative | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const vsPrevious =
+    typeof record.vsPrevious === "string" ? record.vsPrevious.trim() : "";
+  const vsFirst =
+    typeof record.vsFirst === "string" ? record.vsFirst.trim() : "";
+  if (!vsPrevious && !vsFirst) return undefined;
+  const clamp = (text: string) =>
+    text.length > 280 ? `${text.slice(0, 279).trimEnd()}…` : text;
+  return {
+    ...(vsPrevious ? { vsPrevious: clamp(vsPrevious) } : {}),
+    ...(vsFirst ? { vsFirst: clamp(vsFirst) } : {}),
+  };
+}
+
+function normalizeInstructorCounseling(
+  raw: unknown,
+): InstructorCounselingPlan | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const hearingTopics = normalizeStringList(record.hearingTopics, 3);
+  const nextComparisonData = normalizeStringList(record.nextComparisonData, 3);
+  // 新フォーマット
+  let lifestyleChecks = normalizeStringList(record.lifestyleChecks, 3);
+  let improvementOutlook = normalizeStringList(record.improvementOutlook, 3);
+  const observationPoints = normalizeStringList(record.observationPoints, 3);
+  // 旧 priorityChecks 互換 → 生活習慣確認へ吸収
+  const legacyPriority = normalizeStringList(record.priorityChecks, 3);
+  if (lifestyleChecks.length === 0 && legacyPriority.length > 0) {
+    lifestyleChecks = legacyPriority;
+  }
+  // 旧 expectedImprovements / promisingImprovements 互換
+  if (improvementOutlook.length === 0) {
+    improvementOutlook = normalizeStringList(
+      record.expectedImprovements ?? record.promisingImprovements,
+      3,
+    );
+  }
+  if (
+    hearingTopics.length === 0 &&
+    nextComparisonData.length === 0 &&
+    lifestyleChecks.length === 0 &&
+    improvementOutlook.length === 0 &&
+    observationPoints.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    hearingTopics,
+    nextComparisonData,
+    lifestyleChecks,
+    improvementOutlook,
+    observationPoints,
+  };
+}
+
+/** 構造化カウンセリング提案をフラット配列へ（旧UI・保存互換） */
+export function flattenInstructorCounseling(
+  plan: InstructorCounselingPlan | undefined,
+): string[] {
+  if (!plan) return [];
+  return [
+    ...plan.hearingTopics.map((item) => `ヒアリング：${item}`),
+    ...plan.nextComparisonData.map((item) => `次回比較：${item}`),
+    ...plan.lifestyleChecks.map((item) => `生活習慣：${item}`),
+    ...plan.improvementOutlook.map((item) => `改善見込み：${item}`),
+    ...plan.observationPoints.map((item) => `観察：${item}`),
+  ].slice(0, 15);
+}
+
+/**
+ * 主案の空カテゴリをフォールバックで補完する。
+ * AI が一部だけ返した場合でも、5カテゴリが揃うようにする。
+ */
+export function mergeInstructorCounseling(
+  primary: InstructorCounselingPlan | undefined,
+  fallback: InstructorCounselingPlan | undefined,
+): InstructorCounselingPlan | undefined {
+  if (!primary && !fallback) return undefined;
+  const pick = (a: string[] | undefined, b: string[] | undefined) =>
+    (a && a.length > 0 ? a : (b ?? [])).slice(0, 3);
+  const merged: InstructorCounselingPlan = {
+    hearingTopics: pick(primary?.hearingTopics, fallback?.hearingTopics),
+    nextComparisonData: pick(
+      primary?.nextComparisonData,
+      fallback?.nextComparisonData,
+    ),
+    lifestyleChecks: pick(primary?.lifestyleChecks, fallback?.lifestyleChecks),
+    improvementOutlook: pick(
+      primary?.improvementOutlook,
+      fallback?.improvementOutlook,
+    ),
+    observationPoints: pick(
+      primary?.observationPoints,
+      fallback?.observationPoints,
+    ),
+  };
+  if (
+    merged.hearingTopics.length === 0 &&
+    merged.nextComparisonData.length === 0 &&
+    merged.lifestyleChecks.length === 0 &&
+    merged.improvementOutlook.length === 0 &&
+    merged.observationPoints.length === 0
+  ) {
+    return undefined;
+  }
+  return merged;
+}
+
+/**
+ * フラットな講師提案から構造化へ復元（プレフィックス付き文字列向け）。
+ * プレフィックスが無い場合はヒアリングへまとめる。
+ */
+export function parseInstructorSuggestionsToCounseling(
+  items: string[],
+): InstructorCounselingPlan | undefined {
+  if (items.length === 0) return undefined;
+  const hearingTopics: string[] = [];
+  const nextComparisonData: string[] = [];
+  const lifestyleChecks: string[] = [];
+  const improvementOutlook: string[] = [];
+  const observationPoints: string[] = [];
+  const uncategorized: string[] = [];
+
+  for (const raw of items) {
+    const item = raw.trim();
+    if (!item) continue;
+    if (/^(ヒアリング|追加ヒアリング|重点ヒアリング)[：:]/.test(item)) {
+      hearingTopics.push(
+        item.replace(/^(ヒアリング|追加ヒアリング|重点ヒアリング)[：:]\s*/, ""),
+      );
+    } else if (/^(次回比較|比較)[：:]/.test(item)) {
+      nextComparisonData.push(item.replace(/^(次回比較|比較)[：:]\s*/, ""));
+    } else if (/^(生活習慣|生活確認)[：:]/.test(item)) {
+      lifestyleChecks.push(item.replace(/^(生活習慣|生活確認)[：:]\s*/, ""));
+    } else if (/^(改善見込み|改善|改善ポイント)[：:]/.test(item)) {
+      improvementOutlook.push(
+        item.replace(/^(改善見込み|改善|改善ポイント)[：:]\s*/, ""),
+      );
+    } else if (/^(観察|注意観察|観察ポイント)[：:]/.test(item)) {
+      observationPoints.push(
+        item.replace(/^(観察|注意観察|観察ポイント)[：:]\s*/, ""),
+      );
+    } else if (/^(確認|優先確認)[：:]/.test(item)) {
+      // 旧プレフィックス互換
+      lifestyleChecks.push(item.replace(/^(確認|優先確認)[：:]\s*/, ""));
+    } else {
+      uncategorized.push(item);
+    }
+  }
+
+  for (const item of uncategorized) {
+    if (hearingTopics.length < 3) hearingTopics.push(item);
+    else if (lifestyleChecks.length < 3) lifestyleChecks.push(item);
+    else if (improvementOutlook.length < 3) improvementOutlook.push(item);
+    else if (nextComparisonData.length < 3) nextComparisonData.push(item);
+    else if (observationPoints.length < 3) observationPoints.push(item);
+  }
+
+  if (
+    hearingTopics.length === 0 &&
+    nextComparisonData.length === 0 &&
+    lifestyleChecks.length === 0 &&
+    improvementOutlook.length === 0 &&
+    observationPoints.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    hearingTopics: hearingTopics.slice(0, 3),
+    nextComparisonData: nextComparisonData.slice(0, 3),
+    lifestyleChecks: lifestyleChecks.slice(0, 3),
+    improvementOutlook: improvementOutlook.slice(0, 3),
+    observationPoints: observationPoints.slice(0, 3),
+  };
+}
 
 function createNextActionGoalId(): string {
   try {
@@ -551,7 +1004,7 @@ function trimActionGoalText(text: string): string {
   return `${cleaned.slice(0, 59).trimEnd()}…`;
 }
 
-/** 次回までのおすすめ（3〜5件）を正規化。string[] / オブジェクト両対応 */
+/** 次回までのおすすめ（4〜6件）を正規化。string[] / オブジェクト両対応 */
 export function normalizeRecommendationsUntilNext(
   raw: unknown,
 ): NextActionGoal[] {
@@ -584,7 +1037,7 @@ export function normalizeRecommendationsUntilNext(
         checked: record.checked === true,
       });
     }
-    if (items.length >= 5) break;
+    if (items.length >= 6) break;
   }
   return items;
 }
@@ -641,26 +1094,32 @@ function normalizeHomeworkAchievement(
 }
 
 /** 総合評価を 100〜200 文字に整える（短すぎる場合はそのまま） */
-function normalizeSummaryLength(text: string): string {
+function normalizeSummaryLength(text: string, max = 200): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
-  if (trimmed.length <= 200) return trimmed;
+  if (trimmed.length <= max) return trimmed;
   // 文末付近で切る
-  const slice = trimmed.slice(0, 200);
+  const slice = trimmed.slice(0, max);
   const lastPunct = Math.max(
     slice.lastIndexOf("。"),
     slice.lastIndexOf("！"),
     slice.lastIndexOf("？"),
     slice.lastIndexOf("."),
   );
-  if (lastPunct >= 100) return slice.slice(0, lastPunct + 1);
+  if (lastPunct >= Math.min(100, Math.floor(max * 0.5))) {
+    return slice.slice(0, lastPunct + 1);
+  }
   return `${slice.trimEnd()}…`;
 }
 
 export function normalizeAnalysisResult(
-  raw: Omit<AnalysisResult, "categoryScores" | "goodPoints"> & {
+  raw: Omit<
+    AnalysisResult,
+    "categoryScores" | "goodPoints" | "instructorSuggestions"
+  > & {
     categoryScores?: Partial<WellnessCategoryScores>;
     goodPoints?: string[];
+    instructorSuggestions?: string[];
   } & LegacyAnalysisFields,
   extras?: {
     clientId?: string;
@@ -804,13 +1263,13 @@ export function normalizeAnalysisResult(
           .trim(),
       )
       .map((item) =>
-        item.length > 48 ? `${item.slice(0, 47).trimEnd()}…` : item,
+        item.length > 56 ? `${item.slice(0, 55).trimEnd()}…` : item,
       )
       .filter(Boolean);
     if (list.length >= 3) return list.slice(0, 3);
     const fromImprovements = improvementTextList
       .map((item) =>
-        item.length > 48 ? `${item.slice(0, 47).trimEnd()}…` : item,
+        item.length > 56 ? `${item.slice(0, 55).trimEnd()}…` : item,
       )
       .filter(Boolean);
     return [...list, ...fromImprovements].slice(0, 3);
@@ -820,10 +1279,51 @@ export function normalizeAnalysisResult(
     const list = normalizeRecommendationsUntilNext(
       raw.recommendationsUntilNext,
     );
-    if (list.length >= 3) return list.slice(0, 5);
-    // 旧結果互換: 空のまま（今日のおすすめとは役割が異なるため補完しない）
-    return list;
+    if (list.length >= 4) return list.slice(0, 6);
+    // 旧結果互換: 3件でも保持（今日やる3つとは役割が異なるため補完しない）
+    return list.slice(0, 6);
   })();
+
+  const instructorCounseling = (() => {
+    const structured = normalizeInstructorCounseling(
+      (raw as LegacyAnalysisFields).instructorCounseling,
+    );
+    const flat = normalizeStringList(raw.instructorSuggestions, 9)
+      .map((item) =>
+        item
+          .replace(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[\.．、:：\s]*/, "")
+          .trim(),
+      )
+      .filter(Boolean);
+    const fromFlat = parseInstructorSuggestionsToCounseling(flat);
+    return mergeInstructorCounseling(structured, fromFlat);
+  })();
+
+  const instructorSuggestions = (() => {
+    const fromPlan = flattenInstructorCounseling(instructorCounseling);
+    if (fromPlan.length > 0) return fromPlan.slice(0, 9);
+    return normalizeStringList(raw.instructorSuggestions, 5)
+      .map((item) =>
+        item
+          .replace(/^[①②③④⑤⑥⑦⑧⑨⑩\d]+[\.．、:：\s]*/, "")
+          .trim(),
+      )
+      .map((item) =>
+        item.length > 56 ? `${item.slice(0, 55).trimEnd()}…` : item,
+      )
+      .filter(Boolean)
+      .slice(0, 5);
+  })();
+
+  const categoryScoreRationales = normalizeCategoryScoreRationales(
+    (raw as LegacyAnalysisFields).categoryScoreRationales,
+  );
+  const melatoninYogaPlan = normalizeMelatoninYogaPlan(
+    (raw as LegacyAnalysisFields).melatoninYogaPlan,
+  );
+  const comparisonNarrative = normalizeComparisonNarrative(
+    (raw as LegacyAnalysisFields).comparisonNarrative,
+  );
 
   const homeworkAchievement = normalizeHomeworkAchievement(
     raw.homeworkAchievement ?? raw.achievementRate,
@@ -836,20 +1336,35 @@ export function normalizeAnalysisResult(
 
   const karteSummary = normalizeSummaryLength(
     typeof raw.karteSummary === "string" ? raw.karteSummary : "",
+    560,
   );
 
   const scoreBreakdown = normalizeScoreBreakdown(raw.scoreBreakdown, score);
 
+  const contentStatus: AnalysisContentStatus | undefined = (() => {
+    const rawStatus = (raw as { contentStatus?: unknown }).contentStatus;
+    if (rawStatus === "pending" || rawStatus === "ready" || rawStatus === "error") {
+      return rawStatus;
+    }
+    return undefined;
+  })();
+
   return {
+    contentStatus,
     summary,
     karteSummary,
     goodPoints,
     improvements,
     profileRelation,
     scoreComment,
+    categoryScoreRationales,
     todaysRecommendations,
     nextComparisonPoints,
     recommendationsUntilNext,
+    instructorSuggestions,
+    instructorCounseling,
+    melatoninYogaPlan,
+    comparisonNarrative,
     homeworkAchievement,
     score,
     scoreBreakdown,
@@ -937,6 +1452,116 @@ function storeGraphs(graphs: SoxaiGraphBundle) {
   }
 }
 
+function persistExtractionDraft(draft: ExtractionDraft | null) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    if (!draft) {
+      sessionStorage.removeItem(EXTRACTION_DRAFT_KEY);
+      return;
+    }
+    // 画像は IMAGES_KEY に分離保存（容量対策）
+    const rest = { ...draft, images: undefined };
+    delete (rest as { images?: string[] }).images;
+    sessionStorage.setItem(EXTRACTION_DRAFT_KEY, JSON.stringify(rest));
+    storeImages(draft.images);
+  } catch {
+    try {
+      sessionStorage.removeItem(EXTRACTION_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function readExtractionDraftFromStorage(): ExtractionDraft | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(EXTRACTION_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Omit<ExtractionDraft, "images"> & {
+      images?: string[];
+    };
+    const images =
+      Array.isArray(parsed.images) && parsed.images.length > 0
+        ? parsed.images.filter(
+            (item): item is string =>
+              typeof item === "string" && item.startsWith("data:image/"),
+          )
+        : loadAnalysisImages();
+    const extractedMetrics = normalizeMetrics(parsed.extractedMetrics);
+    return {
+      lifestyle: parsed.lifestyle,
+      images,
+      extractedMetrics,
+      imageKeys:
+        Array.isArray(parsed.imageKeys) && parsed.imageKeys.length > 0
+          ? parsed.imageKeys
+          : collectedMetricKeys(extractedMetrics),
+      conflicts: parsed.conflicts ? [...parsed.conflicts] : [],
+      ocrConfidence: parsed.ocrConfidence
+        ? { ...parsed.ocrConfidence }
+        : undefined,
+      graphs: normalizeGraphBundle(parsed.graphs),
+      fixedProfile: parsed.fixedProfile,
+      dayContext: parsed.dayContext,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistPendingRequest(request: AnalysisRequest | null) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    if (!request) {
+      sessionStorage.removeItem(PENDING_REQUEST_KEY);
+      return;
+    }
+    const rest = { ...request, images: undefined };
+    delete (rest as { images?: string[] }).images;
+    sessionStorage.setItem(PENDING_REQUEST_KEY, JSON.stringify(rest));
+    if (request.images?.length) {
+      storeImages(request.images);
+    }
+  } catch {
+    try {
+      sessionStorage.removeItem(PENDING_REQUEST_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function readPendingRequestFromStorage(): AnalysisRequest | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(PENDING_REQUEST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AnalysisRequest;
+    const images =
+      Array.isArray(parsed.images) && parsed.images.length > 0
+        ? parsed.images.filter(
+            (item): item is string =>
+              typeof item === "string" && item.startsWith("data:image/"),
+          )
+        : loadAnalysisImages();
+    return {
+      ...parsed,
+      images,
+      metrics: parsed.metrics ? normalizeMetrics(parsed.metrics) : undefined,
+      extractedMetrics: parsed.extractedMetrics
+        ? normalizeMetrics(parsed.extractedMetrics)
+        : undefined,
+      graphs: normalizeGraphBundle(parsed.graphs),
+      ocrConfidence: parsed.ocrConfidence
+        ? { ...parsed.ocrConfidence }
+        : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function setExtractionDraft(draft: ExtractionDraft) {
   const extractedMetrics = normalizeMetrics(draft.extractedMetrics);
   extractionDraft = {
@@ -951,14 +1576,18 @@ export function setExtractionDraft(draft: ExtractionDraft) {
     fixedProfile: draft.fixedProfile,
     dayContext: draft.dayContext,
   };
+  persistExtractionDraft(extractionDraft);
 }
 
 export function getExtractionDraft(): ExtractionDraft | null {
+  if (extractionDraft) return extractionDraft;
+  extractionDraft = readExtractionDraftFromStorage();
   return extractionDraft;
 }
 
 export function clearExtractionDraft() {
   extractionDraft = null;
+  persistExtractionDraft(null);
 }
 
 export function setPendingAnalysisRequest(request: AnalysisRequest) {
@@ -977,8 +1606,17 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     fixedProfile: request.fixedProfile,
     dayContext: request.dayContext,
     aiInput: request.aiInput,
+    seedScore: request.seedScore,
+    seedScoreBreakdown: request.seedScoreBreakdown,
+    seedCategoryScores: request.seedCategoryScores,
   };
   inFlightAnalysis = null;
+  persistPendingRequest(pendingRequest);
+}
+
+export function clearPendingAnalysisRequest() {
+  pendingRequest = null;
+  persistPendingRequest(null);
 }
 
 export class AnalysisError extends Error {
@@ -1006,7 +1644,7 @@ export function formatExtractErrorMessage(err: unknown): string {
       type === "Config Error" ||
       err.message.includes("設定が完了していません")
     ) {
-      return "画像解析APIの設定が完了していません。.env.local に OPENAI_API_KEY を設定し、開発サーバーを再起動してください。";
+      return "画像解析APIの設定が完了していません。管理者に OPENAI_API_KEY の設定を依頼してください。";
     }
     if (type === "Fetch Error") {
       return "画像の送信に失敗しました。ネットワーク接続を確認して、もう一度お試しください。";
@@ -1039,13 +1677,6 @@ export function formatExtractErrorMessage(err: unknown): string {
   return "画像の自動解析に失敗しました。もう一度お試しください。";
 }
 
-export type ExtractSoxaiResult = {
-  metrics: AnalysisMetrics;
-  conflicts: MetricConflict[];
-  graphs: SoxaiGraphBundle;
-  confidence: MetricConfidenceMap;
-};
-
 export async function extractSoxaiMetrics(
   images: string[],
 ): Promise<AnalysisMetrics> {
@@ -1061,16 +1692,6 @@ export async function extractSoxaiMetricsDetailed(
       errorType: "Validation Error",
     });
   }
-
-  const payloadBytes = images.reduce((sum, image) => sum + image.length, 0);
-  console.info("[extract] sending images to /api/extract", {
-    count: images.length,
-    approxBytes: payloadBytes,
-    mimeHints: images.map((image) => {
-      const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/i);
-      return match?.[1] ?? "unknown";
-    }),
-  });
 
   let response: Response;
   try {
@@ -1192,22 +1813,139 @@ export async function extractSoxaiMetricsDetailed(
       : undefined,
   );
 
-  console.info("[extract] metrics received", {
-    collected: collectedMetricKeys(normalized).length,
-    keys: collectedMetricKeys(normalized),
-    visibleReadingCount: visibleReadings.length,
-    visibleLabels: visibleReadings.map((reading) => reading.label),
-    graphPanelCount: graphPanelCount(graphs),
-    conflicts: conflicts.length,
-    critical: {
-      bedtime: normalized.bedtime,
-      wakeTime: normalized.wakeTime,
-      skinTemperature: normalized.skinTemperature,
-      stress: normalized.stress,
-    },
-  });
+  // 表記ゆれ統一（API側でも行うがクライアント再マップ後にも適用）
+  const displayNormalized = normalizeMetricsForDisplay(normalized);
+  const consistencyKeys = consistencyWarningKeys(
+    detectMetricConsistencyWarnings(displayNormalized),
+  );
+  const adjustedConfidence = { ...confidence };
+  for (const key of consistencyKeys) {
+    if (adjustedConfidence[key] != null) {
+      adjustedConfidence[key] = Math.min(
+        adjustedConfidence[key]!,
+        OCR_LOW_CONFIDENCE_THRESHOLD - 0.01,
+      );
+    }
+  }
 
-  return { metrics: normalized, conflicts, graphs, confidence };
+  return {
+    metrics: displayNormalized,
+    conflicts,
+    graphs,
+    confidence: adjustedConfidence,
+  };
+}
+
+/** data URL 配列の指紋。同一画像セットの OCR 重複実行を防ぐ */
+export function soxaiImagesFingerprint(images: string[]): string {
+  return images
+    .map((image) => {
+      const head = image.slice(0, 48);
+      const tail = image.slice(-24);
+      return `${image.length}:${head}:${tail}`;
+    })
+    .join("|");
+}
+
+/**
+ * SOXAI 画像アップロード直後に OCR をバックグラウンド開始する。
+ * 同じ指紋のキャッシュ／ジョブがあれば再利用し、再解析しない。
+ */
+export function startBackgroundSoxaiExtraction(
+  images: string[],
+): Promise<ExtractSoxaiResult> {
+  if (!Array.isArray(images) || images.length === 0) {
+    return Promise.reject(
+      new AnalysisError("睡眠データ画像が不足しています。", {
+        errorType: "Validation Error",
+      }),
+    );
+  }
+
+  const fingerprint = soxaiImagesFingerprint(images);
+
+  const cached = getCachedSoxaiExtraction(images);
+  if (cached) {
+    backgroundOcrJob = {
+      fingerprint,
+      promise: Promise.resolve(cached),
+      status: "ready",
+    };
+    return Promise.resolve(cached);
+  }
+
+  if (
+    backgroundOcrJob &&
+    backgroundOcrJob.fingerprint === fingerprint &&
+    backgroundOcrJob.status !== "error"
+  ) {
+    return backgroundOcrJob.promise;
+  }
+
+  const promise = extractSoxaiMetricsDetailed(images)
+    .then((result) => {
+      rememberSoxaiExtraction(fingerprint, result);
+      if (backgroundOcrJob?.fingerprint === fingerprint) {
+        backgroundOcrJob.status = "ready";
+      }
+      return result;
+    })
+    .catch((error) => {
+      if (backgroundOcrJob?.fingerprint === fingerprint) {
+        backgroundOcrJob.status = "error";
+        backgroundOcrJob.error = error;
+      }
+      throw error;
+    });
+
+  backgroundOcrJob = {
+    fingerprint,
+    promise,
+    status: "running",
+  };
+
+  return promise;
+}
+
+/** 現在のバックグラウンド OCR 状態（UI 表示用） */
+export function getBackgroundSoxaiExtractionStatus(
+  images?: string[],
+): BackgroundOcrStatus {
+  if (!backgroundOcrJob) return "idle";
+  if (
+    images &&
+    soxaiImagesFingerprint(images) !== backgroundOcrJob.fingerprint
+  ) {
+    return "idle";
+  }
+  if (backgroundOcrJob.status === "ready") return "ready";
+  if (backgroundOcrJob.status === "error") return "error";
+  return "running";
+}
+
+/**
+ * 提出時に OCR 結果を取得する。
+ * キャッシュ／バックグラウンド完了済みなら即座に返し、未開始なら新規開始する。
+ */
+export async function resolveSoxaiExtraction(
+  images: string[],
+): Promise<ExtractSoxaiResult> {
+  const cached = getCachedSoxaiExtraction(images);
+  if (cached) return cached;
+
+  const fingerprint = soxaiImagesFingerprint(images);
+  if (
+    backgroundOcrJob &&
+    backgroundOcrJob.fingerprint === fingerprint &&
+    backgroundOcrJob.status !== "error"
+  ) {
+    return backgroundOcrJob.promise;
+  }
+  return startBackgroundSoxaiExtraction(images);
+}
+
+export function clearBackgroundSoxaiExtraction() {
+  backgroundOcrJob = null;
 }
 
 function normalizeConfidenceMap(raw: unknown): MetricConfidenceMap {
@@ -1315,12 +2053,28 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
   }
 
   inFlightAnalysis = (async () => {
+    // 確認済みメトリクスがある場合は画像を送らず OCR 再実行を完全回避
+    const analyzePayload = {
+      lifestyle: payload.lifestyle,
+      images: payload.metrics ? [] : payload.images,
+      metrics: payload.metrics,
+      extractedMetrics: payload.extractedMetrics,
+      graphs: payload.graphs,
+      ocrConfidence: payload.ocrConfidence,
+      fixedProfile: payload.fixedProfile,
+      dayContext: payload.dayContext,
+      aiInput: payload.aiInput,
+      seedScore: payload.seedScore,
+      seedScoreBreakdown: payload.seedScoreBreakdown,
+      seedCategoryScores: payload.seedCategoryScores,
+    };
+
     let response: Response;
     try {
       response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(analyzePayload),
       });
     } catch (fetchError) {
       console.error("Analysis fetch failed:", fetchError);
@@ -1431,11 +2185,51 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       extractionDraft?.ocrConfidence ??
       undefined;
 
-    pendingRequest = null;
+    // Score-first の seed があれば AI のスコア上書きを抑止し、説明文の点数も整合
+    if (
+      typeof payload.seedScore === "number" &&
+      Number.isFinite(payload.seedScore)
+    ) {
+      result.score = Math.max(0, Math.min(100, Math.round(payload.seedScore)));
+    }
+    if (payload.seedScoreBreakdown) {
+      result.scoreBreakdown = normalizeScoreBreakdown(
+        payload.seedScoreBreakdown,
+        result.score,
+      );
+    }
+    if (payload.seedCategoryScores) {
+      result.categoryScores = normalizeCategoryScores(
+        payload.seedCategoryScores,
+        result.score,
+        result.scoreBreakdown,
+      );
+    }
+    if (
+      typeof payload.seedScore === "number" ||
+      payload.seedCategoryScores
+    ) {
+      const { alignScoreNarrativesToLocked } = await import(
+        "@/lib/analysis-fast-path"
+      );
+      const aligned = alignScoreNarrativesToLocked({
+        scoreComment: result.scoreComment,
+        categoryScoreRationales: result.categoryScoreRationales,
+        lockedScore: result.score,
+        lockedCategories: result.categoryScores,
+      });
+      result.scoreComment = aligned.scoreComment;
+      result.categoryScoreRationales = aligned.categoryScoreRationales;
+    }
+
+    result.contentStatus = "ready";
+
+    clearPendingAnalysisRequest();
     clearExtractionDraft();
     sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
     storeImages(payload.images);
     storeGraphs(result.graphs);
+    notifyAnalysisSessionListeners(result);
     return result;
   })();
 
@@ -1445,6 +2239,16 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
   });
 
   return inFlightAnalysis;
+}
+
+export function getPendingAnalysisRequest(): AnalysisRequest | null {
+  if (pendingRequest) return pendingRequest;
+  pendingRequest = readPendingRequestFromStorage();
+  return pendingRequest;
+}
+
+export function peekPendingAnalysisImages(): string[] {
+  return pendingRequest?.images ? [...pendingRequest.images] : [];
 }
 
 export function loadAnalysisResult(): AnalysisResult | null {
@@ -1488,15 +2292,16 @@ export function loadAnalysisImages(): string[] {
 /** 保存済み分析を結果画面で再表示できるよう sessionStorage に書き戻す */
 export function hydrateAnalysisSession(
   result: AnalysisResult,
-  options?: { images?: string[] },
+  options?: { images?: string[]; notify?: boolean },
 ): AnalysisResult {
   const normalized = normalizeAnalysisResult(result);
   sessionStorage.setItem(RESULT_KEY, JSON.stringify(normalized));
   storeGraphs(normalizeGraphBundle(normalized.graphs));
   if (options?.images && options.images.length > 0) {
     storeImages(options.images);
-  } else {
-    sessionStorage.removeItem(IMAGES_KEY);
+  }
+  if (options?.notify !== false) {
+    notifyAnalysisSessionListeners(normalized);
   }
   return normalized;
 }

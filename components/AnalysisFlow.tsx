@@ -19,7 +19,7 @@ export default function AnalysisFlow({
   return (
     <nav
       aria-label="分析の進行状況"
-      className="flex flex-wrap items-center justify-center gap-2 sm:gap-3"
+      className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-3"
     >
       {STEPS.map((step, index) => {
         const done = step.n < current;

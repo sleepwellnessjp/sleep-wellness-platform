@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import InstructorNav from "@/components/InstructorNav";
+import InstructorJourneyRoster from "@/components/journey/InstructorJourneyRoster";
 import {
   BORDER,
   CARD_SHADOW,
@@ -20,6 +21,7 @@ import {
   SURFACE_WARM,
   TEAL,
 } from "@/components/ui/tokens";
+import type { InstructorJourneyRosterItem } from "@/lib/journey";
 import {
   clientInitials,
   formatJourneyDate,
@@ -43,16 +45,16 @@ function SectionTitle({
   children: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+    <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 sm:mb-5 sm:gap-3">
       <h2
         id={id}
-        className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+        className="min-w-0 break-words text-base font-semibold tracking-[-0.03em] sm:text-xl"
         style={{ color: NAVY }}
       >
         {children}
       </h2>
       <p
-        className="text-[10px] font-semibold tracking-[0.22em]"
+        className="shrink-0 text-[10px] font-semibold tracking-[0.22em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
@@ -172,12 +174,12 @@ function ImprovementGraph({ trend }: { trend: JourneyTrendPoint[] }) {
   }
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-4">
+    <div className="min-w-0">
+      <div className="flex flex-wrap gap-3 sm:gap-4">
         {series.map((s) => (
           <div key={s.key} className="flex items-center gap-2">
             <span
-              className="h-2 w-2 rounded-full"
+              className="h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: s.color }}
               aria-hidden
             />
@@ -188,12 +190,13 @@ function ImprovementGraph({ trend }: { trend: JourneyTrendPoint[] }) {
         ))}
       </div>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-hidden">
         <svg
           viewBox={`0 0 ${w} ${h}`}
-          className="h-[200px] w-full min-w-[280px] sm:h-[240px]"
+          className="h-[180px] w-full max-w-full sm:h-[240px]"
           role="img"
           aria-label="睡眠スコア・HRV・ストレスの推移"
+          preserveAspectRatio="xMidYMid meet"
         >
           {[0, 0.25, 0.5, 0.75, 1].map((t) => {
             const y = padY + t * (h - padY * 2);
@@ -264,6 +267,84 @@ function ImprovementGraph({ trend }: { trend: JourneyTrendPoint[] }) {
   );
 }
 
+function JourneyRosterView() {
+  const [items, setItems] = useState<InstructorJourneyRosterItem[]>([]);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    void (async () => {
+      try {
+        const response = await fetch("/api/journey/roster", { cache: "no-store" });
+        const json = (await response.json()) as {
+          roster?: InstructorJourneyRosterItem[];
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(json.error ?? "取得に失敗しました");
+        }
+        if (!cancelled) setItems(json.roster ?? []);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(userMessageFromUnknown(error));
+          setItems([]);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
+      <InstructorNav eyebrow="JOURNEY" />
+      <div className="mx-auto max-w-3xl px-4 pb-16 pt-8 sm:px-10 sm:pt-12">
+        <header className="mb-8 sm:mb-10">
+          <p
+            className="text-[10px] font-semibold tracking-[0.22em]"
+            style={{ color: GOLD }}
+          >
+            SLEEP WELLNESS JOURNEY™
+          </p>
+          <h1
+            className="mt-2 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] sm:mt-3 sm:text-4xl"
+            style={{ color: NAVY }}
+          >
+            Journey 進捗一覧
+          </h1>
+          <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-600 sm:text-[15px] sm:leading-7">
+            担当クライアント全員のステージ・達成率・継続状況を確認できます。
+          </p>
+        </header>
+
+        {!ready ? (
+          <div className="space-y-3" aria-busy="true" aria-label="読み込み中">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-28 animate-pulse rounded-3xl bg-slate-100"
+              />
+            ))}
+          </div>
+        ) : loadError ? (
+          <ErrorState
+            title="Journey一覧を表示できません"
+            message={loadError}
+            kind="supabase"
+          />
+        ) : (
+          <InstructorJourneyRoster items={items} />
+        )}
+      </div>
+    </main>
+  );
+}
+
 function JourneyPageContent() {
   const searchParams = useSearchParams();
   const clientId = searchParams.get("clientId")?.trim() || "";
@@ -276,13 +357,14 @@ function JourneyPageContent() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!clientId) return;
     let cancelled = false;
     setReady(false);
     setLoadError(null);
 
     void (async () => {
       try {
-        const next = await getSleepJourney(clientId || null);
+        const next = await getSleepJourney(clientId);
         if (cancelled) return;
         setData(next);
         setMissions(next.missions);
@@ -302,6 +384,10 @@ function JourneyPageContent() {
       cancelled = true;
     };
   }, [clientId]);
+
+  if (!clientId) {
+    return <JourneyRosterView />;
+  }
 
   function toggleMission(id: string) {
     setMissions((prev) =>
@@ -336,12 +422,12 @@ function JourneyPageContent() {
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="JOURNEY" />
         <div
-          className="mx-auto max-w-3xl space-y-4 px-6 py-16 sm:px-10"
+          className="mx-auto max-w-3xl space-y-3 px-4 py-12 sm:space-y-4 sm:px-10 sm:py-16"
           aria-busy="true"
           aria-label="読み込み中"
         >
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-36 animate-pulse rounded-3xl bg-slate-100" />
+            <div key={i} className="h-32 animate-pulse rounded-3xl bg-slate-100 sm:h-36" />
           ))}
         </div>
       </main>
@@ -352,7 +438,7 @@ function JourneyPageContent() {
     return (
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="JOURNEY" />
-        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6">
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-0">
           <ErrorState
             title="Journeyを表示できません"
             message={
@@ -363,7 +449,7 @@ function JourneyPageContent() {
           />
           <Link
             href="/clients"
-            className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition hover:opacity-90"
+            className="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
             一覧へ戻る
@@ -377,41 +463,48 @@ function JourneyPageContent() {
   const completedMissions = missions.filter((m) => m.done).length;
 
   return (
-    <main className="min-h-screen" style={{ backgroundColor: SURFACE, color: NAVY }}>
+    <main className="min-h-screen overflow-x-hidden" style={{ backgroundColor: SURFACE, color: NAVY }}>
       <InstructorNav eyebrow="JOURNEY" />
 
-      <div className="mx-auto max-w-3xl px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
-        <div className="mb-8">
+      <div className="mx-auto max-w-3xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-10 sm:py-16 sm:pb-16 lg:py-20 lg:pb-20">
+        <div className="mb-6 flex flex-wrap items-center gap-3 sm:mb-8">
           <Link
             href={backHref}
-            className="text-[13px] font-medium transition hover:opacity-70"
+            className="inline-flex min-h-10 items-center text-[13px] font-medium transition active:opacity-70 sm:hover:opacity-70 sm:active:opacity-100"
             style={{ color: MUTED }}
           >
             ← Client Detail
           </Link>
+          <Link
+            href="/journey"
+            className="inline-flex min-h-10 items-center text-[13px] font-medium transition active:opacity-70 sm:hover:opacity-70 sm:active:opacity-100"
+            style={{ color: GOLD }}
+          >
+            Journey 一覧
+          </Link>
         </div>
 
-        <header className="mb-10 sm:mb-12">
+        <header className="mb-8 min-w-0 sm:mb-12">
           <p
-            className="text-[11px] font-semibold tracking-[0.28em]"
+            className="text-[10px] font-semibold tracking-[0.22em] sm:text-[11px] sm:tracking-[0.28em]"
             style={{ color: GOLD }}
           >
             SLEEP JOURNEY
           </p>
           <h1
-            className="mt-3 text-[1.85rem] font-semibold tracking-[-0.05em] sm:text-4xl"
+            className="mt-2 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] sm:mt-3 sm:text-4xl sm:leading-normal"
             style={{ color: NAVY }}
           >
             Sleep Journey
           </h1>
-          <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">
+          <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-3 sm:text-[15px] sm:leading-7">
             認定講師とクライアントが、睡眠改善の進捗を共有する画面です。
           </p>
         </header>
 
         {/* ① Client Header */}
         <section
-          className="rounded-3xl border bg-white p-6 sm:p-8"
+          className="rounded-3xl border bg-white p-4 sm:p-8"
           style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           aria-labelledby="client-header-title"
         >
@@ -419,21 +512,21 @@ function JourneyPageContent() {
             Client Header
           </SectionTitle>
 
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
             <div className="mx-auto shrink-0 sm:mx-0">
               <ProfileAvatar name={data.name} avatarUrl={data.avatarUrl} />
             </div>
 
             <div className="min-w-0 flex-1">
               <h2
-                className="text-[1.5rem] font-semibold tracking-[-0.04em] sm:text-[1.75rem]"
+                className="break-words text-center text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-left sm:text-[1.75rem]"
                 style={{ color: NAVY }}
               >
                 {data.name}
               </h2>
 
-              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div>
+              <dl className="mt-4 grid grid-cols-1 gap-3.5 sm:mt-5 sm:grid-cols-2 sm:gap-4">
+                <div className="min-w-0">
                   <dt
                     className="text-[11px] font-medium tracking-[0.1em]"
                     style={{ color: MUTED }}
@@ -441,31 +534,31 @@ function JourneyPageContent() {
                     現在の睡眠スコア
                   </dt>
                   <dd
-                    className="mt-1 text-[2rem] font-semibold tracking-[-0.05em] tabular-nums"
+                    className="mt-1 text-[1.75rem] font-semibold tracking-[-0.05em] tabular-nums sm:text-[2rem]"
                     style={{ color: NAVY }}
                   >
                     {data.sleepScore ?? "—"}
                   </dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt
                     className="text-[11px] font-medium tracking-[0.1em]"
                     style={{ color: MUTED }}
                   >
                     改善開始日
                   </dt>
-                  <dd className="mt-1 text-[15px] font-medium">
+                  <dd className="mt-1 break-words text-[15px] font-medium">
                     {formatJourneyDate(data.improvementStartedAt)}
                   </dd>
                 </div>
-                <div className="sm:col-span-2">
+                <div className="min-w-0 sm:col-span-2">
                   <dt
                     className="text-[11px] font-medium tracking-[0.1em]"
                     style={{ color: MUTED }}
                   >
                     担当講師
                   </dt>
-                  <dd className="mt-1 text-[15px] font-medium">
+                  <dd className="mt-1 break-words text-[15px] font-medium">
                     {data.instructorName}
                   </dd>
                 </div>
@@ -475,14 +568,14 @@ function JourneyPageContent() {
         </section>
 
         {/* ② Journey Timeline */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="timeline-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="timeline-title">
           <SectionTitle id="timeline-title" eyebrow="TIMELINE">
             Journey Timeline
           </SectionTitle>
 
-          <ol className="relative space-y-4">
+          <ol className="relative space-y-3 sm:space-y-4">
             {data.milestones.map((milestone, index) => (
-              <li key={milestone.id} className="relative pl-0">
+              <li key={milestone.id} className="relative min-w-0 pl-0">
                 {index < data.milestones.length - 1 ? (
                   <div
                     className="absolute left-[1.15rem] top-14 bottom-[-1rem] hidden w-px sm:block"
@@ -492,11 +585,11 @@ function JourneyPageContent() {
                 ) : null}
 
                 <article
-                  className="relative rounded-3xl border bg-white p-5 sm:p-6"
+                  className="relative rounded-3xl border bg-white p-4 sm:p-6"
                   style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2.5 sm:gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <span
                         className="hidden h-2.5 w-2.5 shrink-0 rounded-full sm:block"
                         style={{
@@ -505,7 +598,7 @@ function JourneyPageContent() {
                         }}
                         aria-hidden
                       />
-                      <div>
+                      <div className="min-w-0">
                         <p
                           className="text-[11px] font-medium tracking-[0.12em]"
                           style={{ color: MUTED }}
@@ -513,7 +606,7 @@ function JourneyPageContent() {
                           {formatJourneyDate(milestone.recordedAt)}
                         </p>
                         <h3
-                          className="mt-1 text-[1.05rem] font-semibold tracking-[-0.03em]"
+                          className="mt-1 break-words text-[1rem] font-semibold tracking-[-0.03em] sm:text-[1.05rem]"
                           style={{ color: NAVY }}
                         >
                           {milestone.label}
@@ -523,9 +616,9 @@ function JourneyPageContent() {
                     <MilestoneStatus status={milestone.status} />
                   </div>
 
-                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:grid-cols-2 sm:gap-4">
                     <div
-                      className="rounded-2xl px-4 py-3.5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
                       <p
@@ -535,33 +628,33 @@ function JourneyPageContent() {
                         睡眠スコア
                       </p>
                       <p
-                        className="mt-1 text-2xl font-semibold tracking-[-0.04em] tabular-nums"
+                        className="mt-1 text-xl font-semibold tracking-[-0.04em] tabular-nums sm:text-2xl"
                         style={{ color: NAVY }}
                       >
                         {milestone.sleepScore ?? "—"}
                       </p>
                     </div>
                     <div
-                      className="rounded-2xl px-4 py-3.5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
                       <AchievementBar rate={milestone.achievementRate} />
                     </div>
                   </div>
 
-                  <div className="mt-5">
+                  <div className="mt-4 sm:mt-5">
                     <p
                       className="text-[11px] font-medium tracking-[0.1em]"
                       style={{ color: MUTED }}
                     >
                       担当コメント
                     </p>
-                    <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+                    <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
                       {milestone.instructorComment}
                     </p>
                   </div>
 
-                  <div className="mt-5">
+                  <div className="mt-4 sm:mt-5">
                     <p
                       className="text-[11px] font-medium tracking-[0.1em]"
                       style={{ color: MUTED }}
@@ -572,7 +665,7 @@ function JourneyPageContent() {
                       {milestone.improvementPoints.map((point) => (
                         <li
                           key={point}
-                          className="rounded-full px-3 py-1.5 text-[12px] font-medium"
+                          className="max-w-full break-words rounded-full px-3 py-1.5 text-[12px] font-medium"
                           style={{
                             color: TEAL,
                             background: "rgba(49, 95, 104, 0.08)",
@@ -590,15 +683,15 @@ function JourneyPageContent() {
         </section>
 
         {/* ③ Improvement Graph */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="graph-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="graph-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="graph-title" eyebrow="TREND">
               Improvement Graph
             </SectionTitle>
-            <p className="mb-4 text-[14px] leading-6 text-slate-500">
+            <p className="mb-4 text-[13px] leading-6 text-slate-500 sm:text-[14px]">
               睡眠スコア・HRV・ストレスの推移（デモデータ）
             </p>
             <ImprovementGraph trend={data.trend} />
@@ -606,32 +699,32 @@ function JourneyPageContent() {
         </section>
 
         {/* ④ Today's Mission */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="mission-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="mission-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="mission-title" eyebrow="MISSION">
               Today&apos;s Mission
             </SectionTitle>
-            <p className="mb-5 text-[14px] text-slate-500">
+            <p className="mb-4 text-[13px] text-slate-500 sm:mb-5 sm:text-[14px]">
               今日の課題 {completedMissions}/{missions.length} 完了
             </p>
             <ul className="space-y-2.5">
               {missions.map((mission) => (
-                <li key={mission.id}>
+                <li key={mission.id} className="min-w-0">
                   <label
-                    className="flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-50"
+                    className="flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl px-3.5 py-3.5 transition active:bg-slate-100 sm:px-4 sm:py-3 sm:hover:bg-slate-50 sm:active:bg-transparent"
                     style={{ backgroundColor: SURFACE_WARM }}
                   >
                     <input
                       type="checkbox"
                       checked={mission.done}
                       onChange={() => toggleMission(mission.id)}
-                      className="h-4 w-4 shrink-0 rounded border-slate-300 accent-[#315f68]"
+                      className="h-5 w-5 shrink-0 rounded border-slate-300 accent-[#315f68] sm:h-4 sm:w-4"
                     />
                     <span
-                      className={`text-[15px] leading-6 ${
+                      className={`min-w-0 break-words text-[15px] leading-6 ${
                         mission.done
                           ? "text-slate-400 line-through"
                           : "text-slate-700"
@@ -647,25 +740,25 @@ function JourneyPageContent() {
         </section>
 
         {/* ⑤ Instructor Message */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="message-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="message-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="message-title" eyebrow="MESSAGE">
               Instructor Message
             </SectionTitle>
             <div
-              className="rounded-2xl px-5 py-5"
+              className="rounded-2xl px-4 py-4 sm:px-5 sm:py-5"
               style={{ backgroundColor: SURFACE_WARM }}
             >
               <p
-                className="text-[11px] font-medium tracking-[0.1em]"
+                className="break-words text-[11px] font-medium tracking-[0.1em]"
                 style={{ color: MUTED }}
               >
                 {data.instructorName} より
               </p>
-              <p className="mt-3 text-[15px] leading-7 text-slate-700">
+              <p className="mt-3 break-words text-[14px] leading-6 text-slate-700 sm:text-[15px] sm:leading-7">
                 {data.instructorMessage}
               </p>
             </div>
@@ -673,15 +766,15 @@ function JourneyPageContent() {
         </section>
 
         {/* ⑥ Next Goal */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="goal-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="goal-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="goal-title" eyebrow="GOAL">
               Next Goal
             </SectionTitle>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-4">
               {(
                 [
                   {
@@ -698,7 +791,7 @@ function JourneyPageContent() {
               ).map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-2xl px-4 py-4 text-center"
+                  className="min-w-0 rounded-2xl px-2.5 py-3.5 text-center sm:px-4 sm:py-4"
                   style={{ backgroundColor: SURFACE_WARM }}
                 >
                   <p
@@ -708,7 +801,7 @@ function JourneyPageContent() {
                     {item.label}
                   </p>
                   <p
-                    className="mt-2 text-xl font-semibold tracking-[-0.04em] tabular-nums sm:text-2xl"
+                    className="mt-2 break-words text-lg font-semibold tracking-[-0.04em] tabular-nums sm:text-2xl"
                     style={{ color: NAVY }}
                   >
                     {item.value}
@@ -720,7 +813,7 @@ function JourneyPageContent() {
         </section>
 
         {/* ⑦ Bottom CTA */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="cta-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="cta-title">
           <h2 id="cta-title" className="sr-only">
             保存
           </h2>
@@ -728,14 +821,14 @@ function JourneyPageContent() {
             type="button"
             onClick={() => void handleSave()}
             disabled={saving}
-            className="flex min-h-14 w-full items-center justify-center rounded-2xl px-6 py-4 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+            className="flex min-h-14 w-full items-center justify-center rounded-2xl px-6 py-4 text-[15px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY, boxShadow: CARD_SHADOW }}
           >
             {saving ? "保存中…" : "今日の記録を保存"}
           </button>
           <Link
             href={`/homework?clientId=${encodeURIComponent(data.clientId)}`}
-            className="mt-3 flex min-h-14 w-full items-center justify-center rounded-2xl border px-6 py-4 text-[15px] font-semibold transition hover:bg-slate-50"
+            className="mt-3 flex min-h-14 w-full items-center justify-center rounded-2xl border px-6 py-4 text-[15px] font-semibold transition active:bg-slate-50 sm:hover:bg-slate-50 sm:active:bg-transparent"
             style={{
               borderColor: BORDER,
               color: NAVY,
@@ -747,7 +840,7 @@ function JourneyPageContent() {
           </Link>
           {savedMessage ? (
             <p
-              className="mt-3 text-center text-[13px] font-medium"
+              className="mt-3 break-words text-center text-[13px] font-medium"
               style={{
                 color: savedMessage.includes("失敗") ? "#a33a3a" : SUCCESS,
               }}
@@ -769,14 +862,14 @@ export default function SleepJourneyPage() {
         <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
           <InstructorNav eyebrow="JOURNEY" />
           <div
-            className="mx-auto max-w-3xl space-y-4 px-6 py-16 sm:px-10"
+            className="mx-auto max-w-3xl space-y-3 px-4 py-12 sm:space-y-4 sm:px-10 sm:py-16"
             aria-busy="true"
             aria-label="読み込み中"
           >
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="h-36 animate-pulse rounded-3xl bg-slate-100"
+                className="h-32 animate-pulse rounded-3xl bg-slate-100 sm:h-36"
               />
             ))}
           </div>

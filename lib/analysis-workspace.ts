@@ -1,6 +1,6 @@
 /**
  * Sleep Analysis ワークスペース用のデータ契約。
- * UI・ダミープレビュー・将来の Supabase 永続化を同じ形で扱う。
+ * UI・確認画面・将来の Supabase 永続化を同じ形で扱う。
  */
 
 import {
@@ -11,15 +11,9 @@ import {
 import {
   aiInputFromSoxaiAndLifestyle,
   generateAiSleepAnalysisSync,
-  toAiAnalysisPreview,
   toAnalysisResultFields,
-  toRecommendationCards,
   type AiSleepAnalysisOutput,
 } from "@/lib/ai-analysis";
-import {
-  DEMO_INSTRUCTOR_NAME,
-  getDefaultDemoClient,
-} from "@/lib/demo-clients";
 import { emptyMetrics, type AnalysisMetrics } from "@/lib/soxai-metrics";
 
 /** ① Client Information */
@@ -183,36 +177,6 @@ export function emptyLifestyle(): AnalysisLifestyleInput {
   };
 }
 
-/** デモ用 SOXAI ダミー（手入力・確認の初期値） */
-export function dummySoxaiMetrics(): SoxaiWorkspaceMetrics {
-  return {
-    sleepScore: "78",
-    sleepDuration: "6時間42分",
-    sleepEfficiency: "87%",
-    deepSleep: "1時間18分",
-    remSleep: "1時間32分",
-    awakenings: "2回",
-    hrv: "48ms",
-    stress: "42",
-    restingHeartRate: "58bpm",
-    circadianRhythm: "やや遅れ",
-  };
-}
-
-export function dummyLifestyle(): AnalysisLifestyleInput {
-  return {
-    breakfast: "ご飯・味噌汁・卵",
-    lunch: "定食（魚）",
-    dinner: "やや遅め・炭水化物多め",
-    alcohol: "なし",
-    caffeine: "コーヒー1杯（15:30）",
-    exercise: "ウォーキング 35分（夕方）",
-    bathing: "湯船（21:20）",
-    preBedBehavior: "スマホ閲覧 25分",
-    notes: "起床時のだるさが続いている。",
-  };
-}
-
 /** ワークスペース入力から AI Sleep Analysis Engine を実行 */
 export function runWorkspaceAiAnalysis(args: {
   clientName?: string;
@@ -230,64 +194,6 @@ export function runWorkspaceAiAnalysis(args: {
       lifestyle: args.lifestyle,
     }),
   );
-}
-
-export function dummyAiPreview(
-  clientName: string,
-  score = 78,
-): AiAnalysisPreview {
-  const output = runWorkspaceAiAnalysis({
-    clientName,
-    soxai: {
-      ...dummySoxaiMetrics(),
-      sleepScore: String(score),
-    },
-    lifestyle: dummyLifestyle(),
-  });
-  return toAiAnalysisPreview(output);
-}
-
-export function dummyRecommendations(
-  clientName = "クライアント",
-): RecommendationCard[] {
-  const output = runWorkspaceAiAnalysis({
-    clientName,
-    soxai: dummySoxaiMetrics(),
-    lifestyle: dummyLifestyle(),
-  });
-  return toRecommendationCards(output);
-}
-
-export function createDummyWorkspace(
-  instructorName = DEMO_INSTRUCTOR_NAME,
-): SleepAnalysisWorkspace {
-  const demo = getDefaultDemoClient();
-  const client = {
-    ...emptyClientInfo(instructorName),
-    clientId: demo.id,
-    name: demo.name,
-    age: String(demo.age),
-    gender: demo.gender,
-  };
-  const soxai = {
-    ...dummySoxaiMetrics(),
-    sleepScore: String(demo.sleepScore ?? 72),
-  };
-  const lifestyle = dummyLifestyle();
-  const output = runWorkspaceAiAnalysis({
-    clientName: client.name,
-    measurementDate: client.analysisDate,
-    instructorName: client.instructorName,
-    soxai,
-    lifestyle,
-  });
-  return {
-    client,
-    soxai,
-    lifestyle,
-    preview: toAiAnalysisPreview(output),
-    recommendations: toRecommendationCards(output),
-  };
 }
 
 function parseSleepScore(value: string): number | null {
@@ -358,9 +264,14 @@ export function buildAnalysisResultFromWorkspace(
     improvements: ai.improvements,
     profileRelation,
     scoreComment: ai.scoreComment,
+    categoryScoreRationales: ai.categoryScoreRationales,
     todaysRecommendations: ai.todaysRecommendations,
     nextComparisonPoints: ai.nextComparisonPoints,
     recommendationsUntilNext: ai.recommendationsUntilNext,
+    instructorSuggestions: ai.instructorSuggestions,
+    instructorCounseling: ai.instructorCounseling,
+    melatoninYogaPlan: ai.melatoninYogaPlan,
+    comparisonNarrative: ai.comparisonNarrative,
     score,
     scoreBreakdown: {
       sleepDuration: 4,

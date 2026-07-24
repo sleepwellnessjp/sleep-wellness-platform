@@ -49,10 +49,10 @@ import { userMessageFromUnknown } from "@/lib/data-access-errors";
 import ErrorState from "@/components/ui/ErrorState";
 
 const inputClass =
-  "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 box-border w-full max-w-full min-w-0 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
 const textareaClass =
-  "mt-2.5 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 box-border w-full max-w-full min-w-0 resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
 
 const labelClass =
   "text-[11px] font-medium tracking-[0.1em] text-slate-500";
@@ -67,16 +67,16 @@ function SectionTitle({
   children: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3">
+    <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 sm:mb-5 sm:gap-3">
       <h2
         id={id}
-        className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+        className="min-w-0 break-words text-base font-semibold tracking-[-0.03em] sm:text-xl"
         style={{ color: NAVY }}
       >
         {children}
       </h2>
       <p
-        className="text-[10px] font-semibold tracking-[0.22em]"
+        className="shrink-0 text-[10px] font-semibold tracking-[0.22em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
@@ -308,12 +308,12 @@ function HomeworkPageContent() {
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="HOMEWORK" />
         <div
-          className="mx-auto max-w-3xl space-y-4 px-6 py-16 sm:px-10"
+          className="mx-auto max-w-3xl space-y-3 px-4 py-12 sm:space-y-4 sm:px-10 sm:py-16"
           aria-busy="true"
           aria-label="読み込み中"
         >
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-36 animate-pulse rounded-3xl bg-slate-100" />
+            <div key={i} className="h-32 animate-pulse rounded-3xl bg-slate-100 sm:h-36" />
           ))}
         </div>
       </main>
@@ -324,7 +324,7 @@ function HomeworkPageContent() {
     return (
       <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
         <InstructorNav eyebrow="HOMEWORK" />
-        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-6">
+        <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-0">
           <ErrorState
             title="Homeworkを表示できません"
             message={
@@ -335,7 +335,7 @@ function HomeworkPageContent() {
           />
           <Link
             href="/clients"
-            className="mt-8 inline-flex min-h-12 items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition hover:opacity-90"
+            className="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
             一覧へ戻る
@@ -349,14 +349,14 @@ function HomeworkPageContent() {
   const journeyHref = `/journey?clientId=${encodeURIComponent(data.clientId)}`;
 
   return (
-    <main className="min-h-screen" style={{ backgroundColor: SURFACE, color: NAVY }}>
+    <main className="min-h-screen overflow-x-hidden" style={{ backgroundColor: SURFACE, color: NAVY }}>
       <InstructorNav eyebrow="HOMEWORK" />
 
-      <div className="mx-auto max-w-3xl px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
-        <div className="mb-8 flex flex-wrap items-center gap-4">
+      <div className="mx-auto max-w-3xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-10 sm:py-16 sm:pb-16 lg:py-20 lg:pb-20">
+        <div className="mb-6 flex flex-wrap items-center gap-3 sm:mb-8 sm:gap-4">
           <Link
             href={backHref}
-            className="text-[13px] font-medium transition hover:opacity-70"
+            className="inline-flex min-h-10 items-center text-[13px] font-medium transition active:opacity-70 sm:hover:opacity-70 sm:active:opacity-100"
             style={{ color: MUTED }}
           >
             ← Client Detail
@@ -366,34 +366,34 @@ function HomeworkPageContent() {
           </span>
           <Link
             href={journeyHref}
-            className="text-[13px] font-medium transition hover:opacity-70"
+            className="inline-flex min-h-10 items-center text-[13px] font-medium transition active:opacity-70 sm:hover:opacity-70 sm:active:opacity-100"
             style={{ color: MUTED }}
           >
             Sleep Journey
           </Link>
         </div>
 
-        <header className="mb-10 sm:mb-12">
+        <header className="mb-8 min-w-0 sm:mb-12">
           <p
-            className="text-[11px] font-semibold tracking-[0.28em]"
+            className="text-[10px] font-semibold tracking-[0.22em] sm:text-[11px] sm:tracking-[0.28em]"
             style={{ color: GOLD }}
           >
             HOMEWORK / FOLLOW-UP
           </p>
           <h1
-            className="mt-3 text-[1.85rem] font-semibold tracking-[-0.05em] sm:text-4xl"
+            className="mt-2 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] sm:mt-3 sm:text-4xl sm:leading-normal"
             style={{ color: NAVY }}
           >
             Homework
           </h1>
-          <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">
+          <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-3 sm:text-[15px] sm:leading-7">
             認定講師が課題を設定し、実施状況とフォローを記録する画面です。
           </p>
         </header>
 
         {/* ① Client Header */}
         <section
-          className="rounded-3xl border bg-white p-6 sm:p-8"
+          className="rounded-3xl border bg-white p-4 sm:p-8"
           style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           aria-labelledby="client-header-title"
         >
@@ -401,44 +401,44 @@ function HomeworkPageContent() {
             Client Header
           </SectionTitle>
 
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
             <div className="mx-auto shrink-0 sm:mx-0">
               <ProfileAvatar name={data.name} avatarUrl={data.avatarUrl} />
             </div>
 
             <div className="min-w-0 flex-1">
               <h2
-                className="text-[1.5rem] font-semibold tracking-[-0.04em] sm:text-[1.75rem]"
+                className="break-words text-center text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-left sm:text-[1.75rem]"
                 style={{ color: NAVY }}
               >
                 {data.name}
               </h2>
 
-              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div>
+              <dl className="mt-4 grid grid-cols-1 gap-3.5 sm:mt-5 sm:grid-cols-2 sm:gap-4">
+                <div className="min-w-0">
                   <dt className={labelClass} style={{ color: MUTED }}>
                     現在の睡眠スコア
                   </dt>
                   <dd
-                    className="mt-1 text-[2rem] font-semibold tracking-[-0.05em] tabular-nums"
+                    className="mt-1 text-[1.75rem] font-semibold tracking-[-0.05em] tabular-nums sm:text-[2rem]"
                     style={{ color: NAVY }}
                   >
                     {data.sleepScore ?? "—"}
                   </dd>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <dt className={labelClass} style={{ color: MUTED }}>
                     次回フォロー日
                   </dt>
-                  <dd className="mt-1 text-[15px] font-medium">
+                  <dd className="mt-1 break-words text-[15px] font-medium">
                     {formatHomeworkDate(data.nextFollowUpDate)}
                   </dd>
                 </div>
-                <div className="sm:col-span-2">
+                <div className="min-w-0 sm:col-span-2">
                   <dt className={labelClass} style={{ color: MUTED }}>
                     担当講師
                   </dt>
-                  <dd className="mt-1 text-[15px] font-medium">
+                  <dd className="mt-1 break-words text-[15px] font-medium">
                     {data.instructorName}
                   </dd>
                 </div>
@@ -448,27 +448,27 @@ function HomeworkPageContent() {
         </section>
 
         {/* ② Homework List */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="list-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="list-title">
           <SectionTitle id="list-title" eyebrow="LIST">
             Homework List
           </SectionTitle>
 
-          <ul className="space-y-4">
+          <ul className="space-y-3 sm:space-y-4">
             {homeworks.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} className="min-w-0">
                 <article
-                  className="rounded-3xl border bg-white p-5 sm:p-6"
+                  className="rounded-3xl border bg-white p-4 sm:p-6"
                   style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
                     <div className="min-w-0">
                       <h3
-                        className="text-[1.05rem] font-semibold tracking-[-0.03em]"
+                        className="break-words text-[1rem] font-semibold tracking-[-0.03em] sm:text-[1.05rem]"
                         style={{ color: NAVY }}
                       >
                         {item.title}
                       </h3>
-                      <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+                      <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
                         {item.description}
                       </p>
                     </div>
@@ -478,9 +478,9 @@ function HomeworkPageContent() {
                     </div>
                   </div>
 
-                  <dl className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <dl className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-3 sm:gap-3">
                     <div
-                      className="rounded-2xl px-4 py-3.5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
                       <dt
@@ -489,12 +489,12 @@ function HomeworkPageContent() {
                       >
                         開始日
                       </dt>
-                      <dd className="mt-1 text-[14px] font-medium">
+                      <dd className="mt-1 break-words text-[14px] font-medium">
                         {formatHomeworkDate(item.startDate)}
                       </dd>
                     </div>
                     <div
-                      className="rounded-2xl px-4 py-3.5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
                       <dt
@@ -503,12 +503,12 @@ function HomeworkPageContent() {
                       >
                         期限
                       </dt>
-                      <dd className="mt-1 text-[14px] font-medium">
+                      <dd className="mt-1 break-words text-[14px] font-medium">
                         {formatHomeworkDate(item.dueDate)}
                       </dd>
                     </div>
                     <div
-                      className="rounded-2xl px-4 py-3.5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
                       <dt
@@ -517,25 +517,25 @@ function HomeworkPageContent() {
                       >
                         実施頻度
                       </dt>
-                      <dd className="mt-1 text-[14px] font-medium">
+                      <dd className="mt-1 break-words text-[14px] font-medium">
                         {HOMEWORK_FREQUENCY_LABELS[item.frequency]}
                       </dd>
                     </div>
                   </dl>
 
-                  <div className="mt-5">
+                  <div className="mt-4 sm:mt-5">
                     <ProgressBar rate={item.progressRate} />
                   </div>
 
                   {item.instructorComment ? (
-                    <div className="mt-5">
+                    <div className="mt-4 min-w-0 sm:mt-5">
                       <p
                         className="text-[11px] font-medium tracking-[0.1em]"
                         style={{ color: MUTED }}
                       >
                         講師コメント
                       </p>
-                      <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+                      <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
                         {item.instructorComment}
                       </p>
                     </div>
@@ -543,7 +543,7 @@ function HomeworkPageContent() {
 
                   {item.clientMessage ? (
                     <div
-                      className="mt-4 rounded-2xl px-4 py-3.5"
+                      className="mt-4 min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
                       style={{ backgroundColor: "rgba(49, 95, 104, 0.06)" }}
                     >
                       <p
@@ -552,7 +552,7 @@ function HomeworkPageContent() {
                       >
                         クライアントへのメッセージ
                       </p>
-                      <p className="mt-1.5 text-[14px] leading-6 text-slate-700">
+                      <p className="mt-1.5 break-words text-[14px] leading-6 text-slate-700">
                         {item.clientMessage}
                       </p>
                     </div>
@@ -564,17 +564,17 @@ function HomeworkPageContent() {
         </section>
 
         {/* ③ Add Homework */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="add-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="add-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="add-title" eyebrow="ADD">
               Add Homework
             </SectionTitle>
 
-            <form onSubmit={handleAddHomework} className="space-y-5">
-              <div>
+            <form onSubmit={handleAddHomework} className="space-y-4 sm:space-y-5">
+              <div className="min-w-0">
                 <label htmlFor="hw-title" className={labelClass}>
                   課題名
                 </label>
@@ -589,7 +589,7 @@ function HomeworkPageContent() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="hw-description" className={labelClass}>
                   説明
                 </label>
@@ -603,8 +603,8 @@ function HomeworkPageContent() {
                 />
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="min-w-0">
                   <label htmlFor="hw-start" className={labelClass}>
                     開始日
                   </label>
@@ -617,7 +617,7 @@ function HomeworkPageContent() {
                     required
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="hw-due" className={labelClass}>
                     期限
                   </label>
@@ -632,8 +632,8 @@ function HomeworkPageContent() {
                 </div>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="min-w-0">
                   <label htmlFor="hw-frequency" className={labelClass}>
                     頻度
                   </label>
@@ -659,7 +659,7 @@ function HomeworkPageContent() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="hw-priority" className={labelClass}>
                     優先度
                   </label>
@@ -682,7 +682,7 @@ function HomeworkPageContent() {
                 </div>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="hw-message" className={labelClass}>
                   クライアントへのメッセージ
                 </label>
@@ -698,7 +698,7 @@ function HomeworkPageContent() {
 
               <button
                 type="submit"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border px-6 py-3.5 text-[15px] font-semibold transition hover:bg-slate-50 sm:w-auto"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border px-6 py-3.5 text-[15px] font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
                 style={{ borderColor: BORDER, color: NAVY }}
               >
                 リストに追加
@@ -708,18 +708,18 @@ function HomeworkPageContent() {
         </section>
 
         {/* ④ Follow-up Record */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="followup-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="followup-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="followup-title" eyebrow="FOLLOW-UP">
               Follow-up Record
             </SectionTitle>
 
-            <div className="space-y-5">
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
+            <div className="space-y-4 sm:space-y-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="min-w-0">
                   <label htmlFor="fu-date" className={labelClass}>
                     実施日
                   </label>
@@ -733,7 +733,7 @@ function HomeworkPageContent() {
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="fu-method" className={labelClass}>
                     実施方法
                   </label>
@@ -761,7 +761,7 @@ function HomeworkPageContent() {
                 </div>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="fu-score" className={labelClass}>
                   睡眠スコア
                 </label>
@@ -779,7 +779,7 @@ function HomeworkPageContent() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="fu-change" className={labelClass}>
                   クライアントの変化
                 </label>
@@ -795,7 +795,7 @@ function HomeworkPageContent() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="fu-finding" className={labelClass}>
                   講師所見
                 </label>
@@ -811,7 +811,7 @@ function HomeworkPageContent() {
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label htmlFor="fu-next" className={labelClass}>
                   次回対応
                 </label>
@@ -829,7 +829,7 @@ function HomeworkPageContent() {
             </div>
 
             {followUps.length > 0 ? (
-              <div className="mt-8 space-y-4 border-t pt-8" style={{ borderColor: BORDER }}>
+              <div className="mt-6 space-y-3 border-t pt-6 sm:mt-8 sm:space-y-4 sm:pt-8" style={{ borderColor: BORDER }}>
                 <p
                   className="text-[11px] font-semibold tracking-[0.18em]"
                   style={{ color: GOLD }}
@@ -840,14 +840,14 @@ function HomeworkPageContent() {
                   {followUps.map((record) => (
                     <li
                       key={record.id}
-                      className="rounded-2xl px-4 py-4 sm:px-5"
+                      className="min-w-0 rounded-2xl px-3.5 py-3.5 sm:px-5 sm:py-4"
                       style={{ backgroundColor: SURFACE_WARM }}
                     >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="text-[14px] font-semibold" style={{ color: NAVY }}>
+                      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-2">
+                        <p className="break-words text-[14px] font-semibold" style={{ color: NAVY }}>
                           {formatHomeworkDate(record.conductedAt)}
                         </p>
-                        <p className="text-[12px] font-medium" style={{ color: MUTED }}>
+                        <p className="break-words text-[12px] font-medium" style={{ color: MUTED }}>
                           {FOLLOW_UP_METHOD_LABELS[record.method]}
                           {record.sleepScore != null
                             ? ` · Score ${record.sleepScore}`
@@ -855,12 +855,12 @@ function HomeworkPageContent() {
                         </p>
                       </div>
                       {record.clientChange ? (
-                        <p className="mt-2 text-[13px] leading-6 text-slate-600">
+                        <p className="mt-2 break-words text-[13px] leading-6 text-slate-600">
                           {record.clientChange}
                         </p>
                       ) : null}
                       {record.nextAction ? (
-                        <p className="mt-2 text-[12px] font-medium" style={{ color: TEAL }}>
+                        <p className="mt-2 break-words text-[12px] font-medium" style={{ color: TEAL }}>
                           次回：{record.nextAction}
                         </p>
                       ) : null}
@@ -873,15 +873,15 @@ function HomeworkPageContent() {
         </section>
 
         {/* ⑤ Progress Summary */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="summary-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="summary-title">
           <div
-            className="rounded-3xl border bg-white p-6 sm:p-8"
+            className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           >
             <SectionTitle id="summary-title" eyebrow="SUMMARY">
               Progress Summary
             </SectionTitle>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-4">
               {(
                 [
                   { label: "完了課題", value: String(summary.completedCount) },
@@ -895,7 +895,7 @@ function HomeworkPageContent() {
               ).map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-2xl px-4 py-4 text-center"
+                  className="min-w-0 rounded-2xl px-2.5 py-3.5 text-center sm:px-4 sm:py-4"
                   style={{ backgroundColor: SURFACE_WARM }}
                 >
                   <p
@@ -905,7 +905,7 @@ function HomeworkPageContent() {
                     {item.label}
                   </p>
                   <p
-                    className="mt-2 text-xl font-semibold tracking-[-0.04em] tabular-nums sm:text-2xl"
+                    className="mt-2 break-words text-lg font-semibold tracking-[-0.04em] tabular-nums sm:text-2xl"
                     style={{ color: NAVY }}
                   >
                     {item.value}
@@ -917,7 +917,7 @@ function HomeworkPageContent() {
         </section>
 
         {/* ⑥ Bottom CTA */}
-        <section className="mt-14 sm:mt-16" aria-labelledby="cta-title">
+        <section className="mt-10 sm:mt-16" aria-labelledby="cta-title">
           <h2 id="cta-title" className="sr-only">
             保存とフォロー記録
           </h2>
@@ -926,7 +926,7 @@ function HomeworkPageContent() {
               type="button"
               onClick={() => void handleSaveHomeworks()}
               disabled={saving}
-              className="flex min-h-14 flex-1 items-center justify-center rounded-2xl px-6 py-4 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+              className="flex min-h-14 flex-1 items-center justify-center rounded-2xl px-6 py-4 text-[15px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:hover:opacity-90 sm:active:opacity-100"
               style={{ backgroundColor: NAVY, boxShadow: CARD_SHADOW }}
             >
               {saving ? "保存中…" : "課題を保存"}
@@ -935,7 +935,7 @@ function HomeworkPageContent() {
               type="button"
               onClick={() => void handleAddFollowUp()}
               disabled={addingFollowUp}
-              className="flex min-h-14 flex-1 items-center justify-center rounded-2xl border px-6 py-4 text-[15px] font-semibold transition hover:bg-slate-50 disabled:opacity-60"
+              className="flex min-h-14 flex-1 items-center justify-center rounded-2xl border px-6 py-4 text-[15px] font-semibold transition active:bg-slate-50 disabled:opacity-60 sm:hover:bg-slate-50 sm:active:bg-transparent"
               style={{
                 borderColor: BORDER,
                 color: NAVY,
@@ -948,9 +948,13 @@ function HomeworkPageContent() {
           </div>
           {statusMessage ? (
             <p
-              className="mt-3 text-center text-[13px] font-medium"
+              className="mt-3 break-words text-center text-[13px] font-medium"
               style={{
-                color: statusMessage.includes("失敗") ? DANGER : SUCCESS,
+                color:
+                  /しました|できます/.test(statusMessage) &&
+                  !/失敗|エラー/.test(statusMessage)
+                    ? SUCCESS
+                    : DANGER,
               }}
               role="status"
             >
@@ -969,7 +973,7 @@ export default function HomeworkPage() {
       fallback={
         <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
           <InstructorNav eyebrow="HOMEWORK" />
-          <div className="mx-auto flex min-h-[40vh] max-w-3xl items-center justify-center px-6">
+          <div className="mx-auto flex min-h-[40vh] max-w-3xl items-center justify-center px-4 sm:px-6">
             <p className="text-sm text-slate-500">読み込み中...</p>
           </div>
         </main>

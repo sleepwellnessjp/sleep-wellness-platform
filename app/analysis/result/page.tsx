@@ -11,6 +11,8 @@ import {
 } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import AiFollowAlerts from "@/components/AiFollowAlerts";
+import AnalysisAiIntelligenceSection from "@/components/ai-intelligence/AnalysisAiIntelligenceSection";
+import SessionEvidenceSurveyCard from "@/components/evidence/SessionEvidenceSurveyCard";
 import WellnessRadarChart from "@/components/WellnessRadarChart";
 import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextCard";
 import PreviousHomeworkCard from "@/components/PreviousHomeworkCard";
@@ -22,15 +24,20 @@ import { useToast } from "@/components/ui/Toast";
 import {
   AnalysisResult,
   formatImprovementStars,
+  getPendingAnalysisRequest,
   hydrateAnalysisSession,
   improvementPriorityLabel,
   loadAnalysisGraphs,
   loadAnalysisImages,
   loadAnalysisResult,
+  mergeInstructorCounseling,
+  parseInstructorSuggestionsToCounseling,
+  subscribeAnalysisSession,
   WELLNESS_CATEGORY_LABELS,
   type ImprovementItem,
   type WellnessCategoryKey,
 } from "@/lib/analysis-session";
+import { startProgressiveAnalysisBackground } from "@/lib/analysis-progressive";
 import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
 import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import { formatGenderLabel, hasAgeAndGender } from "@/lib/client-profile";
@@ -39,6 +46,7 @@ import {
   analysisResultToStoredShape,
   buildPreviousComparisonSummary,
   buildPreviousHomeworkComparison,
+  findFirstAnalysis,
   findPreviousAnalysis,
   previousComparisonToneColor,
   type PreviousComparisonSummary,
@@ -79,8 +87,24 @@ function clampLine(text: string, maxChars: number): string {
   return `${trimmed.slice(0, maxChars - 1).trimEnd()}…`;
 }
 
+/** 測定データ未取得 */
+const UNMEASURED = "未測定";
+/** コンテンツ未生成・今後対応予定 */
+const FORTHCOMING = "今後対応";
+
+function AiContentPendingPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="space-y-2.5" aria-busy="true" aria-label={`${label}を生成中`}>
+      <div className="h-3.5 w-[88%] animate-pulse rounded bg-slate-100" />
+      <div className="h-3.5 w-[72%] animate-pulse rounded bg-slate-100" />
+      <div className="h-3.5 w-[64%] animate-pulse rounded bg-slate-100" />
+      <p className="pt-1 text-[12px] text-slate-400">{label}を生成しています…</p>
+    </div>
+  );
+}
+
 function formatDateLabel(value?: string): string {
-  if (!value?.trim()) return "—";
+  if (!value?.trim()) return UNMEASURED;
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value;
   return `${match[1]}.${match[2]}.${match[3]}`;
@@ -115,10 +139,113 @@ function FormattedAiText({ text }: { text: string }) {
       {blocks.map((block, index) => (
         <p
           key={index}
-          className="text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8"
+          className="break-words text-[14px] leading-6 text-slate-600 sm:text-base sm:leading-8"
         >
           {renderRichText(block)}
         </p>
+      ))}
+    </div>
+  );
+}
+
+type KarteSectionTitle =
+  | "今回最も重要な課題"
+  | "判断の根拠"
+  | "今回もっとも改善効果が高い行動";
+
+type KarteSection = { title: KarteSectionTitle; body: string };
+
+const KARTE_HEADING_ALIASES: Record<string, KarteSectionTitle> = {
+  今回最も重要な課題: "今回最も重要な課題",
+  判断の根拠: "判断の根拠",
+  今回もっとも改善効果が高い行動: "今回もっとも改善効果が高い行動",
+  最も効果が高い改善ポイント: "今回もっとも改善効果が高い行動",
+  // 旧 AIカルテ見出し互換
+  現在の状態: "今回最も重要な課題",
+  原因分析: "判断の根拠",
+  考えられる要因: "判断の根拠",
+  改善戦略: "今回もっとも改善効果が高い行動",
+  次回までの目標: "今回もっとも改善効果が高い行動",
+};
+
+/** Sleep Wellness Insight を3見出し構成へ整形（旧見出しも互換） */
+function parseKarteSections(text: string): KarteSection[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const headingPattern =
+    /(?:^|\n)\s*■?\s*(今回最も重要な課題|判断の根拠|今回もっとも改善効果が高い行動|最も効果が高い改善ポイント|現在の状態|原因分析|考えられる要因|改善戦略|次回までの目標)\s*[:：]?\s*/g;
+  const hits = [...trimmed.matchAll(headingPattern)];
+
+  if (hits.length >= 2) {
+    const sections: KarteSection[] = [];
+    for (let i = 0; i < hits.length; i++) {
+      const rawTitle = hits[i][1];
+      const title = KARTE_HEADING_ALIASES[rawTitle] ?? "今回最も重要な課題";
+      const start = (hits[i].index ?? 0) + hits[i][0].length;
+      const end = i + 1 < hits.length ? (hits[i + 1].index ?? trimmed.length) : trimmed.length;
+      const body = trimmed.slice(start, end).trim();
+      if (body) sections.push({ title, body });
+    }
+    if (sections.length > 0) return sections;
+  }
+
+  const sentences = trimmed
+    .split(/(?<=[。！？])/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length === 0) return [];
+  if (sentences.length === 1) {
+    return [{ title: "今回最も重要な課題", body: sentences[0] }];
+  }
+  if (sentences.length === 2) {
+    return [
+      { title: "今回最も重要な課題", body: sentences[0] },
+      { title: "今回もっとも改善効果が高い行動", body: sentences[1] },
+    ];
+  }
+
+  const mid = Math.max(1, Math.floor(sentences.length / 3));
+  const mid2 = Math.max(mid + 1, Math.floor((sentences.length * 2) / 3));
+  const fallback: KarteSection[] = [
+    { title: "今回最も重要な課題", body: sentences.slice(0, mid).join("") },
+    { title: "判断の根拠", body: sentences.slice(mid, mid2).join("") },
+    {
+      title: "今回もっとも改善効果が高い行動",
+      body: sentences.slice(mid2).join(""),
+    },
+  ];
+  return fallback.filter((s) => s.body);
+}
+
+function FormattedKarteText({ text }: { text: string }) {
+  const sections = parseKarteSections(text);
+  if (sections.length === 0) return null;
+
+  const KARTE_HINTS: Record<KarteSection["title"], string> = {
+    今回最も重要な課題: "いま最も大切な焦点",
+    判断の根拠: "データ同士を関連づけた考察",
+    今回もっとも改善効果が高い行動: "今回いちばん効果が期待できる行動",
+  };
+
+  return (
+    <div className="space-y-3">
+      {sections.map((section) => (
+        <div key={section.title} className="report-karte-block">
+          <p
+            className="report-karte-heading text-[13px] font-semibold tracking-[-0.01em] sm:text-[14px]"
+            style={{ color: NAVY }}
+          >
+            {section.title}
+            <span className="ml-2 text-[11px] font-medium tracking-normal text-slate-400 sm:text-[12px]">
+              {KARTE_HINTS[section.title]}
+            </span>
+          </p>
+          <p className="report-karte-body mt-1 break-words text-[14px] leading-6 text-slate-600 sm:text-[15px] sm:leading-7">
+            {renderRichText(section.body)}
+          </p>
+        </div>
       ))}
     </div>
   );
@@ -132,15 +259,22 @@ function SectionLabel({
   eyebrow: string;
 }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between gap-3">
-      <h2
-        className="text-base font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
-        style={{ color: NAVY }}
-      >
-        {title}
-      </h2>
+    <div className="report-section-label mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span
+          className="report-section-mark hidden h-4 w-[3px] shrink-0 rounded-full sm:block"
+          style={{ backgroundColor: GOLD }}
+          aria-hidden
+        />
+        <h2
+          className="min-w-0 break-words text-[15px] font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
+          style={{ color: NAVY }}
+        >
+          {title}
+        </h2>
+      </div>
       <p
-        className="text-[10px] font-semibold tracking-[0.22em]"
+        className="report-section-eyebrow text-[10px] font-semibold tracking-[0.22em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
@@ -149,9 +283,22 @@ function SectionLabel({
   );
 }
 
+/** 印刷でも残す、クライアント向けの短い導入文 */
+function ReportLead({ children }: { children: ReactNode }) {
+  return (
+    <p className="report-lead mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+      {children}
+    </p>
+  );
+}
+
 function BulletList({ items }: { items: string[] }) {
   if (items.length === 0) {
-    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+    return (
+      <p className="text-[14px] leading-6 text-slate-400 sm:text-[15px] sm:leading-7">
+        {FORTHCOMING}
+      </p>
+    );
   }
 
   return (
@@ -159,7 +306,7 @@ function BulletList({ items }: { items: string[] }) {
       {items.map((item, index) => (
         <li
           key={`${index}-${item.slice(0, 24)}`}
-          className="flex gap-2.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]"
+          className="flex gap-2.5 break-words text-[14px] leading-6 text-slate-600 sm:text-[0.95rem] sm:leading-7"
         >
           <span
             className="mt-[0.65rem] h-1.5 w-1.5 shrink-0 rounded-full"
@@ -175,7 +322,11 @@ function BulletList({ items }: { items: string[] }) {
 
 function ImprovementsList({ items }: { items: ImprovementItem[] }) {
   if (items.length === 0) {
-    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+    return (
+      <p className="text-[14px] leading-6 text-slate-400 sm:text-[15px] sm:leading-7">
+        {FORTHCOMING}
+      </p>
+    );
   }
 
   return (
@@ -200,9 +351,20 @@ function ImprovementsList({ items }: { items: ImprovementItem[] }) {
               {improvementPriorityLabel(item.stars)}
             </span>
           </div>
-          <p className="mt-1.5 text-[15px] leading-7 text-slate-600 sm:text-[0.95rem]">
+          <p className="mt-1.5 break-words text-[14px] leading-6 text-slate-600 sm:text-[0.95rem] sm:leading-7">
             {renderRichText(item.text)}
           </p>
+          {item.whyNow?.trim() ? (
+            <p className="mt-2 border-t border-[#071426]/06 pt-2 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+              <span
+                className="mr-1.5 font-semibold tracking-[-0.01em]"
+                style={{ color: GOLD }}
+              >
+                なぜ今優先するか
+              </span>
+              {renderRichText(item.whyNow.trim())}
+            </p>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -213,7 +375,11 @@ const RANKING_MARKS = ["①", "②", "③", "④", "⑤"] as const;
 
 function TodaysRecommendationsList({ items }: { items: string[] }) {
   if (items.length === 0) {
-    return <p className="text-[15px] leading-7 text-slate-400">—</p>;
+    return (
+      <p className="text-[14px] leading-6 text-slate-400 sm:text-[15px] sm:leading-7">
+        {FORTHCOMING}
+      </p>
+    );
   }
 
   return (
@@ -221,7 +387,7 @@ function TodaysRecommendationsList({ items }: { items: string[] }) {
       {items.map((item, index) => (
         <li
           key={`${index}-${item.slice(0, 24)}`}
-          className="flex gap-3 text-[15px] leading-7 text-slate-700 sm:text-base"
+          className="flex gap-2.5 break-words text-[14px] leading-6 text-slate-700 sm:gap-3 sm:text-base sm:leading-7"
         >
           <span
             className="w-[1.5rem] shrink-0 text-[1.05rem] font-semibold tabular-nums"
@@ -236,6 +402,136 @@ function TodaysRecommendationsList({ items }: { items: string[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function buildLifestyleRows(result: AnalysisResult): Array<{
+  label: string;
+  value: string;
+}> {
+  const bedtime = result.metrics.bedtime?.trim() || "";
+  const wakeTime = result.metrics.wakeTime?.trim() || "";
+  const schedule =
+    bedtime && wakeTime
+      ? `${bedtime} 〜 ${wakeTime}`
+      : bedtime || wakeTime;
+
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "飲酒習慣", value: result.drinkingHabit?.trim() || "" },
+    { label: "運動習慣", value: result.exerciseHabit?.trim() || "" },
+    { label: "服薬", value: result.medications?.trim() || "" },
+    { label: "いびき・鼻閉", value: result.snoringNasal?.trim() || "" },
+    { label: "既往・体調", value: result.medicalHistory?.trim() || "" },
+    { label: "就寝・起床", value: schedule },
+  ];
+  return rows.filter((row) => row.value.length > 0);
+}
+
+function InstructorCommentField({
+  suggestions,
+  counseling,
+}: {
+  suggestions: string[];
+  counseling?: AnalysisResult["instructorCounseling"];
+}) {
+  const plan = mergeInstructorCounseling(
+    counseling,
+    parseInstructorSuggestionsToCounseling(suggestions),
+  );
+
+  const groups: Array<{
+    title: string;
+    eyebrow: string;
+    items: string[];
+  }> = [
+    {
+      title: "今回重点的にヒアリングする内容",
+      eyebrow: "HEARING",
+      items: plan?.hearingTopics ?? [],
+    },
+    {
+      title: "次回比較するデータ",
+      eyebrow: "NEXT DATA",
+      items: plan?.nextComparisonData ?? [],
+    },
+    {
+      title: "生活習慣で確認すること",
+      eyebrow: "LIFESTYLE",
+      items: plan?.lifestyleChecks ?? [],
+    },
+    {
+      title: "改善が見込めるポイント",
+      eyebrow: "OUTLOOK",
+      items: plan?.improvementOutlook ?? [],
+    },
+    {
+      title: "注意して観察するポイント",
+      eyebrow: "OBSERVE",
+      items: plan?.observationPoints ?? [],
+    },
+  ].filter((group) => group.items.length > 0);
+
+  return (
+    <section className="report-panel report-instructor-comment mt-5 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5">
+      {groups.length > 0 ? (
+        <div className="report-instructor-ai-suggestions mb-5 rounded-lg border border-[#8a6a2d]/20 bg-[#fbf9f4] px-3.5 py-3.5 sm:px-4">
+          <SectionLabel title="AIから講師への提案" eyebrow="FOR INSTRUCTOR" />
+          <p className="report-instructor-ai-lead mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+            今回の分析結果から自動生成したカウンセリング支援です。認定講師がそのまま確認・観察・説明に使えます。
+          </p>
+          <div className="space-y-3.5 report-instructor-ai-groups">
+            {groups.map((group) => (
+              <div key={group.title} className="report-instructor-ai-group">
+                <p
+                  className="text-[11px] font-semibold tracking-[0.12em]"
+                  style={{ color: GOLD }}
+                >
+                  {group.eyebrow}
+                </p>
+                <p
+                  className="mt-0.5 text-[13px] font-semibold tracking-[-0.01em]"
+                  style={{ color: NAVY }}
+                >
+                  {group.title}
+                </p>
+                <ol className="mt-1.5 space-y-1.5">
+                  {group.items.map((item, index) => (
+                    <li
+                      key={`${group.title}-${index}`}
+                      className="flex gap-2.5 text-[13px] leading-6 text-slate-700 sm:text-[14px]"
+                    >
+                      <span
+                        className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white"
+                        style={{ background: "#071426" }}
+                      >
+                        {index + 1}
+                      </span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <SectionLabel title="⑦ 講師コメント" eyebrow="INSTRUCTOR" />
+      <ReportLead>
+        認定講師からのメッセージです。本日のポイントや、次回までのアドバイスを記入します。
+      </ReportLead>
+      <div
+        className="report-instructor-lines min-h-[5.5rem] rounded-lg border border-dashed border-[#071426]/18 bg-[#fafaf8] px-3 py-3 sm:min-h-[6.5rem]"
+        aria-hidden
+      >
+        <div className="space-y-3.5 sm:space-y-4">
+          <div className="h-px w-full bg-[#071426]/12" />
+          <div className="h-px w-full bg-[#071426]/12" />
+          <div className="h-px w-full bg-[#071426]/12" />
+          <div className="h-px w-full bg-[#071426]/12" />
+          <div className="h-px w-full bg-[#071426]/12" />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -390,8 +686,8 @@ export default function AnalysisResultPage() {
 
   if (!result) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5 py-20">
-        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.18)] sm:max-w-lg sm:p-12">
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 py-16 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-20 sm:pb-20">
+        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-5 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.18)] sm:max-w-lg sm:p-12">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
             style={{ color: GOLD }}
@@ -410,24 +706,24 @@ export default function AnalysisResultPage() {
             {loadError ?? "新しい分析を開始してください。"}
           </p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <div className="mt-7 flex flex-col gap-2.5 sm:mt-8 sm:flex-row sm:justify-center sm:gap-3">
             <Link
               href="/portal"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
               style={{ color: NAVY }}
             >
               分析履歴へ
             </Link>
             <Link
               href="/clients"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition hover:bg-slate-50"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-base font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
               style={{ color: NAVY }}
             >
               クライアント一覧
             </Link>
             <Link
               href="/analysis/new"
-              className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
               style={{ backgroundColor: NAVY }}
             >
               新しい分析を作成
@@ -443,48 +739,113 @@ export default function AnalysisResultPage() {
 
 function PreviousComparisonSection({
   summary,
+  firstSummary,
+  narrative,
   clientId,
 }: {
-  summary: PreviousComparisonSummary;
+  summary: PreviousComparisonSummary | null;
+  firstSummary?: PreviousComparisonSummary | null;
+  narrative?: AnalysisResult["comparisonNarrative"];
   clientId?: string;
 }) {
+  if (!summary && !firstSummary && !narrative?.vsPrevious && !narrative?.vsFirst) {
+    return null;
+  }
+
   return (
     <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-4 sm:mt-6 sm:px-5">
-      <SectionLabel title="前回との比較" eyebrow="VS PREVIOUS" />
-      <p className="mb-3 text-[13px] leading-6 text-slate-500">
-        前回より
-        {summary.previousDate ? (
-          <span className="ml-1.5 text-slate-400">
-            （{formatDateLabel(summary.previousDate)}）
-          </span>
-        ) : null}
-      </p>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
-        {summary.items.map((item) => (
-          <div
-            key={item.label}
-            className="rounded-xl border border-[#071426]/10 bg-white px-3 py-3 sm:px-3.5 sm:py-3.5"
-          >
-            <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
-              {item.label}
-            </p>
-            <p
-              className="mt-1 text-[1.05rem] font-semibold tracking-[-0.03em] sm:text-[1.12rem]"
-              style={{ color: previousComparisonToneColor(item.tone) }}
-            >
-              {item.value}
-            </p>
+      <SectionLabel title="分析履歴との比較" eyebrow="PROGRESS" />
+
+      {summary ? (
+        <div className="mt-1">
+          <p className="mb-3 text-[13px] leading-6 text-slate-500">
+            前回比較
+            {summary.previousDate ? (
+              <span className="ml-1.5 text-slate-400">
+                （{formatDateLabel(summary.previousDate)}）
+              </span>
+            ) : null}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+            {summary.items.map((item) => (
+              <div
+                key={`prev-${item.label}`}
+                className="min-w-0 rounded-xl border border-[#071426]/10 bg-white px-2.5 py-2.5 sm:px-3.5 sm:py-3.5"
+              >
+                <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
+                  {item.label}
+                </p>
+                <p
+                  className="mt-1 break-words text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.12rem]"
+                  style={{ color: previousComparisonToneColor(item.tone) }}
+                >
+                  {item.value}
+                </p>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <p className="mt-3 text-[13px] leading-6 text-slate-500">
-        {summary.profileNote}
-      </p>
+          {narrative?.vsPrevious?.trim() ? (
+            <div className="mt-3 rounded-lg border border-[#071426]/08 bg-white/80 px-3 py-2.5">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">
+                AI解説 · 前回比較
+              </p>
+              <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                {renderRichText(narrative.vsPrevious.trim())}
+              </p>
+            </div>
+          ) : null}
+          <p className="mt-3 text-[13px] leading-6 text-slate-500">
+            {summary.profileNote}
+          </p>
+        </div>
+      ) : null}
+
+      {firstSummary ? (
+        <div className="mt-5 border-t border-[#071426]/08 pt-4">
+          <p className="mb-3 text-[13px] leading-6 text-slate-500">
+            初回比較
+            {firstSummary.previousDate ? (
+              <span className="ml-1.5 text-slate-400">
+                （{formatDateLabel(firstSummary.previousDate)}）
+              </span>
+            ) : null}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+            {firstSummary.items.map((item) => (
+              <div
+                key={`first-${item.label}`}
+                className="min-w-0 rounded-xl border border-[#071426]/10 bg-white px-2.5 py-2.5 sm:px-3.5 sm:py-3.5"
+              >
+                <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
+                  {item.label}
+                </p>
+                <p
+                  className="mt-1 break-words text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.12rem]"
+                  style={{ color: previousComparisonToneColor(item.tone) }}
+                >
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+          {narrative?.vsFirst?.trim() ? (
+            <div className="mt-3 rounded-lg border border-[#071426]/08 bg-white/80 px-3 py-2.5">
+              <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">
+                AI解説 · 初回比較
+              </p>
+              <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                {renderRichText(narrative.vsFirst.trim())}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {clientId ? (
         <p className="mt-2 no-print">
           <Link
             href={`/clients/${encodeURIComponent(clientId)}/compare`}
-            className="text-[13px] font-medium underline-offset-2 hover:underline"
+            className="inline-flex min-h-11 items-center text-[13px] font-medium underline-offset-2 active:opacity-70 sm:min-h-0 sm:hover:underline sm:active:opacity-100"
             style={{ color: GOLD }}
           >
             詳しい前後比較を見る
@@ -508,19 +869,65 @@ function ResultContent({
   const [result, setResult] = useState(initialResult);
   const [previousComparison, setPreviousComparison] =
     useState<PreviousComparisonSummary | null>(null);
+  const [firstComparison, setFirstComparison] =
+    useState<PreviousComparisonSummary | null>(null);
   const [previousHomework, setPreviousHomework] =
     useState<PreviousHomeworkComparison | null>(null);
   const [followAlerts, setFollowAlerts] = useState<AiFollowAlert[]>([]);
+  const [previousSleepScore, setPreviousSleepScore] = useState<number | null>(
+    null,
+  );
 
   useEffect(() => {
     setResult(initialResult);
   }, [initialResult]);
 
   useEffect(() => {
+    if (result.contentStatus !== "pending") return;
+
+    // リロード後も pending request があれば AI 生成を再開
+    const pending = getPendingAnalysisRequest();
+    if (pending) {
+      void startProgressiveAnalysisBackground(
+        result,
+        loadAnalysisImages(),
+      ).catch((backgroundError) => {
+        console.error(
+          "Background analysis resume failed:",
+          backgroundError,
+        );
+      });
+    } else {
+      // リクエスト消失時は無限「生成中」を避ける
+      const failed: AnalysisResult = {
+        ...result,
+        contentStatus: "error",
+      };
+      hydrateAnalysisSession(failed, { notify: true });
+      setResult(failed);
+    }
+
+    return subscribeAnalysisSession((next) => {
+      setResult(next);
+      if (next.analysisId && typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get("analysisId") !== next.analysisId) {
+          url.searchParams.set("analysisId", next.analysisId);
+          url.searchParams.delete("pending");
+          window.history.replaceState({}, "", url.toString());
+        }
+      }
+    });
+    // resume once per pending state; `result` identity changes on each hydrate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.contentStatus]);
+  useEffect(() => {
     const clientId = result.clientId?.trim();
     if (!clientId) {
       setPreviousComparison(null);
+      setFirstComparison(null);
       setPreviousHomework(null);
+      setPreviousSleepScore(null);
       setFollowAlerts(
         buildAiFollowAlerts({
           analyses: [analysisResultToStoredShape(result)],
@@ -540,7 +947,9 @@ function ResultContent({
 
         if (!client) {
           setPreviousComparison(null);
+          setFirstComparison(null);
           setPreviousHomework(null);
+          setPreviousSleepScore(null);
           setFollowAlerts(
             buildAiFollowAlerts({
               analyses: [analysisResultToStoredShape(result)],
@@ -553,6 +962,11 @@ function ResultContent({
           client.analyses,
           result.analysisId,
         );
+        const first = findFirstAnalysis(
+          client.analyses,
+          result.analysisId,
+          previous,
+        );
         const current =
           client.analyses.find((item) => item.id === result.analysisId) ??
           analysisResultToStoredShape(result);
@@ -560,12 +974,25 @@ function ResultContent({
         if (!previous) {
           setPreviousComparison(null);
           setPreviousHomework(null);
+          setPreviousSleepScore(null);
         } else {
           setPreviousComparison(
             buildPreviousComparisonSummary(previous, current),
           );
           setPreviousHomework(buildPreviousHomeworkComparison(previous));
+          const prevScore =
+            typeof previous.wellnessScore === "number" &&
+            Number.isFinite(previous.wellnessScore)
+              ? previous.wellnessScore
+              : typeof previous.result?.score === "number"
+                ? previous.result.score
+                : null;
+          setPreviousSleepScore(prevScore);
         }
+
+        setFirstComparison(
+          first ? buildPreviousComparisonSummary(first, current) : null,
+        );
 
         // 最新分析として現在結果を先頭に揃える（未保存セッション対応）
         const analysesForAlerts = client.analyses.some(
@@ -586,6 +1013,9 @@ function ResultContent({
         console.error("Failed to load previous analysis:", error);
         if (!cancelled) {
           setPreviousComparison(null);
+          setFirstComparison(null);
+          setPreviousHomework(null);
+          setPreviousSleepScore(null);
           setFollowAlerts(
             buildAiFollowAlerts({
               analyses: [analysisResultToStoredShape(result)],
@@ -604,6 +1034,10 @@ function ResultContent({
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const categoryScores = result.categoryScores;
+  const aiPending = result.contentStatus === "pending";
+  const aiFailed = result.contentStatus === "error";
+  /** スコア確定後は AI 失敗時も印刷可能（確定メトリクスは表示済み） */
+  const pdfReady = !aiPending;
   const categoryKeys = Object.keys(
     WELLNESS_CATEGORY_LABELS,
   ) as WellnessCategoryKey[];
@@ -613,17 +1047,22 @@ function ResultContent({
   const improvements = takeItems(result.improvements, 5).map((item) => ({
     ...item,
     text: clampLine(item.text, 160),
+    whyNow: item.whyNow ? clampLine(item.whyNow, 120) : undefined,
   }));
   const todaysRecommendations = takeItems(
     result.todaysRecommendations,
     3,
-  ).map((item) => clampLine(item, 48));
+  ).map((item) => clampLine(item, 56));
   const nextComparisonPoints = takeItems(
     result.nextComparisonPoints,
     4,
   ).map((item) => clampLine(item, 80));
-  const summaryText = clampLine(result.summary || "", 200);
-  const karteSummaryText = clampLine(result.karteSummary || "", 200);
+  const instructorSuggestions = takeItems(
+    result.instructorSuggestions,
+    9,
+  ).map((item) => clampLine(item, 56));
+  const summaryText = clampLine(result.summary || "", 240);
+  const karteSummaryText = clampLine(result.karteSummary || "", 560);
   const profileRelationText = clampLine(
     clampSentences(result.profileRelation || result.lifestyleRelation || "", 6),
     320,
@@ -638,7 +1077,12 @@ function ResultContent({
     120,
   );
   const visualPanels = buildVisualPanels(confirmedMetrics, graphBundle);
-  /** Visual Report は SCREEN01–05 まで（6枚目以降は載せない＝3ページ化防止） */
+  /** PDF用：主要3パネルに絞り、ページ途中切れを防ぐ */
+  const printDetailPanels = visualPanels.filter((panel) =>
+    ["stages", "stress", "circadian"].includes(panel.id),
+  );
+  const lifestyleRows = buildLifestyleRows(result);
+  /** Visual Report は SCREEN01–05 まで（画面表示用） */
   const visualImages = images.slice(0, 5);
   const visualSlots = Math.max(visualImages.length, 1);
   const visualCols =
@@ -647,21 +1091,21 @@ function ResultContent({
       : visualSlots === 2
         ? "grid-cols-1 sm:grid-cols-2"
         : visualSlots <= 4
-          ? "grid-cols-2"
-          : "grid-cols-2 sm:grid-cols-3";
+          ? "grid-cols-1 min-[400px]:grid-cols-2"
+          : "grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-3";
 
   return (
-    <main className="report-print-root min-h-screen bg-[#f7f7f5] py-8 print:bg-white print:py-0 sm:py-12 md:py-16">
+    <main className="report-print-root min-h-screen overflow-x-hidden bg-[#f7f7f5] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] print:overflow-visible print:bg-white print:pt-0 print:pb-0 sm:py-12 sm:pb-12 md:py-16 md:pb-16">
       <div className="report-sheet mx-auto max-w-[820px] px-4 print:max-w-none print:px-0 sm:px-6">
-        <div className="no-print mb-8 space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <Link href="/" className="shrink-0">
+        <div className="no-print mb-6 space-y-4 sm:mb-8 sm:space-y-5">
+          <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4">
+            <Link href="/" className="inline-flex min-h-11 shrink-0 items-center">
               <Image
                 src="/swij-logo-horizontal.png"
                 alt="Sleep Wellness Institute Japan"
                 width={160}
                 height={40}
-                className="h-auto w-[120px] sm:w-[140px]"
+                className="h-auto w-[110px] sm:w-[140px]"
               />
             </Link>
             <p
@@ -674,262 +1118,515 @@ function ResultContent({
           <AnalysisFlow current={4} />
         </div>
 
-        {/* ===== PAGE 1: Text Report ===== */}
-        <article className="report-page report-page-text overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-5 py-8 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:px-9 sm:py-10 md:px-11 md:py-11">
-          <header className="report-header">
-            <div className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-5 sm:pb-6">
-              <div className="min-w-0">
-                <Image
-                  src="/swij-logo-horizontal.png"
-                  alt="Sleep Wellness Institute Japan"
-                  width={220}
-                  height={55}
-                  className="report-logo h-auto w-[118px] object-contain sm:w-[148px]"
-                  priority
-                />
-                <h1
-                  className="report-title mt-4 text-[1.5rem] font-semibold tracking-[-0.04em] sm:mt-5 sm:text-[1.9rem]"
-                  style={{ color: NAVY }}
-                >
-                  Sleep Wellness Expert Report
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-slate-500 sm:text-[15px]">
-                  Sleep Wellness Institute Japan 専門家レポート
-                </p>
-              </div>
+        {(aiPending || aiFailed) && (
+          <div
+            className={`no-print mb-4 rounded-2xl border px-4 py-3 text-[13px] leading-6 sm:mb-5 sm:px-5 ${
+              aiFailed
+                ? "border-amber-200 bg-amber-50 text-amber-950"
+                : "border-[#315f68]/20 bg-[#f4f7f7] text-[#071426]"
+            }`}
+          >
+            {aiFailed
+              ? "Insight・宿題・コメントの生成に失敗しました。Sleep Wellness Score と確認済みデータは表示されています。入力画面から再実行できます。"
+              : "Sleep Wellness Score を先に表示しています。Insight・宿題・コメントを生成中です…"}
+          </div>
+        )}
 
-              <div className="report-score-block shrink-0 text-right">
-                <p
-                  className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
-                  style={{ color: GOLD }}
-                >
-                  睡眠ウェルネススコア
-                </p>
-                <p
-                  className="report-score mt-1 text-[2.8rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
-                  style={{ color: NAVY }}
-                >
-                  {score}
-                </p>
-                <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
-                  / 100
-                </p>
-                <p className="mt-2 max-w-[9.5rem] text-[10px] leading-4 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
-                  Sleep Wellness Platform 独自指標
-                  <span className="block">（SOXAIスコアとは別）</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="report-meta mt-4 flex flex-wrap gap-x-6 gap-y-2 text-[15px] text-slate-600 sm:mt-5 sm:text-base">
-              <p>
-                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-                  NAME
-                </span>
-                <span className="font-medium" style={{ color: NAVY }}>
-                  {result.clientName?.trim() || "—"}
-                </span>
-              </p>
-              <p>
-                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-                  DATE
-                </span>
-                <span className="font-medium" style={{ color: NAVY }}>
-                  {formatDateLabel(result.measurementDate)}
-                </span>
-              </p>
-              <p>
-                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-                  AGE
-                </span>
-                <span className="font-medium" style={{ color: NAVY }}>
-                  {result.age?.trim() ? `${result.age.trim()}歳` : "—"}
-                </span>
-              </p>
-              <p>
-                <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
-                  SEX
-                </span>
-                <span className="font-medium" style={{ color: NAVY }}>
-                  {formatGenderLabel(result.gender) || "—"}
-                </span>
-              </p>
-            </div>
-            {!hasAgeAndGender(result) && (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-6 text-amber-900">
-                年齢・性別を考慮していない参考分析
-              </p>
-            )}
-          </header>
-
-          <section className="report-metrics mt-5 sm:mt-6">
-            <SectionLabel title="確認済み睡眠データ" eyebrow="CONFIRMED" />
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
-              {MEDICAL_METRIC_ROWS.map(({ label, key }) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-3.5"
-                >
-                  <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
-                    {label}
-                  </p>
+        {/* ===== Expert Report (PDF: 3 pages / 7-section reading flow) ===== */}
+        <article className="report-page report-page-text overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:px-9 sm:py-10 md:px-11 md:py-11">
+          {/* —— PDF page 1: ①基本情報 → ②SOXAIデータ → ③AIカルテ —— */}
+          <div className="report-print-page report-print-page-1">
+            <header className="report-header">
+              <div className="flex items-start justify-between gap-3 border-b border-[#071426]/12 pb-4 sm:gap-4 sm:pb-6">
+                <div className="min-w-0">
+                  <Image
+                    src="/swij-logo-horizontal.png"
+                    alt="Sleep Wellness Institute Japan"
+                    width={220}
+                    height={55}
+                    className="report-logo h-auto w-[100px] object-contain sm:w-[148px]"
+                    priority
+                  />
                   <p
-                    className="mt-1 text-[0.95rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
+                    className="mt-3 text-[10px] font-semibold tracking-[0.22em] sm:mt-4"
+                    style={{ color: GOLD }}
+                  >
+                    EXPERT REPORT
+                  </p>
+                  <h1
+                    className="report-title mt-1.5 break-words text-[1.3rem] font-semibold leading-tight tracking-[-0.04em] sm:mt-2 sm:text-[1.9rem] sm:leading-normal"
                     style={{ color: NAVY }}
                   >
-                    {displayValue(confirmedMetrics[key])}
+                    Sleep Wellness Expert Report
+                  </h1>
+                  <p className="mt-2 text-[13px] leading-5 text-slate-500 sm:text-[15px] sm:leading-6">
+                    Sleep Wellness Institute Japan · 睡眠ウェルネス専門レポート
                   </p>
                 </div>
-              ))}
-            </div>
-          </section>
 
-          {previousComparison ? (
-            <PreviousComparisonSection
-              summary={previousComparison}
-              clientId={result.clientId}
-            />
-          ) : null}
+                <div className="report-score-block shrink-0 text-right">
+                  <p
+                    className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
+                    style={{ color: GOLD }}
+                  >
+                    Sleep Wellness Score
+                  </p>
+                  <p
+                    className="report-score mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
+                    style={{ color: NAVY }}
+                  >
+                    {score}
+                  </p>
+                  <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
+                    / 100
+                  </p>
+                  <p className="mt-2 max-w-[8.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
+                    生活・環境・測定を総合した独自指標
+                    <span className="block">（SOXAIスコアとは別）</span>
+                  </p>
+                </div>
+              </div>
+            </header>
 
-          {previousHomework ? (
-            <PreviousHomeworkCard comparison={previousHomework} />
-          ) : null}
+            <section className="report-panel report-basics mt-5 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5">
+              <SectionLabel title="① 基本情報" eyebrow="PROFILE" />
+              <ReportLead>
+                今回の測定に関するお客様情報です。年齢・性別がある場合は評価の参考に用います。
+              </ReportLead>
+              <div className="report-meta flex flex-wrap gap-x-5 gap-y-2 text-[14px] text-slate-600 sm:gap-x-7 sm:text-base">
+                <p>
+                  <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                    NAME
+                  </span>
+                  <span className="font-medium" style={{ color: NAVY }}>
+                    {result.clientName?.trim() || UNMEASURED}
+                  </span>
+                </p>
+                <p>
+                  <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                    DATE
+                  </span>
+                  <span className="font-medium" style={{ color: NAVY }}>
+                    {formatDateLabel(result.measurementDate)}
+                  </span>
+                </p>
+                <p>
+                  <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                    AGE
+                  </span>
+                  <span className="font-medium" style={{ color: NAVY }}>
+                    {result.age?.trim() ? `${result.age.trim()}歳` : UNMEASURED}
+                  </span>
+                </p>
+                <p>
+                  <span className="mr-2 text-[10px] font-semibold tracking-[0.16em] text-slate-400">
+                    SEX
+                  </span>
+                  <span className="font-medium" style={{ color: NAVY }}>
+                    {formatGenderLabel(result.gender) || UNMEASURED}
+                  </span>
+                </p>
+              </div>
+              {!hasAgeAndGender(result) && (
+                <p className="no-print mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-6 text-amber-900">
+                  年齢・性別を考慮していない参考分析
+                </p>
+              )}
+              {lifestyleRows.length > 0 ? (
+                <dl className="report-lifestyle-grid mt-4 grid grid-cols-1 gap-2 border-t border-[#071426]/08 pt-4 sm:grid-cols-2">
+                  {lifestyleRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex min-w-0 items-baseline justify-between gap-3 rounded-lg border border-[#071426]/08 bg-white px-3 py-2"
+                    >
+                      <dt className="shrink-0 text-[11px] font-medium tracking-[0.04em] text-slate-400">
+                        {row.label}
+                      </dt>
+                      <dd
+                        className="min-w-0 break-words text-right text-[13px] font-semibold tracking-[-0.02em]"
+                        style={{ color: NAVY }}
+                      >
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {profileRelationText ? (
+                <div className="report-lifestyle-note mt-3 border-t border-[#071426]/08 pt-3">
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">
+                    生活とのつながり
+                  </p>
+                  <div className="mt-1.5">
+                    <FormattedAiText text={profileRelationText} />
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
-          {followAlerts.length > 0 ? (
-            <div className="mt-5 sm:mt-6">
-              <AiFollowAlerts alerts={followAlerts} compact />
-            </div>
-          ) : null}
+            <section className="report-metrics report-panel report-soxai mt-5 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5">
+              <SectionLabel title="② SOXAIデータ" eyebrow="SOXAI" />
+              <ReportLead>
+                ウェアラブルで測定し、講師が確認した睡眠データです。数値は今回1日分の記録です。
+              </ReportLead>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
+                {MEDICAL_METRIC_ROWS.map(({ label, key }) => (
+                  <div
+                    key={label}
+                    className="report-metric min-w-0 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-2.5 py-2.5 sm:px-3.5 sm:py-3.5"
+                  >
+                    <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400 sm:text-[11px]">
+                      {label}
+                    </p>
+                    <p
+                      className="mt-1 break-words text-[0.88rem] font-semibold tracking-[-0.03em] sm:text-[1.02rem]"
+                      style={{ color: NAVY }}
+                    >
+                      {displayValue(confirmedMetrics[key])}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-          {karteSummaryText ? (
-            <section className="report-panel mt-5 rounded-xl border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-4 sm:mt-6 sm:px-5">
-              <SectionLabel title="AIカルテ · クライアントの変化" eyebrow="AI KARTE" />
-              <p className="mt-1 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
-                Sleep Wellness Institute Japan 独自カルテ。分析履歴に時系列で保存されます。
-              </p>
-              <div className="report-summary mt-3">
-                <FormattedAiText text={karteSummaryText} />
+            <section className="report-panel report-karte mt-5 rounded-xl border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-4 sm:mt-6 sm:px-5">
+              <SectionLabel
+                title="③ Sleep Wellness Insight"
+                eyebrow="INSIGHT"
+              />
+              <ReportLead>
+                睡眠データ・SOXAI・生活習慣を統合し、「最も重要な課題」「判断の根拠」「最も効果が高い改善」をまとめた記録です。認定講師がそのまま説明できる品質で作成しています。
+              </ReportLead>
+              {aiPending && !summaryText ? null : summaryText ? (
+                <div className="report-assessment mb-3 rounded-lg border border-[#8a6a2d]/15 bg-white/70 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-400">
+                    総評
+                  </p>
+                  <div className="report-summary mt-1">
+                    <FormattedAiText text={summaryText} />
+                  </div>
+                </div>
+              ) : null}
+              <div className="report-summary mt-1">
+                {aiPending ? (
+                  <AiContentPendingPlaceholder label="Sleep Wellness Insight" />
+                ) : karteSummaryText ? (
+                  <FormattedKarteText text={karteSummaryText} />
+                ) : (
+                  <p className="text-[14px] leading-6 text-slate-400 sm:text-[15px] sm:leading-7">
+                    {FORTHCOMING}
+                  </p>
+                )}
               </div>
               {result.clientId?.trim() ? (
                 <Link
                   href={`/clients/${encodeURIComponent(result.clientId.trim())}`}
-                  className="mt-3 inline-flex text-[12px] font-medium transition hover:opacity-80"
+                  className="no-print mt-3 inline-flex text-[12px] font-medium transition hover:opacity-80"
                   style={{ color: GOLD }}
                 >
-                  カルテの時系列を見る
+                  Insight の時系列を見る
                 </Link>
               ) : null}
             </section>
-          ) : null}
+          </div>
 
-          <section className="report-panel mt-6 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-7 sm:px-5">
-            <SectionLabel
-              title="① 今回の睡眠で良かった点"
-              eyebrow="STRENGTHS"
-            />
-            <BulletList items={goodPoints} />
-          </section>
+          {/* —— PDF page 2: SOXAI詳細 → ④今日やる3つ → ⑤改善提案 —— */}
+          <div className="report-print-page report-print-page-2 mt-8 border-t border-[#071426]/08 pt-8 print:mt-0 print:border-0 print:pt-0">
+            <header className="report-page2-header mb-1 border-b border-[#071426]/10 pb-3">
+              <p
+                className="text-[10px] font-semibold tracking-[0.22em]"
+                style={{ color: GOLD }}
+              >
+                ACTION PLAN
+              </p>
+              <h2
+                className="mt-1 text-[1.05rem] font-semibold tracking-[-0.03em] sm:text-[1.2rem]"
+                style={{ color: NAVY }}
+              >
+                今日からの整え方
+              </h2>
+              <p className="mt-1 text-[12px] leading-5 text-slate-500 sm:text-[13px]">
+                データを踏まえた、すぐ実践できるアクションと改善の優先順位です。
+              </p>
+            </header>
 
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel
-              title="② 改善が期待できるポイント"
-              eyebrow="IMPROVE"
-            />
-            <p className="mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
-              効果が高い順に最大5件。すべてを一度に変える必要はありません。
-            </p>
-            <ImprovementsList items={improvements} />
-          </section>
-
-          <section className="report-assessment mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-6 sm:px-5 sm:py-5">
-            <SectionLabel title="③ 総合評価" eyebrow="OVERVIEW" />
-            <div className="report-summary mt-1">
-              <FormattedAiText text={summaryText || "—"} />
-            </div>
-          </section>
-
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel
-              title="④ プロフィールとの関連"
-              eyebrow="PROFILE"
-            />
-            <FormattedAiText text={profileRelationText || "—"} />
-          </section>
-
-          <section className="report-wellness-radar mt-5 rounded-xl border border-[#071426]/10 bg-[#fafafa] px-4 py-5 sm:mt-6 sm:px-5 sm:py-5">
-            <SectionLabel
-              title="⑤ 睡眠ウェルネススコア"
-              eyebrow="WELLNESS SCORE"
-            />
-            <p className="mt-1 text-[13px] leading-6 text-slate-500 sm:text-[14px]">
-              プロフィール・生活習慣・運動・ストレス・睡眠環境・測定データを総合した独自指標です（SOXAIスコアとは別）。
-            </p>
-            {scoreCommentText ? (
-              <div className="mt-3">
-                <FormattedAiText text={scoreCommentText} />
-              </div>
-            ) : null}
-            <div className="mt-4 flex flex-col items-center gap-5 sm:mt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-              <WellnessRadarChart scores={categoryScores} />
-              <ul className="grid w-full max-w-[220px] grid-cols-2 gap-2.5 sm:max-w-[240px]">
-                {categoryKeys.map((key) => (
-                  <li
-                    key={key}
-                    className="rounded-xl border border-[#071426]/10 bg-white px-3 py-2.5"
-                  >
-                    <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400">
-                      {WELLNESS_CATEGORY_LABELS[key]}
-                    </p>
-                    <p
-                      className="mt-0.5 text-[1.15rem] font-semibold tracking-[-0.03em]"
-                      style={{ color: NAVY }}
+            {printDetailPanels.length > 0 ? (
+              <section className="report-panel report-soxai-detail mt-4 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:px-5">
+                <SectionLabel
+                  title="SOXAIデータ（詳細）"
+                  eyebrow="BIO SIGNALS"
+                />
+                <ReportLead>
+                  睡眠ステージ・ストレス・体内時計の動きです。②の数値とあわせてご覧ください。
+                </ReportLead>
+                <div className="report-detail-panels grid grid-cols-1 gap-2.5 min-[480px]:grid-cols-2 sm:grid-cols-3">
+                  {printDetailPanels.map((panel) => (
+                    <div
+                      key={panel.id}
+                      className="report-detail-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3"
                     >
-                      {categoryScores[key]}
-                      <span className="ml-0.5 text-[11px] font-medium tracking-normal text-slate-400">
-                        /100
-                      </span>
-                    </p>
-                  </li>
-                ))}
-              </ul>
+                      <p
+                        className="text-[9px] font-semibold tracking-[0.18em]"
+                        style={{ color: GOLD }}
+                      >
+                        {panel.subtitle}
+                      </p>
+                      <h3
+                        className="mt-1 text-[13px] font-semibold tracking-[-0.02em]"
+                        style={{ color: NAVY }}
+                      >
+                        {panel.title}
+                      </h3>
+                      <div className="report-detail-chart mt-1.5">
+                        {panel.graph}
+                      </div>
+                      {panel.values && panel.values.length > 0 ? (
+                        <dl className="mt-2 space-y-1">
+                          {panel.values.slice(0, 4).map((row) => (
+                            <div
+                              key={`${panel.id}-${row.label}`}
+                              className="flex min-w-0 items-baseline justify-between gap-2"
+                            >
+                              <dt className="min-w-0 truncate text-[10px] text-slate-400">
+                                {row.label}
+                              </dt>
+                              <dd
+                                className="max-w-[55%] shrink-0 break-words text-right text-[11px] font-semibold tracking-[-0.02em]"
+                                style={{ color: NAVY }}
+                              >
+                                {row.value}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="report-panel report-today mt-4 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:px-5">
+              <SectionLabel title="④ 今日やる3つ" eyebrow="TODAY" />
+              <ReportLead>
+                今夜〜明日中に取り組める、あなた専用の3つの行動です。いちばん上から順に進めてください。
+              </ReportLead>
+              <TodaysRecommendationsList items={todaysRecommendations} />
+            </section>
+
+            <section className="report-panel report-improvements mt-4 rounded-xl border border-[#071426]/10 px-4 py-4 sm:px-5">
+              <SectionLabel title="⑤ 改善提案" eyebrow="GUIDANCE" />
+              <ReportLead>
+                まず良かった点を確認し、そのうえで効果が高い順に整えたいポイントを示しています。すべてを一度に変える必要はありません。
+              </ReportLead>
+
+              <div className="report-improve-block">
+                <p
+                  className="mb-2 text-[12px] font-semibold tracking-[-0.01em] sm:text-[13px]"
+                  style={{ color: NAVY }}
+                >
+                  今回の睡眠で良かった点
+                </p>
+                {aiPending && goodPoints.length === 0 ? (
+                  <AiContentPendingPlaceholder label="良かった点" />
+                ) : (
+                  <BulletList items={goodPoints} />
+                )}
+              </div>
+
+              <div className="report-improve-block mt-4 border-t border-[#071426]/08 pt-4">
+                <p
+                  className="mb-2 text-[12px] font-semibold tracking-[-0.01em] sm:text-[13px]"
+                  style={{ color: NAVY }}
+                >
+                  整えたいポイント（優先度順）
+                </p>
+                {aiPending && improvements.length === 0 ? (
+                  <AiContentPendingPlaceholder label="改善ポイント" />
+                ) : (
+                  <ImprovementsList items={improvements} />
+                )}
+              </div>
+            </section>
+
+            <section className="report-wellness-radar mt-4 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:px-5">
+              <SectionLabel
+                title="Sleep Wellness Score（4領域）"
+                eyebrow="WELLNESS SCORE"
+              />
+              <ReportLead>
+                身体・心・生活・環境のバランスを示した独自スコアです。各領域の点数根拠もあわせて確認できます。
+              </ReportLead>
+              {aiPending ? (
+                <div className="mt-1">
+                  <AiContentPendingPlaceholder label="スコアコメント" />
+                </div>
+              ) : scoreCommentText ? (
+                <div className="report-score-comment mt-1">
+                  <FormattedAiText text={scoreCommentText} />
+                </div>
+              ) : null}
+              <div className="report-radar-layout mt-4 flex w-full min-w-0 flex-col items-center gap-5 sm:mt-5 sm:flex-row sm:items-center sm:justify-center sm:gap-10">
+                <WellnessRadarChart scores={categoryScores} size={340} />
+                <ul className="grid w-full max-w-[220px] grid-cols-2 gap-2.5 sm:gap-3">
+                  {categoryKeys.map((key) => (
+                    <li
+                      key={key}
+                      className="min-w-0 rounded-xl border border-[#071426]/10 bg-white px-2.5 py-2.5 sm:px-3 sm:py-3"
+                    >
+                      <p className="text-[10px] font-medium tracking-[0.04em] text-slate-400">
+                        {WELLNESS_CATEGORY_LABELS[key]}
+                      </p>
+                      <p
+                        className="mt-0.5 text-[1.05rem] font-semibold tracking-[-0.03em] sm:text-[1.2rem]"
+                        style={{ color: NAVY }}
+                      >
+                        {categoryScores[key]}
+                        <span className="ml-0.5 text-[11px] font-medium tracking-normal text-slate-400">
+                          /100
+                        </span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {!aiPending && result.categoryScoreRationales ? (
+                <ul className="mt-4 space-y-2.5 border-t border-[#071426]/08 pt-4">
+                  {categoryKeys.map((key) => {
+                    const rationale =
+                      result.categoryScoreRationales?.[key]?.trim() ?? "";
+                    if (!rationale) return null;
+                    return (
+                      <li
+                        key={`rationale-${key}`}
+                        className="rounded-lg border border-[#071426]/08 bg-white px-3 py-2.5"
+                      >
+                        <p
+                          className="text-[12px] font-semibold tracking-[-0.01em]"
+                          style={{ color: NAVY }}
+                        >
+                          {WELLNESS_CATEGORY_LABELS[key]}
+                          <span className="ml-1.5 text-[11px] font-medium text-slate-400">
+                            {categoryScores[key]}/100 · なぜこの点数か
+                          </span>
+                        </p>
+                        <p className="mt-1 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
+                          {renderRichText(rationale)}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </section>
+
+            {!aiPending && result.melatoninYogaPlan ? (
+              <section className="report-panel mt-4 rounded-xl border border-[#8a6a2d]/25 bg-gradient-to-br from-[#fbf9f4] via-white to-[#f7f3ea] px-4 py-4 sm:px-5">
+                <SectionLabel
+                  title="メラトニンヨガ™連携"
+                  eyebrow="MELATONIN YOGA"
+                />
+                <ReportLead>
+                  Sleep Wellness Institute Japan 独自メソッド。今回の分析から推奨する Phase・呼吸法・入浴・朝の行動です。
+                </ReportLead>
+                <dl className="mt-1 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {(
+                    [
+                      ["推奨 Phase", result.melatoninYogaPlan.recommendedPhase],
+                      ["推奨呼吸法", result.melatoninYogaPlan.breathing],
+                      ["推奨入浴", result.melatoninYogaPlan.bathing],
+                      ["朝の行動", result.melatoninYogaPlan.morningAction],
+                    ] as const
+                  )
+                    .filter(([, value]) => value?.trim())
+                    .map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-xl border border-[#8a6a2d]/18 bg-white/80 px-3 py-2.5"
+                      >
+                        <dt
+                          className="text-[11px] font-semibold tracking-[0.12em]"
+                          style={{ color: GOLD }}
+                        >
+                          {label}
+                        </dt>
+                        <dd
+                          className="mt-1 text-[13px] font-medium leading-6 tracking-[-0.01em] sm:text-[14px]"
+                          style={{ color: NAVY }}
+                        >
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                </dl>
+              </section>
+            ) : null}
+          </div>
+
+          {/* —— PDF page 3: ⑥AI宿題 → ⑦講師コメント —— */}
+          <div className="report-print-page report-print-page-3 mt-8 border-t border-[#071426]/08 pt-8 print:mt-0 print:border-0 print:pt-0">
+            <header className="report-page2-header mb-1 border-b border-[#071426]/10 pb-3">
+              <p
+                className="text-[10px] font-semibold tracking-[0.22em]"
+                style={{ color: GOLD }}
+              >
+                FOLLOW-UP
+              </p>
+              <h2
+                className="mt-1 text-[1.05rem] font-semibold tracking-[-0.03em] sm:text-[1.2rem]"
+                style={{ color: NAVY }}
+              >
+                次回までの取り組み
+              </h2>
+            </header>
+
+            <div className="report-homework">
+              {aiPending ? (
+                <section className="report-panel mt-4 rounded-xl border border-[#071426]/10 px-4 py-4 sm:px-5">
+                  <SectionLabel title="⑥ AI宿題" eyebrow="HOMEWORK" />
+                  <div className="mt-3">
+                    <AiContentPendingPlaceholder label="AI宿題" />
+                  </div>
+                </section>
+              ) : (
+                <RecommendationsUntilNextCard
+                  result={result}
+                  title="⑥ AI宿題"
+                  description="次回の分析までに取り組む宿題です（今日／今週／継続）。できたものからチェックを入れてください。"
+                  onUpdated={(goals, achievement) =>
+                    setResult((current) => ({
+                      ...current,
+                      recommendationsUntilNext: goals,
+                      homeworkAchievement: achievement,
+                    }))
+                  }
+                />
+              )}
             </div>
-          </section>
 
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel title="⑥ 今日のおすすめ" eyebrow="TODAY" />
-            <p className="mb-3 text-[13px] leading-6 text-slate-500">
-              今日実践できる内容を優先順位順に3つだけ示しています。
-            </p>
-            <TodaysRecommendationsList items={todaysRecommendations} />
-          </section>
+            {aiPending ? (
+              <section className="report-panel report-instructor-comment mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+                <div className="report-instructor-ai-suggestions mb-5 rounded-lg border border-[#8a6a2d]/20 bg-[#fbf9f4] px-3.5 py-3.5 sm:px-4">
+                  <SectionLabel
+                    title="AIから講師への提案"
+                    eyebrow="FOR INSTRUCTOR"
+                  />
+                  <div className="mt-3">
+                    <AiContentPendingPlaceholder label="AIから講師への提案" />
+                  </div>
+                </div>
+                <SectionLabel title="⑦ 講師コメント" eyebrow="INSTRUCTOR" />
+                <div className="mt-3">
+                  <AiContentPendingPlaceholder label="講師コメント" />
+                </div>
+              </section>
+            ) : (
+              <InstructorCommentField
+                suggestions={instructorSuggestions}
+                counseling={result.instructorCounseling}
+              />
+            )}
 
-          <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
-            <SectionLabel
-              title="⑦ 次回比較ポイント"
-              eyebrow="NEXT CHECK"
-            />
-            <p className="mb-3 text-[13px] leading-6 text-slate-500">
-              次回の分析で、前回と比べて見てほしい観点です。
-            </p>
-            <BulletList items={nextComparisonPoints} />
-          </section>
-
-          <RecommendationsUntilNextCard
-            result={result}
-            onUpdated={(goals, achievement) =>
-              setResult((current) => ({
-                ...current,
-                recommendationsUntilNext: goals,
-                homeworkAchievement: achievement,
-              }))
-            }
-          />
-
-          <InstituteBrandComment
-            seed={`${result.analysisId ?? ""}|${result.measurementDate ?? ""}|${result.clientId ?? ""}`}
-          />
-
-          {(cautionText || disclaimerText) && (
             <section className="report-disclaimer mt-5 border-t border-[#071426]/12 pt-4 sm:mt-6">
               <h2
                 className="text-sm font-semibold tracking-[-0.01em]"
@@ -937,46 +1634,90 @@ function ResultContent({
               >
                 注意事項／免責
               </h2>
-              {cautionText && (
+              {cautionText ? (
                 <p className="mt-2 text-[13px] leading-6 text-slate-500">
                   {cautionText}
                 </p>
-              )}
-              {disclaimerText && (
-                <p className="mt-1.5 text-[12px] leading-5 text-slate-400">
-                  {disclaimerText}
-                </p>
-              )}
+              ) : null}
+              <p className="mt-1.5 text-[12px] leading-5 text-slate-400">
+                {disclaimerText ||
+                  "本レポートは医療行為・診断ではありません。体調に不安がある場合は医療機関にご相談ください。"}
+              </p>
             </section>
-          )}
 
-          <footer className="report-powered mt-6 border-t border-[#071426]/10 pt-4 text-center sm:mt-7">
-            <p className="text-[10px] font-semibold tracking-[0.28em] text-slate-400">
-              Powered by
-            </p>
-            <p
-              className="mt-1.5 text-[13px] font-semibold tracking-[0.04em] sm:text-sm"
-              style={{ color: NAVY }}
-            >
-              Sleep Wellness Institute Japan
-            </p>
-          </footer>
+            <footer className="report-powered mt-6 border-t border-[#071426]/10 pt-4 text-center sm:mt-7">
+              <p className="text-[10px] font-semibold tracking-[0.28em] text-slate-400">
+                Powered by
+              </p>
+              <p
+                className="mt-1.5 text-[13px] font-semibold tracking-[0.04em] sm:text-sm"
+                style={{ color: NAVY }}
+              >
+                Sleep Wellness Institute Japan
+              </p>
+            </footer>
+          </div>
+
+          {/* Screen-only supplements (not in 3-page PDF) */}
+          <div className="no-print">
+            {(previousComparison ||
+              firstComparison ||
+              result.comparisonNarrative?.vsPrevious ||
+              result.comparisonNarrative?.vsFirst) ? (
+              <PreviousComparisonSection
+                summary={previousComparison}
+                firstSummary={firstComparison}
+                narrative={result.comparisonNarrative}
+                clientId={result.clientId}
+              />
+            ) : null}
+
+            {previousHomework ? (
+              <PreviousHomeworkCard comparison={previousHomework} />
+            ) : null}
+
+            {followAlerts.length > 0 ? (
+              <div className="mt-5 sm:mt-6">
+                <AiFollowAlerts alerts={followAlerts} compact />
+              </div>
+            ) : null}
+
+            <AnalysisAiIntelligenceSection
+              result={result}
+              previousSleepScore={previousSleepScore}
+            />
+
+            <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">
+              <SectionLabel
+                title="次回比較ポイント"
+                eyebrow="NEXT CHECK"
+              />
+              <ReportLead>
+                次回の分析で、前回と比べて見てほしい観点です。
+              </ReportLead>
+              <BulletList items={nextComparisonPoints} />
+            </section>
+
+            <InstituteBrandComment
+              seed={`${result.analysisId ?? ""}|${result.measurementDate ?? ""}|${result.clientId ?? ""}`}
+            />
+          </div>
         </article>
 
-        {/* ===== PAGE 2: SOXAI Visual Report ===== */}
-        <article className="report-page report-page-visual mt-8 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-5 py-8 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:mt-0 print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:mt-10 sm:px-9 sm:py-10 md:px-11 md:py-11">
+        {/* ===== Visual Report (screen only; Expert PDF is 3 pages) ===== */}
+        <article className="report-page report-page-visual no-print mt-6 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] sm:mt-10 sm:px-9 sm:py-10 md:px-11 md:py-11">
           <header className="visual-header">
-            <div className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-5">
+            <div className="flex items-start justify-between gap-3 border-b border-[#071426]/12 pb-4 sm:gap-4 sm:pb-5">
               <div className="min-w-0">
                 <Image
                   src="/swij-logo-horizontal.png"
                   alt="Sleep Wellness Institute Japan"
                   width={220}
                   height={55}
-                  className="report-logo h-auto w-[118px] object-contain sm:w-[148px]"
+                  className="report-logo h-auto w-[100px] object-contain sm:w-[148px]"
                 />
                 <h2
-                  className="visual-title mt-4 text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-[1.65rem]"
+                  className="visual-title mt-3 break-words text-[1.2rem] font-semibold leading-tight tracking-[-0.04em] sm:mt-4 sm:text-[1.65rem] sm:leading-normal"
                   style={{ color: NAVY }}
                 >
                   Sleep Wellness Visual Report
@@ -993,7 +1734,7 @@ function ResultContent({
                   SLEEP SCORE
                 </p>
                 <p
-                  className="mt-2 text-2xl font-semibold tracking-[-0.04em]"
+                  className="mt-1.5 text-xl font-semibold tracking-[-0.04em] sm:mt-2 sm:text-2xl"
                   style={{ color: NAVY }}
                 >
                   {displayValue(confirmedMetrics.sleepScore)}
@@ -1010,7 +1751,7 @@ function ResultContent({
                   NAME
                 </span>
                 <span className="font-medium" style={{ color: NAVY }}>
-                  {result.clientName?.trim() || "—"}
+                  {result.clientName?.trim() || UNMEASURED}
                 </span>
               </p>
               <p>
@@ -1024,11 +1765,11 @@ function ResultContent({
             </div>
           </header>
 
-          <section className="visual-panels mt-5 grid grid-cols-2 gap-2.5 sm:mt-6 sm:grid-cols-4 sm:gap-3">
+          <section className="visual-panels mt-5 grid grid-cols-1 gap-2.5 min-[400px]:grid-cols-2 sm:mt-6 sm:grid-cols-4 sm:gap-3">
             {visualPanels.map((panel) => (
               <div
                 key={panel.id}
-                className="visual-panel rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3.5 sm:px-3.5 sm:py-4"
+                className="visual-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-4"
               >
                 <p
                   className="text-[9px] font-semibold tracking-[0.18em]"
@@ -1053,13 +1794,13 @@ function ResultContent({
                       {panel.values.map((row) => (
                         <div
                           key={`${panel.id}-${row.label}`}
-                          className="flex items-baseline justify-between gap-2"
+                          className="flex min-w-0 items-baseline justify-between gap-2"
                         >
-                          <dt className="text-[10px] text-slate-400 sm:text-[11px]">
+                          <dt className="min-w-0 truncate text-[10px] text-slate-400 sm:text-[11px]">
                             {row.label}
                           </dt>
                           <dd
-                            className="text-right text-[12px] font-semibold tracking-[-0.02em] sm:text-[13px]"
+                            className="max-w-[55%] shrink-0 break-words text-right text-[12px] font-semibold tracking-[-0.02em] sm:text-[13px]"
                             style={{ color: NAVY }}
                           >
                             {row.value}
@@ -1119,10 +1860,19 @@ function ResultContent({
           </footer>
         </article>
 
-        <div className="no-print mt-8 flex flex-col gap-3 pb-6 sm:mt-10 sm:flex-row sm:flex-wrap sm:justify-center sm:pb-4">
+        <div className="no-print mt-7 sm:mt-10">
+          <SessionEvidenceSurveyCard
+            analysisId={result.analysisId}
+            clientId={result.clientId}
+          />
+        </div>
+
+        <div className="no-print mt-5 flex flex-col gap-2.5 pb-[calc(var(--sw-beta-chrome-offset)+1rem)] sm:mt-6 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-3 sm:pb-[calc(var(--sw-beta-chrome-offset)+0.5rem)]">
           <button
             type="button"
+            disabled={!pdfReady}
             onClick={() => {
+              if (!pdfReady) return;
               const clientId = result.clientId?.trim();
               const analysisId = result.analysisId?.trim();
               if (clientId && analysisId) {
@@ -1141,7 +1891,11 @@ function ResultContent({
                   );
                 }
               }
-              success("PDFを生成しました");
+              success(
+                aiFailed
+                  ? "スコア確定レポートをPDF生成しました（AI本文は未生成）"
+                  : "PDFを生成しました",
+              );
               void fetch("/api/activity", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1158,17 +1912,35 @@ function ResultContent({
               }).catch(() => {
                 // best-effort
               });
+              void fetch("/api/audit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "report_create",
+                  resourceType: "report",
+                  resourceId:
+                    result.analysisId?.trim() ||
+                    loadLastSavedAnalysisRef()?.analysisId ||
+                    null,
+                  summary: "レポートを作成しました",
+                  payload: { format: "pdf" },
+                }),
+              }).catch(() => undefined);
               window.print();
             }}
-            className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition enabled:active:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto sm:enabled:hover:opacity-90 sm:enabled:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
-            PDFダウンロード
+            {aiPending
+              ? "PDF準備中…"
+              : aiFailed
+                ? "PDFダウンロード（スコア版）"
+                : "PDFダウンロード"}
           </button>
 
           <Link
             href="/clients"
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition hover:bg-slate-50"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
             style={{ color: NAVY }}
           >
             クライアント一覧
@@ -1176,7 +1948,7 @@ function ResultContent({
 
           <Link
             href="/"
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition hover:bg-slate-50"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
             style={{ color: NAVY }}
           >
             トップページへ戻る
@@ -1184,7 +1956,7 @@ function ResultContent({
 
           <Link
             href="/analysis/new"
-            className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition hover:bg-slate-50"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-8 py-3.5 text-center text-base font-semibold transition active:bg-slate-50 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
             style={{ color: NAVY }}
           >
             新しい分析を作成

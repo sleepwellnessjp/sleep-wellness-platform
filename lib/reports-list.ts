@@ -62,7 +62,7 @@ function reportForClient(client: DemoClient, index: number): ReportListItem | nu
       createdAt: client.assignedDay ?? "2026-07-23",
       sleepScore: null,
       status: "pending",
-      href: `/analysis?clientId=${encodeURIComponent(client.id)}`,
+      href: `/analysis/new?clientId=${encodeURIComponent(client.id)}`,
     };
   }
 
@@ -78,7 +78,7 @@ function reportForClient(client: DemoClient, index: number): ReportListItem | nu
     href:
       status === "ready"
         ? `/clients/${encodeURIComponent(client.id)}`
-        : `/analysis?clientId=${encodeURIComponent(client.id)}`,
+        : `/analysis/new?clientId=${encodeURIComponent(client.id)}`,
   };
 }
 

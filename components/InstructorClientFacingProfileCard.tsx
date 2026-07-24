@@ -154,7 +154,7 @@ export default function InstructorClientFacingProfileCard() {
               value={avatarUrl}
               onChange={(event) => setAvatarUrl(event.target.value)}
               placeholder="https://..."
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-[#fafaf8] px-3.5 py-3 text-[15px] outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-[#fafaf8] px-3.5 py-3 text-[16px] outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15 sm:text-[15px]"
               style={{ color: NAVY }}
             />
           </label>
@@ -168,7 +168,7 @@ export default function InstructorClientFacingProfileCard() {
               onChange={(event) => setClientMessage(event.target.value)}
               rows={4}
               placeholder="クライアントへのメッセージを入力"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-[#fafaf8] px-3.5 py-3 text-[15px] leading-7 outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-[#fafaf8] px-3.5 py-3 text-[16px] leading-7 outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15 sm:text-[15px]"
               style={{ color: NAVY }}
             />
           </label>

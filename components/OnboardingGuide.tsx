@@ -12,35 +12,36 @@ type Slide = {
   accent: string;
 };
 
+/** Version 2.7 — 認定講師向け初回オンボーディング（約3分） */
 const SLIDES: Slide[] = [
   {
-    eyebrow: "WELCOME",
-    title: "Sleep Wellness Platformへようこそ",
-    body: "睡眠科学とウェルネスの知見をもとに、あなたの眠りの質を一緒に整えていく製品です。",
+    eyebrow: "STEP 1 · PLATFORM",
+    title: "プラットフォーム紹介",
+    body: "Sleep Wellness Platform は、認定講師がクライアントの睡眠改善を伴走するための OS です。分析・宿題・Journey・フィードバックが一つの流れにつながっています。",
     accent: "01",
   },
   {
-    eyebrow: "ANALYSIS",
-    title: "睡眠分析の流れ",
-    body: "測定データを取り込み、AIと認定講師が結果を読み解きます。スコア・コメント・宿題が一画面にまとまります。",
+    eyebrow: "STEP 2 · CLIENTS",
+    title: "クライアント追加方法",
+    body: "「クライアント」から新規登録するか、招待コードでポータル連携できます。プロフィールを整えてから分析に進むと、その後の提案がより正確になります。",
     accent: "02",
   },
   {
-    eyebrow: "SLEEP COACH",
-    title: "Sleep Coachとは",
-    body: "その日の状態に合わせた短いコーチングです。朝・昼・夜の行動ヒントを、無理のない一歩で提案します。",
+    eyebrow: "STEP 3 · ANALYSIS",
+    title: "分析方法",
+    body: "測定データを取り込み → 確認 → AI 分析 → 結果保存の順です。結果画面でスコアとコメントを確認し、必要ならレポートや宿題へ進めます。",
     accent: "03",
   },
   {
-    eyebrow: "JOURNEY",
-    title: "Journeyとは",
-    body: "分析の積み重ねを物語として可視化します。スコアの変化と継続の証が、あなたの改善ストーリーになります。",
+    eyebrow: "STEP 4 · HOMEWORK",
+    title: "Homework",
+    body: "分析結果に基づき、次回までの小さな行動を宿題として設定します。クライアントはポータルで確認・完了でき、講師側で実施状況を追えます。",
     accent: "04",
   },
   {
-    eyebrow: "TOGETHER",
-    title: "担当講師と一緒に改善していきましょう",
-    body: "宿題や次回までの目標は、認定講師があなたに合わせて設定します。一人で抱え込まず、伴走しながら進めましょう。",
+    eyebrow: "STEP 5 · FEEDBACK",
+    title: "フィードバック送信",
+    body: "不具合や改善要望は右下の「フィードバックを送る」から送信できます。Closed Beta では Critical〜Low の優先度で本部が対応します。安心して使いながら声を届けてください。",
     accent: "05",
   },
 ];
@@ -72,7 +73,7 @@ export default function OnboardingGuide({ enabled = true }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-[#071426]/45 px-4 pb-6 pt-16 backdrop-blur-[2px] sm:items-center sm:pb-8"
+      className="fixed inset-0 z-[90] flex items-end justify-center overflow-x-hidden bg-[#071426]/45 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-16 backdrop-blur-[2px] sm:items-center sm:pb-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
@@ -93,7 +94,7 @@ export default function OnboardingGuide({ enabled = true }: Props) {
           aria-hidden
         />
 
-        <div className="relative px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <div className="relative px-5 pb-6 pt-7 sm:px-8 sm:pt-8">
           <div className="flex items-center justify-between gap-3">
             <p
               className="text-[10px] font-semibold tracking-[0.22em]"
@@ -101,16 +102,14 @@ export default function OnboardingGuide({ enabled = true }: Props) {
             >
               {slide.eyebrow}
             </p>
-            <span
-              className="text-[11px] font-semibold tabular-nums tracking-[0.08em] text-slate-400"
-            >
+            <span className="text-[11px] font-semibold tabular-nums tracking-[0.08em] text-slate-400">
               {slide.accent} / 0{SLIDES.length}
             </span>
           </div>
 
           <h2
             id="onboarding-title"
-            className="mt-4 text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-[1.5rem]"
+            className="mt-4 break-words text-[1.35rem] font-semibold tracking-[-0.04em] sm:text-[1.5rem]"
             style={{ color: NAVY }}
           >
             {slide.title}
@@ -118,6 +117,7 @@ export default function OnboardingGuide({ enabled = true }: Props) {
           <p className="mt-3 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
             {slide.body}
           </p>
+          <p className="mt-2 text-[12px] text-slate-400">約3分で完了します</p>
 
           <div className="mt-7 flex items-center justify-center gap-1.5">
             {SLIDES.map((_, i) => (
@@ -136,31 +136,33 @@ export default function OnboardingGuide({ enabled = true }: Props) {
             ))}
           </div>
 
-          <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={close}
-              className="min-h-10 px-2 text-[13px] font-medium text-slate-400 transition hover:text-slate-600"
+              className="inline-flex min-h-11 items-center justify-center px-2 text-[13px] font-medium text-slate-400 transition active:text-slate-600 sm:min-h-10 sm:justify-start sm:hover:text-slate-600 sm:active:text-slate-400"
             >
               スキップ
             </button>
-            <div className="flex gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
               {index > 0 ? (
                 <Button
                   variant="secondary"
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() => setIndex((v) => Math.max(0, v - 1))}
                 >
                   戻る
                 </Button>
               ) : null}
               {isLast ? (
-                <Button size="sm" onClick={close}>
+                <Button size="sm" className="w-full sm:w-auto" onClick={close}>
                   はじめる
                 </Button>
               ) : (
                 <Button
                   size="sm"
+                  className="w-full sm:w-auto"
                   onClick={() =>
                     setIndex((v) => Math.min(SLIDES.length - 1, v + 1))
                   }

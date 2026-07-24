@@ -11,6 +11,7 @@ type SchemaResponse = {
   tableReady?: boolean;
   platformReady?: boolean;
   persistReady?: boolean;
+  structuredReady?: boolean;
   instructorIdReady?: boolean;
   instructorColumn?: "instructor_id" | "owner_id" | null;
   missingTable?: boolean;
@@ -19,12 +20,13 @@ type SchemaResponse = {
   sql?: string;
   platformSql?: string;
   persistSql?: string;
+  structuredSql?: string;
   instructorSql?: string;
   instructions?: string[];
   error?: string;
 };
 
-type SqlKind = "schema" | "platform" | "persist" | "instructor";
+type SqlKind = "schema" | "platform" | "persist" | "structured" | "instructor";
 
 export default function SetupPage() {
   const [data, setData] = useState<SchemaResponse | null>(null);
@@ -39,9 +41,10 @@ export default function SetupPage() {
     try {
       const res = await fetch("/api/setup/schema", { cache: "no-store" });
       const json = (await res.json()) as SchemaResponse;
-      console.info("[setup] schema status:", json);
       setData(json);
-      if (json.tableReady && !json.instructorIdReady) {
+      if (json.tableReady && !json.structuredReady) {
+        setPreview("structured");
+      } else if (json.tableReady && !json.instructorIdReady) {
         setPreview("instructor");
       }
     } catch (error) {
@@ -60,6 +63,7 @@ export default function SetupPage() {
     if (kind === "schema") return data?.sql;
     if (kind === "platform") return data?.platformSql;
     if (kind === "persist") return data?.persistSql;
+    if (kind === "structured") return data?.structuredSql;
     return data?.instructorSql;
   };
 
@@ -67,6 +71,7 @@ export default function SetupPage() {
     if (kind === "schema") return "schema.sql";
     if (kind === "platform") return "platform-v1.sql";
     if (kind === "persist") return "analysis-persist-v1.sql";
+    if (kind === "structured") return "analysis-structured-metrics.sql";
     return "clients-instructor-id.sql";
   };
 
@@ -78,7 +83,6 @@ export default function SetupPage() {
       setCopied(kind);
       setPreview(kind);
       setMessage(`${labelFor(kind)} をクリップボードにコピーしました。`);
-      window.setTimeout(() => setCopied(null), 2000);
     } catch (error) {
       console.error("[setup] clipboard failed:", error);
       setMessage("コピーに失敗しました。下の SQL を手動で選択してください。");
@@ -86,7 +90,13 @@ export default function SetupPage() {
   };
 
   const previewSql = sqlFor(preview);
-  const sqlKinds = ["schema", "platform", "persist", "instructor"] as const;
+  const sqlKinds = [
+    "schema",
+    "platform",
+    "persist",
+    "structured",
+    "instructor",
+  ] as const;
 
   return (
     <main className="min-h-screen bg-[#f7f7f5]">
@@ -116,6 +126,14 @@ export default function SetupPage() {
             style={{ color: NAVY }}
           >
             /setup/beta-verify
+          </Link>
+          、分析保存（analysis_date）の確認は{" "}
+          <Link
+            href="/setup/verify-analysis"
+            className="font-medium underline underline-offset-2"
+            style={{ color: NAVY }}
+          >
+            /setup/verify-analysis
           </Link>{" "}
           で実行できます。
         </p>
@@ -141,7 +159,11 @@ export default function SetupPage() {
                 ready={Boolean(data?.persistReady)}
               />
               <StatusRow
-                label={`4. clients.instructor_id（現在: ${data?.instructorColumn ?? "不明"}）`}
+                label="4. OCR構造化 (analysis_date 等)"
+                ready={Boolean(data?.structuredReady)}
+              />
+              <StatusRow
+                label={`5. clients.instructor_id（現在: ${data?.instructorColumn ?? "不明"}）`}
                 ready={Boolean(data?.instructorIdReady)}
               />
             </ul>
@@ -186,7 +208,8 @@ export default function SetupPage() {
               "1) schema.sql を貼り付けて Run",
               "2) platform-v1.sql を貼り付けて Run",
               "3) analysis-persist-v1.sql を貼り付けて Run",
-              "4) clients-instructor-id.sql を貼り付けて Run",
+              "4) analysis-structured-metrics.sql を貼り付けて Run",
+              "5) clients-instructor-id.sql を貼り付けて Run",
             ]).map((step) => (
               <li key={step}>{step}</li>
             ))}

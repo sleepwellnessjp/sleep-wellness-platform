@@ -3,6 +3,14 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 const LOCAL_STORAGE_KEY = "swij-client-homeworks-v1";
 
+export type ClientHomeworkCategory =
+  | "homework"
+  | "breathing"
+  | "yoga"
+  | "other";
+
+export type ClientHomeworkMediaType = "none" | "video" | "pdf";
+
 export type ClientHomework = {
   id: string;
   clientId: string;
@@ -13,6 +21,9 @@ export type ClientHomework = {
   dueDate: string;
   isCompleted: boolean;
   completedAt: string | null;
+  category: ClientHomeworkCategory;
+  mediaType: ClientHomeworkMediaType;
+  mediaUrl: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -22,6 +33,9 @@ export type ClientHomeworkInput = {
   description: string;
   assignedDate: string;
   dueDate: string;
+  category?: ClientHomeworkCategory;
+  mediaType?: ClientHomeworkMediaType;
+  mediaUrl?: string;
 };
 
 export type HomeworkStatus = "pending" | "completed" | "overdue";
@@ -48,9 +62,31 @@ type DbHomeworkRow = {
   due_date: string;
   is_completed: boolean;
   completed_at: string | null;
+  category?: string | null;
+  media_type?: string | null;
+  media_url?: string | null;
   created_at: string;
   updated_at: string;
 };
+
+function normalizeCategory(value: string | null | undefined): ClientHomeworkCategory {
+  if (
+    value === "breathing" ||
+    value === "yoga" ||
+    value === "other" ||
+    value === "homework"
+  ) {
+    return value;
+  }
+  return "homework";
+}
+
+function normalizeMediaType(
+  value: string | null | undefined,
+): ClientHomeworkMediaType {
+  if (value === "video" || value === "pdf" || value === "none") return value;
+  return "none";
+}
 
 async function getSupabaseAuth(): Promise<SupabaseAuth | null> {
   if (!isSupabaseConfigured()) return null;
@@ -113,6 +149,9 @@ function mapDbRow(row: DbHomeworkRow): ClientHomework {
     dueDate: row.due_date,
     isCompleted: Boolean(row.is_completed),
     completedAt: row.completed_at,
+    category: normalizeCategory(row.category),
+    mediaType: normalizeMediaType(row.media_type),
+    mediaUrl: (row.media_url ?? "").trim(),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -296,6 +335,14 @@ function readLocalStore(): Record<string, ClientHomework[]> {
             isCompleted: Boolean(hw.isCompleted),
             completedAt:
               typeof hw.completedAt === "string" ? hw.completedAt : null,
+            category: normalizeCategory(
+              typeof hw.category === "string" ? hw.category : null,
+            ),
+            mediaType: normalizeMediaType(
+              typeof hw.mediaType === "string" ? hw.mediaType : null,
+            ),
+            mediaUrl:
+              typeof hw.mediaUrl === "string" ? hw.mediaUrl.trim() : "",
             createdAt:
               typeof hw.createdAt === "string"
                 ? hw.createdAt
@@ -342,6 +389,9 @@ function createLocalHomework(
     dueDate,
     isCompleted: false,
     completedAt: null,
+    category: input.category ?? "homework",
+    mediaType: input.mediaType ?? "none",
+    mediaUrl: (input.mediaUrl ?? "").trim(),
     createdAt: now,
     updatedAt: now,
   };
@@ -374,6 +424,12 @@ function updateLocalHomework(
     description: normalizeDescription(input.description),
     assignedDate,
     dueDate,
+    category: input.category ?? list[index]!.category ?? "homework",
+    mediaType: input.mediaType ?? list[index]!.mediaType ?? "none",
+    mediaUrl:
+      input.mediaUrl !== undefined
+        ? input.mediaUrl.trim()
+        : list[index]!.mediaUrl ?? "",
     updatedAt: new Date().toISOString(),
   };
   list[index] = updated;
@@ -418,6 +474,9 @@ function setLocalHomeworkCompletion(
 }
 
 const SELECT_COLUMNS =
+  "id, client_id, instructor_id, title, description, assigned_date, due_date, is_completed, completed_at, category, media_type, media_url, created_at, updated_at";
+
+const SELECT_COLUMNS_LEGACY =
   "id, client_id, instructor_id, title, description, assigned_date, due_date, is_completed, completed_at, created_at, updated_at";
 
 export async function listClientHomeworks(
@@ -426,21 +485,37 @@ export async function listClientHomeworks(
   const auth = await getSupabaseAuth();
   if (!auth) return listLocalHomeworks(clientId);
 
-  const { data, error } = await auth.supabase
-    .from("client_homeworks")
-    .select(SELECT_COLUMNS)
-    .eq("client_id", clientId)
-    .order("due_date", { ascending: true })
-    .order("created_at", { ascending: false });
+  let data: DbHomeworkRow[] | null = null;
+  let error: { message: string } | null = null;
+
+  {
+    const primary = await auth.supabase
+      .from("client_homeworks")
+      .select(SELECT_COLUMNS)
+      .eq("client_id", clientId)
+      .order("due_date", { ascending: true })
+      .order("created_at", { ascending: false });
+    data = (primary.data as DbHomeworkRow[] | null) ?? null;
+    error = primary.error;
+  }
+
+  if (error && /category|media_type|media_url/i.test(error.message)) {
+    const fallback = await auth.supabase
+      .from("client_homeworks")
+      .select(SELECT_COLUMNS_LEGACY)
+      .eq("client_id", clientId)
+      .order("due_date", { ascending: true })
+      .order("created_at", { ascending: false });
+    data = (fallback.data as DbHomeworkRow[] | null) ?? null;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error("[client-homeworks] list failed:", error);
     throw new Error(error.message || "宿題の取得に失敗しました。");
   }
 
-  return sortHomeworksForInstructor(
-    (data as DbHomeworkRow[] | null)?.map(mapDbRow) ?? [],
-  );
+  return sortHomeworksForInstructor(data?.map(mapDbRow) ?? []);
 }
 
 export async function createClientHomework(
@@ -465,6 +540,9 @@ export async function createClientHomework(
       description,
       assignedDate,
       dueDate,
+      category: input.category,
+      mediaType: input.mediaType,
+      mediaUrl: input.mediaUrl,
     });
   }
 
@@ -479,6 +557,9 @@ export async function createClientHomework(
       due_date: dueDate,
       is_completed: false,
       completed_at: null,
+      category: input.category ?? "homework",
+      media_type: input.mediaType ?? "none",
+      media_url: (input.mediaUrl ?? "").trim(),
     })
     .select(SELECT_COLUMNS)
     .single();
@@ -514,6 +595,9 @@ export async function updateClientHomework(
       description,
       assignedDate,
       dueDate,
+      category: input.category,
+      mediaType: input.mediaType,
+      mediaUrl: input.mediaUrl,
     });
     if (!updated) throw new Error("宿題が見つかりません。");
     return updated;
@@ -526,6 +610,9 @@ export async function updateClientHomework(
       description,
       assigned_date: assignedDate,
       due_date: dueDate,
+      category: input.category ?? "homework",
+      media_type: input.mediaType ?? "none",
+      media_url: (input.mediaUrl ?? "").trim(),
     })
     .eq("id", homeworkId)
     .eq("client_id", clientId)

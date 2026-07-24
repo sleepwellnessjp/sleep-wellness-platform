@@ -12,6 +12,7 @@ import type {
   AdminAnalyticsOverview,
   AdminClientRow,
   AdminDashboardStats,
+  AdminHqDashboard,
   AdminInstructorRow,
   AdminLogBundle,
   PlatformSettingsRecord,
@@ -51,6 +52,112 @@ export function getDemoAdminDashboard(): AdminDashboardStats {
     averageSleepScore: 72.4,
     newRegistrationsThisMonth: 5,
     retentionRate: 78,
+    reportCount: 42,
+  };
+}
+
+export function getDemoAdminHqDashboard(): AdminHqDashboard {
+  const stats = getDemoAdminDashboard();
+  const instructors = listDemoAdminInstructors();
+  const clients = listDemoAdminClients();
+  const analytics = getDemoAdminAnalytics();
+  const today = new Date();
+
+  const daily = Array.from({ length: 14 }, (_, index) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (13 - index));
+    const date = d.toISOString().slice(0, 10);
+    const analyses = 2 + ((index * 3) % 7);
+    const homeworkSent = 1 + (index % 4);
+    const journeyUpdates = index % 3;
+    const activeUsers = 3 + (index % 6);
+    return {
+      date,
+      label: `${d.getMonth() + 1}/${d.getDate()}`,
+      activeUsers,
+      analyses,
+      homeworkSent,
+      journeyUpdates,
+    };
+  });
+
+  return {
+    overview: {
+      instructorCount: stats.instructorCount,
+      clientCount: stats.clientCount,
+      analysisCount: stats.totalAnalyses,
+      reportCount: stats.reportCount,
+      newRegistrationsThisMonth: stats.newRegistrationsThisMonth,
+    },
+    instructors: instructors.map((item) => ({
+      id: item.id,
+      displayName: item.displayName,
+      email: item.email,
+      certificationLabel: item.certificationLabel,
+      registeredAt: item.createdAt.slice(0, 10),
+      clientCount: item.clientCount,
+      lastLoginAt: item.lastLoginAt,
+      usageLabel: `今月 ${item.analysesThisMonth} 分析 · 累計 ${item.analysisCount} · 残クレジット ${item.remainingCredits}`,
+      statusLabel: item.statusLabel,
+      analysesThisMonth: item.analysesThisMonth,
+      analysisCount: item.analysisCount,
+    })),
+    clientStats: {
+      clientCount: stats.clientCount,
+      averageSleepScore: stats.averageSleepScore,
+      improvementRate: analytics.improvementRate,
+      retentionRate: stats.retentionRate,
+      latestAnalysisAt: clients[0]?.lastAnalysisAt ?? null,
+    },
+    platformAnalytics: {
+      daily,
+      homeworkSentPeriod: daily.reduce((sum, item) => sum + item.homeworkSent, 0),
+      journeyUpdatesPeriod: daily.reduce(
+        (sum, item) => sum + item.journeyUpdates,
+        0,
+      ),
+      analysesPeriod: daily.reduce((sum, item) => sum + item.analyses, 0),
+      activeUsersPeriod: 18,
+    },
+    alerts: [
+      {
+        id: "inactive-instructors",
+        kind: "inactive_instructor",
+        severity: "warning",
+        title: "30日以上利用していない認定講師",
+        detail: "1名（例: デモ 休眠講師）",
+        href: "/admin/instructors",
+        count: 1,
+      },
+      {
+        id: "low-analysis-instructors",
+        kind: "low_analysis_instructor",
+        severity: "caution",
+        title: "分析件数が少ない講師",
+        detail: "今月 2件未満が 1名",
+        href: "/admin/instructors",
+        count: 1,
+      },
+      {
+        id: "insufficient-client-data",
+        kind: "insufficient_client_data",
+        severity: "caution",
+        title: "データ不足のクライアント",
+        detail: "分析未実施または Score 未計測が 1名",
+        href: "/admin/clients",
+        count: 1,
+      },
+      {
+        id: "recent-errors",
+        kind: "error",
+        severity: "info",
+        title: "エラー発生状況",
+        detail: "直近7日で重大エラーはありません",
+        href: "/admin/logs",
+        count: 0,
+      },
+    ],
+    generatedAt: new Date().toISOString(),
   };
 }
 

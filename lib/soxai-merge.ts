@@ -15,6 +15,11 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
+import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import {
+  detectMetricConsistencyWarnings,
+  consistencyWarningKeys,
+} from "@/lib/soxai-consistency";
 import {
   inferScreenTypeFromReadings,
   isCriticalOcrKey,
@@ -559,12 +564,22 @@ export function mergeImageExtractResults(
     }
   }
 
-  const normalized = normalizeMetrics(merged);
+  const normalized = normalizeMetricsForDisplay(normalizeMetrics(merged));
   if (normalized.bedtime.trim()) {
     normalized.bedtime = normalizeTimeToHHMM(normalized.bedtime);
   }
   if (normalized.wakeTime.trim()) {
     normalized.wakeTime = normalizeTimeToHHMM(normalized.wakeTime);
+  }
+
+  // 矛盾がある項目は信頼度を下げて確認画面で「要確認」にする
+  const consistencyKeys = consistencyWarningKeys(
+    detectMetricConsistencyWarnings(normalized),
+  );
+  for (const key of consistencyKeys) {
+    if (confidence[key] != null) {
+      confidence[key] = Math.min(confidence[key]!, OCR_LOW_CONFIDENCE_THRESHOLD - 0.01);
+    }
   }
 
   return {

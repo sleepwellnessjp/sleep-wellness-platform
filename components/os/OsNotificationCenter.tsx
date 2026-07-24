@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
+  categorizeNotificationType,
   demoOsNotifications,
   mapPlatformNotification,
   OS_NOTIFICATION_KIND_LABELS,
@@ -29,38 +30,64 @@ export default function OsNotificationCenter({
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/os/notifications", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then(
-        (json: {
-          notifications?: Array<{
-            id: string;
-            title: string;
-            body: string;
-            type: string;
-            readAt: string | null;
-            createdAt: string;
-          }>;
-        } | null) => {
-          if (cancelled) return;
-          const remote = json?.notifications ?? [];
-          if (remote.length > 0) {
-            setItems(
-              remote.map((row) =>
-                mapPlatformNotification({
-                  id: row.id,
-                  userId: "",
-                  title: row.title,
-                  body: row.body,
-                  type: row.type,
-                  readAt: row.readAt,
-                  createdAt: row.createdAt,
-                }),
-              ),
-            );
-          }
-        },
-      )
+    void Promise.all([
+      fetch("/api/os/notifications", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then(
+          (json: {
+            notifications?: Array<{
+              id: string;
+              title: string;
+              body: string;
+              type: string;
+              readAt: string | null;
+              createdAt: string;
+            }>;
+          } | null) => json,
+        ),
+      fetch("/api/ops/notifications", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then(
+          (json: {
+            notifications?: Array<{
+              id: string;
+              kind: string;
+              title: string;
+              body: string;
+              href: string | null;
+              publishedAt: string;
+              readAt?: string | null;
+            }>;
+          } | null) => json,
+        ),
+    ])
+      .then(([platformJson, opsJson]) => {
+        if (cancelled) return;
+        const remote = platformJson?.notifications ?? [];
+        const ops = opsJson?.notifications ?? [];
+        const mappedPlatform = remote.map((row) =>
+          mapPlatformNotification({
+            id: row.id,
+            userId: "",
+            title: row.title,
+            body: row.body,
+            type: row.type,
+            readAt: row.readAt,
+            createdAt: row.createdAt,
+          }),
+        );
+        const mappedOps = ops.map((row) => ({
+          id: row.id,
+          kind: categorizeNotificationType(row.kind),
+          title: row.title,
+          body: row.body,
+          createdAt: row.publishedAt,
+          readAt: row.readAt ?? null,
+          href: row.href ?? "/notifications",
+        }));
+        const merged = [...mappedOps, ...mappedPlatform];
+        if (merged.length > 0) setItems(merged);
+      })
       .catch(() => {
         // keep demo fallback
       })
@@ -76,7 +103,7 @@ export default function OsNotificationCenter({
 
   return (
     <div
-      className="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_28px_70px_-42px_rgba(7,20,38,0.5)]"
+      className="fixed inset-x-3 top-[calc(4.75rem+env(safe-area-inset-top))] z-50 max-h-[min(70vh,24rem)] w-auto overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_28px_70px_-42px_rgba(7,20,38,0.5)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-none sm:w-[min(100%-2rem,22rem)]"
       role="dialog"
       aria-label="通知センター"
     >
@@ -147,7 +174,7 @@ export default function OsNotificationCenter({
                     <Link
                       href={item.href}
                       onClick={onClose}
-                      className="block px-4 py-3.5 transition hover:bg-slate-50"
+                      className="block min-h-14 px-4 py-3.5 transition active:bg-slate-50 sm:min-h-0 sm:hover:bg-slate-50 sm:active:bg-transparent"
                     >
                       {content}
                     </Link>
@@ -165,7 +192,7 @@ export default function OsNotificationCenter({
         <Link
           href="/settings#notifications"
           onClick={onClose}
-          className="text-[12px] font-semibold"
+          className="inline-flex min-h-11 items-center text-[12px] font-semibold active:opacity-70 sm:min-h-0 sm:active:opacity-100"
           style={{ color: NAVY }}
         >
           通知設定 →

@@ -9,7 +9,7 @@ export default function ClientProfileConfirmPage() {
 
   if (!clientId) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <p className="text-sm text-slate-400">クライアントIDが不正です</p>
       </main>
     );

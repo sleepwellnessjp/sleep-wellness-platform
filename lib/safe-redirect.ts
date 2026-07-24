@@ -1,6 +1,6 @@
 /**
  * Auth redirect のオープンリダイレクト防止。
- * 同一オリジンの相対パスのみ許可する。
+ * 同一オリジンの相対パスのみ許可する（query / hash は保持可）。
  */
 export function sanitizeAppRedirect(
   redirect: string | null | undefined,
@@ -15,24 +15,41 @@ export function sanitizeAppRedirect(
   return trimmed;
 }
 
+/** role / 保護判定用に ?query と #hash を除いた pathname を返す */
+export function appPathname(path: string): string {
+  const noHash = path.split("#")[0] ?? path;
+  const noQuery = noHash.split("?")[0] ?? noHash;
+  return noQuery || "/";
+}
+
 export function homePathForRole(role: string | null | undefined): string {
   if (role === "client") return "/client";
   if (role === "enterprise") return "/enterprise";
+  if (role === "school") return "/school";
   if (role === "admin" || role === "super_admin") return "/admin";
   return "/dashboard";
 }
 
 export function isClientOnlyPath(pathname: string): boolean {
-  return pathname === "/client" || pathname.startsWith("/client/");
+  const path = appPathname(pathname);
+  return path === "/client" || path.startsWith("/client/");
 }
 
 export function isEnterpriseOnlyPath(pathname: string): boolean {
-  return pathname === "/enterprise" || pathname.startsWith("/enterprise/");
+  const path = appPathname(pathname);
+  return path === "/enterprise" || path.startsWith("/enterprise/");
+}
+
+export function isSchoolOnlyPath(pathname: string): boolean {
+  const path = appPathname(pathname);
+  return path === "/school" || path.startsWith("/school/");
 }
 
 export function isInstructorOnlyPath(pathname: string): boolean {
   if (isClientOnlyPath(pathname)) return false;
   if (isEnterpriseOnlyPath(pathname)) return false;
+  if (isSchoolOnlyPath(pathname)) return false;
+  const path = appPathname(pathname);
   const prefixes = [
     "/dashboard",
     "/portal",
@@ -48,8 +65,27 @@ export function isInstructorOnlyPath(pathname: string): boolean {
     "/journey",
     "/homework",
     "/reports",
+    // /feedback は Closed Beta 全ロール共通（クライアント・認定校含む）
+    "/license",
+    "/invitations",
+    "/billing",
   ];
   return prefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+/** 認定校が閲覧できる本部画面（proxy / login / callback で共通） */
+export function isSchoolAllowedAdminPath(pathname: string): boolean {
+  const path = appPathname(pathname);
+  return (
+    path === "/admin/schools" ||
+    path.startsWith("/admin/schools/") ||
+    path === "/admin/certification" ||
+    path.startsWith("/admin/certification/") ||
+    path === "/admin/license" ||
+    path.startsWith("/admin/license/") ||
+    path === "/admin/subscriptions" ||
+    path.startsWith("/admin/subscriptions/")
   );
 }

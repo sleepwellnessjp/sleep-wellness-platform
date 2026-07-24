@@ -18,8 +18,8 @@ export default function InstructorNav({
   const homeHref = homePathForRole(role);
 
   return (
-    <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-4 sm:px-8">
+    <header className="sticky top-0 z-40 border-b border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)]/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      <div className="sw-shell-pad mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:gap-3.5 sm:px-6 sm:py-3.5 md:px-8 md:py-4">
         <OsTopBar role={role} homeHref={homeHref} />
         <p className="sr-only">{eyebrow}</p>
         <OsNav role={role} />

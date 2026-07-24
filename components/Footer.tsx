@@ -3,11 +3,9 @@ import Link from "next/link";
 
 const navigation = [
   { label: "About", href: "#about" },
-  { label: "Programs", href: "#programs" },
-  { label: "Analysis", href: "#analysis" },
-  { label: "Academy", href: "#academy" },
-  { label: "Corporate", href: "#corporate" },
-  { label: "Media", href: "#media" },
+  { label: "Services", href: "#services" },
+  { label: "Partners", href: "#partners" },
+  { label: "Founder", href: "#founder" },
   { label: "Contact", href: "#contact" },
 ];
 
@@ -17,8 +15,8 @@ export default function Footer() {
       <div className="absolute -left-40 top-0 h-[420px] w-[420px] rounded-full bg-cyan-300/5 blur-3xl" />
       <div className="absolute -right-40 bottom-0 h-[460px] w-[460px] rounded-full bg-amber-300/5 blur-3xl" />
 
-      <div className="relative mx-auto max-w-7xl px-6 pt-24 pb-8 sm:pt-28 lg:px-8 lg:pt-36">
-        <div className="grid gap-16 pb-20 lg:grid-cols-[1fr_1fr_0.9fr] lg:gap-20 lg:pb-28">
+      <div className="relative mx-auto max-w-7xl px-6 pt-16 pb-8 sm:pt-20 lg:px-8 lg:pt-24">
+        <div className="grid gap-12 pb-14 lg:grid-cols-[1fr_1fr_0.9fr] lg:gap-16 lg:pb-16">
           <div>
             <Link
               href="/"

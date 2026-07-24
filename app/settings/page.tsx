@@ -11,7 +11,7 @@ import { usePlatformMe } from "@/lib/platform/use-platform-me";
 import { normalizeOsRole, OS_ROLE_LABELS, type OsRole } from "@/lib/os/roles";
 
 const inputClass =
-  "mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[15px] text-[#071426] outline-none transition focus:border-[#315f68] focus:ring-4 focus:ring-[#315f68]/10";
+  "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[16px] text-[#071426] outline-none transition focus:border-[#315f68] focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:text-[15px]";
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -43,8 +43,11 @@ export default function SettingsPage() {
   };
 
   return (
-    <OsShell role={role} contentClassName="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-      <header className="mb-10">
+    <OsShell
+      role={role}
+      contentClassName="mx-auto max-w-3xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 md:px-8 md:py-12 lg:py-14"
+    >
+      <header className="mb-8 sm:mb-10">
         <p
           className="text-[11px] font-semibold tracking-[0.28em]"
           style={{ color: GOLD }}
@@ -52,22 +55,22 @@ export default function SettingsPage() {
           SETTINGS
         </p>
         <h1
-          className="mt-3 text-[1.85rem] font-semibold tracking-[-0.05em] sm:text-4xl"
+          className="mt-3 break-words text-[1.65rem] font-semibold tracking-[-0.05em] sm:text-4xl"
           style={{ color: NAVY }}
         >
           設定
         </h1>
-        <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-600">
+        <p className="mt-3 max-w-xl text-[14px] leading-7 text-slate-600 sm:text-[15px]">
           プロフィール・通知・セキュリティを管理します。
         </p>
       </header>
 
-      <div className="space-y-6">
+      <div className="w-full space-y-5 sm:space-y-6">
         <SectionCard id="profile" eyebrow="PROFILE" title="プロフィール">
           {loading ? (
             <p className="text-sm text-slate-400">読み込み中…</p>
           ) : (
-            <form onSubmit={onSaveProfile} className="space-y-4">
+            <form onSubmit={onSaveProfile} className="grid grid-cols-1 gap-4">
               <label className="block text-[13px] font-semibold text-slate-600">
                 表示名
                 <input
@@ -90,7 +93,7 @@ export default function SettingsPage() {
               </p>
               <button
                 type="submit"
-                className="inline-flex min-h-11 items-center justify-center rounded-2xl px-5 text-sm font-semibold text-white"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
                 style={{ backgroundColor: NAVY }}
               >
                 保存
@@ -104,7 +107,7 @@ export default function SettingsPage() {
           eyebrow="NOTIFICATIONS"
           title="通知"
         >
-          <form onSubmit={onSaveNotifications} className="space-y-3">
+          <form onSubmit={onSaveNotifications} className="grid grid-cols-1 gap-3">
             {[
               {
                 id: "homework",
@@ -139,27 +142,53 @@ export default function SettingsPage() {
             ].map((item) => (
               <label
                 key={item.id}
-                className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3.5"
+                className="flex min-h-12 items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3.5"
               >
-                <span className="text-[14px] font-medium" style={{ color: NAVY }}>
+                <span className="min-w-0 break-words text-[14px] font-medium" style={{ color: NAVY }}>
                   {item.label}
                 </span>
                 <input
                   type="checkbox"
                   checked={item.checked}
                   onChange={(event) => item.set(event.target.checked)}
-                  className="h-4 w-4 accent-[#071426]"
+                  className="h-5 w-5 shrink-0 accent-[#071426]"
                 />
               </label>
             ))}
             <button
               type="submit"
-              className="mt-2 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 text-sm font-semibold text-white"
+              className="mt-2 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
               style={{ backgroundColor: NAVY }}
             >
               通知設定を保存
             </button>
           </form>
+        </SectionCard>
+
+        <SectionCard eyebrow="LICENSE" title="マイライセンス">
+          <p className="text-[14px] leading-6 text-slate-600">
+            認定レベル・サブスクリプション・デジタル認定証・継続教育を確認できます。
+          </p>
+          <Link
+            href="/license"
+            className="mt-4 inline-flex min-h-11 items-center text-[13px] font-semibold active:opacity-70 sm:min-h-0 sm:hover:underline sm:active:opacity-100"
+            style={{ color: NAVY }}
+          >
+            マイライセンスへ →
+          </Link>
+        </SectionCard>
+
+        <SectionCard eyebrow="β TEST" title="フィードバック">
+          <p className="text-[14px] leading-6 text-slate-600">
+            不具合・改善要望・使いやすかった点を本部へ送信できます。
+          </p>
+          <Link
+            href="/feedback"
+            className="mt-4 inline-flex min-h-11 items-center text-[13px] font-semibold active:opacity-70 sm:min-h-0 sm:hover:underline sm:active:opacity-100"
+            style={{ color: NAVY }}
+          >
+            βテスト フィードバックへ →
+          </Link>
         </SectionCard>
 
         <SectionCard eyebrow="SECURITY" title="セキュリティ">
@@ -173,13 +202,13 @@ export default function SettingsPage() {
               </p>
               <Link
                 href="/login"
-                className="mt-3 inline-flex text-[13px] font-semibold"
+                className="mt-3 inline-flex min-h-11 items-center text-[13px] font-semibold active:opacity-70 sm:min-h-0 sm:hover:underline sm:active:opacity-100"
                 style={{ color: NAVY }}
               >
                 ログイン画面へ →
               </Link>
             </div>
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
+            <div className="w-full rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
               <p className="text-[14px] font-semibold" style={{ color: NAVY }}>
                 2段階認証
               </p>
@@ -191,7 +220,7 @@ export default function SettingsPage() {
         </SectionCard>
 
         <SectionCard eyebrow="LANGUAGE" title="言語設定">
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
+          <div className="w-full rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4">
             <p className="text-[14px] font-semibold" style={{ color: NAVY }}>
               日本語（固定）
             </p>

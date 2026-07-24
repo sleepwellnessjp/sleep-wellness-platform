@@ -1,6 +1,7 @@
 /**
- * Version 1.0 Beta — 全画面共通のデモクライアント定義。
- * Dashboard / Clients / Analysis / Journey / Homework / Report が同じ ID・氏名を使う。
+ * Demo Mode — 全画面共通のデモクライアント定義。
+ * Dashboard / Clients / Analysis / Journey / Homework / Report / Demo が同じ ID・氏名を使う。
+ * 実データ（Supabase）とは完全に分離したサンプルのみ。
  */
 
 export type DemoClientGender = "female" | "male" | "other" | "unspecified";
@@ -21,9 +22,29 @@ export type DemoClient = {
   instructorName: string;
 };
 
-export const DEMO_INSTRUCTOR_NAME = "山田";
+export type DemoInstructor = {
+  id: string;
+  name: string;
+  /** 呼びかけ用の姓 */
+  displayName: string;
+  title: string;
+  specialty: string;
+  region: string;
+};
 
-/** カノニカル・デモクライアント（8名） */
+export const DEMO_INSTRUCTOR: DemoInstructor = {
+  id: "instructor-demo-1",
+  name: "山田 真由美",
+  displayName: "山田",
+  title: "認定講師",
+  specialty: "メラトニンヨガ / 睡眠コーチング",
+  region: "東京",
+};
+
+/** @deprecated Use DEMO_INSTRUCTOR.displayName */
+export const DEMO_INSTRUCTOR_NAME = DEMO_INSTRUCTOR.displayName;
+
+/** カノニカル・デモクライアント（12名） */
 export const DEMO_CLIENTS: readonly DemoClient[] = [
   {
     id: "client-demo-1",
@@ -119,6 +140,54 @@ export const DEMO_CLIENTS: readonly DemoClient[] = [
     nextFollowUpDate: "2026-07-27",
     assignedDay: "2026-07-27",
     journeyProgress: 48,
+    instructorName: DEMO_INSTRUCTOR_NAME,
+  },
+  {
+    id: "client-demo-9",
+    name: "加藤 里奈",
+    age: 36,
+    gender: "female",
+    sleepScore: 70,
+    lastAnalysisDate: "2026-07-17",
+    nextFollowUpDate: "2026-07-31",
+    assignedDay: "2026-07-31",
+    journeyProgress: 62,
+    instructorName: DEMO_INSTRUCTOR_NAME,
+  },
+  {
+    id: "client-demo-10",
+    name: "吉田 拓也",
+    age: 41,
+    gender: "male",
+    sleepScore: 58,
+    lastAnalysisDate: "2026-07-14",
+    nextFollowUpDate: "2026-07-29",
+    assignedDay: "2026-07-29",
+    journeyProgress: 38,
+    instructorName: DEMO_INSTRUCTOR_NAME,
+  },
+  {
+    id: "client-demo-11",
+    name: "松本 さくら",
+    age: 28,
+    gender: "female",
+    sleepScore: 76,
+    lastAnalysisDate: "2026-07-22",
+    nextFollowUpDate: "2026-08-01",
+    assignedDay: "2026-08-01",
+    journeyProgress: 74,
+    instructorName: DEMO_INSTRUCTOR_NAME,
+  },
+  {
+    id: "client-demo-12",
+    name: "井上 誠",
+    age: 53,
+    gender: "male",
+    sleepScore: 66,
+    lastAnalysisDate: "2026-07-16",
+    nextFollowUpDate: "2026-07-28",
+    assignedDay: "2026-07-28",
+    journeyProgress: 51,
     instructorName: DEMO_INSTRUCTOR_NAME,
   },
 ] as const;

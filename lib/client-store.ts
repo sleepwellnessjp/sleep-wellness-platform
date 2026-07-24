@@ -14,7 +14,7 @@ import {
 } from "@/lib/soxai-structured-metrics";
 
 const STORAGE_KEY = "swij-clients-v1";
-const SEED_FLAG_KEY = "swij-clients-seeded-v3";
+const SEED_FLAG_KEY = "swij-clients-seeded-v4";
 const LAST_SAVE_KEY = "swij-last-saved-analysis";
 
 export type PdfHistoryEntry = {
@@ -350,9 +350,9 @@ function buildSeedClients(): StoredClient[] {
     scoreComment:
       "今回の睡眠ウェルネススコアは、身体と心のバランスを中心に評価しています。\n生活や環境の軸にも整え余地があり、数日の推移を見ると傾向がよりはっきりします。",
     todaysRecommendations: [
-      "入眠前60分は強い光を控えましょう",
-      "就寝前にゆっくりした呼吸を3分しましょう",
-      "起床時刻をいつも通りに固定しましょう",
+      "今日は21時以降スマホを控える",
+      "今日は朝7時30分までに日光を浴びる",
+      "今日はアルコール350ml以内にする",
     ],
     nextComparisonPoints: [
       "深い睡眠の割合の変化",
@@ -362,19 +362,29 @@ function buildSeedClients(): StoredClient[] {
     recommendationsUntilNext: [
       {
         id: "goal-demo-1",
-        text: "就寝90分前までに入浴を終える",
+        text: "今夜は就寝90分前に入浴を終える",
         checked: false,
       },
       {
         id: "goal-demo-2",
-        text: "平日の起床時刻を揃える",
+        text: "今週は平日の起床時刻を揃える",
         checked: false,
       },
       {
         id: "goal-demo-3",
+        text: "午後のカフェインを控える習慣を続ける",
+        checked: false,
+      },
+      {
+        id: "goal-demo-4",
         text: "入眠前60分は強い光を控える",
         checked: false,
       },
+    ],
+    instructorSuggestions: [
+      "朝の行動を詳しくヒアリングしてください",
+      "飲酒量の変化を次回確認してください",
+      "体内時計の改善を重点確認してください",
     ],
     score,
     scoreBreakdown: {
@@ -495,7 +505,7 @@ function buildSeedClients(): StoredClient[] {
               "前回より睡眠スコアが下がり、夜勤の増加も生活リズムに影響している可能性があります。",
             ),
             karteSummary:
-              "前回より回復が弱まりました。夜勤の増加がうかがえるため、シフトと睡眠のバランスを次回フォローで確認すると良いでしょう。",
+              "■現在の状態\n前回より回復が弱まった可能性があります。\n■原因分析\n夜勤の増加と睡眠時間・効率の変化が重なっていると考えられます。\n■改善戦略\nシフトと睡眠のバランスを次回フォローで確認し、回復機会を優先して整えることが有効と考えられます。",
           },
           pdfHistory: [
             {
@@ -599,7 +609,7 @@ function buildSeedClients(): StoredClient[] {
               "前回より睡眠のまとまりが弱まり、飲酒量の増加も見られます。回復の土台づくりを優先すると良いでしょう。",
             ),
             karteSummary:
-              "3回連続で睡眠スコアが低下しています。一方で飲酒量は増加しており、睡眠時間も5時間を下回る夜が続いています。生活リズムの確認を次回フォローでおすすめします。",
+              "■現在の状態\n3回連続で睡眠スコアが低下している可能性があります。\n■原因分析\n飲酒量の増加と、睡眠時間が5時間を下回る夜が続いており、深睡眠・効率への影響が考えられます。\n■改善戦略\n生活リズムと飲酒終了時刻を次回フォローで確認し、回復機会の確保を優先することが有効と考えられます。",
             improvements: [
               {
                 stars: 5,
@@ -679,6 +689,234 @@ function buildSeedClients(): StoredClient[] {
             dateDaysAgo(49),
             76,
             "睡眠の土台は保たれており、深睡眠にも良い兆しがありました。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-5",
+      name: "高橋 恵",
+      registeredAt: isoDaysAgo(40),
+      age: 51,
+      gender: "female",
+      tags: ["更年期", "フォロー中"],
+      analyses: [
+        {
+          id: "analysis-demo-5-1",
+          analysisDate: dateDaysAgo(14),
+          createdAt: isoDaysAgo(14),
+          sleepScore: 55,
+          wellnessScore: 57,
+          metrics: sampleMetrics(55, {
+            sleepDuration: "5時間20分",
+            awakenings: "58分",
+            stress: "48",
+          }),
+          result: sampleResult(
+            "高橋 恵",
+            dateDaysAgo(14),
+            57,
+            "中途覚醒が多く、回復が十分に得られにくい夜が続いています。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-6",
+      name: "渡辺 涼",
+      registeredAt: isoDaysAgo(50),
+      age: 44,
+      gender: "male",
+      tags: ["管理職", "出張多め"],
+      analyses: [
+        {
+          id: "analysis-demo-6-1",
+          analysisDate: dateDaysAgo(5),
+          createdAt: isoDaysAgo(5),
+          sleepScore: 69,
+          wellnessScore: 71,
+          metrics: sampleMetrics(69),
+          result: sampleResult(
+            "渡辺 涼",
+            dateDaysAgo(5),
+            71,
+            "出張後のリズム乱れはあるものの、土台は保たれています。",
+          ),
+          pdfHistory: [
+            {
+              id: "pdf-demo-6-1",
+              label: "Sleep Wellness Visual Report",
+              createdAt: isoDaysAgo(5),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "client-demo-7",
+      name: "中村 結衣",
+      registeredAt: isoDaysAgo(70),
+      age: 33,
+      gender: "female",
+      tags: ["改善良好"],
+      analyses: [
+        {
+          id: "analysis-demo-7-1",
+          analysisDate: dateDaysAgo(3),
+          createdAt: isoDaysAgo(3),
+          sleepScore: 81,
+          wellnessScore: 83,
+          metrics: sampleMetrics(81, {
+            sleepEfficiency: "91%",
+            deepSleepRate: "20%",
+            stress: "22",
+          }),
+          result: sampleResult(
+            "中村 結衣",
+            dateDaysAgo(3),
+            83,
+            "深睡眠と効率が高く、回復の質が安定しています。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-8",
+      name: "小林 大輔",
+      registeredAt: isoDaysAgo(33),
+      age: 47,
+      gender: "male",
+      tags: ["企業契約"],
+      analyses: [
+        {
+          id: "analysis-demo-8-1",
+          analysisDate: dateDaysAgo(12),
+          createdAt: isoDaysAgo(12),
+          sleepScore: 64,
+          wellnessScore: 66,
+          metrics: sampleMetrics(64),
+          result: sampleResult(
+            "小林 大輔",
+            dateDaysAgo(12),
+            66,
+            "睡眠負債が残り気味です。起床時刻の固定から整えましょう。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-9",
+      name: "加藤 里奈",
+      registeredAt: isoDaysAgo(22),
+      age: 36,
+      gender: "female",
+      tags: ["ホットヨガ"],
+      analyses: [
+        {
+          id: "analysis-demo-9-1",
+          analysisDate: dateDaysAgo(7),
+          createdAt: isoDaysAgo(7),
+          sleepScore: 70,
+          wellnessScore: 72,
+          metrics: sampleMetrics(70),
+          result: sampleResult(
+            "加藤 里奈",
+            dateDaysAgo(7),
+            72,
+            "ルーティン定着の兆しあり。入眠前の光環境を整えるとさらに改善しそうです。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-10",
+      name: "吉田 拓也",
+      registeredAt: isoDaysAgo(38),
+      age: 41,
+      gender: "male",
+      tags: ["夜型", "要フォロー"],
+      analyses: [
+        {
+          id: "analysis-demo-10-1",
+          analysisDate: dateDaysAgo(10),
+          createdAt: isoDaysAgo(10),
+          sleepScore: 58,
+          wellnessScore: 60,
+          metrics: sampleMetrics(58, {
+            bedtime: "01:10",
+            wakeTime: "07:40",
+            sleepLatency: "28分",
+            stress: "44",
+          }),
+          result: sampleResult(
+            "吉田 拓也",
+            dateDaysAgo(10),
+            60,
+            "就寝時刻の遅れが入眠潜時とストレスに影響している可能性があります。",
+          ),
+          pdfHistory: [],
+        },
+      ],
+    },
+    {
+      id: "client-demo-11",
+      name: "松本 さくら",
+      registeredAt: isoDaysAgo(18),
+      age: 28,
+      gender: "female",
+      tags: ["初回後"],
+      analyses: [
+        {
+          id: "analysis-demo-11-1",
+          analysisDate: dateDaysAgo(2),
+          createdAt: isoDaysAgo(2),
+          sleepScore: 76,
+          wellnessScore: 78,
+          metrics: sampleMetrics(76),
+          result: sampleResult(
+            "松本 さくら",
+            dateDaysAgo(2),
+            78,
+            "全体は良好。次回は週末のリズム維持を確認しましょう。",
+          ),
+          pdfHistory: [
+            {
+              id: "pdf-demo-11-1",
+              label: "Sleep Wellness Visual Report",
+              createdAt: isoDaysAgo(2),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "client-demo-12",
+      name: "井上 誠",
+      registeredAt: isoDaysAgo(55),
+      age: 53,
+      gender: "male",
+      tags: ["企業契約", "血圧"],
+      analyses: [
+        {
+          id: "analysis-demo-12-1",
+          analysisDate: dateDaysAgo(8),
+          createdAt: isoDaysAgo(8),
+          sleepScore: 66,
+          wellnessScore: 68,
+          metrics: sampleMetrics(66, {
+            restingHeartRate: "62 bpm",
+            spo2: "95%",
+          }),
+          result: sampleResult(
+            "井上 誠",
+            dateDaysAgo(8),
+            68,
+            "回復は中程度。入浴と就寝の間隔を整えると深睡眠が増えそうです。",
           ),
           pdfHistory: [],
         },

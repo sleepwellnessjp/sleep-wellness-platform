@@ -1,5 +1,5 @@
 /**
- * Sleep Wellness Design System — Version 3.0
+ * Sleep Wellness Design System — Version 2.3
  *
  * Import from `@/design-system` in new module UI.
  * Existing screens may keep `@/components/ui/*` until migrated.
@@ -18,7 +18,7 @@ export { default as Badge } from "./Badge";
 export { ToastProvider, useToast } from "./Toast";
 export type { ToastTone } from "./Toast";
 export { default as Loading } from "./Loading";
-export { Skeleton, SkeletonLine, SoftSkeleton } from "./Skeleton";
+export { Skeleton, SkeletonLine, SoftSkeleton, ListSkeleton } from "./Skeleton";
 export { default as ErrorView } from "./ErrorView";
 export type { ErrorKind } from "./ErrorView";
 export { EmptyState } from "./EmptyState";

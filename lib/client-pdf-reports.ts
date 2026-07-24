@@ -55,5 +55,10 @@ export function formatPdfReportShortDate(value?: string | null): string {
 }
 
 export function pdfReportResultHref(analysisId: string): string {
+  return `/client/analyses/${encodeURIComponent(analysisId)}`;
+}
+
+/** 認定講師向けの分析結果画面 */
+export function instructorPdfReportResultHref(analysisId: string): string {
   return `/analysis/result?analysisId=${encodeURIComponent(analysisId)}`;
 }

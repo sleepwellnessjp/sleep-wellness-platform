@@ -16,6 +16,82 @@ export type AdminDashboardStats = {
   averageSleepScore: number | null;
   newRegistrationsThisMonth: number;
   retentionRate: number | null;
+  reportCount: number;
+};
+
+/** SWIJ 本部向け Admin HQ Dashboard */
+export type AdminHqOverview = {
+  instructorCount: number;
+  clientCount: number;
+  analysisCount: number;
+  reportCount: number;
+  newRegistrationsThisMonth: number;
+};
+
+export type AdminHqInstructorPreview = {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  certificationLabel: string;
+  registeredAt: string;
+  clientCount: number;
+  lastLoginAt: string | null;
+  usageLabel: string;
+  statusLabel: string;
+  analysesThisMonth: number;
+  analysisCount: number;
+};
+
+export type AdminHqClientStats = {
+  clientCount: number;
+  averageSleepScore: number | null;
+  improvementRate: number | null;
+  retentionRate: number | null;
+  latestAnalysisAt: string | null;
+};
+
+export type AdminDailyMetricPoint = {
+  date: string;
+  label: string;
+  activeUsers: number;
+  analyses: number;
+  homeworkSent: number;
+  journeyUpdates: number;
+};
+
+export type AdminHqPlatformAnalytics = {
+  daily: AdminDailyMetricPoint[];
+  homeworkSentPeriod: number;
+  journeyUpdatesPeriod: number;
+  analysesPeriod: number;
+  activeUsersPeriod: number;
+};
+
+export type AdminAlertKind =
+  | "inactive_instructor"
+  | "low_analysis_instructor"
+  | "insufficient_client_data"
+  | "error";
+
+export type AdminAlertSeverity = "info" | "caution" | "warning" | "critical";
+
+export type AdminAlertItem = {
+  id: string;
+  kind: AdminAlertKind;
+  severity: AdminAlertSeverity;
+  title: string;
+  detail: string;
+  href?: string;
+  count: number;
+};
+
+export type AdminHqDashboard = {
+  overview: AdminHqOverview;
+  instructors: AdminHqInstructorPreview[];
+  clientStats: AdminHqClientStats;
+  platformAnalytics: AdminHqPlatformAnalytics;
+  alerts: AdminAlertItem[];
+  generatedAt: string;
 };
 
 export type AdminInstructorRow = {

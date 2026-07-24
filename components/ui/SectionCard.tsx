@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { GOLD, NAVY } from "./tokens";
+import { CARD_CLASS, GOLD, NAVY } from "./tokens";
 
 type Props = {
   eyebrow?: string;
@@ -9,7 +9,7 @@ type Props = {
   id?: string;
 };
 
-/** Shared section card shell used across client / instructor surfaces. */
+/** Shared section card shell — SWIJ brand (navy title / gold eyebrow / white surface). */
 export default function SectionCard({
   eyebrow,
   title,
@@ -20,13 +20,13 @@ export default function SectionCard({
   return (
     <section
       id={id}
-      className={`rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 shadow-[0_20px_60px_-48px_rgba(15,23,42,0.22)] sm:px-7 sm:py-7 ${className}`}
+      className={`${CARD_CLASS} px-4 py-5 sm:px-6 sm:py-6 md:px-7 md:py-7 ${className}`}
     >
       {title || eyebrow ? (
-        <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-[color:var(--sw-border-subtle)] pb-3.5 sm:mb-5 sm:gap-3 sm:pb-4">
           {title ? (
             <h2
-              className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+              className="min-w-0 break-words text-base font-semibold tracking-[-0.03em] sm:text-lg md:text-xl"
               style={{ color: NAVY }}
             >
               {title}
@@ -36,7 +36,7 @@ export default function SectionCard({
           )}
           {eyebrow ? (
             <p
-              className="text-[10px] font-semibold tracking-[0.22em]"
+              className="text-[10px] font-semibold tracking-[0.22em] sm:tracking-[0.28em]"
               style={{ color: GOLD }}
             >
               {eyebrow}

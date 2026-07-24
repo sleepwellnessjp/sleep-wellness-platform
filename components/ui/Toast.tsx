@@ -100,7 +100,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex flex-col items-center gap-2 px-4 pb-6 sm:items-end sm:px-6 sm:pb-8"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex flex-col items-center gap-2 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:items-end sm:px-6 sm:pb-8"
         aria-live="polite"
       >
         {items.map((item) => {
@@ -121,7 +121,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     {style.label}
                   </p>
                   <p
-                    className="mt-1 text-[13px] leading-5 font-medium sm:text-[14px]"
+                    className="mt-1 break-words text-[13px] leading-5 font-medium sm:text-[14px]"
                     style={{ color: NAVY }}
                   >
                     {item.message}
@@ -130,7 +130,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => dismiss(item.id)}
-                  className="shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-400 transition hover:bg-white/70 hover:text-slate-600"
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-slate-400 transition active:bg-white/70 active:text-slate-600 sm:h-8 sm:w-8 sm:hover:bg-white/70 sm:hover:text-slate-600 sm:active:bg-transparent"
                   aria-label="閉じる"
                 >
                   ✕

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import InstructorNav from "@/components/InstructorNav";
+import ErrorState from "@/components/ui/ErrorState";
 import {
   BORDER,
   CARD_SHADOW,
@@ -10,6 +11,7 @@ import {
   NAVY,
   SURFACE,
 } from "@/components/ui/tokens";
+import { userMessageFromUnknown } from "@/lib/data-access-errors";
 import {
   CLIENT_MANAGEMENT_PAGE_SIZE,
   GENDER_LABELS,
@@ -66,6 +68,7 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<ClientManagementItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
   const [sleepScoreQuery, setSleepScoreQuery] = useState("");
   const [assignedDayQuery, setAssignedDayQuery] = useState("");
@@ -83,12 +86,14 @@ export default function ClientsPage() {
         if (!cancelled) {
           setClients(result.clients);
           setTotalCount(result.totalCount);
+          setLoadError(null);
         }
       } catch (error) {
         console.error("[clients] getClientManagementList failed:", error);
         if (!cancelled) {
           setClients([]);
           setTotalCount(0);
+          setLoadError(userMessageFromUnknown(error));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -136,22 +141,25 @@ export default function ClientsPage() {
     <main className="min-h-screen" style={{ backgroundColor: SURFACE, color: NAVY }}>
       <InstructorNav eyebrow="CLIENTS" />
 
-      <div className="mx-auto max-w-5xl px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
-        <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
+      <div className="mx-auto max-w-5xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-10 sm:py-16 sm:pb-16 lg:py-20 lg:pb-20">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-5">
+          <div className="min-w-0">
             <h1
-              className="text-[1.85rem] font-semibold tracking-[-0.04em] sm:text-[2.35rem]"
+              className="break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.04em] sm:text-[2.35rem] sm:leading-normal"
               style={{ color: NAVY }}
             >
               Client Management
             </h1>
-            <p className="mt-3 text-[15px] leading-7" style={{ color: MUTED }}>
+            <p
+              className="mt-2 text-[14px] leading-6 sm:mt-3 sm:text-[15px] sm:leading-7"
+              style={{ color: MUTED }}
+            >
               担当クライアントの睡眠スコアとフォロー予定を一覧で確認します。
             </p>
           </div>
           <Link
             href="/clients/new"
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl px-5 py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90"
+            className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-5 py-2.5 text-[14px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY, boxShadow: CARD_SHADOW }}
           >
             <PlusIcon className="h-4 w-4" />
@@ -160,11 +168,11 @@ export default function ClientsPage() {
         </header>
 
         <section
-          className="mt-10 rounded-3xl border bg-white p-5 sm:mt-12 sm:p-6"
+          className="mt-8 rounded-3xl border bg-white p-4 sm:mt-12 sm:p-6"
           style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
           aria-label="検索"
         >
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-3.5 sm:grid-cols-3 sm:gap-4">
             <label className="block">
               <span
                 className="text-[11px] font-medium tracking-[0.12em]"
@@ -178,7 +186,7 @@ export default function ClientsPage() {
                 onChange={(event) => setNameQuery(event.target.value)}
                 placeholder="氏名"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
+                className="mt-2 min-h-12 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[16px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08 sm:min-h-0 sm:text-[15px]"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
@@ -196,7 +204,7 @@ export default function ClientsPage() {
                 onChange={(event) => setSleepScoreQuery(event.target.value)}
                 placeholder="例: 70"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
+                className="mt-2 min-h-12 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[16px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08 sm:min-h-0 sm:text-[15px]"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
@@ -213,41 +221,55 @@ export default function ClientsPage() {
                 onChange={(event) => setAssignedDayQuery(event.target.value)}
                 placeholder="例: 2026-07-25"
                 autoComplete="off"
-                className="mt-2 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[15px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08"
+                className="mt-2 min-h-12 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[16px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08 sm:min-h-0 sm:text-[15px]"
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
           </div>
         </section>
 
-        <section className="mt-10 sm:mt-12" aria-labelledby="client-list-title">
-          <div className="mb-6 flex items-end justify-between gap-4">
+        <section className="mt-8 sm:mt-12" aria-labelledby="client-list-title">
+          <div className="mb-4 flex items-end justify-between gap-3 sm:mb-6 sm:gap-4">
             <h2
               id="client-list-title"
-              className="text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+              className="text-base font-semibold tracking-[-0.03em] sm:text-xl"
               style={{ color: NAVY }}
             >
               クライアント一覧
             </h2>
             {ready ? (
-              <span className="text-[13px] tabular-nums" style={{ color: MUTED }}>
+              <span
+                className="shrink-0 text-[13px] tabular-nums"
+                style={{ color: MUTED }}
+              >
                 {filteredClients.length} / {totalCount}名
               </span>
             ) : null}
           </div>
 
           {!ready ? (
-            <div className="grid gap-4 sm:grid-cols-2" aria-busy="true" aria-label="読み込み中">
+            <div
+              className="grid gap-3 sm:grid-cols-2 sm:gap-4"
+              aria-busy="true"
+              aria-label="読み込み中"
+            >
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={index}
-                  className="h-56 animate-pulse rounded-3xl bg-slate-100"
+                  className="h-52 animate-pulse rounded-3xl bg-slate-100 sm:h-56"
                 />
               ))}
             </div>
+          ) : loadError ? (
+            <ErrorState
+              title="クライアント一覧を表示できません"
+              message={loadError}
+              kind="supabase"
+              onRetry={() => window.location.reload()}
+            />
           ) : filteredClients.length === 0 ? (
             <div
-              className="rounded-3xl border px-6 py-16 text-center"
+              className="rounded-3xl border px-5 py-12 text-center sm:px-6 sm:py-16"
               style={{ borderColor: BORDER }}
             >
               <p className="text-[15px] font-medium" style={{ color: NAVY }}>
@@ -263,7 +285,7 @@ export default function ClientsPage() {
               {totalCount === 0 ? (
                 <Link
                   href="/clients/new"
-                  className="mt-6 inline-flex min-h-11 items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition hover:opacity-90"
+                  className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:hover:opacity-90 sm:active:opacity-100"
                   style={{ backgroundColor: NAVY }}
                 >
                   新規クライアント登録
@@ -272,24 +294,24 @@ export default function ClientsPage() {
             </div>
           ) : (
             <ul
-              className={`grid gap-4 sm:grid-cols-2 ${isFiltering ? "opacity-70" : "opacity-100"} transition-opacity duration-150`}
+              className={`grid gap-3 sm:grid-cols-2 sm:gap-4 ${isFiltering ? "opacity-70" : "opacity-100"} transition-opacity duration-150`}
             >
               {pageItems.map((client) => (
                 <li key={client.id}>
                   <article
-                    className="flex h-full flex-col rounded-3xl border bg-white p-5 transition hover:-translate-y-0.5 sm:p-6"
+                    className="flex h-full flex-col rounded-3xl border bg-white p-4 transition active:bg-slate-50 sm:p-6 sm:hover:-translate-y-0.5 sm:active:bg-white"
                     style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
                   >
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-3 sm:gap-4">
                       <ClientAvatar client={client} />
                       <div className="min-w-0 flex-1">
                         <h3
-                          className="truncate text-[16px] font-semibold tracking-[-0.02em]"
+                          className="truncate text-[15px] font-semibold tracking-[-0.02em] sm:text-[16px]"
                           style={{ color: NAVY }}
                         >
                           {client.name}
                         </h3>
-                        <p className="mt-1 text-[13px]" style={{ color: MUTED }}>
+                        <p className="mt-1 text-[12px] sm:text-[13px]" style={{ color: MUTED }}>
                           {client.age != null ? `${client.age}歳` : "年齢未設定"}
                           {" · "}
                           {GENDER_LABELS[client.gender]}
@@ -297,13 +319,13 @@ export default function ClientsPage() {
                       </div>
                       <div className="shrink-0 text-right">
                         <p
-                          className="text-[11px] font-medium tracking-[0.12em]"
+                          className="text-[10px] font-medium tracking-[0.12em] sm:text-[11px]"
                           style={{ color: MUTED }}
                         >
                           睡眠スコア
                         </p>
                         <p
-                          className="mt-0.5 text-[1.5rem] font-semibold tracking-[-0.04em] tabular-nums"
+                          className="mt-0.5 text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums sm:text-[1.5rem]"
                           style={{ color: NAVY }}
                         >
                           {client.sleepScore ?? "—"}
@@ -312,10 +334,10 @@ export default function ClientsPage() {
                     </div>
 
                     <dl
-                      className="mt-5 grid grid-cols-2 gap-3 border-t pt-4"
+                      className="mt-4 grid grid-cols-2 gap-3 border-t pt-3.5 sm:mt-5 sm:pt-4"
                       style={{ borderColor: BORDER }}
                     >
-                      <div>
+                      <div className="min-w-0">
                         <dt
                           className="text-[11px] font-medium tracking-[0.08em]"
                           style={{ color: MUTED }}
@@ -323,13 +345,13 @@ export default function ClientsPage() {
                           前回分析日
                         </dt>
                         <dd
-                          className="mt-1 text-[13px] font-medium"
+                          className="mt-1 break-words text-[13px] font-medium"
                           style={{ color: NAVY }}
                         >
                           {formatManagementDate(client.lastAnalysisDate)}
                         </dd>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <dt
                           className="text-[11px] font-medium tracking-[0.08em]"
                           style={{ color: MUTED }}
@@ -337,7 +359,7 @@ export default function ClientsPage() {
                           次回フォロー日
                         </dt>
                         <dd
-                          className="mt-1 text-[13px] font-medium"
+                          className="mt-1 break-words text-[13px] font-medium"
                           style={{ color: NAVY }}
                         >
                           {formatManagementDate(client.nextFollowUpDate)}
@@ -345,7 +367,7 @@ export default function ClientsPage() {
                       </div>
                     </dl>
 
-                    <div className="mt-5">
+                    <div className="mt-4 sm:mt-5">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <p
                           className="text-[11px] font-medium tracking-[0.08em]"
@@ -378,10 +400,10 @@ export default function ClientsPage() {
                       </div>
                     </div>
 
-                    <div className="mt-6 flex flex-1 items-end">
+                    <div className="mt-5 flex flex-1 items-end sm:mt-6">
                       <Link
                         href={`/clients/${encodeURIComponent(client.id)}`}
-                        className="inline-flex min-h-10 w-full items-center justify-center rounded-2xl border text-[14px] font-semibold transition hover:bg-slate-50"
+                        className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border text-[14px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:hover:bg-slate-50 sm:active:bg-transparent"
                         style={{ borderColor: BORDER, color: NAVY }}
                       >
                         詳細
@@ -396,27 +418,27 @@ export default function ClientsPage() {
 
         {ready ? (
           <footer
-            className="mt-12 flex flex-col items-center justify-between gap-5 border-t pt-8 sm:flex-row"
+            className="mt-10 flex flex-col items-center justify-between gap-4 border-t pt-6 sm:mt-12 sm:flex-row sm:gap-5 sm:pt-8"
             style={{ borderColor: BORDER }}
           >
             <p className="text-[14px] tabular-nums" style={{ color: MUTED }}>
               全{filteredClients.length}名
             </p>
             <nav
-              className="flex items-center gap-2"
+              className="flex w-full items-center justify-center gap-2 sm:w-auto"
               aria-label="ページネーション"
             >
               <button
                 type="button"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page <= 1}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl border px-4 text-[13px] font-semibold transition enabled:hover:bg-slate-50 disabled:opacity-40"
+                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border px-4 text-[13px] font-semibold transition enabled:active:bg-slate-50 disabled:opacity-40 sm:min-h-10 sm:flex-none sm:enabled:hover:bg-slate-50 sm:enabled:active:bg-transparent"
                 style={{ borderColor: BORDER, color: NAVY }}
               >
                 前へ
               </button>
               <span
-                className="min-w-[4.5rem] text-center text-[13px] tabular-nums"
+                className="min-w-[4.5rem] shrink-0 text-center text-[13px] tabular-nums"
                 style={{ color: MUTED }}
               >
                 {page} / {totalPages}
@@ -427,7 +449,7 @@ export default function ClientsPage() {
                   setPage((current) => Math.min(totalPages, current + 1))
                 }
                 disabled={page >= totalPages}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl border px-4 text-[13px] font-semibold transition enabled:hover:bg-slate-50 disabled:opacity-40"
+                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border px-4 text-[13px] font-semibold transition enabled:active:bg-slate-50 disabled:opacity-40 sm:min-h-10 sm:flex-none sm:enabled:hover:bg-slate-50 sm:enabled:active:bg-transparent"
                 style={{ borderColor: BORDER, color: NAVY }}
               >
                 次へ

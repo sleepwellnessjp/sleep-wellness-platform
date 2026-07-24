@@ -8,20 +8,23 @@ import AnalysisFlow from "@/components/AnalysisFlow";
 import AnalysisAccessBanner from "@/components/AnalysisAccessBanner";
 import {
   getExtractionDraft,
-  mergeMetricsPreferImage,
   setPendingAnalysisRequest,
   type AnalysisMetrics,
   type ExtractionDraft,
   type MetricConflict,
 } from "@/lib/analysis-session";
+import { resetProgressiveAnalysisJobs } from "@/lib/analysis-progressive";
 import {
   buildAnalysisAiInput,
   compactPreviousAnalysisForAi,
   logAnalysisAiInputInDev,
-} from "@/lib/client-profiles";
-import { getClientById } from "@/lib/repositories/client-repository";
+} from "@/lib/client-profiles";import { getClientById } from "@/lib/repositories/client-repository";
 import { graphPanelCount } from "@/lib/soxai-graphs";
 import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
+import {
+  detectMetricConsistencyWarnings,
+  consistencyWarningKeys,
+} from "@/lib/soxai-consistency";
 import {
   isMetricPresent,
   metricDisplayValue,
@@ -33,26 +36,20 @@ import {
 import { CRITICAL_OCR_KEYS, isCriticalOcrKey } from "@/lib/soxai-screen";
 
 const inputClass =
-  "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
 const inputEmptyClass =
-  "mt-2.5 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[15px] text-[#C48A2D] outline-none transition duration-300 placeholder:text-[#C48A2D] focus:border-[#C48A2D] focus:bg-white focus:text-[#071426] focus:ring-4 focus:ring-[#C48A2D]/15 sm:px-5 sm:py-4 sm:text-base";
-
-const inputReadonlyClass =
-  "mt-2.5 w-full rounded-2xl border border-[#315f68]/20 bg-[#f4f7f7] px-4 py-3.5 text-[15px] text-[#071426] sm:px-5 sm:py-4 sm:text-base";
-
-const inputReadonlyEmptyClass =
-  "mt-2.5 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[15px] font-semibold text-[#C48A2D] sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 min-h-12 w-full rounded-2xl border border-[#C48A2D]/30 bg-[#FFF8EC] px-4 py-3.5 text-[16px] text-[#C48A2D] outline-none transition duration-300 placeholder:text-[#C48A2D] focus:border-[#C48A2D] focus:bg-white focus:text-[#071426] focus:ring-4 focus:ring-[#C48A2D]/15 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
 const inputConflictClass =
-  "mt-2.5 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 min-h-12 w-full rounded-2xl border border-amber-300 bg-[#fffbeb] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-amber-500 focus:bg-white focus:ring-4 focus:ring-amber-500/15 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
 const inputLowConfidenceClass =
-  "mt-2.5 w-full rounded-2xl border border-[#8a6a2d]/35 bg-[#fbf7ef] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#8a6a2d] focus:bg-white focus:ring-4 focus:ring-[#8a6a2d]/15 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 min-h-12 w-full rounded-2xl border border-[#8a6a2d]/35 bg-[#fbf7ef] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#8a6a2d] focus:bg-white focus:ring-4 focus:ring-[#8a6a2d]/15 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
 type FieldStatus =
   | "from_image"
-  | "low_confidence"
+  | "needs_review"
   | "conflict"
   | "no_explicit"
   | "manual_needed";
@@ -63,14 +60,16 @@ function fieldStatus(
   conflict: MetricConflict | undefined,
   confidence: number | undefined,
   present: boolean,
+  consistencyHit: boolean,
 ): FieldStatus {
   if (conflict) return "conflict";
+  if (consistencyHit && fromImage && present) return "needs_review";
   if (fromImage && present) {
     if (
       typeof confidence === "number" &&
       confidence < OCR_LOW_CONFIDENCE_THRESHOLD
     ) {
-      return "low_confidence";
+      return "needs_review";
     }
     return "from_image";
   }
@@ -86,9 +85,9 @@ function statusBadge(status: FieldStatus) {
         className:
           "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]",
       };
-    case "low_confidence":
+    case "needs_review":
       return {
-        label: "OCR信頼度が低い",
+        label: "要確認",
         className:
           "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]",
       };
@@ -124,6 +123,7 @@ export default function ConfirmExtractionPage() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
 
   useEffect(() => {
     if (!initialDraft) {
@@ -146,32 +146,53 @@ export default function ConfirmExtractionPage() {
 
   const confidenceMap = draft?.ocrConfidence ?? {};
 
+  const consistencyWarnings = useMemo(
+    () => (metrics ? detectMetricConsistencyWarnings(metrics) : []),
+    [metrics],
+  );
+  const consistencyKeySet = useMemo(
+    () => consistencyWarningKeys(consistencyWarnings),
+    [consistencyWarnings],
+  );
+
   const extractedCount = draft?.imageKeys.length ?? 0;
   const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
   const conflictCount = draft?.conflicts?.length ?? 0;
   const graphCount = draft ? graphPanelCount(draft.graphs) : 0;
+  const needsReviewCount = useMemo(() => {
+    if (!metrics || !draft) return 0;
+    let count = 0;
+    for (const field of SOXAI_METRIC_FIELDS) {
+      const key = field.key;
+      const fromImage = imageKeySet.has(key);
+      const present = isMetricPresent(metrics, key);
+      const conflict = conflictByKey.get(key);
+      const confidence = confidenceMap[key];
+      const status = fieldStatus(
+        key,
+        fromImage,
+        conflict,
+        confidence,
+        present,
+        consistencyKeySet.has(key),
+      );
+      if (status === "needs_review" || status === "conflict") count += 1;
+    }
+    return count;
+  }, [
+    metrics,
+    draft,
+    imageKeySet,
+    conflictByKey,
+    confidenceMap,
+    consistencyKeySet,
+  ]);
+
   const backHref = draft?.lifestyle.clientId
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
     : "/analysis/new";
 
-  const isEditable = (key: MetricFieldKey) => {
-    const fromImage = imageKeySet.has(key);
-    const conflict = conflictByKey.get(key);
-    const confidence = confidenceMap[key];
-    if (conflict) return true;
-    if (
-      fromImage &&
-      typeof confidence === "number" &&
-      confidence < OCR_LOW_CONFIDENCE_THRESHOLD
-    ) {
-      return true;
-    }
-    return !fromImage;
-  };
-
   const updateField = (key: MetricFieldKey, value: string) => {
-    if (!isEditable(key)) return;
-
     setMetrics((current) => {
       if (!current) return current;
       return setMetricValue(current, key, value);
@@ -186,9 +207,25 @@ export default function ConfirmExtractionPage() {
     setIsSubmitting(true);
 
     try {
-      const accessResponse = await fetch("/api/platform/analysis-access", {
-        cache: "no-store",
-      });
+      let accessResponse: Response;
+      try {
+        accessResponse = await fetch("/api/platform/analysis-access", {
+          cache: "no-store",
+        });
+      } catch {
+        setAccessError(
+          "アクセス確認に失敗しました。ネットワーク接続を確認して、もう一度お試しください。",
+        );
+        return;
+      }
+
+      if (!accessResponse.ok) {
+        setAccessError(
+          "アクセス確認に失敗しました。しばらくしてから再度お試しください。",
+        );
+        return;
+      }
+
       const access = (await accessResponse.json()) as {
         allowed?: boolean;
         message?: string;
@@ -198,83 +235,96 @@ export default function ConfirmExtractionPage() {
           access.message ??
             "認定資格の更新が必要です。Sleep Wellness Institute Japan までお問い合わせください。",
         );
-        setIsSubmitting(false);
         return;
       }
-    } catch {
-      // デモ/オフライン時は分析を継続
-    }
 
-    // OCR高信頼度の値を固定し、未取得・低信頼度・競合のみ手入力を反映
-    const locked = mergeMetricsPreferImage(
-      draft.extractedMetrics,
-      metrics,
-    );
+      // 確認画面の値（手動修正含む）を最終分析にそのまま使用
+      const confirmed = normalizeMetrics(metrics);
 
-    const confirmed = { ...locked };
-    for (const key of Object.keys(confirmed) as MetricFieldKey[]) {
-      if (!isEditable(key)) continue;
-      if (isMetricPresent(metrics, key)) {
-        if (key === "sleepScore") {
-          confirmed.sleepScore = metrics.sleepScore;
-        } else {
-          confirmed[key] = metrics[key];
+      let previousAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
+      let firstAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
+      const clientId = draft.lifestyle.clientId?.trim();
+      if (clientId) {
+        try {
+          const client = await getClientById(clientId);
+          const analyses = client?.analyses ?? [];
+          const prior = analyses[0];
+          const first =
+            analyses.length > 1 ? analyses[analyses.length - 1] : null;
+          if (prior) {
+            previousAnalysis = compactPreviousAnalysisForAi({
+              analysisDate: prior.analysisDate,
+              sleepScore: prior.sleepScore,
+              wellnessScore: prior.wellnessScore,
+              metrics: prior.metrics ?? prior.result?.metrics,
+              summary: prior.result?.summary,
+              karteSummary: prior.result?.karteSummary,
+              evidence: prior.result?.evidence,
+              goodPoints: prior.result?.goodPoints,
+              improvements: prior.result?.improvements,
+              nextComparisonPoints: prior.result?.nextComparisonPoints,
+              recommendationsUntilNext: prior.result?.recommendationsUntilNext,
+              homeworkAchievement: prior.result?.homeworkAchievement,
+            });
+          }
+          if (first && first.id !== prior?.id) {
+            firstAnalysis = compactPreviousAnalysisForAi({
+              analysisDate: first.analysisDate,
+              sleepScore: first.sleepScore,
+              wellnessScore: first.wellnessScore,
+              metrics: first.metrics ?? first.result?.metrics,
+              summary: first.result?.summary,
+              karteSummary: first.result?.karteSummary,
+              evidence: first.result?.evidence,
+              goodPoints: first.result?.goodPoints,
+              improvements: first.result?.improvements,
+              nextComparisonPoints: first.result?.nextComparisonPoints,
+              recommendationsUntilNext: first.result?.recommendationsUntilNext,
+              homeworkAchievement: first.result?.homeworkAchievement,
+            });
+          }
+        } catch {
+          // オフライン時は前回なしで継続
         }
       }
-    }
 
-    let previousAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
-    const clientId = draft.lifestyle.clientId?.trim();
-    if (clientId) {
-      try {
-        const client = await getClientById(clientId);
-        const prior = client?.analyses?.[0];
-        if (prior) {
-          previousAnalysis = compactPreviousAnalysisForAi({
-            analysisDate: prior.analysisDate,
-            sleepScore: prior.sleepScore,
-            wellnessScore: prior.wellnessScore,
-            metrics: prior.metrics ?? prior.result?.metrics,
-            summary: prior.result?.summary,
-            karteSummary: prior.result?.karteSummary,
-            evidence: prior.result?.evidence,
-            goodPoints: prior.result?.goodPoints,
-            improvements: prior.result?.improvements,
-            nextComparisonPoints: prior.result?.nextComparisonPoints,
-            recommendationsUntilNext: prior.result?.recommendationsUntilNext,
-            homeworkAchievement: prior.result?.homeworkAchievement,
+      resetProgressiveAnalysisJobs();
+      setPendingAnalysisRequest({
+        lifestyle: draft.lifestyle,
+        images: draft.images,
+        metrics: confirmed,
+        extractedMetrics: draft.extractedMetrics,
+        graphs: draft.graphs,
+        ocrConfidence: draft.ocrConfidence,
+        fixedProfile: draft.fixedProfile,
+        dayContext: draft.dayContext,
+        aiInput: (() => {
+          const aiInput = buildAnalysisAiInput({
+            analysisDate: draft.lifestyle.measurementDate,
+            clientId: draft.lifestyle.clientId,
+            clientName: draft.lifestyle.clientName,
+            soxaiMetrics: confirmed,
+            dayContext: draft.dayContext ?? null,
+            lifestyleForm: draft.lifestyle,
+            fixedProfile: draft.fixedProfile ?? null,
+            previousAnalysis,
+            firstAnalysis,
           });
-        }
-      } catch {
-        // オフライン時は前回なしで継続
-      }
+          logAnalysisAiInputInDev(aiInput);
+          return aiInput;
+        })(),
+      });
+      router.push("/analysis/loading");
+    } catch (error) {
+      console.error("[analysis/confirm] submit failed:", error);
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "分析の開始に失敗しました。もう一度お試しください。",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setPendingAnalysisRequest({
-      lifestyle: draft.lifestyle,
-      images: draft.images,
-      metrics: normalizeMetrics(confirmed),
-      extractedMetrics: draft.extractedMetrics,
-      graphs: draft.graphs,
-      ocrConfidence: draft.ocrConfidence,
-      fixedProfile: draft.fixedProfile,
-      dayContext: draft.dayContext,
-      aiInput: (() => {
-        const aiInput = buildAnalysisAiInput({
-          analysisDate: draft.lifestyle.measurementDate,
-          clientId: draft.lifestyle.clientId,
-          clientName: draft.lifestyle.clientName,
-          soxaiMetrics: normalizeMetrics(confirmed),
-          dayContext: draft.dayContext ?? null,
-          lifestyleForm: draft.lifestyle,
-          fixedProfile: draft.fixedProfile ?? null,
-          previousAnalysis,
-        });
-        logAnalysisAiInputInDev(aiInput);
-        return aiInput;
-      })(),
-    });
-    router.push("/analysis/loading");
   };
 
   if (!draft || !metrics) {
@@ -284,6 +334,12 @@ export default function ConfirmExtractionPage() {
       </main>
     );
   }
+
+  const images = draft.images;
+  const safeImageIndex = Math.min(
+    activeImageIndex,
+    Math.max(0, images.length - 1),
+  );
 
   const renderField = (field: (typeof SOXAI_METRIC_FIELDS)[number]) => {
     const fromImage = imageKeySet.has(field.key);
@@ -297,9 +353,9 @@ export default function ConfirmExtractionPage() {
       conflict,
       confidence,
       present,
+      consistencyKeySet.has(field.key),
     );
     const badge = statusBadge(status);
-    const editable = isEditable(field.key);
     const critical = isCriticalOcrKey(field.key);
 
     return (
@@ -325,39 +381,23 @@ export default function ConfirmExtractionPage() {
         <span className="mt-0.5 block text-[11px] text-slate-400">
           {field.hint}
         </span>
-        {editable ? (
-          <input
-            type={
-              field.inputType === "number" ? "number" : field.inputType
-            }
-            inputMode={
-              field.inputType === "number" ? "decimal" : undefined
-            }
-            step={field.inputType === "number" ? "1" : undefined}
-            value={value}
-            onChange={(event) =>
-              updateField(field.key, event.target.value)
-            }
-            className={
-              conflict
-                ? inputConflictClass
-                : status === "low_confidence"
-                  ? inputLowConfidenceClass
-                  : present
-                    ? inputClass
-                    : inputEmptyClass
-            }
-            placeholder={present ? field.placeholder : "未入力"}
-          />
-        ) : (
-          <input
-            type="text"
-            readOnly
-            value={present ? value : "未入力"}
-            className={present ? inputReadonlyClass : inputReadonlyEmptyClass}
-            tabIndex={-1}
-          />
-        )}
+        <input
+          type={field.inputType === "number" ? "number" : field.inputType}
+          inputMode={field.inputType === "number" ? "decimal" : undefined}
+          step={field.inputType === "number" ? "1" : undefined}
+          value={value}
+          onChange={(event) => updateField(field.key, event.target.value)}
+          className={
+            conflict
+              ? inputConflictClass
+              : status === "needs_review"
+                ? inputLowConfidenceClass
+                : present
+                  ? inputClass
+                  : inputEmptyClass
+          }
+          placeholder={present ? field.placeholder : "未入力"}
+        />
         {conflict && (
           <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
             候補:{" "}
@@ -376,22 +416,22 @@ export default function ConfirmExtractionPage() {
   );
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
-      <div className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
+      <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-8 sm:py-4">
           <Link href="/" className="flex items-center gap-3">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
               width={160}
               height={40}
-              className="h-auto w-[120px] sm:w-[140px]"
+              className="h-auto w-[110px] sm:w-[140px]"
             />
           </Link>
-          <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-6">
             <Link
               href="/clients"
-              className="text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition hover:text-[#071426] sm:text-xs"
+              className="inline-flex min-h-11 items-center text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition active:text-[#071426] sm:min-h-10 sm:text-xs sm:hover:text-[#071426] sm:active:text-slate-500"
             >
               CLIENTS
             </Link>
@@ -402,8 +442,8 @@ export default function ConfirmExtractionPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12 lg:py-14">
-        <div className="mb-8 sm:mb-10">
+      <div className="mx-auto max-w-6xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-12 sm:pb-12 lg:py-14 lg:pb-14">
+        <div className="mb-6 sm:mb-10">
           <AnalysisFlow current={2} />
         </div>
 
@@ -411,12 +451,12 @@ export default function ConfirmExtractionPage() {
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
             SOXAI EXTRACTION
           </p>
-          <h1 className="mt-4 text-[1.85rem] font-semibold tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl">
+          <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal">
             抽出結果の確認
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            入眠・起床・皮膚温度・ストレスは見出しラベル付きで画像から優先取得します。
-            画像に本当に無い項目だけ手入力してください。
+          <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
+            OCRは完了済みです。元画像と抽出値を照合し、必要なら修正してから
+            「AI分析を開始する」へ進んでください。
           </p>
         </header>
 
@@ -428,54 +468,65 @@ export default function ConfirmExtractionPage() {
           </p>
         )}
 
-        <div className="mx-auto mt-8 grid max-w-3xl grid-cols-2 gap-3 sm:mt-10 sm:grid-cols-4">
-          <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">
+        <div className="mx-auto mt-6 grid max-w-3xl grid-cols-2 gap-2.5 sm:mt-10 sm:grid-cols-4 sm:gap-3">
+          <div className="min-w-0 rounded-2xl border border-[#315f68]/15 bg-white px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#315f68] sm:text-[11px]">
               画像から取得
             </p>
-            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+            <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {extractedCount}
               <span className="ml-1 text-sm font-medium text-slate-400">
                 / {SOXAI_METRIC_FIELDS.length}
               </span>
             </p>
           </div>
-          <div className="rounded-2xl border border-[#C48A2D]/25 bg-[#FFF8EC] px-3 py-4 text-center sm:px-4">
+          <div className="min-w-0 rounded-2xl border border-[#C48A2D]/25 bg-[#FFF8EC] px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#C48A2D] sm:text-[11px]">
               未入力
             </p>
-            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#C48A2D] sm:text-2xl">
+            <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#C48A2D] sm:text-2xl">
               {missingCount}
               <span className="ml-1 text-sm font-medium text-[#C48A2D]/70">
                 項目
               </span>
             </p>
           </div>
-          <div className="rounded-2xl border border-[#315f68]/15 bg-white px-3 py-4 text-center sm:px-4">
+          <div className="min-w-0 rounded-2xl border border-[#315f68]/15 bg-white px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#315f68] sm:text-[11px]">
               グラフ解析
             </p>
-            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+            <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {graphCount}
               <span className="ml-1 text-sm font-medium text-slate-400">/ 8</span>
             </p>
           </div>
-          <div className="rounded-2xl border border-amber-200 bg-[#fffbeb] px-3 py-4 text-center sm:px-4">
+          <div className="min-w-0 rounded-2xl border border-amber-200 bg-[#fffbeb] px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-amber-700 sm:text-[11px]">
-              値の競合
+              要確認
             </p>
-            <p className="mt-1 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-              {conflictCount}
+            <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              {needsReviewCount}
               <span className="ml-1 text-sm font-medium text-slate-400">項目</span>
             </p>
           </div>
         </div>
 
+        {consistencyWarnings.length > 0 && (
+          <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
+            <p className="font-semibold">合計時間・割合に矛盾があります</p>
+            <ul className="mt-3 space-y-1.5 text-[13px]">
+              {consistencyWarnings.map((warning) => (
+                <li key={warning.message}>{warning.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {conflictCount > 0 && (
           <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
             <p className="font-semibold">複数画像で異なる値が検出されました</p>
             <p className="mt-1 text-[13px] text-amber-900/80">
-              仮採用値を表示しています。競合・低信頼度の項目のみ修正できます。
+              仮採用値を表示しています。画像と照合して必要な項目を修正してください。
             </p>
             <ul className="mt-3 space-y-1.5 text-[13px]">
               {(draft.conflicts ?? []).map((conflict) => (
@@ -497,44 +548,104 @@ export default function ConfirmExtractionPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-8 sm:mt-10">
-          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8">
-              <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                PRIORITY · BEDTIME / WAKE / SKIN / STRESS
-              </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                重点4項目の確認
-              </h2>
-              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                入眠時間・起床時間・皮膚温度・ストレスは SOXAI の見出しと数値から
-                自動取得します。手入力は画像に明示値がない場合のみです。
-              </p>
-            </div>
-            <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
-              {criticalFields.map(renderField)}
-            </div>
-          </section>
+        <form
+          onSubmit={handleSubmit}
+          className="mt-7 space-y-6 sm:mt-10 sm:space-y-8"
+        >
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start lg:gap-8">
+            <aside className="lg:sticky lg:top-6 lg:col-span-5">
+              <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-slate-100 px-4 py-4 sm:px-6 sm:py-5">
+                  <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                    SOURCE IMAGES
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426]">
+                    元画像との照合
+                  </h2>
+                  <p className="mt-1 text-[13px] leading-6 text-slate-500">
+                    抽出値と並べて確認できます（{images.length}枚）
+                  </p>
+                </div>
+                <div className="px-4 py-4 sm:px-6 sm:py-5">
+                  {images.length > 0 ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={images[safeImageIndex]}
+                        alt={`SOXAIスクリーンショット ${safeImageIndex + 1}`}
+                        className="max-h-[70vh] w-full rounded-2xl border border-slate-100 bg-[#f7f7f5] object-contain"
+                      />
+                      {images.length > 1 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {images.map((src, index) => (
+                            <button
+                              key={`${index}-${src.slice(0, 24)}`}
+                              type="button"
+                              onClick={() => setActiveImageIndex(index)}
+                              className={`overflow-hidden rounded-xl border-2 transition ${
+                                index === safeImageIndex
+                                  ? "border-[#315f68]"
+                                  : "border-transparent opacity-70 hover:opacity-100"
+                              }`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={src}
+                                alt={`サムネイル ${index + 1}`}
+                                className="h-14 w-10 object-cover"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-slate-500">画像がありません</p>
+                  )}
+                </div>
+              </section>
+            </aside>
 
-          <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8">
-              <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                CONFIRMED METRICS
-              </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                その他の睡眠データ
-              </h2>
-              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
-                「画像から取得」は編集不可。競合・低信頼度・未取得のみ入力できます。
-              </p>
-            </div>
+            <div className="space-y-6 lg:col-span-7">
+              <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8">
+                  <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                    PRIORITY · BEDTIME / WAKE / SKIN / STRESS
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                    重点4項目の確認
+                  </h2>
+                  <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                    入眠時間・起床時間・皮膚温度・ストレスは SOXAI
+                    の見出しと数値から自動取得します。読み取れない項目は空欄のままにしてください（推測補完しません）。
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3.5 px-4 py-5 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
+                  {criticalFields.map(renderField)}
+                </div>
+              </section>
 
-            <div className="grid gap-4 px-5 py-6 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8 lg:grid-cols-3">
-              {otherFields.map(renderField)}
-            </div>
-          </section>
+              <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+                <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8">
+                  <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                    CONFIRMED METRICS
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                    その他の睡眠データ
+                  </h2>
+                  <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                    「要確認」や競合の項目を優先して照合してください。手動修正した値が最終分析に使われます。
+                  </p>
+                </div>
 
-          <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-5 sm:px-8">
+                <div className="grid grid-cols-1 gap-3.5 px-4 py-5 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
+                  {otherFields.map(renderField)}
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <section className="rounded-[28px] border border-slate-200/90 bg-white px-4 py-4 sm:px-8 sm:py-5">
             <p className="text-[11px] font-semibold tracking-[0.22em] text-[#8a6a2d]">
               SUBJECT
             </p>
@@ -568,30 +679,31 @@ export default function ConfirmExtractionPage() {
             </p>
           </section>
 
-          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-5 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:px-10 sm:py-10">
+          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-4 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:px-10 sm:py-10">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.35),transparent_55%)]" />
             <div className="relative z-10">
               <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
                 READY TO ANALYZE
               </p>
-              <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
+              <h2 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-white sm:text-2xl">
                 抽出結果を確認して分析する
               </h2>
-              <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                この確認データが Medical / Visual / PDF / 長期推移の共通データソースになります。
+              <p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/60 sm:text-sm sm:leading-7">
+                この確認データが Medical / Visual / PDF /
+                長期推移の共通データソースになります。
               </p>
 
               <div className="mt-7 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center">
                 <Link
                   href={backHref}
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/25 px-8 py-3.5 text-base font-semibold text-white/85 transition hover:bg-white/10 sm:w-auto"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/25 px-8 py-3.5 text-base font-semibold text-white/85 transition active:bg-white/10 sm:w-auto sm:hover:bg-white/10 sm:active:bg-transparent"
                 >
                   入力に戻る
                 </Link>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="group inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-10 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto sm:px-12 sm:text-lg"
+                  className="group inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 active:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-12 sm:text-lg sm:hover:-translate-y-1 sm:hover:bg-[#f4f4f4] sm:active:translate-y-0 disabled:sm:hover:translate-y-0"
                 >
                   {isSubmitting ? (
                     <>

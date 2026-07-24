@@ -4,11 +4,12 @@ export const MONTHLY_CREDIT_ALLOWANCE = 30;
 export const ANALYSIS_CREDIT_COST = 1;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  super_admin: "Super Admin",
-  admin: "Admin",
-  instructor: "Instructor",
-  client: "Client",
-  enterprise: "Enterprise Admin",
+  super_admin: "SWIJ本部（Super Admin）",
+  admin: "SWIJ本部",
+  school: "認定校",
+  instructor: "認定講師",
+  client: "クライアント",
+  enterprise: "企業管理者",
 };
 
 export const CERTIFICATION_LABELS: Record<CertificationType, string> = {

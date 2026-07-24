@@ -25,13 +25,13 @@ const NAVY = "#071426";
 const GOLD = "#8a6a2d";
 
 const inputClass =
-  "w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
+  "w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:text-[15px]";
 
 const selectClass =
-  "w-full appearance-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[15px] text-[#071426] outline-none transition duration-300 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
+  "w-full appearance-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[16px] text-[#071426] outline-none transition duration-300 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:text-[15px]";
 
 const textareaClass =
-  "w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
+  "w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[16px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:text-[15px]";
 
 type Props = {
   clientId: string;

@@ -33,7 +33,7 @@ export function ClientTagChips({
               <button
                 type="button"
                 onClick={() => onTagClick?.(tag)}
-                className="rounded-full border border-[#8a6a2d]/25 bg-[#faf7f1] px-2.5 py-1 text-[11px] font-medium tracking-wide transition hover:bg-[#f5efe4]"
+                className="inline-flex min-h-11 items-center rounded-full border border-[#8a6a2d]/25 bg-[#faf7f1] px-3 py-2 text-[11px] font-medium tracking-wide transition active:bg-[#f5efe4] sm:min-h-0 sm:px-2.5 sm:py-1 sm:hover:bg-[#f5efe4] sm:active:bg-[#faf7f1]"
                 style={{ color: GOLD }}
               >
                 {tag}
@@ -98,7 +98,7 @@ export default function ClientTagsEditor({
               disabled={disabled}
               onClick={() => onChange(toggleClientTag(tags, tag))}
               aria-pressed={selected}
-              className="rounded-full border px-3 py-1.5 text-[12px] font-medium transition disabled:opacity-50"
+              className="inline-flex min-h-11 items-center rounded-full border px-3 py-1.5 text-[12px] font-medium transition active:opacity-90 disabled:opacity-50 sm:min-h-0 sm:active:opacity-100"
               style={
                 selected
                   ? {
@@ -136,13 +136,13 @@ export default function ClientTagsEditor({
             onKeyDown={handleKeyDown}
             placeholder="例：シフト制"
             maxLength={32}
-            className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-2.5 text-[14px] text-[#071426] outline-none transition placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 disabled:opacity-50"
+            className="min-h-12 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-2.5 text-[16px] text-[#071426] outline-none transition placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 disabled:opacity-50 sm:min-h-0 sm:text-[14px]"
           />
           <button
             type="button"
             disabled={disabled || !draft.trim()}
             onClick={commitDraft}
-            className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold transition hover:bg-slate-50 disabled:opacity-40"
+            className="inline-flex min-h-12 shrink-0 items-center rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold transition active:bg-slate-50 disabled:opacity-40 sm:min-h-0 sm:hover:bg-slate-50 sm:active:bg-transparent"
             style={{ color: NAVY }}
           >
             追加
@@ -158,7 +158,7 @@ export default function ClientTagsEditor({
                 type="button"
                 disabled={disabled}
                 onClick={() => onChange(toggleClientTag(tags, tag))}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#8a6a2d]/30 bg-[#faf7f1] py-1 pr-2 pl-2.5 text-[12px] font-medium transition hover:bg-[#f5efe4] disabled:opacity-50"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[#8a6a2d]/30 bg-[#faf7f1] py-2 pr-2.5 pl-3 text-[12px] font-medium transition active:bg-[#f5efe4] disabled:opacity-50 sm:min-h-0 sm:py-1 sm:pr-2 sm:pl-2.5 sm:hover:bg-[#f5efe4] sm:active:bg-[#faf7f1]"
                 style={{ color: GOLD }}
                 aria-label={`${tag} を削除`}
               >

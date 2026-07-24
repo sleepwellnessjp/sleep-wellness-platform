@@ -155,6 +155,10 @@ export async function getClientManagementList(): Promise<ClientManagementListRes
     clients = await loadClients();
   } catch (error) {
     console.error("[client-management] loadClients failed:", error);
+    // デモ未設定時のみ空扱い。本番では呼び出し側でエラー表示する
+    if (isSupabaseConfigured()) {
+      throw error;
+    }
   }
 
   if (!isSupabaseConfigured() && clients.length === 0) {

@@ -11,13 +11,17 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import {
   AnalysisError,
-  extractSoxaiMetricsDetailed,
+  clearBackgroundSoxaiExtraction,
   formatExtractErrorMessage,
+  resolveSoxaiExtraction,
+  startBackgroundSoxaiExtraction,
+  type BackgroundOcrStatus,
   setExtractionDraft,
 } from "@/lib/analysis-session";
 import {
@@ -50,11 +54,10 @@ const ALLOWED_IMAGE_TYPES = [
 ] as const;
 
 const inputClass =
-  "mt-2.5 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
+  "mt-2.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
 const textareaClass =
-  "mt-2.5 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:px-5 sm:py-4 sm:text-base";
-
+  "mt-2.5 min-h-12 w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 const soxaiMetrics = SOXAI_METRIC_FIELDS.slice(0, 6).map((field) => ({
   label: field.label,
   hint: field.hint,
@@ -258,6 +261,12 @@ function NewAnalysisPageInner() {
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState<BackgroundOcrStatus>("idle");
+  const [ocrImageCache, setOcrImageCache] = useState<{
+    fingerprint: string;
+    images: string[];
+  } | null>(null);
+  const ocrRequestIdRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [alcoholDrank, setAlcoholDrank] = useState("");
   const [yogaDone, setYogaDone] = useState("");
@@ -294,6 +303,43 @@ function NewAnalysisPageInner() {
       previewUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [previewUrls]);
+
+  /** 画像アップロード直後から OCR をバックグラウンド開始（入力中に解析を進める） */
+  useEffect(() => {
+    if (files.length === 0) {
+      ocrRequestIdRef.current += 1;
+      clearBackgroundSoxaiExtraction();
+      setOcrImageCache(null);
+      setOcrStatus("idle");
+      return;
+    }
+
+    const requestId = ++ocrRequestIdRef.current;
+    const filesFingerprint = files.map(fileFingerprint).join("||");
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setOcrStatus("running");
+        const images = await Promise.all(files.map(fileToDataUrl));
+        if (cancelled || requestId !== ocrRequestIdRef.current) return;
+
+        setOcrImageCache({ fingerprint: filesFingerprint, images });
+        await startBackgroundSoxaiExtraction(images);
+        if (cancelled || requestId !== ocrRequestIdRef.current) return;
+        setOcrStatus("ready");
+      } catch (ocrError) {
+        if (cancelled || requestId !== ocrRequestIdRef.current) return;
+        console.error("[analysis/new] background OCR failed:", ocrError);
+        setOcrStatus("error");
+        // 提出時に再試行できるよう、ここではフォーム全体のエラーにはしない
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [files]);
 
   useEffect(() => {
     let cancelled = false;
@@ -386,6 +432,9 @@ function NewAnalysisPageInner() {
   };
 
   const clearAllFiles = () => {
+    clearBackgroundSoxaiExtraction();
+    setOcrImageCache(null);
+    setOcrStatus("idle");
     setFiles([]);
     setError(null);
   };
@@ -474,7 +523,11 @@ function NewAnalysisPageInner() {
     setIsSubmitting(true);
 
     try {
-      const images = await Promise.all(files.map(fileToDataUrl));
+      const filesFingerprint = files.map(fileFingerprint).join("||");
+      const images =
+        ocrImageCache && ocrImageCache.fingerprint === filesFingerprint
+          ? ocrImageCache.images
+          : await Promise.all(files.map(fileToDataUrl));
 
       const yogaDoneValue = String(formData.get("yogaDone") ?? "");
       const yogaDuration = String(formData.get("yogaDuration") ?? "");
@@ -655,7 +708,8 @@ function NewAnalysisPageInner() {
       };
 
       const { metrics: extractedMetrics, conflicts, graphs, confidence } =
-        await extractSoxaiMetricsDetailed(images);
+        await resolveSoxaiExtraction(images);
+      setOcrStatus("ready");
       const imageKeys = collectedMetricKeys(extractedMetrics);
 
       if (imageKeys.length === 0) {
@@ -714,22 +768,22 @@ function NewAnalysisPageInner() {
   const uploadMissing = touchedUpload && files.length === 0;
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
-      <div className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
-          <Link href="/" className="flex items-center gap-3">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
+      <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-8 sm:py-4">
+          <Link href="/" className="flex min-w-0 items-center gap-3">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
               width={160}
               height={40}
-              className="h-auto w-[120px] sm:w-[140px]"
+              className="h-auto w-[110px] sm:w-[140px]"
             />
           </Link>
-          <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-6">
             <Link
               href="/clients"
-              className="text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition hover:text-[#071426] sm:text-xs"
+              className="inline-flex min-h-11 items-center text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition active:text-[#071426] sm:min-h-10 sm:text-xs sm:hover:text-[#071426] sm:active:text-slate-500"
             >
               CLIENTS
             </Link>
@@ -740,8 +794,8 @@ function NewAnalysisPageInner() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12 lg:py-14">
-        <div className="mb-8 sm:mb-10">
+      <div className="mx-auto max-w-6xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-12 sm:pb-12 lg:py-14 lg:pb-14">
+        <div className="mb-6 sm:mb-10">
           <AnalysisFlow current={1} />
         </div>
 
@@ -750,11 +804,11 @@ function NewAnalysisPageInner() {
             SLEEP WELLNESS ANALYSIS
           </p>
 
-          <h1 className="mt-4 text-[1.85rem] font-semibold tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl lg:text-5xl">
+          <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal lg:text-5xl">
             新しい睡眠分析
           </h1>
 
-          <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
+          <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
             SOXAIのスクリーンショットをアップロードするだけで、
             睡眠データを自動抽出し Sleep Wellness Report を作成します。
           </p>
@@ -762,25 +816,25 @@ function NewAnalysisPageInner() {
 
         <form
           onSubmit={handleSubmit}
-          className="mt-10 space-y-8 sm:mt-12 sm:space-y-10"
+          className="mt-8 space-y-6 sm:mt-12 sm:space-y-10"
           noValidate
         >
           {/* 00 CLIENT */}
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
               <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                 00 · CLIENT
               </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                 {clientLocked ? "対象クライアント" : "クライアントを選択"}
               </h2>
-              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+              <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
                 {clientLocked
                   ? "クライアント詳細から引き継いだ対象です。氏名の再入力は不要です。"
                   : "ダッシュボードなどから開始した場合は、先に対象クライアントを選んでください。"}
               </p>
             </div>
-            <div className="px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
               {clientLocked ? (
                 <div className="rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-4 sm:px-5">
                   <p className="text-[11px] font-semibold tracking-[0.18em] text-[#315f68]">
@@ -791,7 +845,7 @@ function NewAnalysisPageInner() {
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="登録済みクライアント" optional={clientOptions.length === 0}>
                     <select
                       className={inputClass}
@@ -850,23 +904,23 @@ function NewAnalysisPageInner() {
 
           {/* 00b CLIENT PROFILE */}
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
               <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                 00 · PROFILE
               </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                 クライアント基本情報
               </h2>
-              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+              <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
                 年齢・性別は分析精度のため必須です。身長・体重は推奨、その他は任意です。
               </p>
             </div>
-            <div className="space-y-8 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="space-y-7 px-4 py-5 sm:space-y-8 sm:px-8 sm:py-8 lg:px-10">
               <FormGroup
                 title="必須"
                 description="Medical Report の評価で年齢・性別を考慮します"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="年齢" required>
                     <input
                       name="clientAge"
@@ -906,7 +960,7 @@ function NewAnalysisPageInner() {
                 title="推奨"
                 description="分かる範囲で入力すると、参考評価の精度が上がります"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="身長（cm）" optional>
                     <input
                       name="clientHeightCm"
@@ -946,7 +1000,7 @@ function NewAnalysisPageInner() {
                 title="任意"
                 description="日常の習慣・既往。当日の飲酒・運動・鼻づまりとは別に扱います"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="服薬" optional>
                     <input
                       name="clientMedications"
@@ -1016,16 +1070,16 @@ function NewAnalysisPageInner() {
 
           {/* 01 SOXAI */}
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div>
                   <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                     01 · SOXAI DATA
                   </p>
-                  <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                  <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                     SOXAIデータをアップロード
                   </h2>
-                  <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm sm:leading-7">
+                  <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
                     睡眠サマリー、心拍・HRV、ストレス、SpO₂などの画面を
                     そのまま撮影・保存してアップロードしてください。最大{MAX_FILES}
                     枚まで同時に送れます。各画像を個別に読み取り、結果を1つに統合します。
@@ -1036,13 +1090,13 @@ function NewAnalysisPageInner() {
                 </p>
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6 lg:gap-3">
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:grid-cols-3 sm:gap-2.5 lg:grid-cols-6 lg:gap-3">
                 {soxaiMetrics.map((metric) => (
                   <div
                     key={metric.label}
-                    className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-3 py-3.5 text-center sm:px-4 sm:py-4"
+                    className="min-w-0 rounded-2xl border border-slate-100 bg-[#fafaf8] px-2.5 py-3 text-center sm:px-4 sm:py-4"
                   >
-                    <p className="text-[13px] font-semibold tracking-[-0.02em] text-[#071426] sm:text-sm">
+                    <p className="break-words text-[12px] font-semibold tracking-[-0.02em] text-[#071426] sm:text-sm">
                       {metric.label}
                     </p>
                     <p className="mt-1 text-[11px] leading-4 text-slate-400">
@@ -1056,7 +1110,7 @@ function NewAnalysisPageInner() {
               </p>
             </div>
 
-            <div className="px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
+            <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
               <label
                 onDragEnter={() => setIsDragging(true)}
                 onDragLeave={() => setIsDragging(false)}
@@ -1109,9 +1163,27 @@ function NewAnalysisPageInner() {
               {previewUrls.length > 0 && (
                 <div className="mt-6">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
-                      アップロード済み
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                        アップロード済み
+                      </p>
+                      {ocrStatus === "running" && (
+                        <p className="mt-1 flex items-center gap-2 text-[12px] text-[#315f68]">
+                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[#315f68]/25 border-t-[#315f68]" />
+                          バックグラウンドでOCR解析中…
+                        </p>
+                      )}
+                      {ocrStatus === "ready" && (
+                        <p className="mt-1 text-[12px] font-medium text-[#315f68]">
+                          SOXAIデータ取得完了（キャッシュ利用可）— 入力中も再解析しません
+                        </p>
+                      )}
+                      {ocrStatus === "error" && (
+                        <p className="mt-1 text-[12px] text-amber-700">
+                          先行解析に失敗しました。確認へ進む際に再試行します
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3">
                       <p className="text-xs text-slate-400">
                         {previewUrls.length} / {MAX_FILES} 枚
@@ -1119,14 +1191,14 @@ function NewAnalysisPageInner() {
                       <button
                         type="button"
                         onClick={clearAllFiles}
-                        className="text-[12px] font-semibold text-slate-500 transition hover:text-rose-600"
+                        className="inline-flex min-h-11 items-center text-[12px] font-semibold text-slate-500 transition active:text-rose-600 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-500"
                       >
                         すべて削除
                       </button>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">
                     {previewUrls.map((url, index) => (
                       <div
                         key={`${files[index]?.name}-${index}`}
@@ -1142,7 +1214,7 @@ function NewAnalysisPageInner() {
                         <button
                           type="button"
                           onClick={() => removeFile(index)}
-                          className="absolute right-2.5 top-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#071426]/80 text-base text-white backdrop-blur transition hover:bg-[#071426]"
+                          className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-[#071426]/80 text-base text-white backdrop-blur transition active:bg-[#071426] sm:right-2.5 sm:top-2.5 sm:h-9 sm:w-9 sm:hover:bg-[#071426] sm:active:bg-[#071426]/80"
                           aria-label={`画像${index + 1}を削除`}
                         >
                           ×
@@ -1157,24 +1229,24 @@ function NewAnalysisPageInner() {
 
           {/* 02 Lifestyle */}
           <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
-            <div className="border-b border-slate-100 px-5 py-6 sm:px-8 sm:py-8 lg:px-10">
+            <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
               <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
                 02 · LIFESTYLE
               </p>
-              <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
                 生活習慣を入力
               </h2>
-              <p className="mt-2 max-w-xl text-[15px] leading-7 text-slate-500 sm:text-sm">
+              <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
                 上から順に入力してください。必須項目以外は分かる範囲で構いません。
               </p>
             </div>
 
-            <div className="space-y-9 px-5 py-6 sm:space-y-10 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
+            <div className="space-y-7 px-4 py-5 sm:space-y-10 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
               <FormGroup
                 title="測定日"
                 description="レポートに表示される測定日です。対象者は上のクライアント欄で設定済みです"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="測定日" required>
                     <input
                       name="measurementDate"
@@ -1190,7 +1262,7 @@ function NewAnalysisPageInner() {
                 title="睡眠データ（自動抽出）"
                 description="入眠・起床・スコア・ステージ・HRV などは画像から自動読み取ります"
               >
-                <p className="rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-[15px] leading-7 text-slate-600 sm:text-sm">
+                <p className="rounded-2xl border border-[#315f68]/15 bg-[#f4f7f7] px-4 py-3.5 text-[14px] leading-6 text-slate-600 sm:text-sm sm:leading-7">
                   次の画面で抽出結果を確認できます。画像から取れなかった項目だけ、そこで手入力してください。画像にある値は手入力より優先されます。
                 </p>
               </FormGroup>
@@ -1200,7 +1272,7 @@ function NewAnalysisPageInner() {
                 description="実施時間と時刻・時間帯が分かると睡眠との関係を見やすくなります"
               >
                 <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
-                  <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                     <Field label="実施したか" optional>
                       <select
                         name="yogaDone"
@@ -1254,7 +1326,7 @@ function NewAnalysisPageInner() {
                 description="実施時間と時刻・時間帯を区別して入力できます"
               >
                 <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
-                  <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                     <Field label="実施したか" optional>
                       <select
                         name="pilatesDone"
@@ -1338,13 +1410,13 @@ function NewAnalysisPageInner() {
                               <button
                                 type="button"
                                 onClick={() => removeOtherExercise(entry.id)}
-                                className="text-[13px] font-medium text-slate-400 transition hover:text-rose-600"
+                                className="inline-flex min-h-11 items-center px-1 text-[13px] font-medium text-slate-400 transition active:text-rose-600 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-400"
                               >
                                 削除
                               </button>
                             )}
                           </div>
-                          <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                             <Field label="運動の種類" optional>
                               <input
                                 type="text"
@@ -1414,7 +1486,7 @@ function NewAnalysisPageInner() {
                       <button
                         type="button"
                         onClick={addOtherExercise}
-                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-semibold text-[#071426] transition hover:bg-slate-50 sm:text-sm"
+                        className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-semibold text-[#071426] transition active:bg-slate-50 sm:min-h-11 sm:w-auto sm:text-sm sm:hover:bg-slate-50 sm:active:bg-transparent"
                       >
                         ＋ 運動を追加
                       </button>
@@ -1427,7 +1499,7 @@ function NewAnalysisPageInner() {
                 title="入浴・カフェイン"
                 description="入浴とカフェイン摂取の詳細"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="入浴" optional>
                     <select name="bathing" className={inputClass} defaultValue="">
                       <option value="">選択してください</option>
@@ -1442,7 +1514,7 @@ function NewAnalysisPageInner() {
                   <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
                     カフェイン
                   </p>
-                  <div className="mt-3 grid gap-4 sm:grid-cols-2 sm:gap-5">
+                  <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                     <Field label="摂取したか" optional>
                       <select
                         name="caffeineDone"
@@ -1557,7 +1629,7 @@ function NewAnalysisPageInner() {
                         <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
                           {label}
                         </p>
-                        <div className="mt-3 grid gap-4 sm:grid-cols-2 sm:gap-5">
+                        <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                           <Field label={`${label}を食べたか`} optional>
                             <select
                               name={eatenName}
@@ -1602,7 +1674,7 @@ function NewAnalysisPageInner() {
                 title="飲酒"
                 description="有無に加えて、種類・量・終了時刻があると精度が上がります"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="飲酒したか" optional>
                     <select
                       name="alcoholDrank"
@@ -1659,7 +1731,7 @@ function NewAnalysisPageInner() {
                 title="コンディション"
                 description="体調と生活背景。鼻づまりは呼吸・睡眠の連続性に影響します"
               >
-                <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="体調" optional>
                     <input
                       name="condition"
@@ -1697,7 +1769,7 @@ function NewAnalysisPageInner() {
                 title="主観的なストレス・気分"
                 description="測定データとは別に扱う任意の補足"
               >
-                <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-[15px] leading-7 text-slate-600 sm:text-sm">
+                <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-[14px] leading-6 text-slate-600 sm:text-sm sm:leading-7">
                   ストレスはSOXAIなどの測定データを参考に分析します。ご自身の体感を補足したい場合のみ入力してください。
                 </p>
                 <Field label="主観的なストレス・気分" optional>
@@ -1727,13 +1799,13 @@ function NewAnalysisPageInner() {
           </section>
 
           {/* CTA */}
-          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-5 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:px-10 sm:py-10">
+          <section className="relative overflow-hidden rounded-[28px] bg-[#071426] px-4 py-8 text-center shadow-[0_30px_90px_-40px_rgba(7,20,38,0.55)] sm:px-10 sm:py-10">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.35),transparent_55%)]" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(216,179,106,0.2),transparent_45%)]" />
 
             <div className="relative z-10">
               {error && (
-                <p className="mb-5 text-[15px] font-medium text-rose-300 sm:text-sm">
+                <p className="mb-5 text-[14px] font-medium text-rose-300 sm:text-sm">
                   {error}
                 </p>
               )}
@@ -1741,26 +1813,38 @@ function NewAnalysisPageInner() {
               <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
                 SOXAI AUTO READ
               </p>
-              <h2 className="mt-3 text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
-                画像を読み取り、結果を確認する
+              <h2 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-white sm:text-2xl">
+                {ocrStatus === "ready"
+                  ? "データ取得済み — 確認へ進む"
+                  : "画像を読み取り、結果を確認する"}
               </h2>
-              <p className="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/60 sm:text-sm">
-                必須：SOXAI画像（最大{MAX_FILES}枚）・対象者名・測定日・年齢・性別。各画像を個別解析して統合後、確認画面へ進みます。
+              <p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/60 sm:text-sm sm:leading-7">
+                {ocrStatus === "ready"
+                  ? "SOXAI画像の解析は完了しています。必須項目を入力して確認画面へ進んでください。"
+                  : ocrStatus === "running"
+                    ? "画像アップロード後、入力中にバックグラウンドでOCR解析を進めています。"
+                    : `必須：SOXAI画像（最大${MAX_FILES}枚）・対象者名・測定日・年齢・性別。画像アップロード直後から自動解析を開始します。`}
               </p>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="group mt-7 inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-full bg-white px-10 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg"
+                className="group mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 active:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg sm:hover:-translate-y-1 sm:hover:bg-[#f4f4f4] sm:active:translate-y-0 disabled:sm:hover:translate-y-0"
               >
                 {isSubmitting ? (
                   <>
                     <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#071426]/20 border-t-[#071426]" />
-                    SOXAI画像を解析中...
+                    {ocrStatus === "ready"
+                      ? "確認画面へ移動中..."
+                      : "SOXAIデータ取得を完了中..."}
                   </>
                 ) : (
                   <>
-                    画像を解析して確認へ
+                    {ocrStatus === "ready"
+                      ? "確認へ進む"
+                      : ocrStatus === "running"
+                        ? "解析完了を待って確認へ"
+                        : "画像を解析して確認へ"}
                     <span className="transition-transform duration-500 group-hover:translate-x-1">
                       →
                     </span>

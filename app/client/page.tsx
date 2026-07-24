@@ -2,111 +2,43 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import {
-  ClientDailyAdviceCard,
-  ClientDailyBreathingCard,
-  ClientDailyTriviaCard,
-  ClientDailyYogaCard,
-  ClientStreakPanel,
-} from "@/components/ClientDailyWellnessSections";
-import { ClientHomeAiComment } from "@/components/ClientHomeStatusPanels";
-import ClientNav from "@/components/ClientNav";
-import ClientTodayHomework from "@/components/ClientTodayHomework";
-import OnboardingGuide from "@/components/OnboardingGuide";
-import SleepCoachCard from "@/components/SleepCoachCard";
-import SleepWellnessJourneyCard from "@/components/SleepWellnessJourneyCard";
-import EmptyState from "@/components/ui/EmptyState";
-import ErrorState from "@/components/ui/ErrorState";
+import { useEffect, useState } from "react";
 import SectionCard from "@/components/ui/SectionCard";
-import { SoftSkeleton } from "@/components/ui/Skeleton";
 import { GOLD, GOLD_LIGHT, NAVY } from "@/components/ui/tokens";
-import { useAuth } from "@/lib/auth/use-auth";
 import {
-  buildClientMypageComparison,
+  ProgressMeter,
+  WeeklyScoreTrendChart,
+} from "@/components/client-portal/PortalCharts";
+import SleepCoachCard from "@/components/ai-intelligence/SleepCoachCard";
+import MorningEvidencePrompt from "@/components/evidence/MorningEvidencePrompt";
+import ClientPortalShell, {
+  ClientPortalError,
+  ClientPortalLoading,
+  ClientPortalLoginGate,
+  ClientPortalUnlinked,
+  useClientPortalBundle,
+} from "@/components/client-portal/ClientPortalShell";
+import {
+  buildWeeklyScoreTrend,
+  clientWellnessScoreOf,
+  computeImprovementRate,
+  formatScoreDelta,
+} from "@/lib/client-portal/helpers";
+import { CLIENT_PORTAL_ROUTES } from "@/lib/client-portal/constants";
+import type {
+  ClientGoalProgress,
+  ClientPortalNotification,
+} from "@/lib/client-portal/types";
+import {
+  AI_INTELLIGENCE_ROUTES,
+  type SleepCoachBriefing,
+} from "@/lib/ai-intelligence";
+import {
   findPreviousAnalysis,
-  previousComparisonToneColor,
 } from "@/lib/previous-comparison";
-import {
-  computeAssignedHomeworkAchievement,
-  computeHomeworkStreakDays,
-  filterTodaysHomeworks,
-  listClientHomeworks,
-  type ClientHomework,
-} from "@/lib/repositories/client-homeworks-repository";
-import {
-  getMyClientMypage,
-  type ClientInstructorInfo,
-  type ClientMypageData,
-} from "@/lib/repositories/client-mypage-repository";
-import {
-  formatDisplayDate,
-  type StoredAnalysis,
-  type StoredClient,
-} from "@/lib/repositories/client-repository";
-import type { AnalysisResult } from "@/lib/analysis-session";
-
-function Section({
-  eyebrow,
-  title,
-  children,
-  id,
-}: {
-  eyebrow: string;
-  title: string;
-  children: ReactNode;
-  id?: string;
-}) {
-  return (
-    <SectionCard id={id} eyebrow={eyebrow} title={title}>
-      {children}
-    </SectionCard>
-  );
-}
-
-function wellnessScoreOf(analysis: StoredAnalysis | null | undefined): number | null {
-  if (!analysis) return null;
-  if (
-    typeof analysis.wellnessScore === "number" &&
-    Number.isFinite(analysis.wellnessScore)
-  ) {
-    return analysis.wellnessScore;
-  }
-  if (
-    typeof analysis.result?.score === "number" &&
-    Number.isFinite(analysis.result.score)
-  ) {
-    return analysis.result.score;
-  }
-  return null;
-}
-
-function formatScoreDelta(delta: number | null): {
-  label: string;
-  color: string;
-} {
-  if (delta == null) {
-    return { label: "比較データなし", color: GOLD };
-  }
-  const rounded = Math.round(delta);
-  if (rounded === 0) {
-    return { label: "前回より ±0", color: GOLD };
-  }
-  if (rounded > 0) {
-    return { label: `前回より +${rounded}`, color: "#0f6b5c" };
-  }
-  return { label: `前回より ${rounded}`, color: "#a33a3a" };
-}
-
-function instructorInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return "SW";
-  const parts = trimmed.split(/\s+/);
-  if (parts.length >= 2) {
-    return `${parts[0]!.slice(0, 1)}${parts[1]!.slice(0, 1)}`.toUpperCase();
-  }
-  return trimmed.slice(0, 2);
-}
+import { formatDisplayDate } from "@/lib/repositories/client-repository";
+import type { ClientInstructorInfo } from "@/lib/repositories/client-mypage-repository";
+import { SoftSkeleton } from "@/components/ui/Skeleton";
 
 function ScoreHero({
   score,
@@ -121,12 +53,9 @@ function ScoreHero({
 }) {
   if (score == null) {
     return (
-      <EmptyState
-        illustration="score"
-        eyebrow="SLEEP WELLNESS SCORE"
-        title="まだスコアがありません"
-        description="最初の睡眠分析が完了すると、ここに Sleep Wellness Score が表示されます。"
-      />
+      <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-5 py-10 text-center">
+        <p className="text-[14px] text-slate-400">まだ今日の睡眠スコアがありません</p>
+      </div>
     );
   }
 
@@ -139,29 +68,13 @@ function ScoreHero({
 
   return (
     <div className="relative overflow-hidden rounded-[28px] border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-5 py-8 shadow-[0_24px_70px_-48px_rgba(138,106,45,0.45)] sm:px-8 sm:py-10">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{
-          background:
-            "linear-gradient(90deg, transparent, rgba(216,179,106,0.85), transparent)",
-        }}
-      />
-      <div
-        className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-40"
-        style={{
-          background:
-            "radial-gradient(circle, rgba(216,179,106,0.35), transparent 70%)",
-        }}
-      />
-
       <div className="relative text-center">
         <p
           className="text-[11px] font-semibold tracking-[0.28em]"
           style={{ color: GOLD }}
         >
-          Sleep Wellness Score
+          今日の睡眠スコア
         </p>
-
         <div className="relative mx-auto mt-6 flex h-[168px] w-[168px] items-center justify-center">
           <svg
             width={size}
@@ -183,24 +96,14 @@ function ScoreHero({
               cy={size / 2}
               r={radius}
               fill="none"
-              stroke="url(#client-sws-ring)"
+              stroke="url(#portal-sws-ring)"
               strokeWidth={stroke}
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={offset}
-              style={{
-                transition:
-                  "stroke-dashoffset 800ms cubic-bezier(0.22, 1, 0.36, 1)",
-              }}
             />
             <defs>
-              <linearGradient
-                id="client-sws-ring"
-                x1="0%"
-                y1="0%"
-                x2="100%"
-                y2="100%"
-              >
+              <linearGradient id="portal-sws-ring" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor={GOLD_LIGHT} />
                 <stop offset="100%" stopColor={GOLD} />
               </linearGradient>
@@ -208,16 +111,15 @@ function ScoreHero({
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <p
-              className="text-[3.4rem] leading-none font-semibold tracking-[-0.07em] sm:text-[3.75rem]"
+              className="text-[3.4rem] leading-none font-semibold tracking-[-0.07em]"
               style={{ color: NAVY }}
             >
               {clamped}
             </p>
           </div>
         </div>
-
         <p
-          className="mt-5 text-[1.05rem] font-semibold tracking-[-0.02em] sm:text-lg"
+          className="mt-5 text-[1.05rem] font-semibold tracking-[-0.02em]"
           style={{ color: deltaColor }}
         >
           {deltaLabel}
@@ -232,28 +134,34 @@ function ScoreHero({
   );
 }
 
-function InstructorCard({ instructor }: { instructor: ClientInstructorInfo }) {
+function InstructorMessage({
+  instructor,
+  fallback,
+}: {
+  instructor: ClientInstructorInfo | null;
+  fallback: string;
+}) {
+  const message = instructor?.message?.trim() || fallback;
   return (
-    <div className="flex gap-4 rounded-[22px] border border-[#8a6a2d]/20 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-5 py-5 sm:gap-5 sm:px-6 sm:py-6">
+    <div className="flex gap-4 rounded-[22px] border border-[#8a6a2d]/20 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-5 py-5">
       <div className="shrink-0">
-        {instructor.avatarUrl ? (
+        {instructor?.avatarUrl ? (
           <Image
             src={instructor.avatarUrl}
             alt={instructor.displayName}
-            width={72}
-            height={72}
-            className="h-[72px] w-[72px] rounded-full object-cover ring-2 ring-[#8a6a2d]/25"
+            width={56}
+            height={56}
+            className="h-14 w-14 rounded-full object-cover ring-2 ring-[#8a6a2d]/25"
             unoptimized
           />
         ) : (
           <div
-            className="flex h-[72px] w-[72px] items-center justify-center rounded-full text-[18px] font-semibold tracking-[0.06em] text-white"
+            className="flex h-14 w-14 items-center justify-center rounded-full text-[14px] font-semibold text-white"
             style={{
               background: `linear-gradient(145deg, ${GOLD_LIGHT}, ${GOLD})`,
             }}
-            aria-hidden
           >
-            {instructorInitials(instructor.displayName)}
+            {(instructor?.displayName ?? "SW").slice(0, 2)}
           </div>
         )}
       </div>
@@ -262,448 +170,232 @@ function InstructorCard({ instructor }: { instructor: ClientInstructorInfo }) {
           className="text-[10px] font-semibold tracking-[0.18em]"
           style={{ color: GOLD }}
         >
-          CERTIFIED INSTRUCTOR
+          今日のメッセージ
         </p>
-        <h3
-          className="mt-1.5 text-[1.15rem] font-semibold tracking-[-0.03em] sm:text-xl"
-          style={{ color: NAVY }}
-        >
-          {instructor.displayName}
-        </h3>
-        {instructor.message ? (
-          <p className="mt-3 whitespace-pre-wrap text-[14px] leading-7 text-slate-600 sm:text-[15px]">
-            {instructor.message}
+        <p className="mt-2 whitespace-pre-wrap text-[14px] leading-7 text-slate-600">
+          {message}
+        </p>
+        {instructor ? (
+          <p className="mt-2 text-[12px] text-slate-400">
+            {instructor.displayName}（認定講師）
           </p>
-        ) : (
-          <p className="mt-3 text-[14px] leading-7 text-slate-400">
-            メッセージはまだありません
-          </p>
-        )}
+        ) : null}
       </div>
     </div>
   );
 }
 
-function HistoryList({ analyses }: { analyses: StoredAnalysis[] }) {
-  const items = analyses.slice(0, 5);
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        compact
-        illustration="history"
-        title="分析履歴はまだありません"
-        description="最初の睡眠分析を始めると、ここに履歴が積み上がっていきます。"
-      />
-    );
-  }
-
-  return (
-    <ul className="divide-y divide-slate-100">
-      {items.map((item) => {
-        const score = wellnessScoreOf(item);
-        return (
-          <li
-            key={item.id}
-            className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
-          >
-            <div className="min-w-0">
-              <p
-                className="text-[15px] font-semibold tracking-[-0.02em]"
-                style={{ color: NAVY }}
-              >
-                {formatDisplayDate(item.analysisDate)}
-              </p>
-              <p className="mt-1 text-[13px] text-slate-500">
-                Score{" "}
-                <span className="font-semibold tabular-nums" style={{ color: GOLD }}>
-                  {score == null ? "—" : Math.round(score)}
-                </span>
-              </p>
-            </div>
-            <Link
-              href={`/client/analyses/${encodeURIComponent(item.id)}`}
-              className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full border border-[#8a6a2d]/30 bg-white px-4 text-[12px] font-semibold transition hover:bg-[#faf7f1]"
-              style={{ color: GOLD }}
-            >
-              詳細を見る
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+export default function ClientPortalHomePage() {
+  const { loading, needsLogin, error, bundle, reload } = useClientPortalBundle();
+  const [goals, setGoals] = useState<ClientGoalProgress[]>([]);
+  const [notifications, setNotifications] = useState<ClientPortalNotification[]>(
+    [],
   );
-}
-
-export default function ClientMyPage() {
-  const { loading: authLoading, isAuthenticated, isDemoMode, supabaseEnabled } =
-    useAuth();
-  const [data, setData] = useState<ClientMypageData | null>(null);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [latestResult, setLatestResult] = useState<AnalysisResult | null>(null);
-  const [homeworks, setHomeworks] = useState<ClientHomework[]>([]);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  const refresh = useCallback(async () => {
-    try {
-      setError(null);
-      const next = await getMyClientMypage();
-      setData(next);
-      const latest = next?.client.analyses[0] ?? null;
-      setLatestResult(
-        latest?.result
-          ? {
-              ...latest.result,
-              analysisId: latest.result.analysisId?.trim() || latest.id,
-            }
-          : null,
-      );
-      if (next?.client.id) {
-        const hw = await listClientHomeworks(next.client.id).catch(() => []);
-        setHomeworks(hw);
-      } else {
-        setHomeworks([]);
-      }
-    } catch (err) {
-      console.error("[client mypage]", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "マイページの読み込みに失敗しました。",
-      );
-      setData(null);
-      setHomeworks([]);
-    } finally {
-      setReady(true);
-    }
-  }, []);
+  const [coach, setCoach] = useState<SleepCoachBriefing | null>(null);
+  const [coachLoading, setCoachLoading] = useState(false);
 
   useEffect(() => {
-    if (authLoading) return;
-
-    if (supabaseEnabled && !isAuthenticated && !isDemoMode) {
-      setReady(true);
-      return;
-    }
-
-    setReady(false);
-    void refresh();
-
-    const onUpdate = () => {
-      void refresh();
-    };
-    window.addEventListener("storage", onUpdate);
-    window.addEventListener("swij-clients-updated", onUpdate);
+    if (!bundle) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [goalsRes, ntfRes] = await Promise.all([
+          fetch("/api/client-portal/goals").then((r) => r.json()),
+          fetch("/api/client-portal/notifications").then((r) => r.json()),
+        ]);
+        if (cancelled) return;
+        setGoals(Array.isArray(goalsRes.goals) ? goalsRes.goals : []);
+        setNotifications(
+          Array.isArray(ntfRes.notifications) ? ntfRes.notifications : [],
+        );
+      } catch {
+        if (!cancelled) {
+          setGoals([]);
+          setNotifications([]);
+        }
+      }
+    })();
     return () => {
-      window.removeEventListener("storage", onUpdate);
-      window.removeEventListener("swij-clients-updated", onUpdate);
+      cancelled = true;
     };
-  }, [
-    authLoading,
-    isAuthenticated,
-    isDemoMode,
-    supabaseEnabled,
-    refresh,
-    reloadKey,
-  ]);
+  }, [bundle]);
 
-  if (authLoading || !ready) {
-    return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <ClientNav />
-        <SoftSkeleton variant="page" />
-      </main>
-    );
-  }
+  useEffect(() => {
+    if (!bundle) return;
+    let cancelled = false;
+    const client = bundle.data.client;
+    const latest = client.analyses[0] ?? null;
+    const score = clientWellnessScoreOf(latest);
+    const metrics = latest?.metrics;
 
-  if (supabaseEnabled && !isAuthenticated) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5">
-        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 text-center sm:p-10">
-          <p
-            className="text-[11px] font-semibold tracking-[0.28em]"
-            style={{ color: GOLD }}
-          >
-            CLIENT
-          </p>
-          <h1
-            className="mt-4 text-2xl font-semibold tracking-[-0.04em]"
-            style={{ color: NAVY }}
-          >
-            ログインが必要です
-          </h1>
-          <p className="mt-3 text-[14px] leading-7 text-slate-500">
-            クライアント専用マイページは、ご本人のアカウントでのみご覧いただけます。
-          </p>
-          <Link
-            href="/login?redirect=/client"
-            className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white"
-            style={{ backgroundColor: NAVY }}
-          >
-            ログイン
-          </Link>
-        </div>
-      </main>
-    );
-  }
+    setCoachLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(AI_INTELLIGENCE_ROUTES.api.sleepCoach, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: client.id,
+            clientName: client.name,
+            sleepScore: score,
+            sleepEfficiency: parseHomeMetric(metrics?.sleepEfficiency),
+            stress: parseHomeMetric(metrics?.stress),
+            hrv: parseHomeMetric(metrics?.hrv),
+            streakDays: Math.min(client.analyses.length, 30),
+          }),
+        });
+        const json = (await res.json()) as {
+          briefing?: SleepCoachBriefing;
+        };
+        if (!cancelled) setCoach(json.briefing ?? null);
+      } catch {
+        if (!cancelled) setCoach(null);
+      } finally {
+        if (!cancelled) setCoachLoading(false);
+      }
+    })();
 
-  if (error) {
-    return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <ClientNav />
-        <div className="mx-auto max-w-md px-5 py-16">
-          <ErrorState
-            message={error}
-            onRetry={() => {
-              setReady(false);
-              setReloadKey((k) => k + 1);
-            }}
-          />
-        </div>
-      </main>
-    );
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [bundle]);
 
-  if (!data) {
-    return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <ClientNav />
-        <OnboardingGuide enabled />
-        <div className="mx-auto max-w-md px-5 py-16">
-          <EmptyState
-            illustration="generic"
-            eyebrow="WAITING"
-            title="まだ連携されていません"
-            description="担当の認定講師が、あなたのメールアドレスでマイページ連携を設定すると、分析結果や宿題が表示されます。"
-          />
-        </div>
-      </main>
-    );
-  }
+  if (loading) return <ClientPortalLoading />;
+  if (needsLogin) return <ClientPortalLoginGate />;
+  if (error) return <ClientPortalError message={error} onRetry={reload} />;
+  if (!bundle) return <ClientPortalUnlinked />;
 
-  const client: StoredClient = data.client;
+  const { data } = bundle;
+  const client = data.client;
   const latest = client.analyses[0] ?? null;
   const previous = findPreviousAnalysis(client.analyses, latest?.id);
-  const latestScore = wellnessScoreOf(latest);
-  const previousScore = wellnessScoreOf(previous);
+  const latestScore = clientWellnessScoreOf(latest);
+  const previousScore = clientWellnessScoreOf(previous);
   const scoreDelta =
     latestScore != null && previousScore != null
       ? latestScore - previousScore
       : null;
   const deltaDisplay = formatScoreDelta(scoreDelta);
-  const comparison =
-    latest && previous
-      ? buildClientMypageComparison(previous, latest)
-      : null;
-  const homeworkAchievement = computeAssignedHomeworkAchievement(homeworks);
-  const streakDays = computeHomeworkStreakDays(homeworks);
-  const hasAnalyses = client.analyses.length > 0;
-  const todaysHomeworks = filterTodaysHomeworks(homeworks);
-  const pendingHomework = todaysHomeworks.find((item) => !item.isCompleted);
+  const weekly = buildWeeklyScoreTrend(client.analyses);
+  const improvementRate = computeImprovementRate(client.analyses);
+  const activeGoal =
+    goals.find((g) => g.status === "active") ??
+    goals[0] ??
+    null;
+  const currentGoalText =
+    activeGoal?.title ||
+    latest?.result?.recommendationsUntilNext?.[0]?.text ||
+    "目標はまだ設定されていません";
+  const todayMessageFallback =
+    notifications.find((n) => !n.readAt)?.body ||
+    "今日も睡眠リズムを整える一歩を積み重ねましょう。";
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
-      <ClientNav />
-      <OnboardingGuide enabled />
+    <ClientPortalShell
+      eyebrow="HOME"
+      title={`${client.name} さん`}
+      trailing={
+        <Link
+          href={CLIENT_PORTAL_ROUTES.chat}
+          className="inline-flex min-h-10 items-center rounded-full border border-[#8a6a2d]/30 bg-white px-4 text-[12px] font-semibold"
+          style={{ color: GOLD }}
+        >
+          Chat
+        </Link>
+      }
+    >
+      <ScoreHero
+        score={latestScore}
+        deltaLabel={deltaDisplay.label}
+        deltaColor={deltaDisplay.color}
+        analysisDate={latest?.analysisDate ?? null}
+      />
 
-      <div className="mx-auto max-w-3xl space-y-6 px-5 py-8 sm:space-y-8 sm:px-8 sm:py-12">
-        <div className="px-1">
-          <p
-            className="text-[11px] font-semibold tracking-[0.28em]"
+      <MorningEvidencePrompt />
+
+      {coachLoading ? (
+        <div className="mt-5">
+          <SoftSkeleton variant="coach" />
+        </div>
+      ) : null}
+      {!coachLoading && coach ? (
+        <div className="mt-5 space-y-3">
+          <SleepCoachCard briefing={coach} />
+          <Link
+            href={CLIENT_PORTAL_ROUTES.coach}
+            className="inline-flex text-[13px] font-semibold"
             style={{ color: GOLD }}
           >
-            SLEEP WELLNESS OS · CLIENT
-          </p>
-          <h1
-            className="mt-2 text-[1.65rem] font-semibold tracking-[-0.04em] sm:text-3xl"
+            Sleep Coach と改善予測を見る →
+          </Link>
+        </div>
+      ) : null}
+
+      <SectionCard eyebrow="TREND" title="今週の睡眠スコア推移">
+        <WeeklyScoreTrendChart points={weekly} />
+      </SectionCard>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SectionCard eyebrow="IMPROVEMENT" title="改善率">
+          <ProgressMeter label="初回からの改善" percent={improvementRate} />
+        </SectionCard>
+        <SectionCard eyebrow="GOAL" title="現在の目標">
+          <p className="text-[15px] leading-7 text-slate-700">{currentGoalText}</p>
+          {activeGoal ? (
+            <div className="mt-4">
+              <ProgressMeter
+                label="達成率"
+                percent={activeGoal.progressPercent}
+              />
+            </div>
+          ) : null}
+          <Link
+            href={CLIENT_PORTAL_ROUTES.goals}
+            className="mt-4 inline-flex text-[13px] font-semibold"
+            style={{ color: GOLD }}
+          >
+            Goals を見る →
+          </Link>
+        </SectionCard>
+      </div>
+
+      <SectionCard eyebrow="MESSAGE" title="今日のメッセージ">
+        <InstructorMessage
+          instructor={data.instructor}
+          fallback={todayMessageFallback}
+        />
+      </SectionCard>
+
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {[
+          { href: CLIENT_PORTAL_ROUTES.sleep, label: "Sleep Record" },
+          { href: CLIENT_PORTAL_ROUTES.coach, label: "Sleep Coach" },
+          { href: CLIENT_PORTAL_ROUTES.advice, label: "Today's Advice" },
+          { href: CLIENT_PORTAL_ROUTES.homework, label: "Homework" },
+          { href: CLIENT_PORTAL_ROUTES.journey, label: "Journey" },
+          { href: CLIENT_PORTAL_ROUTES.reports, label: "Report" },
+          { href: CLIENT_PORTAL_ROUTES.chat, label: "Chat" },
+          { href: CLIENT_PORTAL_ROUTES.goals, label: "Goals" },
+        ].map((item) => (
+          <Link
+            key={item.href + item.label}
+            href={item.href}
+            className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[#071426]/08 bg-white px-3 text-center text-[12px] font-semibold"
             style={{ color: NAVY }}
           >
-            {client.name}
-            <span className="font-normal text-slate-400"> さん</span>
-          </h1>
-        </div>
-
-        {!hasAnalyses ? (
-          <EmptyState
-            illustration="analysis"
-            eyebrow="GET STARTED"
-            title="最初の睡眠分析を始めましょう"
-            description="担当の認定講師が分析を行うと、スコア・Sleep Coach・Journey・宿題がここに揃います。"
-          />
-        ) : null}
-
-        <ScoreHero
-          score={latestScore}
-          deltaLabel={deltaDisplay.label}
-          deltaColor={deltaDisplay.color}
-          analysisDate={latest?.analysisDate ?? null}
-        />
-
-        {hasAnalyses ? (
-          <div id="sleep-coach">
-            <SleepCoachCard
-              analyses={client.analyses}
-              latest={latest}
-              previous={previous}
-              streakDays={streakDays}
-              homeworkRate={homeworkAchievement.rate}
-            />
-          </div>
-        ) : null}
-
-        {hasAnalyses ? (
-          <div id="journey">
-            <SleepWellnessJourneyCard
-              analyses={client.analyses}
-              streakDays={streakDays}
-              homeworkRate={homeworkAchievement.rate}
-            />
-          </div>
-        ) : (
-          <EmptyState
-            compact
-            illustration="journey"
-            eyebrow="JOURNEY"
-            title="Journeyはまだありません"
-            description="分析が積み重なると、改善の物語としてタイムラインが表示されます。"
-          />
-        )}
-
-        <Section id="mission" eyebrow="MISSION" title="Today's Mission">
-          {hasAnalyses ? (
-            <div className="space-y-4">
-              <p className="text-[15px] leading-7 text-slate-600">
-                {pendingHomework
-                  ? `今日の最優先は「${pendingHomework.title}」です。`
-                  : "今日は Sleep Coach の提案とメラトニンヨガ™で、睡眠リズムを整えましょう。"}
-              </p>
-              <ul className="space-y-2">
-                <li className="rounded-2xl bg-[#fafaf8] px-4 py-3 text-[14px] text-slate-700">
-                  Sleep Coach のフォーカスを確認する
-                </li>
-                <li className="rounded-2xl bg-[#fafaf8] px-4 py-3 text-[14px] text-slate-700">
-                  {pendingHomework
-                    ? `宿題「${pendingHomework.title}」を完了する`
-                    : "今日のメラトニンヨガ™を実践する"}
-                </li>
-                <li className="rounded-2xl bg-[#fafaf8] px-4 py-3 text-[14px] text-slate-700">
-                  就寝前の呼吸法でリラックスする
-                </li>
-              </ul>
-              {todaysHomeworks.length > 0 ? (
-                <p className="text-[13px] text-slate-500">
-                  今日の宿題が {todaysHomeworks.length}{" "}
-                  件あります。下の宿題セクションで確認しましょう。
-                </p>
-              ) : (
-                <p className="text-[13px] text-slate-500">
-                  小さな一歩の積み重ねが、睡眠ウェルネスを育てます。
-                </p>
-              )}
-            </div>
-          ) : (
-            <EmptyState
-              compact
-              illustration="generic"
-              title="ミッションはまだありません"
-              description="最初の分析が完了すると、今日のミッションが表示されます。"
-            />
-          )}
-        </Section>
-
-        <Section id="homework" eyebrow="HOMEWORK" title="宿題">
-          <ClientTodayHomework
-            clientId={client.id}
-            onHomeworksChange={setHomeworks}
-          />
-        </Section>
-
-        <Section id="history" eyebrow="HISTORY" title="分析履歴">
-          <HistoryList analyses={client.analyses} />
-        </Section>
-
-        <Section id="yoga" eyebrow="YOGA" title="メラトニンヨガ™">
-          <ClientDailyYogaCard />
-        </Section>
-
-        <Section eyebrow="ADVICE" title="今日の睡眠ウェルネスアドバイス">
-          <ClientDailyAdviceCard result={latestResult} />
-        </Section>
-
-        <Section eyebrow="BREATH" title="今日の呼吸法">
-          <ClientDailyBreathingCard />
-        </Section>
-
-        <Section eyebrow="INSIGHT" title="今日の豆知識">
-          <ClientDailyTriviaCard />
-        </Section>
-
-        <Section eyebrow="STREAK" title="継続日数">
-          <ClientStreakPanel
-            streakDays={streakDays}
-            homeworkRate={homeworkAchievement.rate}
-          />
-        </Section>
-
-        <Section eyebrow="AI COMMENT" title="今日のAIコメント">
-          <ClientHomeAiComment result={latestResult} />
-        </Section>
-
-        <Section eyebrow="COMPARE" title="前回との比較">
-          {comparison ? (
-            <>
-              <p className="mb-4 text-[12px] text-slate-400">
-                前回 {formatDisplayDate(comparison.previousDate)} との比較
-              </p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {comparison.items.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl border border-[#071426]/06 bg-[#fafaf8] px-4 py-4"
-                  >
-                    <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400">
-                      {item.label}
-                    </p>
-                    <p
-                      className="mt-2 text-[1.45rem] font-semibold tracking-[-0.04em] tabular-nums"
-                      style={{ color: previousComparisonToneColor(item.tone) }}
-                    >
-                      {item.value}
-                    </p>
-                    <p className="mt-1 text-[12px] text-slate-400">
-                      {item.tone === "improved"
-                        ? "改善"
-                        : item.tone === "worsened"
-                          ? "悪化"
-                          : "変化なし"}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <EmptyState
-              compact
-              illustration="analysis"
-              title="比較できる前回の分析がありません"
-              description="2回目以降の分析から、前回との変化が見えるようになります。"
-            />
-          )}
-        </Section>
-
-        <Section eyebrow="INSTRUCTOR" title="担当認定講師">
-          {data.instructor ? (
-            <InstructorCard instructor={data.instructor} />
-          ) : (
-            <EmptyState
-              compact
-              illustration="generic"
-              title="担当認定講師の情報がありません"
-              description="講師プロフィールが設定されると、ここに表示されます。"
-            />
-          )}
-        </Section>
+            {item.label}
+          </Link>
+        ))}
       </div>
-    </main>
+    </ClientPortalShell>
   );
+}
+
+function parseHomeMetric(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }

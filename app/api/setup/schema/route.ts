@@ -21,22 +21,30 @@ export async function GET() {
       "supabase",
       "analysis-persist-v1.sql",
     );
+    const structuredPath = path.join(
+      process.cwd(),
+      "supabase",
+      "analysis-structured-metrics.sql",
+    );
     const instructorPath = path.join(
       process.cwd(),
       "supabase",
       "clients-instructor-id.sql",
     );
-    const [sql, platformSql, persistSql, instructorSql] = await Promise.all([
-      readFile(schemaPath, "utf8"),
-      readFile(platformPath, "utf8"),
-      readFile(persistPath, "utf8"),
-      readFile(instructorPath, "utf8"),
-    ]);
+    const [sql, platformSql, persistSql, structuredSql, instructorSql] =
+      await Promise.all([
+        readFile(schemaPath, "utf8"),
+        readFile(platformPath, "utf8"),
+        readFile(persistPath, "utf8"),
+        readFile(structuredPath, "utf8"),
+        readFile(instructorPath, "utf8"),
+      ]);
 
     const supabase = await createServerSupabaseClient();
     let tableReady = false;
     let platformReady = false;
     let persistReady = false;
+    let structuredReady = false;
     let instructorIdReady = false;
     let instructorColumn: "instructor_id" | "owner_id" | null = null;
     let probeError: string | null = null;
@@ -69,6 +77,14 @@ export async function GET() {
         .limit(1);
       persistReady = !persistError;
 
+      const { error: structuredError } = await supabase
+        .from("analyses")
+        .select(
+          "id, analysis_date, sleep_onset_time, wake_time, stress_series, ocr_confidence",
+        )
+        .limit(1);
+      structuredReady = !structuredError;
+
       if (tableReady) {
         resetClientsInstructorColumnCache();
         instructorColumn = await resolveClientsInstructorColumn(supabase);
@@ -80,6 +96,7 @@ export async function GET() {
       tableReady,
       platformReady,
       persistReady,
+      structuredReady,
       instructorIdReady,
       instructorColumn: instructorColumn ?? peekClientsInstructorColumn(),
       missingTable: probeError
@@ -90,13 +107,15 @@ export async function GET() {
       sql,
       platformSql,
       persistSql,
+      structuredSql,
       instructorSql,
       instructions: [
         "Supabase Dashboard → SQL Editor → New query を開く",
         "1) schema.sql を貼り付けて Run",
         "2) platform-v1.sql を貼り付けて Run（クレジット・会員・履歴）",
         "3) analysis-persist-v1.sql を貼り付けて Run（保存強化・二重消費防止）",
-        "4) clients-instructor-id.sql を貼り付けて Run（owner_id → instructor_id）",
+        "4) analysis-structured-metrics.sql を貼り付けて Run（analysis_date / OCR構造化）",
+        "5) clients-instructor-id.sql を貼り付けて Run（owner_id → instructor_id）",
         "完了後、このアプリで新規クライアント登録 / 分析を再試行する",
       ],
     });

@@ -181,7 +181,9 @@ export function parseStressMetrics(
   return { display, average, level, series };
 }
 
-/** hypnogram segments から入眠・起床候補を補完 */
+/** hypnogram segments から入眠・起床候補を補完
+ * @deprecated 端点時刻の推測補完は誤読源になるため normalizeOcrMetrics では使わない
+ */
 export function enrichBedWakeFromGraphs(
   metrics: AnalysisMetrics,
   bundle: SoxaiGraphBundle,
@@ -198,6 +200,7 @@ export function enrichBedWakeFromGraphs(
   const firstStart = withTimes[0]?.startTime?.trim();
   const lastEnd = withTimes[withTimes.length - 1]?.endTime?.trim();
 
+  // 明示ラベル無しの端点補完は行わない（呼び出し側が明示opt-inする場合のみ）
   if (!next.bedtime.trim() && firstStart) {
     next.bedtime = normalizeTimeToHHMM(firstStart);
   }
@@ -208,12 +211,12 @@ export function enrichBedWakeFromGraphs(
   return next;
 }
 
-/** OCR結果を正規化し、表示用文字列も更新 */
+/** OCR結果を正規化し、表示用文字列も更新（推測補完はしない） */
 export function normalizeOcrMetrics(
   metrics: AnalysisMetrics,
-  graphs?: SoxaiGraphBundle,
+  _graphs?: SoxaiGraphBundle,
 ): AnalysisMetrics {
-  let next = { ...metrics };
+  const next = { ...metrics };
 
   if (next.bedtime.trim()) {
     next.bedtime = normalizeTimeToHHMM(next.bedtime);
@@ -222,18 +225,19 @@ export function normalizeOcrMetrics(
     next.wakeTime = normalizeTimeToHHMM(next.wakeTime);
   }
 
-  if (graphs) {
-    next = enrichBedWakeFromGraphs(next, graphs);
-  }
+  // hypnogram 端点からの入眠・起床推測は精度優先のため無効
 
   if (next.skinTemperature.trim()) {
     const skin = parseSkinTemperature(next.skinTemperature);
     next.skinTemperature = skin.display || next.skinTemperature;
   }
 
-  if (next.stress.trim() || graphs?.stress) {
-    const stress = parseStressMetrics(next.stress, graphs?.stress);
-    next.stress = stress.display || next.stress;
+  if (next.stress.trim() || _graphs?.stress) {
+    const stress = parseStressMetrics(next.stress, _graphs?.stress);
+    // 明示テキストが無く折れ線平均だけの捏造 display は避ける
+    if (next.stress.trim()) {
+      next.stress = stress.display || next.stress;
+    }
   }
 
   return next;

@@ -1,9 +1,10 @@
-/** Sleep Wellness Design System — Version 3.0 tokens. */
+/** Sleep Wellness Design System — Version 2.3 tokens. */
 export {
   NAVY,
   GOLD,
   GOLD_LIGHT,
   GOLD_MID,
+  WHITE,
   TEAL,
   SURFACE,
   SURFACE_WARM,

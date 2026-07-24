@@ -1,8 +1,8 @@
 "use client";
 
-import ErrorState from "@/components/ui/ErrorState";
+import CriticalErrorView from "@/components/beta/CriticalErrorView";
 
-export default function GlobalError({
+export default function GlobalSegmentError({
   error,
   reset,
 }: {
@@ -10,14 +10,13 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5">
-      <div className="w-full max-w-md">
-        <ErrorState
-          title="予期しないエラーが発生しました"
-          message={error.message || "しばらくしてから再度お試しください。"}
-          onRetry={reset}
-        />
-      </div>
+    <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 py-16 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-20 sm:pb-20">
+      <CriticalErrorView
+        title="予期しないエラーが発生しました"
+        message="しばらくしてから再度お試しください。問題が続く場合は、参照コードを添えてフィードバックをお送りください。"
+        digest={error.digest}
+        onRetry={reset}
+      />
     </main>
   );
 }

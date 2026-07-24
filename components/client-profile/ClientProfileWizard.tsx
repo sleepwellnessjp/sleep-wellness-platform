@@ -203,7 +203,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
 
   if (!ready) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <p className="text-sm text-slate-400">読み込み中...</p>
       </main>
     );
@@ -211,12 +211,12 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
 
   if (error && !sections.basic.fullName && !clientName) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5">
-        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm text-rose-600">{error}</p>
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 text-center sm:p-8">
+          <p className="break-words text-sm text-rose-600">{error}</p>
           <Link
             href="/clients"
-            className="mt-6 inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3 text-white"
+            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-full px-8 py-3 text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
             一覧へ戻る
@@ -229,11 +229,11 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
   const current = PROFILE_STEPS[step];
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
       <InstructorNav eyebrow="CLIENT PROFILE" />
 
-      <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8 sm:py-12">
-        <header className="mb-8 text-center">
+      <div className="mx-auto max-w-3xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-12 sm:pb-12">
+        <header className="mb-6 text-center sm:mb-8">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
             style={{ color: GOLD }}
@@ -241,15 +241,15 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             FIXED PROFILE · v{CLIENT_PROFILE_SCHEMA_VERSION}
           </p>
           <h1
-            className="mt-3 text-[1.75rem] font-semibold tracking-[-0.04em] sm:text-3xl"
+            className="mt-3 break-words text-[1.55rem] font-semibold leading-tight tracking-[-0.04em] sm:text-3xl sm:leading-normal"
             style={{ color: NAVY }}
           >
             {clientName || "クライアントプロフィール"}
           </h1>
-          <p className="mt-3 text-[15px] leading-7 text-slate-500">
+          <p className="mt-2 text-[14px] leading-6 text-slate-500 sm:mt-3 sm:text-[15px] sm:leading-7">
             固定情報のみ入力します。当日情報は含めません。必須は氏名のみです。
           </p>
-          <p className="mx-auto mt-3 max-w-md text-[12px] leading-6 text-slate-400 sm:text-[13px]">
+          <p className="mx-auto mt-2 max-w-md text-[12px] leading-5 text-slate-400 sm:mt-3 sm:text-[13px] sm:leading-6">
             <span
               className="font-serif tracking-[0.14em]"
               style={{ color: GOLD }}
@@ -262,7 +262,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
           </p>
         </header>
 
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <ProfileCompletionCard
             sections={sections}
             derivedAgeYears={derivedAge}
@@ -277,7 +277,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
 
         <nav
           aria-label="プロフィール入力ステップ"
-          className="mb-8 flex flex-wrap justify-center gap-2"
+          className="mb-6 flex flex-wrap justify-center gap-2 sm:mb-8"
         >
           {PROFILE_STEPS.map((item, index) => {
             const active = index === step;
@@ -287,12 +287,12 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 key={item.id}
                 type="button"
                 onClick={() => setStep(index)}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide transition ${
+                className={`inline-flex min-h-10 items-center rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide transition active:opacity-90 sm:min-h-0 sm:active:opacity-100 ${
                   active
                     ? "bg-[#071426] text-white"
                     : done
                       ? "bg-[#8a6a2d]/15 text-[#8a6a2d]"
-                      : "bg-white text-slate-400 border border-slate-200"
+                      : "border border-slate-200 bg-white text-slate-400"
                 }`}
               >
                 {index + 1}. {item.label}
@@ -1868,7 +1868,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
           </SectionCard>
         )}
 
-        <div className="mt-8 space-y-3">
+        <div className="mt-6 space-y-3 sm:mt-8">
           {error && (
             <p className="text-center text-sm font-medium text-rose-600">{error}</p>
           )}
@@ -1883,7 +1883,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
               type="button"
               disabled={step === 0 || saving}
               onClick={() => setStep((current) => Math.max(0, current - 1))}
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3 text-[15px] font-semibold text-slate-600 disabled:opacity-40"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-6 py-3 text-[15px] font-semibold text-slate-600 transition active:bg-slate-50 disabled:opacity-40 sm:w-auto sm:active:bg-transparent"
             >
               前へ
             </button>
@@ -1893,7 +1893,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                 type="button"
                 disabled={saving}
                 onClick={() => void saveDraft()}
-                className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-6 py-3 text-[15px] font-semibold text-[#8a6a2d] disabled:opacity-60"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-[#faf7f1] px-6 py-3 text-[15px] font-semibold text-[#8a6a2d] transition active:opacity-90 disabled:opacity-60 sm:w-auto sm:active:opacity-100"
               >
                 {saving ? "保存中..." : "途中保存"}
               </button>
@@ -1903,7 +1903,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   type="button"
                   disabled={saving}
                   onClick={() => void saveDraft({ advance: true })}
-                  className="inline-flex min-h-12 items-center justify-center rounded-full px-7 py-3 text-[15px] font-semibold text-white disabled:opacity-60"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-7 py-3 text-[15px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:w-auto sm:active:opacity-100"
                   style={{ backgroundColor: NAVY }}
                 >
                   保存して次へ
@@ -1913,7 +1913,7 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
                   type="button"
                   disabled={saving}
                   onClick={() => void saveDraft({ finish: true })}
-                  className="inline-flex min-h-12 items-center justify-center rounded-full px-7 py-3 text-[15px] font-semibold text-white disabled:opacity-60"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-7 py-3 text-[15px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:w-auto sm:active:opacity-100"
                   style={{ backgroundColor: NAVY }}
                 >
                   保存して確認へ
@@ -1922,16 +1922,16 @@ export default function ClientProfileWizard({ clientId, initialStep = 0 }: Props
             </div>
           </div>
 
-          <div className="flex justify-center gap-4 pt-2">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 pt-2">
             <Link
               href={`/clients/${clientId}`}
-              className="text-sm font-medium text-slate-400 hover:text-slate-600"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-slate-400 transition active:text-slate-600 sm:min-h-0 sm:hover:text-slate-600 sm:active:text-slate-400"
             >
               詳細へ戻る
             </Link>
             <Link
               href={`/clients/${clientId}/profile/confirm`}
-              className="text-sm font-medium text-slate-400 hover:text-slate-600"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-slate-400 transition active:text-slate-600 sm:min-h-0 sm:hover:text-slate-600 sm:active:text-slate-400"
             >
               確認画面へ
             </Link>

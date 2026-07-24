@@ -28,9 +28,14 @@ function SimpleMeterBar({
   const safeRatio = ratio01 == null ? null : clamp(ratio01, 0, 1);
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
-        <p className="text-[11px] font-semibold" style={{ color: NAVY }}>
+      <div className="flex min-w-0 items-baseline justify-between gap-2">
+        <p className="min-w-0 truncate text-[10px] font-semibold text-slate-500 sm:text-[11px]">
+          {label}
+        </p>
+        <p
+          className="shrink-0 text-[10px] font-semibold sm:text-[11px]"
+          style={{ color: NAVY }}
+        >
           {valueText}
         </p>
       </div>
@@ -234,7 +239,7 @@ function CircadianTimeline({
       <div className="mt-2">
         <MiniLineChart points={points} color="#d8b36a" />
         <p className="mt-2 text-[11px] font-semibold" style={{ color: NAVY }}>
-          {phaseText || "—"}
+          {phaseText || "未測定"}
         </p>
       </div>
     );
@@ -248,7 +253,7 @@ function CircadianTimeline({
       <div className="mt-2">
         <p className="text-[11px] font-semibold text-slate-500">体内時計</p>
         <p className="mt-1 text-[13px] font-semibold" style={{ color: NAVY }}>
-          {phaseText || "—"}
+          {phaseText || "未測定"}
         </p>
       </div>
     );
@@ -294,16 +299,16 @@ function CircadianTimeline({
           />
         )}
       </div>
-      <div className="mt-2 flex justify-between">
-        <p className="text-[11px] font-semibold text-slate-500">
-          入眠 {bedtime || "—"}
+      <div className="mt-2 flex flex-wrap justify-between gap-x-2 gap-y-1">
+        <p className="min-w-0 text-[10px] font-semibold text-slate-500 sm:text-[11px]">
+          入眠 {bedtime || "未測定"}
         </p>
-        <p className="text-[11px] font-semibold text-slate-500">
-          起床 {wakeTime || "—"}
+        <p className="min-w-0 text-[10px] font-semibold text-slate-500 sm:text-[11px]">
+          起床 {wakeTime || "未測定"}
         </p>
       </div>
       <p className="mt-2 text-[11px] font-semibold" style={{ color: NAVY }}>
-        {phaseText || "—"}
+        {phaseText || "未測定"}
       </p>
     </div>
   );

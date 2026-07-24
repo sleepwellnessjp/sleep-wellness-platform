@@ -5,32 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
+import { AnalysisError } from "@/lib/analysis-session";
 import {
-  AnalysisError,
-  hydrateAnalysisSession,
-  runPendingAnalysis,
-} from "@/lib/analysis-session";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
-import {
-  loadLastSavedAnalysisRef,
-  saveAnalysisToRepository,
-} from "@/lib/repositories/client-repository";
-import { userMessageFromUnknown } from "@/lib/data-access-errors";
-
-const steps = [
-  {
-    title: "確認済みデータを反映中",
-    detail: "抽出・手入力した睡眠指標を分析に渡しています",
-  },
-  {
-    title: "生活習慣との関連を分析中",
-    detail: "回復力と生活リズムの整合を見ています",
-  },
-  {
-    title: "レポートを生成中",
-    detail: "Sleep Wellness Report を作成しています",
-  },
-];
+  bootstrapScoreFirstAnalysis,
+  startProgressiveAnalysisBackground,
+} from "@/lib/analysis-progressive";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -41,153 +20,54 @@ type AnalysisFailure = {
   details?: string;
 };
 
-type LoadingFlowResult = {
-  analysisId?: string;
-};
-
 /**
- * React Strict Mode の remount でも保存・クレジット消費が二重に走らないよう、
- * モジュールスコープで実行を共有する。
+ * Score-first ブートストラップ専用。
+ * Score 確定後すぐに結果画面へ遷移し、AI / DB / PDF はバックグラウンド継続。
  */
-let sharedLoadingFlow: Promise<LoadingFlowResult> | null = null;
-
-async function runAnalysisLoadingFlow(): Promise<LoadingFlowResult> {
-  const result = await runPendingAnalysis();
-
-  let savedRef: { clientId: string; analysisId: string } | null = null;
-  try {
-    savedRef = await saveAnalysisToRepository(result);
-  } catch (saveError) {
-    console.error("Failed to save analysis:", saveError);
-    // analyses のみ成功し sleep_analyses が失敗した場合でも id を保持し二重保存を防ぐ
-    const lastRef = loadLastSavedAnalysisRef();
-    if (lastRef) {
-      result.clientId = lastRef.clientId;
-      result.analysisId = lastRef.analysisId;
-      hydrateAnalysisSession(result);
-    }
-    if (isSupabaseConfigured()) {
-      throw new AnalysisError(
-        `分析結果の保存に失敗しました。クレジットは消費していません。${userMessageFromUnknown(saveError)}`,
-        {
-          errorType: "Save Error",
-          details:
-            saveError instanceof Error
-              ? saveError.message
-              : String(saveError),
-        },
-      );
-    }
-  }
-
-  if (savedRef) {
-    result.clientId = savedRef.clientId;
-    result.analysisId = savedRef.analysisId;
-    hydrateAnalysisSession(result);
-
-    try {
-      const creditResponse = await fetch("/api/platform/consume-credit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientName: result.clientName ?? "睡眠分析",
-          measurementDate: result.measurementDate,
-          sleepScore:
-            typeof result.metrics?.sleepScore === "number"
-              ? result.metrics.sleepScore
-              : result.score,
-          clientId: savedRef.clientId,
-          analysisId: savedRef.analysisId,
-        }),
-      });
-
-      if (!creditResponse.ok) {
-        const payload = (await creditResponse.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        console.error("Credit consume failed:", payload);
-        // 保存成功後のクレジット失敗でも結果は表示する（再実行での二重保存を避ける）
-      }
-    } catch (creditError) {
-      console.error("Failed to consume analysis credit:", creditError);
-    }
-  }
-
-  return { analysisId: savedRef?.analysisId };
-}
-
 export default function AnalysisLoadingPage() {
   const router = useRouter();
-  const [activeStep, setActiveStep] = useState(0);
   const [error, setError] = useState<AnalysisFailure | null>(null);
-  const [progress, setProgress] = useState(8);
-
-  useEffect(() => {
-    const stepTimer = window.setInterval(() => {
-      setActiveStep((current) => (current + 1) % steps.length);
-    }, 2400);
-
-    const progressTimer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 92) return current;
-        return current + Math.random() * 4 + 1.5;
-      });
-    }, 700);
-
-    return () => {
-      window.clearInterval(stepTimer);
-      window.clearInterval(progressTimer);
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!sharedLoadingFlow) {
-      sharedLoadingFlow = runAnalysisLoadingFlow().finally(() => {
-        // 完了後も短時間は共有し、Strict Mode remount の二重実行を防ぐ
-        window.setTimeout(() => {
-          sharedLoadingFlow = null;
-        }, 5_000);
+    try {
+      const { preliminary, images } = bootstrapScoreFirstAnalysis();
+      // AI本文・保存・クレジットは結果表示後に非同期
+      void startProgressiveAnalysisBackground(preliminary, images).catch(
+        (backgroundError) => {
+          console.error(
+            "Background analysis completion failed:",
+            backgroundError,
+          );
+        },
+      );
+
+      if (cancelled) return;
+      router.replace("/analysis/result?pending=1");
+    } catch (err: unknown) {
+      if (cancelled) return;
+      console.error("Score-first bootstrap failed:", err);
+
+      if (err instanceof AnalysisError) {
+        setError({
+          message: err.message,
+          status: err.status,
+          errorType: err.errorType,
+          details: err.details,
+        });
+        return;
+      }
+
+      setError({
+        message:
+          err instanceof Error
+            ? err.message
+            : "AI分析に失敗しました。しばらくしてから再度お試しください。",
+        errorType: "Unknown Error",
+        details: err instanceof Error ? err.stack : String(err),
       });
     }
-
-    sharedLoadingFlow
-      .then((flowResult) => {
-        if (cancelled) return;
-        setProgress(100);
-        if (flowResult.analysisId) {
-          router.replace(
-            `/analysis/result?analysisId=${encodeURIComponent(flowResult.analysisId)}`,
-          );
-        } else {
-          router.replace("/analysis/result");
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-
-        console.error("Analysis loading failed:", err);
-
-        if (err instanceof AnalysisError) {
-          setError({
-            message: err.message,
-            status: err.status,
-            errorType: err.errorType,
-            details: err.details,
-          });
-          return;
-        }
-
-        setError({
-          message:
-            err instanceof Error
-              ? err.message
-              : "AI分析に失敗しました。しばらくしてから再度お試しください。",
-          errorType: "Unknown Error",
-          details: err instanceof Error ? err.stack : String(err),
-        });
-      });
 
     return () => {
       cancelled = true;
@@ -196,16 +76,16 @@ export default function AnalysisLoadingPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-[#f7f7f5]">
-        <div className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
-            <Link href="/">
+      <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
+        <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
+            <Link href="/" className="inline-flex min-h-11 items-center">
               <Image
                 src="/swij-logo-horizontal.png"
                 alt="Sleep Wellness Institute Japan"
                 width={160}
                 height={40}
-                className="h-auto w-[120px] sm:w-[140px]"
+                className="h-auto w-[110px] sm:w-[140px]"
               />
             </Link>
             <p className="text-[10px] font-semibold tracking-[0.22em] text-[#8a6a2d] sm:text-xs sm:tracking-[0.28em]">
@@ -214,17 +94,17 @@ export default function AnalysisLoadingPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center px-5 py-16">
-          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)] sm:max-w-xl sm:p-10">
+        <div className="flex items-center justify-center px-4 py-12 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-16">
+          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-5 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)] sm:max-w-xl sm:p-10">
             <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
               ANALYSIS ERROR
             </p>
 
-            <h1 className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-[#071426] sm:text-3xl">
+            <h1 className="mt-3 break-words text-[1.45rem] font-semibold leading-tight tracking-[-0.04em] text-[#071426] sm:mt-4 sm:text-3xl sm:leading-normal">
               分析を完了できませんでした
             </h1>
 
-            <p className="mt-5 text-[15px] leading-7 text-slate-600 sm:text-base sm:leading-8">
+            <p className="mt-4 text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
               {error.message}
             </p>
 
@@ -247,7 +127,7 @@ export default function AnalysisLoadingPage() {
 
             <Link
               href="/analysis/new"
-              className="mt-8 inline-flex min-h-12 items-center justify-center rounded-full bg-[#071426] px-8 py-3.5 text-base font-semibold text-white transition hover:-translate-y-1 hover:bg-[#10233c]"
+              className="mt-7 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#071426] px-8 py-3.5 text-base font-semibold text-white transition active:bg-[#10233c] sm:mt-8 sm:w-auto sm:hover:-translate-y-1 sm:hover:bg-[#10233c] sm:active:translate-y-0"
             >
               入力画面に戻る
             </Link>
@@ -262,15 +142,15 @@ export default function AnalysisLoadingPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.4),transparent_52%)]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(216,179,106,0.18),transparent_42%)]" />
 
-      <div className="relative z-10 border-b border-white/10">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
-          <Link href="/">
+      <div className="relative z-10 border-b border-white/10 pt-[env(safe-area-inset-top)]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
+          <Link href="/" className="inline-flex min-h-11 items-center">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
               width={160}
               height={40}
-              className="h-auto w-[120px] brightness-0 invert sm:w-[140px]"
+              className="h-auto w-[110px] brightness-0 invert sm:w-[140px]"
             />
           </Link>
           <p className="text-[10px] font-semibold tracking-[0.22em] text-[#d8b36a] sm:text-xs sm:tracking-[0.28em]">
@@ -279,94 +159,29 @@ export default function AnalysisLoadingPage() {
         </div>
       </div>
 
-      <div className="relative z-10 flex flex-1 items-center justify-center px-5 py-12 sm:py-16">
+      <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-16 sm:pb-16">
         <div className="w-full max-w-lg text-center">
           <div className="mb-8 sm:mb-10">
             <AnalysisFlow current={3} variant="dark" />
           </div>
 
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
-            AI ANALYSIS
+            SCORE FIRST
           </p>
 
-          <h1 className="mt-5 text-[1.85rem] font-semibold tracking-[-0.05em] text-white sm:text-4xl">
-            睡眠データを分析中
+          <h1 className="mt-4 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-white sm:mt-5 sm:text-4xl sm:leading-normal">
+            Sleep Wellness Score を確定中
           </h1>
 
-          <p className="mx-auto mt-4 max-w-md text-[15px] leading-7 text-white/65 sm:text-base sm:leading-8">
-            確認済みの睡眠データと生活習慣をもとに、
-            Sleep Wellness Report を作成しています。
+          <p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/65 sm:mt-4 sm:text-base sm:leading-8">
+            OCRは完了済みです。スコアを先に表示し、Sleep Wellness Insight は結果画面で続けて生成します。
           </p>
 
-          <div className="relative mx-auto mt-12 flex h-36 w-36 items-center justify-center sm:mt-14 sm:h-40 sm:w-40">
+          <div className="relative mx-auto mt-12 flex h-28 w-28 items-center justify-center sm:mt-14 sm:h-32 sm:w-32">
             <div className="absolute inset-0 animate-[analysis-pulse_2.4s_ease-in-out_infinite] rounded-full border border-[#d8b36a]/25" />
-            <div className="absolute inset-3 animate-[analysis-spin_8s_linear_infinite] rounded-full border border-dashed border-white/15" />
-            <div className="absolute inset-6 animate-[analysis-spin-reverse_5s_linear_infinite] rounded-full border border-white/10" />
             <div className="absolute inset-[34%] rounded-full bg-gradient-to-br from-[#d8b36a] to-[#8a6a2d] shadow-[0_0_40px_rgba(216,179,106,0.35)]" />
             <div className="absolute inset-[42%] rounded-full bg-[#071426]" />
-            <div className="absolute h-2.5 w-2.5 animate-[analysis-orbit_3.2s_linear_infinite] rounded-full bg-[#d8b36a]" />
           </div>
-
-          <div className="mx-auto mt-10 max-w-xs">
-            <div className="mb-2 flex items-center justify-between text-[11px] tracking-[0.14em] text-white/45">
-              <span>PROGRESS</span>
-              <span>{Math.min(100, Math.round(progress))}%</span>
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#315f68] via-[#d8b36a] to-[#d8b36a] transition-[width] duration-700 ease-out"
-                style={{ width: `${Math.min(100, progress)}%` }}
-              />
-            </div>
-          </div>
-
-          <ul className="mx-auto mt-10 max-w-md space-y-3 text-left">
-            {steps.map((step, index) => {
-              const isActive = index === activeStep;
-              const isDone = index < activeStep;
-
-              return (
-                <li
-                  key={step.title}
-                  className={`rounded-2xl border px-4 py-3.5 transition duration-500 sm:px-5 sm:py-4 ${
-                    isActive
-                      ? "border-[#d8b36a]/35 bg-white/10"
-                      : "border-transparent bg-transparent"
-                  }`}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <span
-                      className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
-                        isActive
-                          ? "bg-[#d8b36a] text-[#071426]"
-                          : isDone
-                            ? "bg-white/20 text-white"
-                            : "bg-white/10 text-white/40"
-                      }`}
-                    >
-                      {isDone ? "✓" : String(index + 1)}
-                    </span>
-                    <div>
-                      <p
-                        className={`text-[15px] font-semibold tracking-[-0.01em] sm:text-sm ${
-                          isActive ? "text-white" : "text-white/45"
-                        }`}
-                      >
-                        {step.title}
-                      </p>
-                      <p
-                        className={`mt-1 text-[13px] leading-5 sm:text-xs ${
-                          isActive ? "text-white/55" : "text-white/25"
-                        }`}
-                      >
-                        {step.detail}
-                      </p>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
         </div>
       </div>
     </main>

@@ -37,7 +37,7 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-900/40 p-4 sm:items-center"
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-900/40 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:pb-4"
       role="presentation"
       onClick={onClose}
     >
@@ -45,19 +45,23 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel ?? title}
-        className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-7"
+        className="w-full max-w-lg rounded-[var(--sw-card-radius)] border border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)] p-5 shadow-[var(--sw-card-shadow)] sm:p-7"
         onClick={(e) => e.stopPropagation()}
       >
         {title ? (
           <h2
-            className="mb-4 text-lg font-semibold tracking-[-0.03em]"
+            className="mb-4 break-words text-lg font-semibold tracking-[-0.03em]"
             style={{ color: NAVY }}
           >
             {title}
           </h2>
         ) : null}
         <div className="text-sm text-slate-700">{children}</div>
-        {footer ? <div className="mt-6 flex justify-end gap-3">{footer}</div> : null}
+        {footer ? (
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );

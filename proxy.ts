@@ -1,10 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { evaluateClosedBetaLoginAccess } from "@/lib/closed-beta/beta-access-service";
+import { decidePathAccess } from "@/lib/rbac/access";
 import {
   homePathForRole,
   isClientOnlyPath,
   isEnterpriseOnlyPath,
   isInstructorOnlyPath,
+  isSchoolAllowedAdminPath,
+  isSchoolOnlyPath,
 } from "@/lib/safe-redirect";
 import {
   getSupabaseAnonKey,
@@ -19,47 +23,40 @@ const PROTECTED_PREFIXES = [
   "/clients",
   "/client",
   "/enterprise",
+  "/school",
   "/programs",
   "/academy",
   "/community",
   "/insights",
   "/settings",
+  "/feedback",
+  "/license",
+  "/billing",
+  "/invitations",
   "/setup",
   "/analysis",
   "/journey",
   "/homework",
-  // Version 3.0 module routes
   "/research",
   "/retreat",
   "/events",
   "/companies",
   "/reports",
-  "/billing",
   "/notifications",
-  // Version 4.0 API Platform
   "/developer",
+  "/knowledge",
 ];
 
 function isProtectedPath(pathname: string): boolean {
   if (pathname === "/setup/beta-verify") return false;
+  if (pathname === "/invite" || pathname.startsWith("/invite/")) return false;
+  if (pathname === "/forbidden") return false;
   if (PROTECTED_PREFIXES.some((prefix) => pathname === prefix)) {
     return true;
   }
-  if (pathname.startsWith("/clients/")) return true;
-  if (pathname.startsWith("/client/")) return true;
-  if (pathname.startsWith("/enterprise/")) return true;
-  if (pathname.startsWith("/programs/")) return true;
-  if (pathname.startsWith("/academy/")) return true;
-  if (pathname.startsWith("/community/")) return true;
-  if (pathname.startsWith("/insights/")) return true;
-  if (pathname.startsWith("/settings/")) return true;
-  if (pathname.startsWith("/setup/")) return true;
-  if (pathname.startsWith("/analysis/")) return true;
-  if (pathname.startsWith("/journey/")) return true;
-  if (pathname.startsWith("/homework/")) return true;
-  if (pathname.startsWith("/reports/")) return true;
-  if (pathname.startsWith("/developer/")) return true;
-  return false;
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname.startsWith(`${prefix}/`),
+  );
 }
 
 function needsSessionRefresh(pathname: string): boolean {
@@ -68,7 +65,20 @@ function needsSessionRefresh(pathname: string): boolean {
     pathname.startsWith("/api/platform") ||
     pathname.startsWith("/api/os") ||
     pathname.startsWith("/api/developer") ||
-    pathname.startsWith("/api/setup")
+    pathname.startsWith("/api/setup") ||
+    pathname.startsWith("/api/invitations") ||
+    pathname.startsWith("/api/audit") ||
+    pathname.startsWith("/api/subscription") ||
+    pathname.startsWith("/api/rbac") ||
+    pathname.startsWith("/api/admin") ||
+    pathname.startsWith("/api/feedback") ||
+    pathname.startsWith("/api/evidence") ||
+    pathname.startsWith("/api/client-portal") ||
+    pathname.startsWith("/api/beta-invitations") ||
+    pathname.startsWith("/api/license") ||
+    pathname.startsWith("/api/ops") ||
+    pathname.startsWith("/api/journey") ||
+    pathname.startsWith("/api/ai-intelligence")
   );
 }
 
@@ -112,18 +122,18 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // ページ保護のみリダイレクト。API は各 route が 401 を返す
   if (!user && isProtectedPath(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("redirect", pathname);
+    const redirectTarget = `${pathname}${request.nextUrl.search}`;
+    loginUrl.searchParams.set("redirect", redirectTarget);
     return NextResponse.redirect(loginUrl);
   }
 
   if (user && isProtectedPath(pathname)) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, email")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -131,6 +141,33 @@ export async function proxy(request: NextRequest) {
       profile && typeof profile === "object" && "role" in profile
         ? String((profile as { role?: unknown }).role ?? "")
         : "";
+    const profileEmail =
+      profile && typeof profile === "object" && "email" in profile
+        ? String((profile as { email?: unknown }).email ?? "")
+        : "";
+
+    const access = await evaluateClosedBetaLoginAccess(supabase, user.id, {
+      role,
+      email: profileEmail || user.email,
+    });
+    if (!access.allowed) {
+      await supabase.auth.signOut();
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.search = "";
+      loginUrl.searchParams.set("error", access.message);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // RBAC 画面アクセス
+    const decision = decidePathAccess(role, pathname);
+    if (!decision.allowed) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/forbidden";
+      url.search = "";
+      url.searchParams.set("from", pathname);
+      return NextResponse.redirect(url);
+    }
 
     if (
       (role === "client" || role === "enterprise") &&
@@ -142,12 +179,26 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // /admin と /developer は admin / super_admin のみ
     if (
-      (pathname === "/admin" ||
-        pathname.startsWith("/admin/") ||
-        pathname === "/developer" ||
-        pathname.startsWith("/developer/")) &&
+      role === "school" &&
+      isInstructorOnlyPath(pathname) &&
+      !isSchoolAllowedAdminPath(pathname) &&
+      pathname !== "/billing" &&
+      !pathname.startsWith("/billing/") &&
+      pathname !== "/notifications" &&
+      !pathname.startsWith("/notifications/") &&
+      pathname !== "/settings" &&
+      !pathname.startsWith("/settings/")
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    // /admin と /developer は admin / super_admin のみ（認定校は schools 閲覧のみ例外）
+    if (
+      (pathname === "/developer" || pathname.startsWith("/developer/")) &&
       role &&
       role !== "admin" &&
       role !== "super_admin"
@@ -156,6 +207,23 @@ export async function proxy(request: NextRequest) {
       url.pathname = homePathForRole(role);
       url.search = "";
       return NextResponse.redirect(url);
+    }
+
+    if (
+      (pathname === "/admin" || pathname.startsWith("/admin/")) &&
+      role &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      // 認定校は自校・認定・ライセンス・プランの閲覧のみ
+      if (role === "school" && isSchoolAllowedAdminPath(pathname)) {
+        // allow
+      } else {
+        const url = request.nextUrl.clone();
+        url.pathname = "/forbidden";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
     }
 
     if (
@@ -183,6 +251,19 @@ export async function proxy(request: NextRequest) {
       url.search = "";
       return NextResponse.redirect(url);
     }
+
+    if (
+      role &&
+      role !== "school" &&
+      isSchoolOnlyPath(pathname) &&
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      const url = request.nextUrl.clone();
+      url.pathname = homePathForRole(role);
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;
@@ -198,6 +279,8 @@ export const config = {
     "/client/:path*",
     "/enterprise",
     "/enterprise/:path*",
+    "/school",
+    "/school/:path*",
     "/programs",
     "/programs/:path*",
     "/academy",
@@ -218,10 +301,39 @@ export const config = {
     "/homework/:path*",
     "/reports",
     "/reports/:path*",
+    "/knowledge",
+    "/knowledge/:path*",
+    "/license",
+    "/license/:path*",
+    "/billing",
+    "/billing/:path*",
+    "/invitations",
+    "/invitations/:path*",
+    "/feedback",
+    "/feedback/:path*",
+    "/notifications",
+    "/notifications/:path*",
+    "/forbidden",
     "/api/platform/:path*",
     "/api/os/:path*",
     "/api/developer/:path*",
     "/api/setup/:path*",
+    "/api/invitations/:path*",
+    "/api/audit/:path*",
+    "/api/subscription/:path*",
+    "/api/rbac/:path*",
+    "/api/admin/:path*",
+    "/api/feedback",
+    "/api/feedback/:path*",
+    "/api/evidence/:path*",
+    "/api/client-portal/:path*",
+    "/api/beta-invitations",
+    "/api/beta-invitations/:path*",
+    "/api/license",
+    "/api/license/:path*",
+    "/api/ops/:path*",
+    "/api/journey/:path*",
+    "/api/ai-intelligence/:path*",
     "/developer",
     "/developer/:path*",
   ],

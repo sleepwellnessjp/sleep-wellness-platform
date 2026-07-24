@@ -102,7 +102,7 @@ export function toReportListItem(
       analysisHref ??
       (status === "ready"
         ? `/clients/${encodeURIComponent(record.clientId)}`
-        : `/analysis?clientId=${encodeURIComponent(record.clientId)}`),
+        : `/analysis/new?clientId=${encodeURIComponent(record.clientId)}`),
   };
 }
 

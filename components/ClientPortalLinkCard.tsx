@@ -77,7 +77,7 @@ export default function ClientPortalLinkCard({
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="client@example.com"
-          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[15px] outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15"
+          className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[16px] outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15 sm:text-[15px]"
           style={{ color: NAVY }}
           autoComplete="email"
         />
@@ -87,7 +87,7 @@ export default function ClientPortalLinkCard({
           type="button"
           onClick={() => void save()}
           disabled={busy}
-          className="inline-flex min-h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:min-h-10 sm:hover:opacity-90 sm:active:opacity-100"
           style={{ backgroundColor: NAVY }}
         >
           {busy ? "保存中…" : "マイページ連携を保存"}

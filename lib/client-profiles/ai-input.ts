@@ -74,6 +74,8 @@ export type AnalysisAiInput = {
   fixedProfileSummary?: string;
   /** 4. 前回分析（比較用。初回は省略） */
   previousAnalysis?: PreviousAnalysisForAi;
+  /** 4b. 初回分析（前回と異なる場合のみ。長期変化の比較用） */
+  firstAnalysis?: PreviousAnalysisForAi;
   /** 5. 気象（将来） */
   weather?: Record<string, unknown>;
   notesForModel: string[];
@@ -1051,6 +1053,8 @@ export type BuildAnalysisAiInputArgs = {
   lifestyleForm?: LifestyleFormForDayContext | null;
   fixedProfile?: ClientProfileSections | null;
   previousAnalysis?: PreviousAnalysisForAi | null;
+  /** 初回分析（前回と異なる場合のみ渡す） */
+  firstAnalysis?: PreviousAnalysisForAi | null;
   weather?: Record<string, unknown> | null;
 };
 
@@ -1061,7 +1065,7 @@ export type BuildAnalysisAiInputArgs = {
  * 1. SOXAI 実測
  * 2. 生活習慣（当日 / day_context）
  * 3. 固定プロフィール
- * 4. 前回分析
+ * 4. 前回・初回分析
  */
 export function buildAnalysisAiInput(
   args: BuildAnalysisAiInputArgs,
@@ -1075,6 +1079,11 @@ export function buildAnalysisAiInput(
   );
   const fixedProfile = compactFixedProfile(args.fixedProfile ?? null);
   const previousAnalysis = args.previousAnalysis || undefined;
+  const firstAnalysis =
+    args.firstAnalysis &&
+    args.firstAnalysis.analysisDate !== previousAnalysis?.analysisDate
+      ? args.firstAnalysis
+      : undefined;
   const weather =
     args.weather && Object.keys(args.weather).length > 0
       ? (omitEmptyDeep(args.weather) as Record<string, unknown> | undefined)
@@ -1087,12 +1096,14 @@ export function buildAnalysisAiInput(
   const notesForModel = [
     "優先順位: SOXAI実測 > 当日生活習慣 > 固定プロフィール > 前回分析 > 気象 > 一般参考基準",
     "分析は必ず 数値 → 【根拠】 → 改善提案 の順で書く。根拠なしの改善提案は禁止。",
-    "改善提案は効果が高い順・最大5件。stars:5=今すぐ改善 / 4=今週改善 / 3=余裕があれば。全部を一度に改善しろとは言わない。",
+    "改善提案は効果が高い順・最大5件。stars:5=今すぐ改善 / 4=今週改善 / 3=余裕があれば。全部を一度に改善しろとは言わない。各項目に whyNow（なぜ今優先するか）を付ける。",
     "未入力項目は触れない。推測・断定しない。",
     "固定プロフィール要約は【生活スタイル】【睡眠へ影響しそうな要素】【AIが分析時に重視する項目】の構成。診断ではなく分析参照用。",
     "固定プロフィールは普段の傾向。当日の生活習慣と混同しない。",
     "前回分析がある場合は差分を可能性として参照する。無い場合は触れない。",
+    "初回分析がある場合（前回と異なる）は長期変化も可能性として参照する。",
     "前回の recommendationsUntilNext（AI宿題）がある場合は達成・未達と達成率を可能性として参照し、今回のAI宿題に活かす。",
+    "karteSummary は Sleep Wellness Insight（最重要課題／判断の根拠／今回もっとも改善効果が高い行動）。一般論禁止。睡眠効率・覚醒・HRV・深睡眠・生活習慣・飲酒・体内時計などを関連づけて書く。",
     "医療診断・病名の断定はしない。",
   ];
 
@@ -1114,6 +1125,7 @@ export function buildAnalysisAiInput(
     fixedProfile,
     fixedProfileSummary: fixedProfileSummary || undefined,
     previousAnalysis: previousAnalysis || undefined,
+    firstAnalysis,
     weather,
     notesForModel,
   };

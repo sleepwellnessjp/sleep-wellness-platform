@@ -67,6 +67,33 @@ export function findPreviousAnalysis(
   return analyses[1] ?? null;
 }
 
+/**
+ * analyses は新しい順。最古（初回）分析を返す。
+ * 前回と同じ場合は null（前回比較と重複させない）。
+ */
+export function findFirstAnalysis(
+  analyses: StoredAnalysis[],
+  currentId?: string | null,
+  previous?: StoredAnalysis | null,
+): StoredAnalysis | null {
+  if (analyses.length < 2) return null;
+
+  let currentIndex = -1;
+  if (currentId?.trim()) {
+    currentIndex = analyses.findIndex((item) => item.id === currentId);
+  }
+  if (currentIndex < 0) currentIndex = 0;
+
+  const first = analyses[analyses.length - 1];
+  if (!first) return null;
+  if (first.id === analyses[currentIndex]?.id) return null;
+
+  const prev = previous ?? findPreviousAnalysis(analyses, currentId);
+  if (prev && prev.id === first.id) return null;
+
+  return first;
+}
+
 export function analysisResultToStoredShape(
   result: AnalysisResult,
 ): StoredAnalysis {
@@ -168,6 +195,19 @@ export function buildPreviousComparisonSummary(
 ): PreviousComparisonSummary | null {
   const items: PreviousComparisonItem[] = [];
 
+  const wellnessTrend = resolveTrend(
+    wellnessScoreOf(previous),
+    wellnessScoreOf(current),
+    false,
+  );
+  if (wellnessTrend.delta != null) {
+    items.push({
+      label: "Sleep Wellness Score",
+      value: formatSignedScore(wellnessTrend.delta),
+      tone: wellnessTrend.tone,
+    });
+  }
+
   const scoreTrend = resolveTrend(
     sleepScoreOf(previous),
     sleepScoreOf(current),
@@ -180,6 +220,34 @@ export function buildPreviousComparisonSummary(
       value:
         rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0",
       tone: scoreTrend.tone,
+    });
+  }
+
+  const efficiencyTrend = resolveTrend(
+    sleepEfficiencyPercent(previous),
+    sleepEfficiencyPercent(current),
+    false,
+  );
+  if (efficiencyTrend.delta != null) {
+    items.push({
+      label: "睡眠効率",
+      value: formatSignedPercent(efficiencyTrend.delta),
+      tone: efficiencyTrend.tone,
+    });
+  }
+
+  const hrvTrend = resolveTrend(
+    parseLeadingNumber(String(previous.metrics.hrv ?? "")),
+    parseLeadingNumber(String(current.metrics.hrv ?? "")),
+    false,
+  );
+  if (hrvTrend.delta != null) {
+    const rounded = Math.round(hrvTrend.delta * 10) / 10;
+    items.push({
+      label: "HRV",
+      value:
+        rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0",
+      tone: hrvTrend.tone,
     });
   }
 
