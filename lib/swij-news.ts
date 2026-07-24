@@ -21,7 +21,7 @@ export const SWIJ_NEWS_ITEMS: SwijNewsItem[] = [
     title: "メラトニンヨガ™養成講座",
     description:
       "睡眠ウェルネスを実践・指導できるインストラクター育成プログラムを開講。科学と身体知を学べる講座です。",
-    href: "/#academy",
+    href: "/#services",
   },
   {
     date: "2026.06.15",
@@ -37,6 +37,6 @@ export const SWIJ_NEWS_ITEMS: SwijNewsItem[] = [
     title: "Sleep Wellness Platform公開予定",
     description:
       "睡眠分析・学習・実践を統合するSleep Wellness Platformを公開予定。エコシステム全体をつなぐ基盤です。",
-    href: "/#vision",
+    href: "/vision",
   },
 ];

@@ -15,6 +15,8 @@ import {
 } from "@/lib/soxai-ocr-dictionary";
 import type { SoxaiScreenType } from "@/lib/soxai-screen";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
+import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
 
 export type VisibleReading = {
   label: string;
@@ -59,20 +61,84 @@ function looksPercent(value: string): boolean {
 }
 
 function looksDuration(value: string): boolean {
-  return /時間|分|時|h|hr|min|:/.test(value) && !/%|％/.test(value);
+  const v = value.normalize("NFKC").trim();
+  if (!v || /%|％/.test(v)) return false;
+  if (/時間|分|h|hr|min/i.test(v)) return true;
+  // 「0:49」「1:15」「6:22」はステージ時間として duration
+  if (/^\d{1,2}\s*[:：]\s*\d{2}$/.test(v)) {
+    const mins = parseDurationMinutes(v);
+    return mins != null && mins >= 0 && mins <= 16 * 60;
+  }
+  return false;
 }
 
 /** HH:mm / 23時40分 / 午後11:40 などを時刻と判定 */
 export function looksTime(value: string): boolean {
   const v = value.normalize("NFKC").trim();
   if (!v) return false;
-  if (/^\s*\d{1,2}\s*[:：]\s*\d{2}/.test(v)) return true;
   if (/(午前|午後|AM|PM|am|pm)\s*\d{1,2}/.test(v)) return true;
   if (/^\s*\d{1,2}\s*時\s*\d{1,2}\s*分/.test(v)) return true;
   if (/^\s*\d{1,2}\s*時\s*$/.test(v)) return true;
+  if (/^\s*\d{1,2}\s*[:：]\s*\d{2}/.test(v)) {
+    // 「12分」っぽい短い duration と区別: 分だけの表記は time ではない
+    // 時計として妥当な HH:mm
+    const normalized = normalizeTimeToHHMM(v);
+    return /^\d{2}:\d{2}$/.test(normalized);
+  }
   // 正規化後に HH:mm になるか
   const normalized = normalizeTimeToHHMM(v);
   return /^\d{2}:\d{2}$/.test(normalized);
+}
+
+/**
+ * キーと値の形状が矛盾していないか（取り違え防止）
+ * false ならそのマッピングを捨てる
+ */
+export function valueShapeFitsKey(key: MetricFieldKey, value: string): boolean {
+  const v = value.normalize("NFKC").trim();
+  if (!v) return false;
+
+  switch (key) {
+    case "sleepScore":
+    case "qol":
+    case "yesterdayQol":
+    case "conditionScore":
+      return looksScore(v);
+
+    case "bedtime":
+    case "wakeTime": {
+      const t = extractTimeToken(v) || normalizeTimeToHHMM(v);
+      if (!/^\d{2}:\d{2}$/.test(t)) return false;
+      // 「12分」「45分」だけの潜時を時刻にしない
+      if (/^\d+\s*分/.test(v) && !/[:：]|時/.test(v)) return false;
+      return true;
+    }
+
+    case "sleepDuration":
+    case "remSleep":
+    case "lightSleep":
+    case "deepSleep":
+    case "awakenings":
+    case "sleepDebt":
+    case "sleepLatency":
+      if (looksPercent(v) && !looksDuration(v)) return false;
+      return looksDuration(v) || parseDurationMinutes(v) != null;
+
+    case "sleepEfficiency":
+    case "awakeningRate":
+    case "remSleepRate":
+    case "lightSleepRate":
+    case "deepSleepRate":
+    case "spo2":
+      if (looksDuration(v) && !/%|％/.test(v)) return false;
+      return looksPercent(v);
+
+    case "skinTemperature":
+      return looksSkinTemperature(v);
+
+    default:
+      return true;
+  }
 }
 
 function looksScore(value: string): boolean {
@@ -230,6 +296,7 @@ const MAPPING_RULES: MappingRule[] = [
       /入眠潜時|潜時|latency|sleeplatency|入眠までの時間|入眠にかかった時間/.test(
         l,
       ),
+    valueHint: "duration",
   },
   {
     key: "bedtime",
@@ -257,10 +324,12 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "sleepEfficiency",
     test: (l) => /睡眠効率|sleepefficiency|efficiency/.test(l),
+    valueHint: "percent",
   },
   {
     key: "sleepDebt",
     test: (l) => /睡眠負債|sleepdebt|^負債$|睡眠の負債/.test(l),
+    valueHint: "duration",
   },
   {
     key: "circadianRhythm",
@@ -274,6 +343,7 @@ const MAPPING_RULES: MappingRule[] = [
     key: "spo2",
     test: (l) =>
       /spo2|spo₂|血中酸素|酸素飽和|酸素レベル|平均酸素|平均spo/.test(l),
+    valueHint: "percent",
   },
   {
     key: "skinTemperature",
@@ -349,16 +419,22 @@ function matchKey(label: string, value: string): MetricFieldKey | null {
     ) {
       return "deepSleepRate";
     }
-    if (
-      rule.valueHint === "time" &&
-      !looksTime(value)
-    ) {
+    if (rule.valueHint === "time" && !looksTime(value)) {
       // 「入眠 23:40」のような複合値から時刻だけ取り出す
       const extracted = extractTimeToken(value);
       if (!extracted) continue;
     }
     if (rule.valueHint === "temp" && !looksSkinTemperature(value)) {
       // ラベルが皮膚温でも値が見えない場合はスキップ
+      continue;
+    }
+
+    // 最終ゲート: キーと値形状の取り違えを防ぐ
+    const candidateValue =
+      rule.valueHint === "time" && !looksTime(value)
+        ? extractTimeToken(value)
+        : value;
+    if (!valueShapeFitsKey(rule.key, candidateValue)) {
       continue;
     }
 
@@ -916,7 +992,8 @@ export function mapVisibleReadingsToMetricsDetailed(
       } else if (key === "skinTemperature") {
         next[key] = normalizeSkinTemperatureValue(value);
       } else {
-        next[key] = value;
+        // 時間・割合などの表記を統一（推測補完はしない）
+        next[key] = normalizeMetricDisplayValue(key, value);
       }
       provenance[key] = label;
       bestLabelScore[key] = matchScore;

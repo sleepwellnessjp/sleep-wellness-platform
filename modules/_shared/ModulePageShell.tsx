@@ -17,20 +17,22 @@ export default function ModulePageShell({
   eyebrow = "MODULE",
 }: Props) {
   return (
-    <OsShell contentClassName="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
+    <OsShell contentClassName="sw-shell-pad mx-auto max-w-3xl px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-10 md:px-8 md:py-12 lg:py-14">
       <p
-        className="text-[10px] font-semibold tracking-[0.22em]"
+        className="text-[10px] font-semibold tracking-[0.22em] sm:tracking-[0.28em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
       </p>
       <h1
-        className="mt-2 text-3xl font-semibold tracking-[-0.04em]"
+        className="mt-2 break-words text-[1.55rem] font-semibold tracking-[-0.04em] sm:text-[1.65rem] md:text-3xl"
         style={{ color: NAVY }}
       >
         {title}
       </h1>
-      <div className="mt-8">{children}</div>
+      <div className="mt-6 w-full space-y-5 sm:mt-8 sm:space-y-6 md:space-y-8">
+        {children}
+      </div>
     </OsShell>
   );
 }

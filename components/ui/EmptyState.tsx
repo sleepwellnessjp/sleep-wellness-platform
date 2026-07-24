@@ -214,7 +214,7 @@ export default function EmptyState({
 }: Props) {
   return (
     <div
-      className={`rounded-[28px] border border-dashed border-[#8a6a2d]/28 bg-gradient-to-br from-[#faf7f1]/80 via-white to-[#f5efe4]/40 text-center ${
+      className={`rounded-[var(--sw-card-radius)] border border-dashed border-[color:var(--sw-gold)]/28 bg-gradient-to-br from-[color:var(--sw-surface-warm)]/80 via-[color:var(--sw-card-bg)] to-[#f5efe4]/40 text-center shadow-[var(--sw-card-shadow)] ${
         compact ? "px-5 py-8" : "px-6 py-10 sm:px-10 sm:py-12"
       }`}
     >
@@ -236,18 +236,19 @@ export default function EmptyState({
         {title}
       </h3>
       {description ? (
-        <p className="mx-auto mt-2 max-w-md text-[14px] leading-7 text-slate-500">
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-7 text-[color:var(--sw-muted)]">
           {description}
         </p>
       ) : null}
       {children}
       {primaryAction || secondaryAction ? (
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <div className="mt-6 flex w-full flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-center">
           {primaryAction ? (
             <Button
               href={primaryAction.href}
               onClick={primaryAction.onClick}
               size="md"
+              className="w-full sm:w-auto"
             >
               {primaryAction.label}
             </Button>
@@ -258,6 +259,7 @@ export default function EmptyState({
               href={secondaryAction.href}
               onClick={secondaryAction.onClick}
               size="md"
+              className="w-full sm:w-auto"
             >
               {secondaryAction.label}
             </Button>

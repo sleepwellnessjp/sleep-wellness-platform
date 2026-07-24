@@ -7,6 +7,11 @@ import {
   type BuildAiFollowAlertsInput,
 } from "@/lib/ai-follow-alerts";
 import {
+  generateAiCounselingAssistant,
+  type AiCounselingAssistant,
+  type AiCounselingAssistantContext,
+} from "@/lib/ai-counseling-assistant";
+import {
   generateInstructorInsight,
   type InstructorInsight,
   type InstructorInsightContext,
@@ -21,14 +26,16 @@ import {
 
 type AiBundle = {
   insight: InstructorInsight | null;
+  counselingAssistant: AiCounselingAssistant | null;
   alerts: AiFollowAlert[];
 };
 
 /**
- * AI Module hook — instructor insight + follow alerts.
+ * AI Module hook — instructor insight + counseling assistant + follow alerts.
  */
 export function useAI(input: {
   insightContext?: InstructorInsightContext | null;
+  counselingContext?: AiCounselingAssistantContext | null;
   alertsInput?: BuildAiFollowAlertsInput | null;
 } | null) {
   const [state, setState] = useState<AsyncState<AiBundle>>(idleState());
@@ -47,10 +54,15 @@ export function useAI(input: {
         const insight = input.insightContext
           ? await generateInstructorInsight(input.insightContext)
           : null;
+        const counselingAssistant = input.counselingContext
+          ? await generateAiCounselingAssistant(input.counselingContext)
+          : null;
         const alerts = input.alertsInput
           ? buildAiFollowAlerts(input.alertsInput)
           : [];
-        if (!cancelled) setState(successState({ insight, alerts }));
+        if (!cancelled) {
+          setState(successState({ insight, counselingAssistant, alerts }));
+        }
       } catch (e) {
         if (!cancelled) {
           setState(

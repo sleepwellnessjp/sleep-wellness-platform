@@ -26,6 +26,8 @@ import {
 import { collectedMetricKeys, isMetricPresent } from "@/lib/soxai-metrics";
 import { CRITICAL_METRIC_KEYS } from "@/lib/soxai-ocr-dictionary";
 import { normalizeOcrMetrics } from "@/lib/soxai-structured-metrics";
+import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import { detectMetricConsistencyWarnings } from "@/lib/soxai-consistency";
 import {
   inferScreenTypeFromReadings,
   isCriticalOcrKey,
@@ -390,10 +392,6 @@ export async function POST(request: Request) {
 
   const images = validated.images.map(normalizeImageDataUrl);
   const imageMeta = images.map(describeImage);
-  console.info("[api/extract] received images", {
-    count: images.length,
-    images: imageMeta,
-  });
 
   if (imageMeta.some((item) => !item.hasPayload || item.approxBytes < 100)) {
     return NextResponse.json(
@@ -724,22 +722,6 @@ export async function POST(request: Request) {
       const mapped = mapVisibleReadingsToMetricsDetailed(readings, {
         screenType,
       });
-      console.info("[api/extract] per-image OCR complete", {
-        imageIndex,
-        screenType,
-        visibleCount: readings.length,
-        graphPanelCount: graphReadings.length,
-        graphPanels: graphReadings.map((g) => g.id),
-        labels: readings.map((r) => r.label),
-        collected: collectedMetricKeys(mapped.metrics),
-        critical: {
-          bedtime: mapped.metrics.bedtime,
-          wakeTime: mapped.metrics.wakeTime,
-          skinTemperature: mapped.metrics.skinTemperature,
-          stress: mapped.metrics.stress,
-        },
-        provenance: mapped.provenance,
-      });
 
       return {
         imageIndex,
@@ -796,10 +778,6 @@ export async function POST(request: Request) {
           if (key === "sleepScore") continue;
           metrics = { ...metrics, [key]: recovered[key] };
           if (confidence[key] == null) confidence[key] = 0.72;
-          console.info("[api/extract] critical recovered from all readings", {
-            key,
-            value: recovered[key],
-          });
         }
       }
     }
@@ -836,11 +814,6 @@ export async function POST(request: Request) {
         candidateIndexes.size > 0
           ? [...candidateIndexes]
           : perImage.map((item) => item.imageIndex);
-
-      console.info("[api/extract] screen-specific critical re-OCR", {
-        stillMissing,
-        indexes,
-      });
 
       for (const imageIndex of indexes) {
         const remaining = CRITICAL_METRIC_KEYS.filter(
@@ -917,16 +890,6 @@ export async function POST(request: Request) {
           if (gained) {
             item.readings = mergedReadings;
             if (retry.screenType !== "other") item.screenType = retry.screenType;
-            console.info("[api/extract] critical re-OCR gained", {
-              imageIndex,
-              targetScreen,
-              critical: {
-                bedtime: metrics.bedtime,
-                wakeTime: metrics.wakeTime,
-                skinTemperature: metrics.skinTemperature,
-                stress: metrics.stress,
-              },
-            });
           }
         } catch (reOcrError) {
           console.warn(
@@ -944,45 +907,10 @@ export async function POST(request: Request) {
       );
     }
 
+    metrics = normalizeMetricsForDisplay(metrics);
+
     const keys = collectedMetricKeys(metrics);
     const graphPanels = graphPanelCount(graphBundle);
-
-    console.info("[api/extract] merge complete", {
-      imageCount: images.length,
-      failedCount,
-      perImageCounts: perImage.map((item) => ({
-        imageIndex: item.imageIndex,
-        screenType: item.screenType,
-        readings: item.readings.length,
-        graphPanels: item.graphReadings.map((g) => g.id),
-        collected: collectedMetricKeys(item.metrics).length,
-        error: item.error ?? null,
-      })),
-      collected: keys.length,
-      keys,
-      graphPanels,
-      visibleReadingCount: allReadings.length,
-      conflicts: conflicts.length,
-      critical: {
-        bedtime: metrics.bedtime,
-        wakeTime: metrics.wakeTime,
-        skinTemperature: metrics.skinTemperature,
-        stress: metrics.stress,
-        confidence: {
-          bedtime: confidence.bedtime ?? null,
-          wakeTime: confidence.wakeTime ?? null,
-          skinTemperature: confidence.skinTemperature ?? null,
-          stress: confidence.stress ?? null,
-        },
-      },
-      mappedSample: {
-        sleepScore: metrics.sleepScore,
-        qol: metrics.qol,
-        yesterdayQol: metrics.yesterdayQol,
-        conditionScore: metrics.conditionScore,
-        restingHeartRate: metrics.restingHeartRate,
-      },
-    });
 
     // 全画像が失敗、または何も読めなかった場合
     if (allReadings.length === 0) {
@@ -1013,6 +941,7 @@ export async function POST(request: Request) {
       visibleReadings: allReadings,
       conflicts,
       confidence,
+      consistencyWarnings: detectMetricConsistencyWarnings(metrics),
       collectedCount: keys.length,
       graphPanelCount: graphPanels,
       visibleCount: allReadings.length,

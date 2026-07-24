@@ -22,6 +22,7 @@ function asRole(value: unknown): UserRole {
   if (
     value === "super_admin" ||
     value === "admin" ||
+    value === "school" ||
     value === "instructor" ||
     value === "client" ||
     value === "enterprise"
@@ -976,6 +977,22 @@ export async function requireAdminProfile(): Promise<PlatformProfile> {
     throw new Error("Unauthorized");
   }
   if (profile.role !== "super_admin" && profile.role !== "admin") {
+    throw new Error("Forbidden");
+  }
+  return profile;
+}
+
+/** 本部または認定校（閲覧系 API 用） */
+export async function requireAdminOrSchoolProfile(): Promise<PlatformProfile> {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    throw new Error("Unauthorized");
+  }
+  if (
+    profile.role !== "super_admin" &&
+    profile.role !== "admin" &&
+    profile.role !== "school"
+  ) {
     throw new Error("Forbidden");
   }
   return profile;

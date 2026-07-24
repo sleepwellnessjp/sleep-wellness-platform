@@ -57,7 +57,7 @@ export const INSTRUCTOR_QUICK_LINKS: InstructorQuickLink[] = [
     href: "/clients/new",
     emphasize: true,
   },
-  { id: "analysis", label: "Analysis", href: "/analysis" },
+  { id: "analysis", label: "Analysis", href: "/analysis/new" },
   { id: "journey", label: "Journey", href: "/journey" },
   { id: "homework", label: "Homework", href: "/homework" },
   { id: "reports", label: "Report", href: "/reports" },
@@ -96,6 +96,20 @@ export const DUMMY_INSTRUCTOR_DASHBOARD: InstructorDashboardData = {
       scoreDelta: null,
       nextFollowUpDate: "2026-07-26",
     },
+    {
+      id: "client-demo-9",
+      name: "加藤 里奈",
+      sleepScore: 70,
+      scoreDelta: 2,
+      nextFollowUpDate: "2026-07-31",
+    },
+    {
+      id: "client-demo-10",
+      name: "吉田 拓也",
+      sleepScore: 58,
+      scoreDelta: -2,
+      nextFollowUpDate: "2026-07-29",
+    },
   ],
   recentActivity: [
     {
@@ -113,11 +127,16 @@ export const DUMMY_INSTRUCTOR_DASHBOARD: InstructorDashboardData = {
       whenLabel: "2日前",
       summary: "Journey更新",
     },
+    {
+      id: "act-4",
+      whenLabel: "3日前",
+      summary: "松本さん Homework 確認",
+    },
   ],
   weekPlan: {
     followUpCount: 5,
     unanalyzedCount: 2,
-    homeworkPendingCount: 3,
+    homeworkPendingCount: 8,
   },
   quickLinks: INSTRUCTOR_QUICK_LINKS,
 };

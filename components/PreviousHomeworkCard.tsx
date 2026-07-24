@@ -46,7 +46,7 @@ export default function PreviousHomeworkCard({ comparison }: Props) {
             達成率
           </p>
           <p
-            className="mt-0.5 text-[1.35rem] font-semibold tracking-[-0.03em] tabular-nums"
+            className="mt-0.5 text-[1.2rem] font-semibold tracking-[-0.03em] tabular-nums sm:text-[1.35rem]"
             style={{
               color:
                 achievement.rate >= 100
@@ -88,7 +88,7 @@ export default function PreviousHomeworkCard({ comparison }: Props) {
               {goal.checked ? "✓" : index + 1}
             </span>
             <span
-              className={`min-w-0 flex-1 text-[14px] leading-6 sm:text-[15px] sm:leading-7 ${
+              className={`min-w-0 flex-1 break-words text-[14px] leading-6 sm:text-[15px] sm:leading-7 ${
                 goal.checked ? "text-slate-500 line-through" : ""
               }`}
               style={goal.checked ? undefined : { color: NAVY }}

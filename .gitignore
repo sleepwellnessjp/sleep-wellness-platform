@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 /tmp-*
+.tmp-report-verify/
 tmp-*.json
 tmp-*.pdf
 tmp-*.mjs

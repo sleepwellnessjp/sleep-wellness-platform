@@ -1,105 +1,190 @@
 # TODO
 
-最終更新: 2026-07-22（終業時点）  
+最終更新: 2026-07-24（**Version 1.0 Beta リリース完了**）  
 基準: `docs/ROADMAP.md` / `docs/RELEASE_CHECKLIST.md` / `docs/CURRENT_IMPLEMENTATION.md`
 
 ---
 
-## 今日完了したこと（2026-07-22）
+## Version 1.0 Beta（認定講師限定公開）ステータス
 
-- [x] クライアント Home（Coach / Journey / 宿題 / 履歴）と homework / mypage DB
-- [x] Sleep Coach / Journey / Instructor Insight（ルールベース）
-- [x] Academy（学習・試験・証明書 UI + DB + Admin）
-- [x] Admin Console 拡張（各画面・API・demo フォールバック）
-- [x] Community（画面・DB・Admin）
-- [x] Insights / SWI（集計・UI・API・demo store）
-- [x] Sleep Wellness OS Chrome（検索・通知・Role Home・Settings）
-- [x] Developer API Platform（UI + v1 ルート + OpenAPI、demo 認証）
-- [x] Module Registry / Design System / Hooks 骨格
-- [x] ドキュメント一式（Bible / 実装状況 / Roadmap / Release Checklist 等）
-- [x] セキュリティ hardening 含む当日分 migrations 追加
-- [x] `tsc` / `lint` / `build` 成功確認（エラーなし）
-- [x] CHANGELOG.md / TODO.md 整備
+- [x] AIから講師への提案（PDF・結果画面）
+- [x] 最終品質チェック（保存 / 分析 / PDF / 印刷 / 履歴 / 画面遷移 / レスポンシブ）
+- [x] ソース整理（仮データ・不要コード）
+- [x] README / CHANGELOG 更新
+- [x] GitHub Push · Tag `v1.0.0-beta` · Vercel Deploy
+- [ ] Supabase マイグレーション本番適用（v21〜v29 含む未適用分）
+- [ ] コメント分析の本番 NLP（現状モック）
+- [ ] 実メール送信（招待など現状モック）
+- [ ] 週次レポート実自動配信（現状モック表示）
+- [ ] 通知の実データ配信（demo フォールバック削減）
 
 ---
 
-## 途中までの作業
+## Version 2.9（Closed Beta Evidence Collection）ステータス
 
-- [ ] **未コミットの大規模差分**（modified + untracked 約 150 エントリ）— まだ git commit / PR 未実施
-- [ ] Academy 本番硬化（資格の自己 INSERT を塞ぐ）— RLS 強化は途中認識、完全検証未了
-- [ ] Admin / Insights / Notifications の **demo-store 依存** — UI はあるが本番データ経路の一本化は未完
-- [ ] Developer API — DB 永続 API Key / 本番認証は未実装（demo-store）
-- [ ] `api-platform.sql` の migrations 取り込み未了
-- [ ] Design System と `components/ui` の二重化 — 移行中
-- [ ] Planned Module（billing / companies / research / retreat / events / reports）— プレースホルダのみ
-- [ ] 利用規約・プライバシー・非医療表示の公開導線 — 未整備
-- [ ] 本番 Supabase への migrations 一式適用・RLS 横断テスト — 未実施
+- [x] 認定講師: カウンセリング終了時 30秒アンケート（満足度・理解度・宿題実施見込み・次回予約・自由コメント）
+- [x] クライアント: 翌朝アンケート（睡眠満足度・起床時気分・日中の調子・自由コメント）
+- [x] 本部: 匿名集計（改善率・満足度・継続率・宿題実施率・コメント分析モック）
+- [x] Supabase スキーマ追加（evidence_session_surveys / evidence_morning_surveys）
+- [ ] Supabase マイグレーション本番適用（`20260724290000_closed_beta_evidence_v29.sql`）
+- [ ] コメント分析の本番 NLP（現状モック）
+- [ ] 未コミット差分の git commit（ユーザー指示後）
 
 ---
 
-## 明日最初にやること
+## Version 2.8（Closed Beta Operation）ステータス
 
-1. **未コミット差分の整理・コミット方針決定**（機能単位で分割するか一括か）
-2. **Version 1.0 スコープの再確認**（`docs/ROADMAP.md`）— Academy/Community/Insights 本番は v1.0 に入れない方針を維持
-3. **P0: Supabase 本番 migrations 適用手順の確認**（ルート SQL ではなく `supabase/migrations/` のみ）
-4. **P0: Auth + Role リダイレクトの実機確認**（instructor / client / admin）
-5. （余裕があれば）Academy 自己発行 INSERT の塞ぎ、または RLS 横断テストの着手
-
----
-
-## Version 1.0 完成まで残りタスク
-
-> 目的: 認定講師が安全にクライアント分析・指導できる最小セット。  
-> **含めない:** Academy 本格運用、Community、Insights 本番、Enterprise、Billing、Marketplace、Research/Retreat/Events、本物 PDF エンジン、GPT 版 Coach。
-
-### P0（必須）
-
-| # | タスク | 想定 | 状態 |
-|---|---|---|---|
-| 1 | Supabase 本番に migrations 一式適用 | 1–2日 | 未 |
-| 2 | Auth + Role リダイレクト動作確認（全保護ルート） | 1日 | 一部実装・検証未 |
-| 3 | クレジット消費の冪等確認 | 0.5日 | 実装あり・検証未 |
-| 4 | 利用規約・プライバシー・非医療表示の設置・同意導線 | 1–2日 | 未 |
-| 5 | RLS / 他人データ横断テスト（チェックリスト合格） | 2–3日 | 未 |
-| 6 | Academy 資格自己 INSERT の塞ぎ（管理/RPC のみ） | 1日 | 未 |
-| 7 | Developer API / demo 認証の本番無効化 | 1–2日 | 未 |
-| 8 | 分析 E2E（OCR→確認→AI→保存）+ disclaimer | 既存+確認 | 実装済・本番確認未 |
-| 9 | 宿題（講師付与・クライアント完了）本番確認 | 既存+確認 | 実装済・本番確認未 |
-
-### P1（v1.0 推奨）
-
-| # | タスク | 想定 | 状態 |
-|---|---|---|---|
-| 10 | PDF（印刷）+ 免責（Safari/Chrome） | 0.5日 | 一部実装 |
-| 11 | Admin 最小（講師・ログ）を本番データ経路のみに | 1–2日 | 一部（demo 混在） |
-| 12 | Planned ルートをナビから外す or「準備中」明示 | 0.5日 | 未 |
-| 13 | `RELEASE_CHECKLIST.md` 全項目の消化 | 2–4日 | 未着手 |
-
-### 推定残作業（v1.0 公開まで）
-
-- **P0 のみ:** 約 **8–13 人日**
-- **P0 + P1（チェックリスト含む）:** 約 **12–18 人日**
-- 機能コードの大半は揃っている。残りは **本番適用・権限硬化・法務・検証** が主。
+- [x] Module1 Beta KPI Dashboard（講師・クライアント・分析・継続率・改善率・FB対応率・新規 + グラフ）
+- [x] Module2 Feature Requests（カテゴリ・優先度・投票・対応予定・完了）
+- [x] Module3 Bug Tracker（Critical〜Low · 修正状況）
+- [x] Module4 Client Outcomes（睡眠改善・継続・Homework・Journey）
+- [x] Module5 Weekly Report（成果・課題・改善提案 · モック）
+- [x] Module6 Product Backlog（未着手・進行中・完了・保留）
+- [x] Supabase スキーマ追加（feature_requests / bug_reports / weekly_reports / beta_metrics / product_backlog）
+- [ ] Supabase マイグレーション本番適用（`20260724280000_closed_beta_operation_v28.sql`）
+- [ ] 週次レポート実自動配信（現状モック表示）
+- [ ] 未コミット差分の git commit（ユーザー指示後）
 
 ---
 
-## Version 1.1 以降（メモ・着手しない）
+## Version 2.7（Closed Beta Launch）ステータス
 
+- [x] Module1 Beta Invitation（認定講師招待 · メールモック · コード · 利用開始日 · 規約同意）
+- [x] Module2 Onboarding（初回 5 ステップ · 約3分）
+- [x] Module3 Beta Agreement（β版 · データ協力 · バグ報告 · 守秘義務）
+- [x] Module4 Feedback Priority（Critical / High / Medium / Low）
+- [x] Module5 Admin Action（受付 / 対応中 / 保留 / 完了）
+- [x] Module6 Beta Metrics（週次 · 講師 · 分析 · クライアント · 継続率 · 改善率 · バグ）
+- [ ] Supabase マイグレーション本番適用（v21〜v27）
+- [ ] 第1期・第2期認定講師への Closed Beta 案内・運用開始
+- [ ] 実メール送信（現状モック）
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## Version 2.6（Beta Freeze）ステータス
+
+- [x] Final QA（画面・リンク・スマホ/タブレット/PC・エラー画面）
+- [x] Performance（表示速度確認 · 不要アセット整理 · Console 確認）
+- [x] Beta Mode（右下 BETA バッジ · Version 表示）
+- [x] Feedback（全画面右下「フィードバックを送る」固定）
+- [x] Safety（重大エラー時の分かりやすい画面）
+- [ ] Supabase マイグレーション本番適用（v21〜v24）
+- [ ] 第1期・第2期認定講師への Closed Beta 案内・運用開始
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## Version 2.4（Closed Beta 運営モード）ステータス
+
+- [x] Module1 Beta Dashboard（本部 KPI）
+- [x] Module2 Beta Feedback（講師送信 · 本部対応）
+- [x] Module3 Health Score
+- [x] Module4 Release Notes
+- [x] Module5 Usage Analytics（モック）
+- [x] Module6 Roadmap（2.5 / 3.0 / Coming Soon）
+- [x] Supabase スキーマ追加（beta_feedback 拡張 / release_notes / usage_statistics / system_health / roadmap_items）
+- [ ] Supabase マイグレーション本番適用（`20260724240000_closed_beta_ops_v24.sql`）
+- [ ] 第1期・第2期認定講師への Closed Beta 案内・運用開始
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## Version 2.3（UI/UX ブラッシュアップ）ステータス
+
+- [x] 画面遷移アニメーション（template + sw-page-enter）
+- [x] ローディング改善（Loading · route loading）
+- [x] Skeleton 表示（シマー · SoftSkeleton / ListSkeleton / dashboard）
+- [x] カード統一（SectionCard · CARD_CLASS · CSS 変数）
+- [x] ボタン統一（variants · focus · touch）
+- [x] 余白調整（mobile / tablet / desktop）
+- [x] スマホ操作性（min-h-11 · h-scroll · safe-area）
+- [x] タブレット最適化（md パディング · shell pad）
+- [x] ダークモード対応準備（`data-theme="dark"` トークン）
+- [x] アクセシビリティ（Skip link · focus-visible · aria）
+- [ ] テーマトグル UI（ダークモード本実装）
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## Version 2.2（ライセンス・課金・権限）ステータス
+
+- [x] Module1 Role Management（SWIJ本部 / 認定校 / 認定講師 / クライアント）
+- [x] Module2 License Management（番号・レベル・取得日・更新期限・有効/失効・履歴）
+- [x] Module3 Subscription（Basic / Professional / Enterprise モック）
+- [x] Module4 Invitation System（認定講師のみ・コード・メール）
+- [x] Module5 Audit Log（ログイン・分析・レポート・クライアント追加・ライセンス更新）
+- [x] Module6 Security（RBAC・セッション・管理画面保護・403/404/error）
+- [x] Supabase スキーマ追加（roles / licenses / subscriptions / invitations / audit_logs）
+- [ ] Supabase マイグレーション本番適用（`20260724220000_license_billing_rbac_v22.sql`）
+- [ ] 実メール送信・課金ゲートウェイ接続
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## Version 2.1（運営システム）ステータス
+
+- [x] Module1 認定講師管理（校・講師・レベル・更新・停止・退会）UI / データ設計
+- [x] Module2 認定校管理（所属講師・受講生・講座・修了率・活動）
+- [x] Module3 認定講師ダッシュボード KPI
+- [x] Module4 本部ダッシュボード KPI
+- [x] Module5 通知センター（本部 / 講師）
+- [x] Module6 ブランド統一（Navy / Gold / White）
+- [ ] Supabase マイグレーション本番適用（`20260724200000_swij_ops_v21.sql`）
+- [ ] 運営データ実投入・実運用テスト
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+
+---
+
+## RC1（凍結版）ステータス
+
+- [x] Version 1.0 Beta を RC1 として整理
+- [x] `typecheck` スクリプト追加（版番号は現在 `2.6.0`）
+- [x] README を RC1 向けに更新
+- [ ] 未コミット差分の git commit（ユーザー指示後）
+- [ ] 認定講師による実運用テスト開始
+
+---
+
+## 実運用テスト中に確認すること（RC1）
+
+1. Auth + Role リダイレクト（instructor / client / admin / school）
+2. OCR → 確認 → AI 分析 → 保存の E2E
+3. クレジット消費の冪等
+4. 宿題（講師付与・クライアント完了）
+5. RLS / 担当外データが読めないこと
+6. 招待コード発行・受諾・監査ログ記録
+
+---
+
+## Version 1.1 以降（着手メモ）
+
+- [x] AI Counseling Assistant
+- [x] Admin HQ Dashboard
+- [x] Demo Mode
+- [x] βテスト フィードバック機能
+- [x] ライセンス・サブスクリプション管理
+- [x] Client Portal
+- [x] Sleep Wellness Journey™
+- [x] Sleep Wellness AI Intelligence
+- [x] Version 2.1 運営システム（認定校・認定講師・本部KPI・通知センター・ブランド統一）
+- [x] Version 2.2 ライセンス・課金・権限（RBAC・招待・監査・課金モック）
+- [x] Version 2.3 UI/UX ブラッシュアップ（遷移・Skeleton・カード/ボタン・余白・a11y・ダーク準備）
 - OCR / AI 宿題 UX 改善
-- 通知の実データ配信
-- Admin 実データ化の深化
-- proxy matcher 完全一致
-- Academy / Community / Insights 本番運用（→ v2.0）
-- Enterprise / Billing / Developer API 本番（→ v3.0）
+- 通知の実データ配信（既読テーブル深化）
+- Admin 実データ化の深化（講師招待フロー）
+- Academy / Community / Insights 本番運用
+- Enterprise / Billing / Developer API 本番（Stripe 等）
+- Client Portal: Push通知・動画CDN・PDF署名付きURL・目標の講師編集UI深化
+
+詳細は `docs/ROADMAP.md` を参照。
 
 ---
 
-## 品質ゲート（終業時点）
+## 品質ゲート
 
-| コマンド | 結果 | エラー一覧 |
-|---|---|---|
-| `npx tsc --noEmit` | ✅ 成功 | なし |
-| `npm run lint` | ✅ 成功 | なし |
-| `npm run build` | ✅ 成功 | なし |
-
-※ 今回はエラー修正不要。次回は本番環境での再実行が必要。
+| コマンド | 結果 |
+|---|---|
+| `npm run typecheck` | OK（2.2.0） |
+| `npm run lint` | 要再確認（2.2） |
+| `npm run build` | 要再確認（2.2） |

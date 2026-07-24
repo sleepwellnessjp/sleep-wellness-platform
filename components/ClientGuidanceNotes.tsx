@@ -16,10 +16,10 @@ const NAVY = "#071426";
 const GOLD = "#8a6a2d";
 
 const inputClass =
-  "w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[15px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
+  "w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:text-[15px]";
 
 const textareaClass =
-  "w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[15px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10";
+  "w-full resize-none rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[16px] leading-7 text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:text-[15px]";
 
 type Props = {
   clientId: string;
@@ -211,7 +211,7 @@ export default function ClientGuidanceNotes({ clientId }: Props) {
                         type="button"
                         onClick={() => void handleSaveEdit(note.id)}
                         disabled={isBusy || !editContent.trim()}
-                        className="inline-flex min-h-9 items-center justify-center rounded-full px-4 py-1.5 text-[12px] font-semibold text-white transition disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center justify-center rounded-full px-4 py-2 text-[12px] font-semibold text-white transition active:opacity-90 disabled:opacity-50 sm:min-h-9 sm:py-1.5 sm:active:opacity-100"
                         style={{ backgroundColor: NAVY }}
                       >
                         {isBusy ? "保存中..." : "保存"}
@@ -220,7 +220,7 @@ export default function ClientGuidanceNotes({ clientId }: Props) {
                         type="button"
                         onClick={cancelEdit}
                         disabled={isBusy}
-                        className="inline-flex min-h-9 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[12px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-600 transition active:bg-slate-50 disabled:opacity-50 sm:min-h-9 sm:py-1.5 sm:hover:bg-slate-50 sm:active:bg-transparent"
                       >
                         キャンセル
                       </button>
@@ -241,7 +241,7 @@ export default function ClientGuidanceNotes({ clientId }: Props) {
                           type="button"
                           onClick={() => startEdit(note)}
                           disabled={Boolean(busyId)}
-                          className="text-[12px] font-medium text-slate-400 transition hover:text-[#8a6a2d] disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center px-1 text-[12px] font-medium text-slate-400 transition active:text-[#8a6a2d] disabled:opacity-50 sm:min-h-0 sm:hover:text-[#8a6a2d] sm:active:text-slate-400"
                         >
                           編集
                         </button>
@@ -249,7 +249,7 @@ export default function ClientGuidanceNotes({ clientId }: Props) {
                           type="button"
                           onClick={() => void handleDelete(note.id)}
                           disabled={isBusy}
-                          className="text-[12px] font-medium text-slate-400 transition hover:text-rose-600 disabled:opacity-50"
+                          className="inline-flex min-h-11 items-center px-1 text-[12px] font-medium text-slate-400 transition active:text-rose-600 disabled:opacity-50 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-400"
                         >
                           {isBusy ? "削除中..." : "削除"}
                         </button>

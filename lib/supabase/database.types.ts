@@ -43,30 +43,33 @@ export type Database = {
           id: string;
           email: string | null;
           display_name: string | null;
-          role: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          role: "super_admin" | "admin" | "school" | "instructor" | "client" | "enterprise";
           avatar_url: string | null;
           client_message: string | null;
           last_login_at: string | null;
+          beta_terms_accepted_at: string | null;
           created_at: string;
         };
         Insert: {
           id: string;
           email?: string | null;
           display_name?: string | null;
-          role?: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          role?: "super_admin" | "admin" | "school" | "instructor" | "client" | "enterprise";
           avatar_url?: string | null;
           client_message?: string | null;
           last_login_at?: string | null;
+          beta_terms_accepted_at?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           email?: string | null;
           display_name?: string | null;
-          role?: "super_admin" | "admin" | "instructor" | "client" | "enterprise";
+          role?: "super_admin" | "admin" | "school" | "instructor" | "client" | "enterprise";
           avatar_url?: string | null;
           client_message?: string | null;
           last_login_at?: string | null;
+          beta_terms_accepted_at?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -439,6 +442,9 @@ export type Database = {
           due_date: string;
           is_completed: boolean;
           completed_at: string | null;
+          category: string;
+          media_type: string;
+          media_url: string;
           created_at: string;
           updated_at: string;
         };
@@ -452,6 +458,9 @@ export type Database = {
           due_date: string;
           is_completed?: boolean;
           completed_at?: string | null;
+          category?: string;
+          media_type?: string;
+          media_url?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -465,6 +474,9 @@ export type Database = {
           due_date?: string;
           is_completed?: boolean;
           completed_at?: string | null;
+          category?: string;
+          media_type?: string;
+          media_url?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -474,6 +486,339 @@ export type Database = {
             columns: ["client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_messages: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string;
+          sender_role: string;
+          sender_id: string;
+          body: string;
+          read_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id: string;
+          sender_role: string;
+          sender_id: string;
+          body: string;
+          read_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string;
+          sender_role?: string;
+          sender_id?: string;
+          body?: string;
+          read_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_messages_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_notifications: {
+        Row: {
+          id: string;
+          client_id: string;
+          kind: string;
+          title: string;
+          body: string;
+          href: string;
+          read_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          kind: string;
+          title?: string;
+          body?: string;
+          href?: string;
+          read_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          kind?: string;
+          title?: string;
+          body?: string;
+          href?: string;
+          read_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_notifications_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_goal_progress: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string | null;
+          title: string;
+          description: string;
+          category: string;
+          target_value: number | null;
+          current_value: number | null;
+          unit: string;
+          progress_percent: number;
+          status: string;
+          starts_on: string | null;
+          target_on: string | null;
+          achieved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id?: string | null;
+          title: string;
+          description?: string;
+          category?: string;
+          target_value?: number | null;
+          current_value?: number | null;
+          unit?: string;
+          progress_percent?: number;
+          status?: string;
+          starts_on?: string | null;
+          target_on?: string | null;
+          achieved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string | null;
+          title?: string;
+          description?: string;
+          category?: string;
+          target_value?: number | null;
+          current_value?: number | null;
+          unit?: string;
+          progress_percent?: number;
+          status?: string;
+          starts_on?: string | null;
+          target_on?: string | null;
+          achieved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_goal_progress_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      journey_stages: {
+        Row: {
+          id: string;
+          stage_number: number;
+          code: string;
+          title: string;
+          subtitle: string;
+          description: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          stage_number: number;
+          code: string;
+          title: string;
+          subtitle: string;
+          description?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          stage_number?: number;
+          code?: string;
+          title?: string;
+          subtitle?: string;
+          description?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      achievement_master: {
+        Row: {
+          id: string;
+          code: string;
+          title: string;
+          description: string;
+          category: string;
+          icon_key: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          code: string;
+          title: string;
+          description?: string;
+          category?: string;
+          icon_key?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          title?: string;
+          description?: string;
+          category?: string;
+          icon_key?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      journey_progress: {
+        Row: {
+          id: string;
+          client_id: string;
+          instructor_id: string | null;
+          current_stage_id: string;
+          stage_status: string;
+          achievement_rate: number;
+          improvement_rate: number | null;
+          streak_days: number;
+          next_goal: string;
+          score_trend: Json;
+          entered_at: string | null;
+          completed_at: string | null;
+          last_synced_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          instructor_id?: string | null;
+          current_stage_id: string;
+          stage_status?: string;
+          achievement_rate?: number;
+          improvement_rate?: number | null;
+          streak_days?: number;
+          next_goal?: string;
+          score_trend?: Json;
+          entered_at?: string | null;
+          completed_at?: string | null;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          instructor_id?: string | null;
+          current_stage_id?: string;
+          stage_status?: string;
+          achievement_rate?: number;
+          improvement_rate?: number | null;
+          streak_days?: number;
+          next_goal?: string;
+          score_trend?: Json;
+          entered_at?: string | null;
+          completed_at?: string | null;
+          last_synced_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "journey_progress_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: true;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "journey_progress_current_stage_id_fkey";
+            columns: ["current_stage_id"];
+            isOneToOne: false;
+            referencedRelation: "journey_stages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      client_achievements: {
+        Row: {
+          id: string;
+          client_id: string;
+          achievement_id: string;
+          unlocked_at: string;
+          source: string;
+          meta: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          achievement_id: string;
+          unlocked_at?: string;
+          source?: string;
+          meta?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          achievement_id?: string;
+          unlocked_at?: string;
+          source?: string;
+          meta?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_achievements_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "client_achievements_achievement_id_fkey";
+            columns: ["achievement_id"];
+            isOneToOne: false;
+            referencedRelation: "achievement_master";
             referencedColumns: ["id"];
           },
         ];
@@ -1001,6 +1346,11 @@ export type Database = {
           exercise: Json;
           health: Json;
           sleep_environment: Json;
+          portal_enabled: boolean;
+          current_goal_summary: string;
+          improvement_target_score: number | null;
+          notification_prefs: Json;
+          last_portal_seen_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1019,6 +1369,11 @@ export type Database = {
           exercise?: Json;
           health?: Json;
           sleep_environment?: Json;
+          portal_enabled?: boolean;
+          current_goal_summary?: string;
+          improvement_target_score?: number | null;
+          notification_prefs?: Json;
+          last_portal_seen_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1037,6 +1392,11 @@ export type Database = {
           exercise?: Json;
           health?: Json;
           sleep_environment?: Json;
+          portal_enabled?: boolean;
+          current_goal_summary?: string;
+          improvement_target_score?: number | null;
+          notification_prefs?: Json;
+          last_portal_seen_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1122,6 +1482,7 @@ export type Database = {
           client_id: string;
           owner_id: string;
           analyzed_at: string;
+          analysis_date: string | null;
           sleep_score: number | null;
           sleep_duration: number | null;
           sleep_efficiency: number | null;
@@ -1131,6 +1492,16 @@ export type Database = {
           spo2: number | null;
           hrv: number | null;
           resting_heart_rate: number | null;
+          sleep_onset_time: string | null;
+          wake_time: string | null;
+          skin_temperature_value: string | null;
+          skin_temperature_type: string | null;
+          skin_temperature_unit: string;
+          stress_average: string | null;
+          stress_level: string | null;
+          stress_series: Json;
+          ocr_source_images: Json;
+          ocr_confidence: Json;
           ocr_data: Json | null;
           confirmed_metrics: Json | null;
           report_payload: Json | null;
@@ -1146,6 +1517,7 @@ export type Database = {
           client_id: string;
           owner_id: string;
           analyzed_at?: string;
+          analysis_date?: string | null;
           sleep_score?: number | null;
           sleep_duration?: number | null;
           sleep_efficiency?: number | null;
@@ -1155,6 +1527,16 @@ export type Database = {
           spo2?: number | null;
           hrv?: number | null;
           resting_heart_rate?: number | null;
+          sleep_onset_time?: string | null;
+          wake_time?: string | null;
+          skin_temperature_value?: string | null;
+          skin_temperature_type?: string | null;
+          skin_temperature_unit?: string;
+          stress_average?: string | null;
+          stress_level?: string | null;
+          stress_series?: Json;
+          ocr_source_images?: Json;
+          ocr_confidence?: Json;
           ocr_data?: Json | null;
           confirmed_metrics?: Json | null;
           report_payload?: Json | null;
@@ -1170,6 +1552,7 @@ export type Database = {
           client_id?: string;
           owner_id?: string;
           analyzed_at?: string;
+          analysis_date?: string | null;
           sleep_score?: number | null;
           sleep_duration?: number | null;
           sleep_efficiency?: number | null;
@@ -1179,6 +1562,16 @@ export type Database = {
           spo2?: number | null;
           hrv?: number | null;
           resting_heart_rate?: number | null;
+          sleep_onset_time?: string | null;
+          wake_time?: string | null;
+          skin_temperature_value?: string | null;
+          skin_temperature_type?: string | null;
+          skin_temperature_unit?: string;
+          stress_average?: string | null;
+          stress_level?: string | null;
+          stress_series?: Json;
+          ocr_source_images?: Json;
+          ocr_confidence?: Json;
           ocr_data?: Json | null;
           confirmed_metrics?: Json | null;
           report_payload?: Json | null;
@@ -1931,6 +2324,1413 @@ export type Database = {
           },
         ];
       };
+      beta_feedback: {
+        Row: {
+          id: string;
+          user_id: string;
+          user_email: string | null;
+          user_display_name: string | null;
+          category: string;
+          target_screen: string;
+          severity: string;
+          content: string;
+          reproduction_steps: string;
+          device: string;
+          browser: string;
+          current_url: string;
+          screen_name: string;
+          device_type: string;
+          browser_info: string;
+          app_version: string;
+          usability_rating: number | null;
+          priority: string;
+          status: string;
+          admin_memo: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          category: string;
+          target_screen: string;
+          severity?: string;
+          content: string;
+          reproduction_steps?: string;
+          device?: string;
+          browser?: string;
+          current_url?: string;
+          screen_name?: string;
+          device_type?: string;
+          browser_info?: string;
+          app_version?: string;
+          usability_rating?: number | null;
+          priority?: string;
+          status?: string;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          category?: string;
+          target_screen?: string;
+          severity?: string;
+          content?: string;
+          reproduction_steps?: string;
+          device?: string;
+          browser?: string;
+          current_url?: string;
+          screen_name?: string;
+          device_type?: string;
+          browser_info?: string;
+          app_version?: string;
+          usability_rating?: number | null;
+          priority?: string;
+          status?: string;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "beta_feedback_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      release_notes: {
+        Row: {
+          id: string;
+          version: string;
+          released_at: string;
+          title: string;
+          changes: Json;
+          improvements: Json;
+          is_current: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          version: string;
+          released_at: string;
+          title: string;
+          changes?: Json;
+          improvements?: Json;
+          is_current?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          version?: string;
+          released_at?: string;
+          title?: string;
+          changes?: Json;
+          improvements?: Json;
+          is_current?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      usage_statistics: {
+        Row: {
+          id: string;
+          period_label: string;
+          average_session_minutes: number;
+          mobile_share_percent: number;
+          pc_share_percent: number;
+          tablet_share_percent: number;
+          top_screens: Json;
+          drop_off_points: Json;
+          is_mock: boolean;
+          captured_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          period_label?: string;
+          average_session_minutes?: number;
+          mobile_share_percent?: number;
+          pc_share_percent?: number;
+          tablet_share_percent?: number;
+          top_screens?: Json;
+          drop_off_points?: Json;
+          is_mock?: boolean;
+          captured_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          period_label?: string;
+          average_session_minutes?: number;
+          mobile_share_percent?: number;
+          pc_share_percent?: number;
+          tablet_share_percent?: number;
+          top_screens?: Json;
+          drop_off_points?: Json;
+          is_mock?: boolean;
+          captured_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      system_health: {
+        Row: {
+          id: string;
+          component_id: string;
+          label: string;
+          status: string;
+          detail: string;
+          latency_ms: number | null;
+          sort_order: number;
+          checked_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          component_id: string;
+          label: string;
+          status?: string;
+          detail?: string;
+          latency_ms?: number | null;
+          sort_order?: number;
+          checked_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          component_id?: string;
+          label?: string;
+          status?: string;
+          detail?: string;
+          latency_ms?: number | null;
+          sort_order?: number;
+          checked_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      roadmap_items: {
+        Row: {
+          id: string;
+          horizon: string;
+          version_label: string;
+          title: string;
+          summary: string;
+          status: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          horizon: string;
+          version_label: string;
+          title: string;
+          summary?: string;
+          status?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          horizon?: string;
+          version_label?: string;
+          title?: string;
+          summary?: string;
+          status?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      licenses: {
+        Row: {
+          id: string;
+          user_id: string;
+          user_email: string | null;
+          user_display_name: string | null;
+          license_number: string;
+          certification_level: string;
+          certified_at: string;
+          expires_at: string;
+          status: string;
+          status_history: Json;
+          admin_memo: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          license_number: string;
+          certification_level: string;
+          certified_at: string;
+          expires_at: string;
+          status?: string;
+          status_history?: Json;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          license_number?: string;
+          certification_level?: string;
+          certified_at?: string;
+          expires_at?: string;
+          status?: string;
+          status_history?: Json;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "licenses_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          license_id: string | null;
+          plan: string;
+          billing_cycle: string;
+          monthly_amount: number;
+          yearly_amount: number;
+          status: string;
+          current_period_start: string;
+          current_period_end: string;
+          next_renewal_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          license_id?: string | null;
+          plan: string;
+          billing_cycle?: string;
+          monthly_amount?: number;
+          yearly_amount?: number;
+          status?: string;
+          current_period_start: string;
+          current_period_end: string;
+          next_renewal_at: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          license_id?: string | null;
+          plan?: string;
+          billing_cycle?: string;
+          monthly_amount?: number;
+          yearly_amount?: number;
+          status?: string;
+          current_period_start?: string;
+          current_period_end?: string;
+          next_renewal_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "subscriptions_license_id_fkey";
+            columns: ["license_id"];
+            isOneToOne: false;
+            referencedRelation: "licenses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      certificates: {
+        Row: {
+          id: string;
+          user_id: string;
+          license_id: string;
+          certificate_number: string;
+          holder_name: string;
+          issued_at: string;
+          verification_code: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          license_id: string;
+          certificate_number: string;
+          holder_name?: string;
+          issued_at: string;
+          verification_code: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          license_id?: string;
+          certificate_number?: string;
+          holder_name?: string;
+          issued_at?: string;
+          verification_code?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "certificates_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "certificates_license_id_fkey";
+            columns: ["license_id"];
+            isOneToOne: false;
+            referencedRelation: "licenses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      continuing_education: {
+        Row: {
+          id: string;
+          user_id: string;
+          license_id: string;
+          hours_completed: number;
+          credits_earned: number;
+          required_hours: number;
+          renewal_requirement: string;
+          period_start: string;
+          period_end: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          license_id: string;
+          hours_completed?: number;
+          credits_earned?: number;
+          required_hours?: number;
+          renewal_requirement?: string;
+          period_start: string;
+          period_end: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          license_id?: string;
+          hours_completed?: number;
+          credits_earned?: number;
+          required_hours?: number;
+          renewal_requirement?: string;
+          period_start?: string;
+          period_end?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "continuing_education_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "continuing_education_license_id_fkey";
+            columns: ["license_id"];
+            isOneToOne: false;
+            referencedRelation: "licenses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      payment_history: {
+        Row: {
+          id: string;
+          user_id: string;
+          subscription_id: string | null;
+          amount: number;
+          currency: string;
+          paid_at: string;
+          method: string;
+          description: string;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          subscription_id?: string | null;
+          amount?: number;
+          currency?: string;
+          paid_at?: string;
+          method?: string;
+          description?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          subscription_id?: string | null;
+          amount?: number;
+          currency?: string;
+          paid_at?: string;
+          method?: string;
+          description?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payment_history_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_history_subscription_id_fkey";
+            columns: ["subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      certification_levels: {
+        Row: {
+          id: string;
+          label: string;
+          label_en: string;
+          sort_order: number;
+          description: string;
+          renewal_months: number;
+          ce_hours_required: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          label: string;
+          label_en?: string;
+          sort_order?: number;
+          description?: string;
+          renewal_months?: number;
+          ce_hours_required?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          label?: string;
+          label_en?: string;
+          sort_order?: number;
+          description?: string;
+          renewal_months?: number;
+          ce_hours_required?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      certified_schools: {
+        Row: {
+          id: string;
+          code: string;
+          name: string;
+          name_kana: string;
+          region: string;
+          prefecture: string;
+          address: string;
+          representative_name: string;
+          contact_email: string;
+          contact_phone: string;
+          status: string;
+          certified_at: string;
+          admin_memo: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          name: string;
+          name_kana?: string;
+          region?: string;
+          prefecture?: string;
+          address?: string;
+          representative_name?: string;
+          contact_email?: string;
+          contact_phone?: string;
+          status?: string;
+          certified_at?: string;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          name?: string;
+          name_kana?: string;
+          region?: string;
+          prefecture?: string;
+          address?: string;
+          representative_name?: string;
+          contact_email?: string;
+          contact_phone?: string;
+          status?: string;
+          certified_at?: string;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      certified_instructors: {
+        Row: {
+          id: string;
+          user_id: string;
+          school_id: string | null;
+          level_id: string;
+          instructor_number: string;
+          display_name: string;
+          email: string;
+          status: string;
+          certified_at: string;
+          renews_at: string;
+          usage_start_date: string | null;
+          suspended_at: string | null;
+          withdrawn_at: string | null;
+          last_renewed_at: string | null;
+          status_history: Json;
+          admin_memo: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          school_id?: string | null;
+          level_id: string;
+          instructor_number: string;
+          display_name?: string;
+          email?: string;
+          status?: string;
+          certified_at: string;
+          renews_at: string;
+          usage_start_date?: string | null;
+          suspended_at?: string | null;
+          withdrawn_at?: string | null;
+          last_renewed_at?: string | null;
+          status_history?: Json;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          school_id?: string | null;
+          level_id?: string;
+          instructor_number?: string;
+          display_name?: string;
+          email?: string;
+          status?: string;
+          certified_at?: string;
+          renews_at?: string;
+          usage_start_date?: string | null;
+          suspended_at?: string | null;
+          withdrawn_at?: string | null;
+          last_renewed_at?: string | null;
+          status_history?: Json;
+          admin_memo?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "certified_instructors_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "certified_instructors_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "certified_instructors_level_id_fkey";
+            columns: ["level_id"];
+            isOneToOne: false;
+            referencedRelation: "certification_levels";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      school_courses: {
+        Row: {
+          id: string;
+          school_id: string;
+          title: string;
+          course_type: string;
+          level_id: string | null;
+          starts_on: string | null;
+          ends_on: string | null;
+          capacity: number;
+          enrolled_count: number;
+          completed_count: number;
+          status: string;
+          instructor_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          title: string;
+          course_type?: string;
+          level_id?: string | null;
+          starts_on?: string | null;
+          ends_on?: string | null;
+          capacity?: number;
+          enrolled_count?: number;
+          completed_count?: number;
+          status?: string;
+          instructor_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          school_id?: string;
+          title?: string;
+          course_type?: string;
+          level_id?: string | null;
+          starts_on?: string | null;
+          ends_on?: string | null;
+          capacity?: number;
+          enrolled_count?: number;
+          completed_count?: number;
+          status?: string;
+          instructor_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "school_courses_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      school_students: {
+        Row: {
+          id: string;
+          school_id: string;
+          course_id: string | null;
+          display_name: string;
+          email: string;
+          status: string;
+          enrolled_at: string;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          school_id: string;
+          course_id?: string | null;
+          display_name: string;
+          email?: string;
+          status?: string;
+          enrolled_at?: string;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          school_id?: string;
+          course_id?: string | null;
+          display_name?: string;
+          email?: string;
+          status?: string;
+          enrolled_at?: string;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "school_students_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      ops_notifications: {
+        Row: {
+          id: string;
+          kind: string;
+          audience: string;
+          title: string;
+          body: string;
+          href: string | null;
+          published_at: string;
+          expires_at: string | null;
+          is_pinned: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          kind: string;
+          audience?: string;
+          title: string;
+          body?: string;
+          href?: string | null;
+          published_at?: string;
+          expires_at?: string | null;
+          is_pinned?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          kind?: string;
+          audience?: string;
+          title?: string;
+          body?: string;
+          href?: string | null;
+          published_at?: string;
+          expires_at?: string | null;
+          is_pinned?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ops_events: {
+        Row: {
+          id: string;
+          title: string;
+          event_type: string;
+          region: string;
+          starts_at: string;
+          ends_at: string | null;
+          capacity: number;
+          registered_count: number;
+          status: string;
+          school_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          event_type?: string;
+          region?: string;
+          starts_at: string;
+          ends_at?: string | null;
+          capacity?: number;
+          registered_count?: number;
+          status?: string;
+          school_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          event_type?: string;
+          region?: string;
+          starts_at?: string;
+          ends_at?: string | null;
+          capacity?: number;
+          registered_count?: number;
+          status?: string;
+          school_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ops_events_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      beta_instructor_invitations: {
+        Row: {
+          id: string;
+          code: string;
+          instructor_name: string;
+          instructor_email: string;
+          start_date: string;
+          status: string;
+          email_subject: string;
+          email_body: string;
+          terms_required: boolean;
+          terms_accepted_at: string | null;
+          sent_at: string | null;
+          accepted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          instructor_name: string;
+          instructor_email: string;
+          start_date: string;
+          status?: string;
+          email_subject?: string;
+          email_body?: string;
+          terms_required?: boolean;
+          terms_accepted_at?: string | null;
+          sent_at?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          instructor_name?: string;
+          instructor_email?: string;
+          start_date?: string;
+          status?: string;
+          email_subject?: string;
+          email_body?: string;
+          terms_required?: boolean;
+          terms_accepted_at?: string | null;
+          sent_at?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      feature_requests: {
+        Row: {
+          id: string;
+          title: string;
+          description: string;
+          category: string;
+          priority: string;
+          vote_count: number;
+          status: string;
+          planned_for: string | null;
+          submitted_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          description?: string;
+          category?: string;
+          priority?: string;
+          vote_count?: number;
+          status?: string;
+          planned_for?: string | null;
+          submitted_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          description?: string;
+          category?: string;
+          priority?: string;
+          vote_count?: number;
+          status?: string;
+          planned_for?: string | null;
+          submitted_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      bug_reports: {
+        Row: {
+          id: string;
+          title: string;
+          description: string;
+          severity: string;
+          status: string;
+          reporter_name: string;
+          affected_screen: string;
+          resolved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          description?: string;
+          severity?: string;
+          status?: string;
+          reporter_name?: string;
+          affected_screen?: string;
+          resolved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          description?: string;
+          severity?: string;
+          status?: string;
+          reporter_name?: string;
+          affected_screen?: string;
+          resolved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      weekly_reports: {
+        Row: {
+          id: string;
+          week_label: string;
+          week_start: string;
+          week_end: string;
+          achievements: Json;
+          challenges: Json;
+          improvement_proposals: Json;
+          is_mock: boolean;
+          generated_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          week_label: string;
+          week_start: string;
+          week_end: string;
+          achievements?: Json;
+          challenges?: Json;
+          improvement_proposals?: Json;
+          is_mock?: boolean;
+          generated_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          week_label?: string;
+          week_start?: string;
+          week_end?: string;
+          achievements?: Json;
+          challenges?: Json;
+          improvement_proposals?: Json;
+          is_mock?: boolean;
+          generated_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      beta_metrics: {
+        Row: {
+          id: string;
+          period_label: string;
+          active_certified_instructors: number;
+          active_clients: number;
+          weekly_analysis_count: number;
+          average_continuation_rate: number;
+          average_improvement_rate: number;
+          feedback_response_rate: number;
+          weekly_new_registrations: number;
+          weekly_series: Json;
+          captured_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          period_label?: string;
+          active_certified_instructors?: number;
+          active_clients?: number;
+          weekly_analysis_count?: number;
+          average_continuation_rate?: number;
+          average_improvement_rate?: number;
+          feedback_response_rate?: number;
+          weekly_new_registrations?: number;
+          weekly_series?: Json;
+          captured_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          period_label?: string;
+          active_certified_instructors?: number;
+          active_clients?: number;
+          weekly_analysis_count?: number;
+          average_continuation_rate?: number;
+          average_improvement_rate?: number;
+          feedback_response_rate?: number;
+          weekly_new_registrations?: number;
+          weekly_series?: Json;
+          captured_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      product_backlog: {
+        Row: {
+          id: string;
+          title: string;
+          summary: string;
+          status: string;
+          priority: string;
+          module: string;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          summary?: string;
+          status?: string;
+          priority?: string;
+          module?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          summary?: string;
+          status?: string;
+          priority?: string;
+          module?: string;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      invitations: {
+        Row: {
+          id: string;
+          code: string;
+          instructor_id: string;
+          instructor_email: string | null;
+          instructor_name: string | null;
+          client_name: string;
+          client_email: string;
+          client_id: string | null;
+          status: string;
+          email_subject: string;
+          email_body: string;
+          expires_at: string;
+          sent_at: string | null;
+          accepted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          instructor_id: string;
+          instructor_email?: string | null;
+          instructor_name?: string | null;
+          client_name: string;
+          client_email: string;
+          client_id?: string | null;
+          status?: string;
+          email_subject?: string;
+          email_body?: string;
+          expires_at: string;
+          sent_at?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          instructor_id?: string;
+          instructor_email?: string | null;
+          instructor_name?: string | null;
+          client_name?: string;
+          client_email?: string;
+          client_id?: string | null;
+          status?: string;
+          email_subject?: string;
+          email_body?: string;
+          expires_at?: string;
+          sent_at?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invitations_instructor_id_fkey";
+            columns: ["instructor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      audit_logs: {
+        Row: {
+          id: string;
+          actor_id: string | null;
+          actor_email: string | null;
+          actor_role: string | null;
+          action: string;
+          resource_type: string | null;
+          resource_id: string | null;
+          summary: string;
+          payload: Json;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          actor_id?: string | null;
+          actor_email?: string | null;
+          actor_role?: string | null;
+          action: string;
+          resource_type?: string | null;
+          resource_id?: string | null;
+          summary?: string;
+          payload?: Json;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          actor_id?: string | null;
+          actor_email?: string | null;
+          actor_role?: string | null;
+          action?: string;
+          resource_type?: string | null;
+          resource_id?: string | null;
+          summary?: string;
+          payload?: Json;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      commercial_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          user_email: string | null;
+          user_display_name: string | null;
+          plan_id: string;
+          status: string;
+          billing_cycle: string;
+          current_period_end: string | null;
+          mock_note: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          plan_id: string;
+          status?: string;
+          billing_cycle?: string;
+          current_period_end?: string | null;
+          mock_note?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          user_email?: string | null;
+          user_display_name?: string | null;
+          plan_id?: string;
+          status?: string;
+          billing_cycle?: string;
+          current_period_end?: string | null;
+          mock_note?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "commercial_subscriptions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      evidence_session_surveys: {
+        Row: {
+          id: string;
+          anonymous_key: string;
+          analysis_id: string | null;
+          client_anonymous_key: string | null;
+          satisfaction: number;
+          understanding: number;
+          homework_likelihood: number;
+          next_appointment: string;
+          free_comment: string;
+          app_version: string;
+          submitted_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          anonymous_key: string;
+          analysis_id?: string | null;
+          client_anonymous_key?: string | null;
+          satisfaction: number;
+          understanding: number;
+          homework_likelihood: number;
+          next_appointment?: string;
+          free_comment?: string;
+          app_version?: string;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          anonymous_key?: string;
+          analysis_id?: string | null;
+          client_anonymous_key?: string | null;
+          satisfaction?: number;
+          understanding?: number;
+          homework_likelihood?: number;
+          next_appointment?: string;
+          free_comment?: string;
+          app_version?: string;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      evidence_morning_surveys: {
+        Row: {
+          id: string;
+          anonymous_key: string;
+          survey_date: string;
+          sleep_satisfaction: number;
+          morning_mood: number;
+          daytime_condition: number;
+          free_comment: string;
+          app_version: string;
+          submitted_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          anonymous_key: string;
+          survey_date: string;
+          sleep_satisfaction: number;
+          morning_mood: number;
+          daytime_condition: number;
+          free_comment?: string;
+          app_version?: string;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          anonymous_key?: string;
+          survey_date?: string;
+          sleep_satisfaction?: number;
+          morning_mood?: number;
+          daytime_condition?: number;
+          free_comment?: string;
+          app_version?: string;
+          submitted_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -2001,6 +3801,17 @@ export type Database = {
           p_is_completed: boolean;
         };
         Returns: Database["public"]["Tables"]["client_homeworks"]["Row"];
+      };
+      peek_invitation_by_code: {
+        Args: { p_code: string };
+        Returns: Database["public"]["Tables"]["invitations"]["Row"][];
+      };
+      accept_invitation_by_code: {
+        Args: {
+          p_code: string;
+          p_client_id?: string | null;
+        };
+        Returns: Database["public"]["Tables"]["invitations"]["Row"];
       };
     };
     Enums: Record<string, never>;

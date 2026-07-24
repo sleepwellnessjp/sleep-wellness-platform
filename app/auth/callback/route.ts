@@ -1,11 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { evaluateClosedBetaLoginAccess } from "@/lib/closed-beta/beta-access-service";
 import {
   homePathForRole,
   isClientOnlyPath,
   isInstructorOnlyPath,
+  isSchoolAllowedAdminPath,
   sanitizeAppRedirect,
+  appPathname,
 } from "@/lib/safe-redirect";
 import {
   getSupabaseAnonKey,
@@ -79,13 +82,28 @@ export async function GET(request: Request) {
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, email")
       .eq("id", user.id)
       .maybeSingle();
     const role =
       profile && typeof profile === "object" && "role" in profile
         ? String((profile as { role?: unknown }).role ?? "")
         : "";
+    const profileEmail =
+      profile && typeof profile === "object" && "email" in profile
+        ? String((profile as { email?: unknown }).email ?? "")
+        : "";
+
+    const access = await evaluateClosedBetaLoginAccess(supabase, user.id, {
+      role,
+      email: profileEmail || user.email,
+    });
+    if (!access.allowed) {
+      await supabase.auth.signOut();
+      const loginUrl = new URL("/login", origin);
+      loginUrl.searchParams.set("error", access.message);
+      return NextResponse.redirect(loginUrl);
+    }
 
     // ログイン履歴（失敗しても認証フローは継続）
     void Promise.all([
@@ -93,6 +111,15 @@ export async function GET(request: Request) {
         actor_id: user.id,
         category: "login",
         action: "sign_in",
+        summary: "ログインしました",
+        payload: { email: user.email ?? null },
+      }),
+      supabase.from("audit_logs").insert({
+        actor_id: user.id,
+        actor_email: user.email ?? null,
+        actor_role: role || null,
+        action: "login",
+        resource_type: "session",
         summary: "ログインしました",
         payload: { email: user.email ?? null },
       }),
@@ -105,6 +132,7 @@ export async function GET(request: Request) {
     });
 
     const home = homePathForRole(role || "instructor");
+    const destinationPath = appPathname(destination);
     if (
       (role === "client" || role === "enterprise") &&
       isInstructorOnlyPath(destination)
@@ -121,19 +149,22 @@ export async function GET(request: Request) {
     } else if (
       role &&
       role !== "enterprise" &&
-      (destination === "/enterprise" ||
-        destination.startsWith("/enterprise/")) &&
+      (destinationPath === "/enterprise" ||
+        destinationPath.startsWith("/enterprise/")) &&
       role !== "admin" &&
       role !== "super_admin"
     ) {
       destination = home;
     } else if (
-      (destination === "/admin" || destination.startsWith("/admin/")) &&
+      (destinationPath === "/admin" ||
+        destinationPath.startsWith("/admin/")) &&
       role &&
       role !== "admin" &&
       role !== "super_admin"
     ) {
-      destination = home;
+      if (!(role === "school" && isSchoolAllowedAdminPath(destinationPath))) {
+        destination = home;
+      }
     } else if (!searchParams.get("redirect")) {
       destination = home;
     }

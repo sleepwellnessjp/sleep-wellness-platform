@@ -80,14 +80,14 @@ function AlertBody({
           </p>
         ) : null}
         <p
-          className={`text-[14px] font-semibold tracking-[-0.02em] sm:text-[15px] ${
+          className={`break-words text-[14px] font-semibold tracking-[-0.02em] sm:text-[15px] ${
             alert.clientLabel ? "mt-0.5" : ""
           }`}
           style={{ color: NAVY }}
         >
           {alert.title}
         </p>
-        <p className="mt-1 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+        <p className="mt-1 break-words text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
           {alert.detail}
         </p>
       </div>
@@ -112,8 +112,8 @@ export default function AiFollowAlerts({
   if (alerts.length === 0 && emptyMessage == null) return null;
 
   const itemClassName =
-    "flex gap-3 rounded-[18px] border bg-white/75 px-4 py-3.5 backdrop-blur-sm sm:px-5 sm:py-4";
-  const linkedItemClassName = `${itemClassName} transition hover:bg-white`;
+    "flex min-h-14 min-w-0 gap-3 rounded-[18px] border bg-white/75 px-3.5 py-3.5 backdrop-blur-sm sm:min-h-0 sm:px-5 sm:py-4";
+  const linkedItemClassName = `${itemClassName} transition active:bg-white sm:hover:bg-white sm:active:bg-white/75`;
   const itemStyle = {
     borderColor: "rgba(138, 106, 45, 0.18)",
     boxShadow: "0 10px 30px -28px rgba(138,106,45,0.45)",
@@ -154,7 +154,7 @@ export default function AiFollowAlerts({
 
   return (
     <section
-      className={`relative overflow-hidden rounded-[28px] border px-5 py-6 sm:px-7 sm:py-7 ${className}`}
+      className={`relative overflow-hidden rounded-[28px] border px-4 py-5 sm:px-7 sm:py-7 ${className}`}
       style={{
         borderColor: GOLD_BORDER,
         background:

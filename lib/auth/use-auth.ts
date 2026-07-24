@@ -51,17 +51,28 @@ export function useAuth(): AuthState & { signOut: () => Promise<void> } {
       return;
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    setState({
-      loading: false,
-      supabaseEnabled: true,
-      isAuthenticated: Boolean(user),
-      isDemoMode: false,
-      email: user?.email ?? null,
-    });
+      setState({
+        loading: false,
+        supabaseEnabled: true,
+        isAuthenticated: Boolean(user),
+        isDemoMode: false,
+        email: user?.email ?? null,
+      });
+    } catch (error) {
+      console.error("[useAuth] getUser failed:", error);
+      setState({
+        loading: false,
+        supabaseEnabled: true,
+        isAuthenticated: false,
+        isDemoMode: false,
+        email: null,
+      });
+    }
   }, []);
 
   useEffect(() => {

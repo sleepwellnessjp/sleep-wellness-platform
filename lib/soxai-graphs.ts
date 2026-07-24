@@ -269,10 +269,10 @@ export function enrichMetricsFromGraphs(
         : String(next[key] ?? "").trim();
     if (current) return;
 
-    const match =
-      panel.annotations.find((a) =>
-        preferLabels.test(a.label.normalize("NFKC")),
-      ) ?? panel.annotations[0];
+    // 明示ラベル一致のみ（先頭注釈へのフォールバックは推測になるため禁止）
+    const match = panel.annotations.find((a) =>
+      preferLabels.test(a.label.normalize("NFKC")),
+    );
     if (match?.value.trim()) {
       if (key === "sleepScore") {
         const n = parseNumber(match.value);
@@ -295,48 +295,25 @@ export function enrichMetricsFromGraphs(
   );
   applyAnnotation("circadian", "circadianRhythm", /位相|体内|circadian/i);
 
-  // 皮膚温度パネル: annotations が弱い場合、±値っぽい最初の注釈を拾う
+  // 皮膚温度パネル: 明示ラベル付きの ±値のみ（最初の数値注釈への推測補完はしない）
   if (!String(next.skinTemperature ?? "").trim()) {
     const panel = bundle["skin-temp"];
     if (panel?.annotations.length) {
-      const deltaLike = panel.annotations.find((a) =>
-        /^[+-]?\s*\d+(\.\d+)?/.test(a.value.normalize("NFKC").trim()),
-      );
-      if (deltaLike?.value.trim()) {
-        next.skinTemperature = deltaLike.value.trim();
+      const labeled = panel.annotations.find((a) => {
+        const label = a.label.normalize("NFKC");
+        const value = a.value.normalize("NFKC").trim();
+        return (
+          /皮膚|体表|温度|偏差|平均|現在|avg|delta|temp/i.test(label) &&
+          /^[+-]?\s*\d+(\.\d+)?/.test(value)
+        );
+      });
+      if (labeled?.value.trim()) {
+        next.skinTemperature = labeled.value.trim();
       }
     }
   }
 
-  // segments から stage rates を補完
-  const stages = bundle.stages;
-  if (stages?.segments.length) {
-    const totals: Record<SleepStageSegment["stage"], number> = {
-      awake: 0,
-      rem: 0,
-      light: 0,
-      deep: 0,
-    };
-    for (const seg of stages.segments) {
-      totals[seg.stage] += seg.ratio ?? 1;
-    }
-    const sum = totals.awake + totals.rem + totals.light + totals.deep;
-    if (sum > 0) {
-      const pct = (v: number) => `${Math.round((v / sum) * 100)}%`;
-      if (!next.awakeningRate.trim() && totals.awake > 0) {
-        next.awakeningRate = pct(totals.awake);
-      }
-      if (!next.remSleepRate.trim() && totals.rem > 0) {
-        next.remSleepRate = pct(totals.rem);
-      }
-      if (!next.lightSleepRate.trim() && totals.light > 0) {
-        next.lightSleepRate = pct(totals.light);
-      }
-      if (!next.deepSleepRate.trim() && totals.deep > 0) {
-        next.deepSleepRate = pct(totals.deep);
-      }
-    }
-  }
+  // segments からの割合推測は行わない（明示 OCR のみ採用）
 
   return normalizeMetrics(next);
 }
@@ -350,7 +327,7 @@ export function clamp(n: number, min: number, max: number): number {
 export function displayValue(value: string | number | null | undefined): string {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   if (typeof value === "string" && value.trim()) return value.trim();
-  return "—";
+  return "未測定";
 }
 
 export function parsePercent(text: string): number | null {
@@ -378,21 +355,54 @@ export function parseLeadingNumber(text: string): number | null {
 }
 
 export function parseDurationMinutes(text: string): number | null {
-  const t = text.trim();
+  const t = text.normalize("NFKC").trim();
   if (!t) return null;
-  const hMatch = t.match(/(-?\d+(?:\.\d+)?)\s*時間/);
-  const mMatch = t.match(/(-?\d+(?:\.\d+)?)\s*分/);
+
+  const signed = t.startsWith("-") || /^-/.test(t);
+  const absText = t.replace(/^\s*-/, "").trim();
+
+  const hMatch = absText.match(/(-?\d+(?:\.\d+)?)\s*時間/);
+  const mMatch = absText.match(/(-?\d+(?:\.\d+)?)\s*分/);
   if (hMatch || mMatch) {
     const hours = hMatch ? Number(hMatch[1]) : 0;
     const minutes = mMatch ? Number(mMatch[1]) : 0;
     const total = hours * 60 + minutes;
-    return Number.isFinite(total) ? total : null;
+    if (!Number.isFinite(total)) return null;
+    return signed ? -Math.abs(total) : total;
   }
-  const hm = t.match(/^(\d{1,2}):(\d{2})$/);
+
+  // 「1:15」「0:49」「6:22」→ 時間:分（時計ではなく経過時間）
+  const hm = absText.match(/^(\d{1,2})\s*[:：]\s*(\d{2})$/);
   if (hm) {
-    const total = Number(hm[1]) * 60 + Number(hm[2]);
-    return Number.isFinite(total) ? total : null;
+    const hours = Number(hm[1]);
+    const minutes = Number(hm[2]);
+    if (
+      Number.isFinite(hours) &&
+      Number.isFinite(minutes) &&
+      minutes >= 0 &&
+      minutes <= 59 &&
+      hours >= 0 &&
+      hours <= 23
+    ) {
+      const total = hours * 60 + minutes;
+      return signed ? -total : total;
+    }
   }
+
+  // 「75分」のみは上の mMatch で処理済み。「1h15m」
+  const en = absText.match(
+    /^(\d+)\s*(?:h|hr|hrs|hour|hours)\s*(\d+)?\s*(?:m|min|mins|minute|minutes)?$/i,
+  );
+  if (en) {
+    const hours = Number(en[1]);
+    const minutes = en[2] ? Number(en[2]) : 0;
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      const total = hours * 60 + minutes;
+      return signed ? -total : total;
+    }
+  }
+
+  // 単位の「分」表記ゆれなし（例: 12）は duration としては扱わない
   return null;
 }
 

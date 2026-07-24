@@ -17,8 +17,10 @@
 | スリープコーチ | Sleep Coach | Sleep Coach | Sleep Coach | 現状ルールベース。GPT 未配線 |
 | ジャーニー | Sleep Wellness Journey | Sleep Wellness Journey | Journey / Sleep Wellness Journey | 改善の物語。ルールベース |
 | インストラクターインサイト | Instructor Insight | Instructor Insight | AI Instructor Insight（現行 UI） | **外部 AI ではない**（ルール）。表記見直し候補 |
-| おすすめ行動（当日） | Today's Recommendations | todaysRecommendations | 今日のおすすめ | AI 分析出力 |
-| AI 宿題 | Recommendations Until Next | recommendationsUntilNext | AI宿題 / 次回までの行動 | AI 生成・編集・チェック可 |
+| AI カルテ / インサイト | Sleep Wellness Insight | Sleep Wellness Insight | Sleep Wellness Insight | 旧称 AIカルテ。最重要課題／判断根拠／最効果行動 |
+| おすすめ行動（当日） | Today's Recommendations | todaysRecommendations | 今日やる3つ | AI 分析出力（当日専用・完全個別化） |
+| AI 宿題 | Recommendations Until Next | recommendationsUntilNext | AI宿題（優先順位付き） | AI 生成・編集・チェック可（4〜6件） |
+| 講師への提案 | Instructor Counseling | instructorCounseling | AIから講師への提案 | 重点ヒアリング／次回比較／生活習慣確認／改善見込み／観察 |
 | 宿題 | Homework | client_homeworks | 宿題 | 講師が付与する宿題（AI宿題と区別） |
 | 達成率 | Achievement Rate / Completion Rate | 達成率 | 達成率 | AI宿題チェックまたは宿題完了率 |
 | 継続日数 | Streak | streakDays | 継続日数 | 宿題ストリーク等。定義が複数あるため文脈明示 |

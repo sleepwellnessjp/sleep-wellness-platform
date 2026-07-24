@@ -132,6 +132,7 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
         todaysRecommendations: [],
         nextComparisonPoints: [],
         recommendationsUntilNext: [],
+        instructorSuggestions: [],
         score: 0,
         scoreBreakdown: {
           sleepDuration: 3,

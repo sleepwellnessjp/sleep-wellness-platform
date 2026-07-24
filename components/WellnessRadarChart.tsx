@@ -48,7 +48,7 @@ function polygonPoints(
 
 export default function WellnessRadarChart({
   scores,
-  size = 280,
+  size = 320,
 }: {
   scores: WellnessCategoryScores;
   size?: number;
@@ -56,15 +56,15 @@ export default function WellnessRadarChart({
   const values = CATEGORY_ORDER.map((key) => scores[key]);
   const cx = size / 2;
   const cy = size / 2;
-  const radius = size * 0.32;
-  const labelRadius = size * 0.42;
+  const radius = size * 0.34;
+  const labelRadius = size * 0.44;
   const rings = [0.25, 0.5, 0.75, 1];
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0 shrink">
       <svg
         viewBox={`0 0 ${size} ${size}`}
-        className="mx-auto h-auto w-full max-w-[300px]"
+        className="mx-auto h-auto w-full max-w-[280px] sm:max-w-[340px]"
         role="img"
         aria-label="睡眠ウェルネススコア カテゴリーレーダー"
       >

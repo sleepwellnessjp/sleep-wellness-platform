@@ -25,9 +25,13 @@ import type {
   ActivityLogCategory,
   AdminAcademyCredentialRow,
   AdminAcademyOverview,
+  AdminAlertItem,
   AdminAnalyticsOverview,
   AdminClientRow,
+  AdminDailyMetricPoint,
   AdminDashboardStats,
+  AdminHqDashboard,
+  AdminHqInstructorPreview,
   AdminInstructorRow,
   AdminLogBundle,
   MonthlyAnalysisPoint,
@@ -37,6 +41,9 @@ import type {
 
 const ACTIVE_WINDOW_DAYS = 45;
 const RENEWAL_WINDOW_DAYS = 90;
+const INACTIVE_INSTRUCTOR_DAYS = 30;
+const LOW_ANALYSIS_THRESHOLD = 2;
+const PLATFORM_ANALYTICS_DAYS = 14;
 
 function daysBetween(fromIso: string, to = new Date()): number {
   const from = new Date(`${fromIso.slice(0, 10)}T00:00:00`);
@@ -62,6 +69,39 @@ function round1(n: number): number {
 function yearMonthLabel(ym: string): string {
   const [y, m] = ym.split("-");
   return `${y}/${Number(m)}`;
+}
+
+function tokyoDayKey(date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function shiftTokyoDay(dayKey: string, delta: number): string {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + delta));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
+function tokyoDayStartIso(dayKey: string): string {
+  return new Date(`${dayKey}T00:00:00+09:00`).toISOString();
+}
+
+function dayLabel(dayKey: string): string {
+  const [, m, d] = dayKey.split("-");
+  return `${Number(m)}/${Number(d)}`;
+}
+
+function usageLabelForInstructor(item: AdminInstructorRow): string {
+  const parts = [
+    `今月 ${item.analysesThisMonth} 分析`,
+    `累計 ${item.analysisCount}`,
+    `残クレジット ${item.remainingCredits}`,
+  ];
+  return parts.join(" · ");
 }
 
 function shiftYearMonth(ym: string, delta: number): string {
@@ -118,6 +158,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     scoreRows,
     newClients,
     clientRows,
+    reportsCount,
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -139,6 +180,7 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
       .select("id", { count: "exact", head: true })
       .gte("created_at", monthStart),
     supabase.from("clients").select("id, created_at, registered_at"),
+    supabase.from("reports").select("id", { count: "exact", head: true }),
   ]);
 
   const scores = (scoreRows.data ?? [])
@@ -202,7 +244,303 @@ export async function getAdminDashboardStats(): Promise<AdminDashboardStats> {
     averageSleepScore,
     newRegistrationsThisMonth: newClients.count ?? 0,
     retentionRate,
+    reportCount: reportsCount.count ?? 0,
   };
+}
+
+export async function getAdminHqDashboard(): Promise<{
+  dashboard: AdminHqDashboard;
+  stats: AdminDashboardStats;
+}> {
+  await requireAdminProfile();
+
+  const [stats, instructors, clients, analytics] = await Promise.all([
+    getAdminDashboardStats(),
+    listAdminInstructors(),
+    listAdminClients(),
+    getAdminAnalyticsOverview(),
+  ]);
+
+  const instructorPreviews: AdminHqInstructorPreview[] = instructors
+    .slice()
+    .sort((a, b) => (b.lastLoginAt ?? "").localeCompare(a.lastLoginAt ?? ""))
+    .slice(0, 12)
+    .map((item) => ({
+      id: item.id,
+      displayName: item.displayName,
+      email: item.email,
+      certificationLabel: item.certificationLabel,
+      registeredAt: item.createdAt.slice(0, 10),
+      clientCount: item.clientCount,
+      lastLoginAt: item.lastLoginAt,
+      usageLabel: usageLabelForInstructor(item),
+      statusLabel: item.statusLabel,
+      analysesThisMonth: item.analysesThisMonth,
+      analysisCount: item.analysisCount,
+    }));
+
+  const latestAnalysisAt =
+    clients
+      .map((item) => item.lastAnalysisAt)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+  const platformAnalytics = await getAdminPlatformAnalytics();
+  const alerts = await appendErrorAlerts(
+    buildAdminAlerts(instructors, clients),
+  );
+
+  return {
+    stats,
+    dashboard: {
+      overview: {
+        instructorCount: stats.instructorCount,
+        clientCount: stats.clientCount,
+        analysisCount: stats.totalAnalyses,
+        reportCount: stats.reportCount,
+        newRegistrationsThisMonth: stats.newRegistrationsThisMonth,
+      },
+      instructors: instructorPreviews,
+      clientStats: {
+        clientCount: stats.clientCount,
+        averageSleepScore: stats.averageSleepScore,
+        improvementRate: analytics.improvementRate,
+        retentionRate: stats.retentionRate,
+        latestAnalysisAt,
+      },
+      platformAnalytics,
+      alerts,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function getAdminPlatformAnalytics(): Promise<AdminHqDashboard["platformAnalytics"]> {
+  const supabase = await createServerSupabaseClient();
+  const today = tokyoDayKey();
+  const startDay = shiftTokyoDay(today, -(PLATFORM_ANALYTICS_DAYS - 1));
+  const startIso = tokyoDayStartIso(startDay);
+
+  const emptyDaily: AdminDailyMetricPoint[] = Array.from(
+    { length: PLATFORM_ANALYTICS_DAYS },
+    (_, index) => {
+      const date = shiftTokyoDay(startDay, index);
+      return {
+        date,
+        label: dayLabel(date),
+        activeUsers: 0,
+        analyses: 0,
+        homeworkSent: 0,
+        journeyUpdates: 0,
+      };
+    },
+  );
+
+  if (!supabase) {
+    return {
+      daily: emptyDaily,
+      homeworkSentPeriod: 0,
+      journeyUpdatesPeriod: 0,
+      analysesPeriod: 0,
+      activeUsersPeriod: 0,
+    };
+  }
+
+  const [
+    { data: analyses },
+    { data: homeworks },
+    { data: journeys },
+    { data: activity },
+  ] = await Promise.all([
+    supabase
+      .from("analyses")
+      .select("id, created_at")
+      .gte("created_at", startIso)
+      .limit(5000),
+    supabase
+      .from("client_homeworks")
+      .select("id, created_at")
+      .gte("created_at", startIso)
+      .limit(5000),
+    supabase
+      .from("sleep_journeys")
+      .select("id, created_at")
+      .gte("created_at", startIso)
+      .limit(5000),
+    supabase
+      .from("system_activity_logs")
+      .select("id, actor_id, created_at, category, action")
+      .gte("created_at", startIso)
+      .limit(5000),
+  ]);
+
+  const byDay = new Map(
+    emptyDaily.map((point) => [point.date, { ...point }]),
+  );
+  const activeUsersByDay = new Map<string, Set<string>>();
+
+  const bump = (
+    iso: string,
+    key: "analyses" | "homeworkSent" | "journeyUpdates",
+  ) => {
+    const day = tokyoDayKey(new Date(iso));
+    const bucket = byDay.get(day);
+    if (!bucket) return;
+    bucket[key] += 1;
+  };
+
+  for (const row of analyses ?? []) {
+    bump(String((row as { created_at: string }).created_at), "analyses");
+  }
+  for (const row of homeworks ?? []) {
+    bump(String((row as { created_at: string }).created_at), "homeworkSent");
+  }
+  for (const row of journeys ?? []) {
+    bump(String((row as { created_at: string }).created_at), "journeyUpdates");
+  }
+  for (const row of activity ?? []) {
+    const r = row as {
+      actor_id: string | null;
+      created_at: string;
+    };
+    if (!r.actor_id) continue;
+    const day = tokyoDayKey(new Date(r.created_at));
+    if (!byDay.has(day)) continue;
+    const set = activeUsersByDay.get(day) ?? new Set<string>();
+    set.add(r.actor_id);
+    activeUsersByDay.set(day, set);
+  }
+
+  const daily = [...byDay.values()].map((point) => ({
+    ...point,
+    activeUsers: activeUsersByDay.get(point.date)?.size ?? 0,
+  }));
+
+  const uniqueActors = new Set<string>();
+  for (const set of activeUsersByDay.values()) {
+    for (const id of set) uniqueActors.add(id);
+  }
+
+  return {
+    daily,
+    homeworkSentPeriod: daily.reduce((sum, item) => sum + item.homeworkSent, 0),
+    journeyUpdatesPeriod: daily.reduce(
+      (sum, item) => sum + item.journeyUpdates,
+      0,
+    ),
+    analysesPeriod: daily.reduce((sum, item) => sum + item.analyses, 0),
+    activeUsersPeriod: uniqueActors.size,
+  };
+}
+
+function buildAdminAlerts(
+  instructors: AdminInstructorRow[],
+  clients: AdminClientRow[],
+): AdminAlertItem[] {
+  const alerts: AdminAlertItem[] = [];
+
+  const inactive = instructors.filter((item) => {
+    if (item.status === "suspended" || item.status === "expired") return false;
+    if (!item.lastLoginAt) {
+      return daysBetween(item.createdAt) >= INACTIVE_INSTRUCTOR_DAYS;
+    }
+    return daysBetween(item.lastLoginAt) >= INACTIVE_INSTRUCTOR_DAYS;
+  });
+  if (inactive.length > 0) {
+    const names = inactive
+      .slice(0, 3)
+      .map((item) => item.displayName ?? item.email ?? "—")
+      .join("、");
+    alerts.push({
+      id: "inactive-instructors",
+      kind: "inactive_instructor",
+      severity: "warning",
+      title: "30日以上利用していない認定講師",
+      detail: `${inactive.length}名（例: ${names}${inactive.length > 3 ? " ほか" : ""}）`,
+      href: "/admin/instructors",
+      count: inactive.length,
+    });
+  }
+
+  const lowAnalysis = instructors.filter((item) => {
+    if (item.status !== "active" && item.status != null) return false;
+    if (item.clientCount <= 0) return false;
+    return item.analysesThisMonth < LOW_ANALYSIS_THRESHOLD;
+  });
+  if (lowAnalysis.length > 0) {
+    const names = lowAnalysis
+      .slice(0, 3)
+      .map((item) => item.displayName ?? item.email ?? "—")
+      .join("、");
+    alerts.push({
+      id: "low-analysis-instructors",
+      kind: "low_analysis_instructor",
+      severity: "caution",
+      title: "分析件数が少ない講師",
+      detail: `今月 ${LOW_ANALYSIS_THRESHOLD}件未満が ${lowAnalysis.length}名（例: ${names}${lowAnalysis.length > 3 ? " ほか" : ""}）`,
+      href: "/admin/instructors",
+      count: lowAnalysis.length,
+    });
+  }
+
+  const insufficient = clients.filter(
+    (item) => item.analysisCount === 0 || item.sleepWellnessScore == null,
+  );
+  if (insufficient.length > 0) {
+    alerts.push({
+      id: "insufficient-client-data",
+      kind: "insufficient_client_data",
+      severity: "caution",
+      title: "データ不足のクライアント",
+      detail: `分析未実施または Score 未計測が ${insufficient.length}名`,
+      href: "/admin/clients",
+      count: insufficient.length,
+    });
+  }
+
+  return alerts;
+}
+
+async function appendErrorAlerts(
+  alerts: AdminAlertItem[],
+): Promise<AdminAlertItem[]> {
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) return alerts;
+
+  const since = tokyoDayStartIso(shiftTokyoDay(tokyoDayKey(), -7));
+  const { data } = await supabase
+    .from("system_activity_logs")
+    .select("id, action, summary, created_at")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const errorRows = (data ?? []).filter((row) => {
+    const r = row as { action: string; summary: string };
+    const haystack = `${r.action} ${r.summary}`.toLowerCase();
+    return (
+      haystack.includes("error") ||
+      haystack.includes("fail") ||
+      r.summary.includes("失敗") ||
+      r.summary.includes("エラー")
+    );
+  });
+
+  if (errorRows.length === 0) return alerts;
+
+  const latest = errorRows[0] as { summary: string; action: string };
+  return [
+    ...alerts,
+    {
+      id: "recent-errors",
+      kind: "error",
+      severity: "critical",
+      title: "エラー発生状況",
+      detail: `直近7日で ${errorRows.length}件（最新: ${latest.summary || latest.action}）`,
+      href: "/admin/logs",
+      count: errorRows.length,
+    },
+  ];
 }
 
 export async function listAdminInstructors(): Promise<AdminInstructorRow[]> {

@@ -29,15 +29,15 @@ function SectionLabel({
   eyebrow: string;
 }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between gap-3">
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
       <h2
-        className="text-base font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
+        className="min-w-0 break-words text-[15px] font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
         style={{ color: NAVY }}
       >
         {title}
       </h2>
       <p
-        className="text-[10px] font-semibold tracking-[0.22em]"
+        className="shrink-0 text-[10px] font-semibold tracking-[0.22em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
@@ -92,7 +92,7 @@ type Props = {
     goals: NextActionGoal[],
     achievement: HomeworkAchievement,
   ) => void;
-  /** 省略時は分析レポート向けの「⑧ AI宿題」 */
+  /** 省略時は分析レポート向けの「⑥ AI宿題」 */
   title?: string;
   eyebrow?: string;
   /** true のとき外側 Section 内に埋め込む（枠・見出しを控えめに） */
@@ -103,16 +103,16 @@ type Props = {
 };
 
 /**
- * ⑧ AI宿題（次回までの行動目標）
- * AI生成 3〜5件 / チェックボックス / 達成率保存 / 認定講師が編集
+ * ⑥ AI宿題（次回までの行動目標）
+ * AI生成 4〜6件 / チェックボックス / 達成率保存 / 認定講師が編集
  */
 export default function RecommendationsUntilNextCard({
   result,
   onUpdated,
-  title = "⑧ AI宿題",
+  title = "⑥ AI宿題",
   eyebrow = "HOMEWORK",
   embedded = false,
-  description = "AI分析から自動生成した、次回までの行動目標です。達成したらチェックを入れてください。達成率はカルテに保存され、次回分析で比較表示されます。",
+  description = "次回の分析までに取り組む宿題です（今日／今週／継続）。できたものからチェックを入れてください。達成率はカルテに保存され、次回の比較に使われます。",
   allowEdit = true,
 }: Props) {
   const { success, error: toastError } = useToast();
@@ -135,8 +135,8 @@ export default function RecommendationsUntilNextCard({
 
   const displayItems = editing ? draft : goals;
   const achievement = computeHomeworkAchievement(displayItems);
-  const canAdd = draft.length < 5;
-  const canRemove = draft.length > 3;
+  const canAdd = draft.length < 6;
+  const canRemove = draft.length > 4;
 
   const persist = async (nextGoals: NextActionGoal[]) => {
     const analysisId = result.analysisId?.trim();
@@ -215,6 +215,7 @@ export default function RecommendationsUntilNextCard({
             { id: createGoalId(), text: "", checked: false },
             { id: createGoalId(), text: "", checked: false },
             { id: createGoalId(), text: "", checked: false },
+            { id: createGoalId(), text: "", checked: false },
           ];
     setDraft(base);
     setEditing(true);
@@ -233,8 +234,8 @@ export default function RecommendationsUntilNextCard({
       .map((item) => ({ ...item, text: item.text.trim() }))
       .filter((item) => item.text.length > 0);
 
-    if (trimmed.length < 3 || trimmed.length > 5) {
-      setError("AI宿題は3〜5件にしてください。");
+    if (trimmed.length < 4 || trimmed.length > 6) {
+      setError("AI宿題は4〜6件にしてください。");
       return;
     }
 
@@ -269,7 +270,7 @@ export default function RecommendationsUntilNextCard({
       {embedded ? null : <SectionLabel title={title} eyebrow={eyebrow} />}
       {description ? (
         <p
-          className={`mb-3 text-[13px] leading-6 text-slate-500 ${
+          className={`mb-3 break-words text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6 ${
             embedded ? "mt-0" : ""
           }`}
         >
@@ -280,7 +281,7 @@ export default function RecommendationsUntilNextCard({
       <AchievementRateBar achievement={achievement} />
 
       {displayItems.length === 0 ? (
-        <p className="text-[15px] leading-7 text-slate-400">—</p>
+        <p className="text-[15px] leading-7 text-slate-400">今後対応</p>
       ) : (
         <ul className="space-y-2.5">
           {displayItems.map((item, index) => (
@@ -298,7 +299,7 @@ export default function RecommendationsUntilNextCard({
                   checked={item.checked}
                   onChange={() => void toggleChecked(item.id)}
                   disabled={saving}
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 text-[#315f68] focus:ring-[#315f68]/20"
+                  className="mt-0.5 h-[1.25rem] w-[1.25rem] shrink-0 rounded border-slate-300 text-[#315f68] focus:ring-[#315f68]/20"
                   aria-label={`AI宿題${index + 1}を達成済みにする`}
                 />
                 {editing ? (
@@ -309,7 +310,7 @@ export default function RecommendationsUntilNextCard({
                       updateText(item.id, event.target.value)
                     }
                     maxLength={60}
-                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[15px] leading-6 text-slate-700 outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15"
+                    className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[16px] leading-6 text-slate-700 outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15 sm:min-h-0 sm:text-[15px]"
                     placeholder="行動目標を入力"
                   />
                 ) : (
@@ -329,7 +330,7 @@ export default function RecommendationsUntilNextCard({
                 <button
                   type="button"
                   onClick={() => removeGoal(item.id)}
-                  className="no-print shrink-0 pt-1 text-[12px] font-medium text-slate-400 transition hover:text-rose-600"
+                  className="no-print inline-flex min-h-11 shrink-0 items-center px-1 pt-0.5 text-[12px] font-medium text-slate-400 transition active:text-rose-600 sm:min-h-0 sm:pt-1 sm:hover:text-rose-600 sm:active:text-slate-400"
                   aria-label={`${item.text || "項目"}を削除`}
                 >
                   削除
@@ -348,7 +349,7 @@ export default function RecommendationsUntilNextCard({
                 <button
                   type="button"
                   onClick={addGoal}
-                  className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold transition hover:bg-slate-50"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
                   style={{ color: NAVY }}
                 >
                   ＋ 目標を追加
@@ -358,7 +359,7 @@ export default function RecommendationsUntilNextCard({
                 type="button"
                 onClick={() => void saveEdit()}
                 disabled={saving}
-                className="inline-flex min-h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white transition active:opacity-90 disabled:opacity-60 sm:min-h-10 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
                 style={{ backgroundColor: NAVY }}
               >
                 {saving ? "保存中…" : "保存する"}
@@ -367,7 +368,7 @@ export default function RecommendationsUntilNextCard({
                 type="button"
                 onClick={cancelEdit}
                 disabled={saving}
-                className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold text-slate-600 transition active:bg-slate-50 sm:min-h-10 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
               >
                 キャンセル
               </button>
@@ -376,7 +377,7 @@ export default function RecommendationsUntilNextCard({
             <button
               type="button"
               onClick={startEdit}
-              className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold transition hover:bg-slate-50"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-[13px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:w-auto sm:hover:bg-slate-50 sm:active:bg-transparent"
               style={{ color: NAVY }}
             >
               編集する

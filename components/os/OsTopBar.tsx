@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import OsGlobalSearch from "@/components/os/OsGlobalSearch";
 import OsNotificationCenter from "@/components/os/OsNotificationCenter";
-import { GOLD, NAVY } from "@/components/ui/tokens";
+import { FOCUS_RING, GOLD, NAVY } from "@/components/ui/tokens";
 import { useAuth } from "@/lib/auth/use-auth";
 import {
   homePathForRole,
@@ -63,7 +63,10 @@ export default function OsTopBar({
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <Link href={resolvedHome} className="flex shrink-0 items-center gap-3">
+        <Link
+          href={resolvedHome}
+          className={`flex shrink-0 items-center gap-3 rounded-xl ${FOCUS_RING}`}
+        >
           <Image
             src="/swij-logo-horizontal.png"
             alt="Sleep Wellness Institute Japan"
@@ -88,7 +91,7 @@ export default function OsTopBar({
               setNotificationsOpen(false);
               setMenuOpen(false);
             }}
-            className="inline-flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200/90 bg-white px-3 text-[12px] font-semibold text-slate-500 transition hover:bg-slate-50 sm:px-3.5"
+            className={`inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)] px-3 text-[12px] font-semibold text-[color:var(--sw-muted)] transition active:bg-[color:var(--sw-surface)] sm:min-h-10 sm:px-3.5 sm:hover:bg-[color:var(--sw-surface)] sm:active:bg-transparent ${FOCUS_RING}`}
             aria-label="全画面検索"
           >
             <span aria-hidden className="text-slate-400">
@@ -108,7 +111,7 @@ export default function OsTopBar({
                 setMenuOpen(false);
                 setSearchOpen(false);
               }}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200/90 bg-white text-slate-500 transition hover:bg-slate-50"
+              className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)] text-[color:var(--sw-muted)] transition active:bg-[color:var(--sw-surface)] sm:h-10 sm:w-10 sm:hover:bg-[color:var(--sw-surface)] sm:active:bg-transparent ${FOCUS_RING}`}
               aria-label="通知センター"
               aria-expanded={notificationsOpen}
             >
@@ -130,7 +133,7 @@ export default function OsTopBar({
                 setMenuOpen((open) => !open);
                 setNotificationsOpen(false);
               }}
-              className="inline-flex h-10 min-w-10 items-center justify-center rounded-2xl border border-slate-200/90 bg-white px-3 text-[12px] font-semibold transition hover:bg-slate-50"
+              className={`inline-flex h-11 min-w-11 items-center justify-center rounded-2xl border border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)] px-3 text-[12px] font-semibold transition active:bg-[color:var(--sw-surface)] sm:h-10 sm:min-w-10 sm:hover:bg-[color:var(--sw-surface)] sm:active:bg-transparent ${FOCUS_RING}`}
               style={{ color: NAVY }}
               aria-label="アカウントメニュー"
               aria-expanded={menuOpen}
@@ -142,10 +145,28 @@ export default function OsTopBar({
                 <p className="px-4 py-2 text-[11px] text-slate-400">
                   {isDemoMode ? "デモセッション" : email || "アカウント"}
                 </p>
+                {role === "instructor" ||
+                role === "admin" ||
+                role === "super_admin" ? (
+                  <Link
+                    href="/license"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex min-h-11 items-center px-4 text-[13px] font-medium text-slate-700 transition active:bg-slate-50 sm:min-h-0 sm:py-2.5 sm:hover:bg-slate-50 sm:active:bg-transparent"
+                  >
+                    マイライセンス
+                  </Link>
+                ) : null}
+                <Link
+                  href="/feedback"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex min-h-11 items-center px-4 text-[13px] font-medium text-slate-700 transition active:bg-slate-50 sm:min-h-0 sm:py-2.5 sm:hover:bg-slate-50 sm:active:bg-transparent"
+                >
+                  βフィードバック
+                </Link>
                 <Link
                   href="/settings"
                   onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2.5 text-[13px] font-medium text-slate-700 transition hover:bg-slate-50"
+                  className="flex min-h-11 items-center px-4 text-[13px] font-medium text-slate-700 transition active:bg-slate-50 sm:min-h-0 sm:py-2.5 sm:hover:bg-slate-50 sm:active:bg-transparent"
                 >
                   設定
                 </Link>
@@ -158,7 +179,7 @@ export default function OsTopBar({
                         window.location.href = "/login";
                       });
                     }}
-                    className="block w-full px-4 py-2.5 text-left text-[13px] font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="flex min-h-11 w-full items-center px-4 text-left text-[13px] font-medium text-slate-700 transition active:bg-slate-50 sm:min-h-0 sm:py-2.5 sm:hover:bg-slate-50 sm:active:bg-transparent"
                   >
                     ログアウト
                   </button>

@@ -32,3 +32,6 @@ comment on column public.analyses.skin_temperature_type is 'absolute=絶対温�
 comment on column public.analyses.stress_series is 'ストレス時系列（グラフ OCR）';
 comment on column public.analyses.ocr_source_images is 'OCR に使用した画像インデックス配列';
 comment on column public.analyses.ocr_confidence is '項目別 OCR 信頼度（0-1）';
+
+-- PostgREST schema cache を更新（PGRST204 防止）
+notify pgrst, 'reload schema';

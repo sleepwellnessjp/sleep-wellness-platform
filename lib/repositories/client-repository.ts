@@ -36,6 +36,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 import { DataAccessError } from "@/lib/data-access-errors";
+import { insertAnalysisWithSchemaFallback } from "@/lib/repositories/analyses-insert";
 
 export type {
   ClientListItem,
@@ -228,6 +229,7 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
         todaysRecommendations: [],
         nextComparisonPoints: [],
         recommendationsUntilNext: [],
+        instructorSuggestions: [],
         score: 0,
         scoreBreakdown: {
           sleepDuration: 3,
@@ -1431,6 +1433,7 @@ export async function saveAnalysisToRepository(
       todaysRecommendations: result.todaysRecommendations,
       nextComparisonPoints: result.nextComparisonPoints,
       recommendationsUntilNext: result.recommendationsUntilNext,
+      instructorSuggestions: result.instructorSuggestions,
       homeworkAchievement:
         result.homeworkAchievement ??
         computeHomeworkAchievement(result.recommendationsUntilNext),
@@ -1503,7 +1506,7 @@ export async function saveAnalysisToRepository(
     return [...indexes].sort((a, b) => a - b);
   })();
 
-  const insertPayload = {
+  const insertPayload: Record<string, unknown> = {
     client_id: clientId,
     owner_id: userId,
     analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
@@ -1531,6 +1534,7 @@ export async function saveAnalysisToRepository(
       extracted: extractedMetrics,
       confirmed: metrics,
       structured,
+      analysisDate,
     },
     confirmed_metrics: metrics,
     report_payload: reportPayload,
@@ -1538,73 +1542,17 @@ export async function saveAnalysisToRepository(
     credits_consumed: 0,
   };
 
-  const { data: analysisRow, error: analysisError } = await supabase
-    .from("analyses")
-    .insert(insertPayload as never)
-    .select("id")
-    .single();
-
-  if (analysisError) {
-    // confirmed_metrics / report_payload 未適用環境向けフォールバック
-    const message = analysisError.message ?? "";
-    if (
-      message.includes("confirmed_metrics") ||
-      message.includes("report_payload") ||
-      message.includes("credits_consumed")
-    ) {
-      const { data: fallbackRow, error: fallbackError } = await supabase
-        .from("analyses")
-        .insert({
-          client_id: clientId,
-          owner_id: userId,
-          analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
-          sleep_score: sleepScore,
-          sleep_duration: parseNumeric(metrics.sleepDuration),
-          sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
-          deep_sleep: parseNumeric(metrics.deepSleep),
-          awakenings: parseNumeric(metrics.awakenings),
-          sleep_latency: parseNumeric(metrics.sleepLatency),
-          spo2: parseNumeric(metrics.spo2),
-          hrv: parseNumeric(metrics.hrv),
-          resting_heart_rate: parseNumeric(metrics.restingHeartRate),
-          ocr_data: {
-            extracted: extractedMetrics,
-            confirmed: metrics,
-          },
-          ai_result: aiResultPayload,
-        })
-        .select("id")
-        .single();
-
-      if (fallbackError) {
-        throw formatSupabaseError(fallbackError, "saveAnalysis:insertAnalysisFallback");
-      }
-
-      notifyClientsUpdated();
-      const fallbackRef = {
-        clientId,
-        analysisId: (fallbackRow as { id: string }).id,
-      };
-      rememberLastSavedAnalysisRef(fallbackRef);
-      await persistBetaAnalysisSideEffects({
-        auth,
-        clientId,
-        analysisId: fallbackRef.analysisId,
-        analysisDate,
-        result,
-        metrics,
-        sleepScore,
-      });
-      return fallbackRef;
-    }
-
-    throw formatSupabaseError(analysisError, "saveAnalysis:insertAnalysis");
-  }
+  // migration 未適用 / PostgREST schema cache 未更新向けに、
+  // PGRST204（未知カラム）を検出したら該当キーを落として再試行する。
+  const analysisRow = await insertAnalysisWithSchemaFallback(
+    supabase,
+    insertPayload,
+  );
 
   notifyClientsUpdated();
   const savedRef = {
     clientId,
-    analysisId: (analysisRow as { id: string }).id,
+    analysisId: analysisRow.id,
   };
   rememberLastSavedAnalysisRef(savedRef);
   await persistBetaAnalysisSideEffects({
@@ -1690,10 +1638,18 @@ async function persistBetaAnalysisSideEffects(params: {
       todaysRecommendations: result.todaysRecommendations,
       nextComparisonPoints: result.nextComparisonPoints,
       recommendationsUntilNext: result.recommendationsUntilNext,
+      instructorSuggestions: result.instructorSuggestions,
       categoryScores: result.categoryScores,
       clientName: result.clientName,
       measurementDate: result.measurementDate,
     },
+  }).catch((sideEffectError) => {
+    // analyses 本体は保存済み。補助テーブル失敗で全体を失敗扱いにしない
+    console.error(
+      "[client-repository] saveSleepAnalysis side effect failed:",
+      sideEffectError,
+    );
+    return { id: analysisId };
   });
 
   const { saveReport } = await import(
@@ -1712,6 +1668,11 @@ async function persistBetaAnalysisSideEffects(params: {
         score: result.score,
       },
     },
+  }).catch((sideEffectError) => {
+    console.error(
+      "[client-repository] saveReport side effect failed:",
+      sideEffectError,
+    );
   });
 }
 

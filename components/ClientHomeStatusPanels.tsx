@@ -152,7 +152,7 @@ export function ClientHomeGoals({
   onUpdated,
   allowEdit = true,
   title = "AI宿題",
-  description = "AI分析から自動生成した、次回までの行動目標です。達成したらチェックを入れてください。達成率はカルテに保存されます。",
+  description = "今回の分析から自動生成した宿題です（今日／今週／継続）。達成したらチェックを入れてください。達成率はカルテに保存されます。",
 }: {
   result: AnalysisResult;
   onUpdated?: (

@@ -182,7 +182,7 @@ export default function ClientProfileConfirmView({
 
   if (!ready) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
         <p className="text-sm text-slate-400">読み込み中...</p>
       </main>
     );
@@ -190,14 +190,14 @@ export default function ClientProfileConfirmView({
 
   if (error || !profile) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5] px-5">
-        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-8 text-center">
-          <p className="text-sm text-rose-600">
+      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 pb-[max(2rem,env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 text-center sm:p-8">
+          <p className="break-words text-sm text-rose-600">
             {error ?? "プロフィールがありません"}
           </p>
           <Link
             href="/clients"
-            className="mt-6 inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3 text-white"
+            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-full px-8 py-3 text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
             一覧へ戻る
@@ -214,10 +214,10 @@ export default function ClientProfileConfirmView({
   const humidity = NUMBER_RULES.humidity;
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
       <InstructorNav eyebrow="PROFILE CONFIRM" />
 
-      <div className="mx-auto max-w-3xl space-y-5 px-5 py-8 sm:px-8 sm:py-12 lg:max-w-5xl">
+      <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-8 sm:py-12 sm:pb-12 lg:max-w-5xl">
         <header className="text-center">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
@@ -226,7 +226,7 @@ export default function ClientProfileConfirmView({
             PROFILE CONFIRM
           </p>
           <h1
-            className="mt-3 text-[1.75rem] font-semibold tracking-[-0.04em] sm:text-3xl"
+            className="mt-3 break-words text-[1.55rem] font-semibold tracking-[-0.04em] sm:text-3xl"
             style={{ color: NAVY }}
           >
             {profile.basic.fullName || name}

@@ -13,6 +13,8 @@ export type ImprovementPriorityLabel =
 export type ImprovementItem = {
   text: string;
   stars: ImprovementPriorityStars;
+  /** なぜ今それを優先するか（1文。認定講師が説明できる根拠） */
+  whyNow?: string;
 };
 
 export const IMPROVEMENT_PRIORITY_META: Record<
@@ -117,6 +119,8 @@ export function normalizeImprovements(
       text?: unknown;
       stars?: unknown;
       priority?: unknown;
+      whyNow?: unknown;
+      priorityReason?: unknown;
     };
     const rawText = typeof record.text === "string" ? record.text : "";
     const text = stripImprovementPrefix(rawText.trim());
@@ -135,7 +139,17 @@ export function normalizeImprovements(
       stars =
         LEGACY_INDEX_STARS[Math.min(index, LEGACY_INDEX_STARS.length - 1)]!;
     }
-    items.push({ text, stars });
+    const whyRaw =
+      (typeof record.whyNow === "string" && record.whyNow.trim()) ||
+      (typeof record.priorityReason === "string" &&
+        record.priorityReason.trim()) ||
+      "";
+    const whyNow = whyRaw
+      ? whyRaw.length > 120
+        ? `${whyRaw.slice(0, 119).trimEnd()}…`
+        : whyRaw
+      : undefined;
+    items.push(whyNow ? { text, stars, whyNow } : { text, stars });
   }
 
   return items

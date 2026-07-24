@@ -47,12 +47,12 @@ export default function ProfileCompletionCard({
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_16px_48px_-40px_rgba(15,23,42,0.28)]">
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
-        <div className="grid gap-5 sm:grid-cols-2 sm:gap-6">
+      <div className="px-4 py-4 sm:px-6 sm:py-6">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
           {/* プロフィール完成率 */}
           <div>
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p
                   className="text-[11px] font-semibold tracking-[0.22em]"
                   style={{ color: GOLD }}
@@ -67,7 +67,7 @@ export default function ProfileCompletionCard({
                 </h2>
               </div>
               <p
-                className="text-[1.75rem] font-semibold tracking-[-0.05em] sm:text-[2rem]"
+                className="shrink-0 text-[1.6rem] font-semibold tracking-[-0.05em] sm:text-[2rem]"
                 style={{ color: NAVY }}
                 aria-label={`${completion.percent}パーセント`}
               >
@@ -79,7 +79,7 @@ export default function ProfileCompletionCard({
             </div>
 
             <p
-              className="mt-3 font-mono text-[15px] leading-none tracking-[0.08em] text-[#315f68] sm:text-base"
+              className="mt-3 overflow-hidden font-mono text-[14px] leading-none tracking-[0.08em] text-[#315f68] sm:text-base"
               aria-hidden
             >
               {bar}
@@ -101,9 +101,9 @@ export default function ProfileCompletionCard({
           </div>
 
           {/* AI分析精度予測 */}
-          <div className="border-t border-slate-100 pt-5 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+          <div className="border-t border-slate-100 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <p
                   className="text-[11px] font-semibold tracking-[0.22em]"
                   style={{ color: GOLD }}
@@ -118,7 +118,7 @@ export default function ProfileCompletionCard({
                 </h2>
               </div>
               <p
-                className="text-[1.75rem] font-semibold tracking-[-0.05em] sm:text-[2rem]"
+                className="shrink-0 text-[1.6rem] font-semibold tracking-[-0.05em] sm:text-[2rem]"
                 style={{ color: NAVY }}
                 aria-label={`AI分析精度 ${accuracy.percent}パーセント`}
               >
@@ -160,10 +160,10 @@ export default function ProfileCompletionCard({
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className={`mt-5 flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition ${
+          className={`mt-4 flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition active:opacity-90 sm:mt-5 sm:min-h-0 sm:active:opacity-100 ${
             completion.missingCount > 0
-              ? "border-[#C48A2D]/30 bg-[#FFF8EC] hover:bg-[#fff3dc]"
-              : "border-slate-200 bg-[#fafaf8] hover:bg-slate-50"
+              ? "border-[#C48A2D]/30 bg-[#FFF8EC] sm:hover:bg-[#fff3dc]"
+              : "border-slate-200 bg-[#fafaf8] sm:hover:bg-slate-50"
           }`}
         >
           <span>
@@ -246,7 +246,7 @@ export default function ProfileCompletionCard({
                             <button
                               type="button"
                               onClick={() => onSelectMissing(field)}
-                              className="flex w-full items-center justify-between gap-2 rounded-xl bg-white/70 px-2.5 py-2 text-left text-[14px] font-medium text-[#C48A2D] transition hover:bg-white"
+                              className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-white/70 px-2.5 py-2 text-left text-[14px] font-medium text-[#C48A2D] transition active:bg-white sm:min-h-0 sm:hover:bg-white sm:active:bg-white/70"
                             >
                               <span>{field.label}</span>
                               <span className="text-[11px] text-[#C48A2D]/70">

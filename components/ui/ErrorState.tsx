@@ -1,5 +1,5 @@
 import Button from "./Button";
-import { DANGER, NAVY } from "./tokens";
+import { CARD_CLASS, DANGER, NAVY } from "./tokens";
 
 export type ErrorKind =
   | "network"
@@ -92,7 +92,7 @@ export default function ErrorState({
 
   return (
     <div
-      className={`rounded-[28px] border border-rose-200/80 bg-rose-50/70 text-center ${
+      className={`${CARD_CLASS} border-rose-200/80 bg-rose-50/70 text-center ${
         compact ? "px-4 py-6" : "px-6 py-10 sm:px-8"
       }`}
       role="alert"
@@ -117,8 +117,12 @@ export default function ErrorState({
         </p>
       ) : null}
       {onRetry ? (
-        <div className="mt-5">
-          <Button onClick={onRetry} size={compact ? "sm" : "md"}>
+        <div className="mt-5 flex justify-center">
+          <Button
+            onClick={onRetry}
+            size={compact ? "sm" : "md"}
+            className="w-full sm:w-auto"
+          >
             {retryLabel}
           </Button>
         </div>
