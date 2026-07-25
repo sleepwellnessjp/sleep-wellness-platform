@@ -304,48 +304,10 @@ function emailLocalPart(email: string | null | undefined): string {
   return value.split("@")[0]?.trim() ?? "";
 }
 
-type LooseQueryResult = {
-  data: Record<string, unknown> | null;
-  error: { message?: string; code?: string } | null;
-};
-
-/** 型未登録テーブル／列を安全に 1 行取得する */
-async function fetchLooseRow(
-  supabase: NonNullable<ReturnType<typeof createBrowserClient>>,
-  table: string,
-  columns: string,
-  filterColumn: string,
-  filterValue: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const query = (
-      supabase as unknown as {
-        from: (name: string) => {
-          select: (cols: string) => {
-            eq: (
-              col: string,
-              val: string,
-            ) => {
-              maybeSingle: () => Promise<LooseQueryResult>;
-            };
-          };
-        };
-      }
-    )
-      .from(table)
-      .select(columns)
-      .eq(filterColumn, filterValue);
-    const { data, error } = await query.maybeSingle();
-    if (error || !data) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * ダッシュボード挨拶用の認定講師名。
- * 優先: instructors.name → profiles.full_name → user_metadata.full_name → メール@前
+ * 優先: certified_instructors.display_name → profiles.display_name → メール@前
+ * （auth user_metadata / app_metadata には依存しない）
  */
 async function resolveDisplayName(): Promise<string> {
   if (!isSupabaseConfigured()) return "";
@@ -358,64 +320,45 @@ async function resolveDisplayName(): Promise<string> {
 
   const emailPrefix = emailLocalPart(user.email);
 
-  // 1. instructors.name
-  let instructorRow = await fetchLooseRow(
-    supabase,
-    "instructors",
-    "name",
-    "user_id",
-    user.id,
-  );
-  if (!instructorRow) {
-    instructorRow = await fetchLooseRow(
-      supabase,
-      "instructors",
-      "name",
-      "id",
-      user.id,
-    );
-  }
-  const fromInstructors = firstNonEmptyName(
-    typeof instructorRow?.name === "string" ? instructorRow.name : null,
-  );
-  if (fromInstructors) return fromInstructors;
-
-  // instructors 未適用環境: certified_instructors.display_name を講師名として参照
-  // （signup 時のメールローカル部コピーは本名ではないためスキップ）
-  const { data: certifiedRow } = await supabase
+  // 1. certified_instructors.display_name（運営レコードの正式表示名）
+  const { data: certifiedRow, error: certifiedError } = await supabase
     .from("certified_instructors")
     .select("display_name")
     .eq("user_id", user.id)
     .maybeSingle();
-  const fromCertified = firstNonEmptyName(certifiedRow?.display_name);
-  if (
-    fromCertified &&
-    fromCertified.toLowerCase() !== emailPrefix.toLowerCase()
-  ) {
-    return fromCertified;
+  if (certifiedError) {
+    console.warn(
+      "[instructor-dashboard] certified_instructors display_name:",
+      certifiedError.message,
+    );
   }
-
-  // 2. profiles.full_name
-  const profileRow = await fetchLooseRow(
-    supabase,
-    "profiles",
-    "full_name",
-    "id",
-    user.id,
+  const fromCertified = firstNonEmptyName(
+    typeof certifiedRow?.display_name === "string"
+      ? certifiedRow.display_name
+      : null,
   );
-  const fromFullName = firstNonEmptyName(
-    typeof profileRow?.full_name === "string" ? profileRow.full_name : null,
-  );
-  if (fromFullName) return fromFullName;
+  if (fromCertified) return fromCertified;
 
-  // 3. auth.users.user_metadata.full_name
-  const metadata = user.user_metadata as Record<string, unknown> | null;
-  const fromMetadata = firstNonEmptyName(
-    typeof metadata?.full_name === "string" ? metadata.full_name : null,
+  // 2. profiles.display_name
+  const { data: profileRow, error: profileError } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileError) {
+    console.warn(
+      "[instructor-dashboard] profiles display_name:",
+      profileError.message,
+    );
+  }
+  const fromProfile = firstNonEmptyName(
+    typeof profileRow?.display_name === "string"
+      ? profileRow.display_name
+      : null,
   );
-  if (fromMetadata) return fromMetadata;
+  if (fromProfile) return fromProfile;
 
-  // 4. メールアドレスの @ 前
+  // 3. auth.users.email の @ より前
   return emailPrefix;
 }
 
