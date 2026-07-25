@@ -5,6 +5,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isClientGoalCategory, isClientGoalStatus } from "./constants";
 import type {
   ClientGoalProgress,
+  ClientNotificationKind,
   ClientPortalMessage,
   ClientPortalNotification,
   ClientPortalPrefs,
@@ -325,6 +326,39 @@ export async function listMyNotifications(
   return (data ?? []).map((row) =>
     mapNotification(row as Record<string, unknown>),
   );
+}
+
+export async function createClientNotification(input: {
+  clientId: string;
+  kind: ClientNotificationKind;
+  title: string;
+  body?: string;
+  href?: string;
+}): Promise<ClientPortalNotification> {
+  const profile = await requireProfile();
+  if (profile.role === "client") {
+    throw new Error("通知の作成は認定講師のみ可能です");
+  }
+  const clientId = input.clientId.trim();
+  if (!clientId) throw new Error("クライアントが指定されていません");
+  const title = input.title.trim();
+  if (!title) throw new Error("通知タイトルを入力してください");
+
+  const supabase = await requireSupabase();
+  const { data, error } = await supabase
+    .from("client_notifications")
+    .insert({
+      client_id: clientId,
+      kind: input.kind,
+      title,
+      body: (input.body ?? "").trim(),
+      href: (input.href ?? "").trim(),
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return mapNotification(data as Record<string, unknown>);
 }
 
 export async function markNotificationRead(

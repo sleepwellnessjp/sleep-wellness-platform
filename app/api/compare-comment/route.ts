@@ -1,6 +1,13 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import {
+  generateRuleBasedCompareComments,
+  type CompareMetricRow,
+  type HealthTrend,
+} from "@/lib/comparison-engine";
 import { openaiErrorMessage } from "@/lib/openai-helpers";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,7 +19,8 @@ type MetricPayload = {
   beforeDisplay: string;
   afterDisplay: string;
   deltaDisplay: string;
-  trend: "improved" | "worsened" | "unchanged";
+  trend: HealthTrend;
+  key?: string;
 };
 
 type CompareCommentRequest = {
@@ -30,6 +38,7 @@ export type CompareCommentResponse = {
   factors: string;
   nextGuidance: string;
   aiNarrative: string;
+  source?: "ai" | "rules";
 };
 
 function asString(value: unknown, max = 400): string {
@@ -37,16 +46,58 @@ function asString(value: unknown, max = 400): string {
   return value.trim().slice(0, max);
 }
 
+function toMetricRows(metrics: MetricPayload[]): CompareMetricRow[] {
+  return metrics.map((m, index) => {
+    const trend: HealthTrend =
+      m.trend === "improved" || m.trend === "worsened" || m.trend === "unchanged"
+        ? m.trend
+        : "unchanged";
+    return {
+      key: (m.key as CompareMetricRow["key"]) || "sleepScore",
+      label: asString(m.label, 40) || `指標${index + 1}`,
+      beforeDisplay: asString(m.beforeDisplay, 40) || "—",
+      afterDisplay: asString(m.afterDisplay, 40) || "—",
+      beforeNumeric: null,
+      afterNumeric: null,
+      delta: null,
+      deltaDisplay: asString(m.deltaDisplay, 40) || "—",
+      trend,
+      arrow: trend === "improved" ? "↑" : trend === "worsened" ? "↓" : "→",
+      lowerIsBetter: false,
+      unitHint: "",
+    };
+  });
+}
+
+function rulesFallback(
+  metrics: MetricPayload[],
+  scoreDelta: number | null,
+): CompareCommentResponse {
+  const comments = generateRuleBasedCompareComments(
+    toMetricRows(metrics),
+    scoreDelta,
+  );
+  return { ...comments, source: "rules" };
+}
+
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY?.trim()) {
-    return NextResponse.json(
-      {
-        error:
-          "AIコメントAPIの設定が完了していません。OPENAI_API_KEY を設定してください。",
-        details: isDev ? "OPENAI_API_KEY is missing." : undefined,
-      },
-      { status: 503 },
-    );
+  if (isSupabaseConfigured()) {
+    const supabase = await createServerSupabaseClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "認証設定を確認してください。" },
+        { status: 503 },
+      );
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "ログインが必要です。" },
+        { status: 401 },
+      );
+    }
   }
 
   let body: CompareCommentRequest;
@@ -64,6 +115,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const scoreDelta =
+    typeof body.scoreDelta === "number" && Number.isFinite(body.scoreDelta)
+      ? body.scoreDelta
+      : null;
+
+  if (!process.env.OPENAI_API_KEY?.trim()) {
+    return NextResponse.json(rulesFallback(metrics, scoreDelta));
+  }
+
   const metricLines = metrics
     .map(
       (m) =>
@@ -78,7 +138,7 @@ export async function POST(request: Request) {
 Before日付: ${asString(body.beforeDate, 32) || "不明"}
 After日付: ${asString(body.afterDate, 32) || "不明"}
 総合評価: ${asString(body.assessment, 40) || "不明"}
-スコア差: ${body.scoreDelta == null ? "不明" : body.scoreDelta}
+スコア差: ${scoreDelta == null ? "不明" : scoreDelta}
 
 指標差分:
 ${metricLines}
@@ -111,10 +171,7 @@ ${metricLines}
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      return NextResponse.json(
-        { error: "AIコメントの解析に失敗しました。" },
-        { status: 502 },
-      );
+      return NextResponse.json(rulesFallback(metrics, scoreDelta));
     }
 
     const response: CompareCommentResponse = {
@@ -123,6 +180,7 @@ ${metricLines}
       factors: asString(parsed.factors, 800),
       nextGuidance: asString(parsed.nextGuidance, 800),
       aiNarrative: asString(parsed.aiNarrative, 1200),
+      source: "ai",
     };
 
     if (
@@ -130,21 +188,12 @@ ${metricLines}
       !response.concerns &&
       !response.aiNarrative
     ) {
-      return NextResponse.json(
-        { error: "AIコメントが空でした。" },
-        { status: 502 },
-      );
+      return NextResponse.json(rulesFallback(metrics, scoreDelta));
     }
 
     return NextResponse.json(response);
   } catch (error) {
     console.error("[api/compare-comment]", openaiErrorMessage(error));
-    return NextResponse.json(
-      {
-        error: "AIコメントの生成に失敗しました。",
-        details: isDev ? openaiErrorMessage(error) : undefined,
-      },
-      { status: 502 },
-    );
+    return NextResponse.json(rulesFallback(metrics, scoreDelta));
   }
 }

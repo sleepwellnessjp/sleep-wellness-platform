@@ -569,6 +569,25 @@ export async function createClientHomework(
     throw new Error(error?.message || "宿題の追加に失敗しました。");
   }
 
+  // Client Portal 通知（失敗しても宿題作成は成功扱い）
+  void auth.supabase
+    .from("client_notifications")
+    .insert({
+      client_id: clientId,
+      kind: "homework",
+      title: "新しい宿題が追加されました",
+      body: title,
+      href: "/client/homework",
+    })
+    .then(({ error: notifyError }) => {
+      if (notifyError) {
+        console.warn(
+          "[client-homeworks] notification skipped:",
+          notifyError.message,
+        );
+      }
+    });
+
   return mapDbRow(data as DbHomeworkRow);
 }
 

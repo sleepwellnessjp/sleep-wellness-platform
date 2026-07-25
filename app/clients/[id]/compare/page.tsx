@@ -173,6 +173,7 @@ export default function ClientComparePage() {
             assessment: comparison.assessment,
             scoreDelta: comparison.scoreDelta,
             metrics: comparison.primaryMetrics.map((row) => ({
+              key: row.key,
               label: row.label,
               beforeDisplay: row.beforeDisplay,
               afterDisplay: row.afterDisplay,
@@ -370,6 +371,68 @@ export default function ClientComparePage() {
                   </div>
                 </Section>
 
+                {comparison.metrics.filter(
+                  (row) => !PRIMARY_COMPARE_KEYS.includes(row.key),
+                ).length > 0 ? (
+                  <Section eyebrow="MORE METRICS" title="その他の指標">
+                    <div className="compare-summary-grid space-y-3">
+                      {comparison.metrics
+                        .filter(
+                          (row) => !PRIMARY_COMPARE_KEYS.includes(row.key),
+                        )
+                        .map((row) => (
+                          <div
+                            key={row.key}
+                            className="compare-summary-row grid grid-cols-1 gap-3 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center sm:gap-4 sm:px-5"
+                          >
+                            <div>
+                              <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400">
+                                Before
+                              </p>
+                              <p
+                                className="mt-1 text-base font-semibold tracking-[-0.02em]"
+                                style={{ color: NAVY }}
+                              >
+                                {row.beforeDisplay}
+                              </p>
+                            </div>
+                            <div className="hidden text-center text-slate-300 sm:block">
+                              →
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-400">
+                                After
+                              </p>
+                              <p
+                                className="mt-1 text-base font-semibold tracking-[-0.02em]"
+                                style={{ color: NAVY }}
+                              >
+                                {row.afterDisplay}
+                              </p>
+                            </div>
+                            <div className="sm:text-right">
+                              <p
+                                className="text-[13px] font-semibold tracking-[-0.01em]"
+                                style={{ color: NAVY }}
+                              >
+                                {row.label}
+                              </p>
+                              <p
+                                className="mt-1 text-lg font-semibold tracking-[-0.03em]"
+                                style={{ color: trendColor(row.trend) }}
+                              >
+                                {row.deltaDisplay}
+                                <span className="ml-1.5 text-base">
+                                  {row.arrow}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </Section>
+                ) : null}
+
                 <Section eyebrow="SUMMARY" title="指標詳細（Before → After）">
                   <div className="compare-summary-grid space-y-3">
                     {comparison.primaryMetrics.map((row) => (
@@ -472,7 +535,7 @@ export default function ClientComparePage() {
                 </Section>
 
                 <Section eyebrow="TREND" title="指標の推移（折れ線）">
-                  <div className="space-y-6">
+                  <div className="compare-charts no-print space-y-6">
                     {TREND_CHARTS.map((chart) => (
                       <MetricTrendChart
                         key={chart.key}
@@ -488,7 +551,34 @@ export default function ClientComparePage() {
                       />
                     ))}
                   </div>
-                  <p className="compare-chart-note mt-5 text-center text-[12px] text-slate-400">
+                  <div className="compare-print-table mt-4 hidden print:block">
+                    <table className="w-full border-collapse text-left text-[12px]">
+                      <thead>
+                        <tr className="border-b border-slate-200">
+                          <th className="py-2 pr-3 font-semibold">指標</th>
+                          <th className="py-2 pr-3 font-semibold">Before</th>
+                          <th className="py-2 pr-3 font-semibold">After</th>
+                          <th className="py-2 font-semibold">差分</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {comparison.metrics.map((row) => (
+                          <tr
+                            key={row.key}
+                            className="border-b border-slate-100"
+                          >
+                            <td className="py-2 pr-3">{row.label}</td>
+                            <td className="py-2 pr-3">{row.beforeDisplay}</td>
+                            <td className="py-2 pr-3">{row.afterDisplay}</td>
+                            <td className="py-2">
+                              {row.deltaDisplay} {row.arrow}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="compare-chart-note mt-5 text-center text-[12px] text-slate-400 no-print">
                     Before（灰）と After（青）を強調表示しています
                   </p>
                 </Section>
@@ -497,6 +587,9 @@ export default function ClientComparePage() {
                   <p className="text-[10px] tracking-[0.16em] text-slate-400">
                     Before: {formatDisplayDate(comparison.before.analysisDate)} ·
                     After: {formatDisplayDate(comparison.after.analysisDate)}
+                  </p>
+                  <p className="mt-3 text-[11px] leading-5 text-slate-500">
+                    本レポートは睡眠ウェルネス指導のための参考情報であり、医療診断・治療を目的としたものではありません。
                   </p>
                 </div>
               </>

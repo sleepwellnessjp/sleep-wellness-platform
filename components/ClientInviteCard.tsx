@@ -67,7 +67,7 @@ export default function ClientInviteCard({
       }
 
       setInvitation(sendJson.invitation);
-      success("招待コードを発行し、メールを送信しました（モック）");
+      success("招待コードを発行しました。リンクをコピーして共有できます");
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "招待の発行に失敗しました。";

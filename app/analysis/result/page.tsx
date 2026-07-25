@@ -676,6 +676,16 @@ export default function AnalysisResultPage() {
     };
   }, [isClient]);
 
+  useEffect(() => {
+    if (!isClient || loadingSaved || !result) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("print") !== "1") return;
+    const timer = window.setTimeout(() => {
+      window.print();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [isClient, loadingSaved, result]);
+
   if (!isClient || loadingSaved) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">

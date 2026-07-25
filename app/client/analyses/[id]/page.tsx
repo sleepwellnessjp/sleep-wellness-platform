@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import {
   ClientHomeAiComment,
   ClientHomeGoals,
@@ -36,9 +36,11 @@ function wellnessScoreOf(analysis: StoredAnalysis | null | undefined): number | 
   return null;
 }
 
-export default function ClientAnalysisDetailPage() {
+function ClientAnalysisDetailInner() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = typeof params.id === "string" ? params.id : "";
+  const autoPrint = searchParams.get("print") === "1";
   const [analysis, setAnalysis] = useState<StoredAnalysis | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [ready, setReady] = useState(false);
@@ -83,6 +85,12 @@ export default function ClientAnalysisDetailPage() {
   useEffect(() => {
     void load();
   }, [load, reloadKey]);
+
+  useEffect(() => {
+    if (!ready || !analysis || !result || !autoPrint) return;
+    const timer = window.setTimeout(() => window.print(), 400);
+    return () => window.clearTimeout(timer);
+  }, [ready, analysis, result, autoPrint]);
 
   if (!ready) {
     return (
@@ -136,15 +144,17 @@ export default function ClientAnalysisDetailPage() {
   const score = wellnessScoreOf(analysis);
 
   return (
-    <main className="min-h-screen bg-[#f7f7f5]">
-      <ClientNav />
-      <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14">
+    <main className="min-h-screen bg-[#f7f7f5] print:bg-white">
+      <div className="no-print">
+        <ClientNav />
+      </div>
+      <div className="mx-auto max-w-2xl px-5 py-10 sm:px-8 sm:py-14 print:max-w-none print:px-0 print:py-0">
         <header className="text-center">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
             style={{ color: GOLD }}
           >
-            ANALYSIS DETAIL
+            SLEEP REPORT
           </p>
           <h1
             className="mt-4 text-[1.65rem] font-semibold tracking-[-0.04em] sm:text-3xl"
@@ -166,7 +176,7 @@ export default function ClientAnalysisDetailPage() {
         </header>
 
         <div className="mt-10 space-y-6">
-          <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8">
+          <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8 print:border-slate-300 print:shadow-none">
             <p
               className="text-[10px] font-semibold tracking-[0.18em]"
               style={{ color: GOLD }}
@@ -178,7 +188,7 @@ export default function ClientAnalysisDetailPage() {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8">
+          <section className="rounded-[28px] border border-slate-200/90 bg-white px-5 py-6 sm:px-7 sm:py-8 print:border-slate-300 print:shadow-none">
             <p
               className="text-[10px] font-semibold tracking-[0.18em]"
               style={{ color: GOLD }}
@@ -192,9 +202,28 @@ export default function ClientAnalysisDetailPage() {
               <ClientHomeGoals result={result} />
             </div>
           </section>
+
+          <p className="hidden text-[11px] leading-5 text-slate-500 print:block">
+            本レポートは睡眠ウェルネス指導のための参考情報であり、医療診断・治療を目的としたものではありません。
+          </p>
         </div>
 
-        <div className="mt-10 text-center">
+        <div className="no-print mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex min-h-11 items-center justify-center rounded-full px-6 text-[14px] font-semibold text-white"
+            style={{ backgroundColor: NAVY }}
+          >
+            印刷 / PDF保存
+          </button>
+          <Link
+            href="/client/reports"
+            className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-[14px] font-semibold transition hover:bg-slate-50"
+            style={{ color: NAVY }}
+          >
+            レポート一覧へ
+          </Link>
           <Link
             href="/client"
             className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-6 text-[14px] font-semibold transition hover:bg-slate-50"
@@ -205,5 +234,20 @@ export default function ClientAnalysisDetailPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function ClientAnalysisDetailPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#f7f7f5]">
+          <ClientNav />
+          <SoftSkeleton variant="page" />
+        </main>
+      }
+    >
+      <ClientAnalysisDetailInner />
+    </Suspense>
   );
 }
