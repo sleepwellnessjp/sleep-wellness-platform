@@ -52,11 +52,16 @@ export const OCCUPATION_PRESET_TO_ATTRIBUTES: Record<string, string[]> = {
   ラーメン店の調理担当: ["standing_work", "heat_high", "humidity_high", "fire_oven"],
   中華料理店の調理担当: ["standing_work", "heat_high", "fire_oven", "smoke_exposure"],
   "サウナ、温浴施設スタッフ": ["standing_work", "heat_high", "humidity_high"],
+  ホットヨガ講師: ["standing_work", "heat_high", "humidity_high"],
+  // 旧プリセット名（既存データ互換）
   ホットヨガインストラクター: [
     "standing_work",
     "heat_high",
     "humidity_high",
   ],
+  常温ヨガ講師: ["standing_work"],
+  マットピラティス講師: ["standing_work"],
+  マシンピラティス講師: ["standing_work"],
   岩盤浴施設スタッフ: ["standing_work", "heat_high"],
   "製鉄、鋳造、溶接関係": [
     "standing_work",

@@ -50,7 +50,10 @@ export const OCCUPATION_PRESETS = [
   "ラーメン店の調理担当",
   "中華料理店の調理担当",
   "サウナ、温浴施設スタッフ",
-  "ホットヨガインストラクター",
+  "ホットヨガ講師",
+  "常温ヨガ講師",
+  "マットピラティス講師",
+  "マシンピラティス講師",
   "岩盤浴施設スタッフ",
   "製鉄、鋳造、溶接関係",
   "クリーニング工場",
@@ -66,6 +69,40 @@ export const OCCUPATION_PRESETS = [
   "無職",
   "その他",
 ] as const;
+
+/**
+ * 旧職業プリセット → 現行表示名。
+ * 既存プロフィールの互換用（保存値は読み込み時に正規化可能）。
+ */
+export const OCCUPATION_PRESET_LEGACY_TO_CURRENT: Readonly<
+  Record<string, string>
+> = {
+  ホットヨガインストラクター: "ホットヨガ講師",
+};
+
+/** 旧名称を現行プリセット名へ揃える（未知の値はそのまま） */
+export function canonicalizeOccupationPreset(
+  preset: string | null | undefined,
+): string {
+  const trimmed = String(preset ?? "").trim();
+  if (!trimmed) return "";
+  return OCCUPATION_PRESET_LEGACY_TO_CURRENT[trimmed] ?? trimmed;
+}
+
+/**
+ * 画面・レポート・PDF 向けの職業表示名。
+ * custom 優先。プリセットは旧名称も現行表記へ変換する。
+ */
+export function formatOccupationLabel(
+  occupationCustom?: string | null,
+  occupationPreset?: string | null,
+): string {
+  const custom = String(occupationCustom ?? "").trim();
+  if (custom) return canonicalizeOccupationPreset(custom);
+  const preset = String(occupationPreset ?? "").trim();
+  if (!preset || preset === "その他") return "";
+  return canonicalizeOccupationPreset(preset);
+}
 
 export const WORK_STYLE_OPTIONS = [
   "日勤",

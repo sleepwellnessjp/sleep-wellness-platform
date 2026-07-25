@@ -12,7 +12,10 @@ import {
   PROFILE_SECTION_TITLES,
   type ProfileLabelKey,
 } from "@/lib/client-profiles/labels";
-import type { ClientProfileSections } from "@/lib/client-profiles/types";
+import {
+  formatOccupationLabel,
+  type ClientProfileSections,
+} from "@/lib/client-profiles/types";
 import { NUMBER_RULES } from "@/lib/client-profiles/validation";
 
 /** ウィザードのステップ ID（未入力クリック時の遷移用） */
@@ -130,7 +133,8 @@ export const PROFILE_COMPLETION_FIELDS: ProfileCompletionField[] = [
     label: PROFILE_LABELS.occupation,
     stepId: "work",
     sectionTitle: PROFILE_SECTION_TITLES.work,
-    getValue: (s) => s.work.occupationCustom || s.work.occupationPreset,
+    getValue: (s) =>
+      formatOccupationLabel(s.work.occupationCustom, s.work.occupationPreset),
   },
   {
     key: "workStyle",
