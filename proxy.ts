@@ -18,12 +18,10 @@ import {
 
 /**
  * 未認証でもアクセス可能なパス。
- * プロダクト方針: トップ（/）のみ公開。ログイン・OAuth・権限エラーは認証インフラとして許可。
+ * /login と OAuth コールバックのみ公開。それ以外のページはログイン必須。
  */
 function isPublicPath(pathname: string): boolean {
-  if (pathname === "/") return true;
   if (pathname === "/login") return true;
-  if (pathname === "/forbidden") return true;
   if (pathname.startsWith("/auth/")) return true;
   return false;
 }
@@ -32,9 +30,20 @@ function isApiPath(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-/** ページは公開以外すべて認証必須（新規ルートもデフォルトで保護） */
+/** ページは /login・/auth 以外すべて認証必須 */
 function requiresAuth(pathname: string): boolean {
   return !isApiPath(pathname) && !isPublicPath(pathname);
+}
+
+function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+  if (pathname !== "/login") {
+    const redirectTarget = `${pathname}${request.nextUrl.search}`;
+    loginUrl.searchParams.set("redirect", redirectTarget);
+  }
+  return NextResponse.redirect(loginUrl);
 }
 
 function needsApiSessionRefresh(pathname: string): boolean {
@@ -64,11 +73,15 @@ function needsSessionRefresh(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // 本番で Supabase 未設定の場合も未ログイン扱いでガードを維持する
   if (!isSupabaseConfigured()) {
+    if (requiresAuth(pathname)) {
+      return redirectToLogin(request, pathname);
+    }
     return NextResponse.next();
   }
-
-  const { pathname } = request.nextUrl;
 
   if (!needsSessionRefresh(pathname)) {
     return NextResponse.next();
@@ -77,6 +90,9 @@ export async function proxy(request: NextRequest) {
   const supabaseUrl = getSupabaseUrl();
   const supabaseKey = getSupabaseAnonKey();
   if (!supabaseUrl || !supabaseKey) {
+    if (requiresAuth(pathname)) {
+      return redirectToLogin(request, pathname);
+    }
     return NextResponse.next();
   }
 
@@ -104,11 +120,7 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user && requiresAuth(pathname)) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    const redirectTarget = `${pathname}${request.nextUrl.search}`;
-    loginUrl.searchParams.set("redirect", redirectTarget);
-    return NextResponse.redirect(loginUrl);
+    return redirectToLogin(request, pathname);
   }
 
   if (user && requiresAuth(pathname)) {
