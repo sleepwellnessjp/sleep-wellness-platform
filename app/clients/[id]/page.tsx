@@ -221,6 +221,7 @@ export default function ClientDetailPage() {
 
   const analysisHref = `/analysis/new?clientId=${encodeURIComponent(id)}`;
   const journeyHref = `/journey?clientId=${encodeURIComponent(id)}`;
+  const compareHref = `/clients/${encodeURIComponent(id)}/compare`;
   const reportHref = client?.latestAnalysisId
     ? instructorPdfReportResultHref(client.latestAnalysisId)
     : `/reports`;
@@ -410,6 +411,7 @@ export default function ClientDetailPage() {
           <SectionTitle id="quick-actions-title">Quick Actions</SectionTitle>
           <div className="mt-4 flex flex-col gap-2.5 sm:mt-6 sm:flex-row sm:flex-wrap sm:gap-3">
             <QuickAction href={analysisHref} label="睡眠分析を開始" emphasize />
+            <QuickAction href={compareHref} label="比較分析" />
             <QuickAction href={journeyHref} label="Sleep Journey" />
             <QuickAction href={reportHref} label="AIレポートを見る" />
             <QuickAction href={pdfHref} label="PDF出力" />
