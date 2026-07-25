@@ -288,6 +288,65 @@ function relativeWhenLabel(iso: string): string {
   }).format(target);
 }
 
+function firstNonEmptyName(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const candidate of candidates) {
+    const trimmed = String(candidate ?? "").trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+function emailLocalPart(email: string | null | undefined): string {
+  const value = String(email ?? "").trim();
+  if (!value || !value.includes("@")) return "";
+  return value.split("@")[0]?.trim() ?? "";
+}
+
+type LooseQueryResult = {
+  data: Record<string, unknown> | null;
+  error: { message?: string; code?: string } | null;
+};
+
+/** 型未登録テーブル／列を安全に 1 行取得する */
+async function fetchLooseRow(
+  supabase: NonNullable<ReturnType<typeof createBrowserClient>>,
+  table: string,
+  columns: string,
+  filterColumn: string,
+  filterValue: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const query = (
+      supabase as unknown as {
+        from: (name: string) => {
+          select: (cols: string) => {
+            eq: (
+              col: string,
+              val: string,
+            ) => {
+              maybeSingle: () => Promise<LooseQueryResult>;
+            };
+          };
+        };
+      }
+    )
+      .from(table)
+      .select(columns)
+      .eq(filterColumn, filterValue);
+    const { data, error } = await query.maybeSingle();
+    if (error || !data) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ダッシュボード挨拶用の認定講師名。
+ * 優先: instructors.name → profiles.full_name → user_metadata.full_name → メール@前
+ */
 async function resolveDisplayName(): Promise<string> {
   if (!isSupabaseConfigured()) return "";
   const supabase = createBrowserClient();
@@ -296,16 +355,68 @@ async function resolveDisplayName(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return "";
-  const { data } = await supabase
-    .from("profiles")
+
+  const emailPrefix = emailLocalPart(user.email);
+
+  // 1. instructors.name
+  let instructorRow = await fetchLooseRow(
+    supabase,
+    "instructors",
+    "name",
+    "user_id",
+    user.id,
+  );
+  if (!instructorRow) {
+    instructorRow = await fetchLooseRow(
+      supabase,
+      "instructors",
+      "name",
+      "id",
+      user.id,
+    );
+  }
+  const fromInstructors = firstNonEmptyName(
+    typeof instructorRow?.name === "string" ? instructorRow.name : null,
+  );
+  if (fromInstructors) return fromInstructors;
+
+  // instructors 未適用環境: certified_instructors.display_name を講師名として参照
+  // （signup 時のメールローカル部コピーは本名ではないためスキップ）
+  const { data: certifiedRow } = await supabase
+    .from("certified_instructors")
     .select("display_name")
-    .eq("id", user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
-  const name =
-    data && typeof (data as { display_name?: string | null }).display_name === "string"
-      ? (data as { display_name: string }).display_name.trim()
-      : "";
-  return name;
+  const fromCertified = firstNonEmptyName(certifiedRow?.display_name);
+  if (
+    fromCertified &&
+    fromCertified.toLowerCase() !== emailPrefix.toLowerCase()
+  ) {
+    return fromCertified;
+  }
+
+  // 2. profiles.full_name
+  const profileRow = await fetchLooseRow(
+    supabase,
+    "profiles",
+    "full_name",
+    "id",
+    user.id,
+  );
+  const fromFullName = firstNonEmptyName(
+    typeof profileRow?.full_name === "string" ? profileRow.full_name : null,
+  );
+  if (fromFullName) return fromFullName;
+
+  // 3. auth.users.user_metadata.full_name
+  const metadata = user.user_metadata as Record<string, unknown> | null;
+  const fromMetadata = firstNonEmptyName(
+    typeof metadata?.full_name === "string" ? metadata.full_name : null,
+  );
+  if (fromMetadata) return fromMetadata;
+
+  // 4. メールアドレスの @ 前
+  return emailPrefix;
 }
 
 async function nextFollowUpFor(client: StoredClient): Promise<string | null> {

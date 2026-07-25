@@ -54,8 +54,9 @@ export function formatPdfReportShortDate(value?: string | null): string {
   return `${parsed.getMonth() + 1}/${parsed.getDate()}`;
 }
 
-export function pdfReportResultHref(analysisId: string): string {
-  return `/client/analyses/${encodeURIComponent(analysisId)}`;
+export function pdfReportResultHref(analysisId: string, print = false): string {
+  const base = `/client/analyses/${encodeURIComponent(analysisId)}`;
+  return print ? `${base}?print=1` : base;
 }
 
 /** 認定講師向けの分析結果画面 */

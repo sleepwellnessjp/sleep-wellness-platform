@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import AiCounselingAssistantCard from "@/components/AiCounselingAssistantCard";
+import ClientGoalsManager from "@/components/ClientGoalsManager";
 import ClientHomeworkManager from "@/components/ClientHomeworkManager";
 import ClientInviteCard from "@/components/ClientInviteCard";
 import ClientPortalLinkCard from "@/components/ClientPortalLinkCard";
@@ -226,7 +227,7 @@ export default function ClientDetailPage() {
     ? instructorPdfReportResultHref(client.latestAnalysisId)
     : `/reports`;
   const pdfHref = client?.latestAnalysisId
-    ? instructorPdfReportResultHref(client.latestAnalysisId)
+    ? `${instructorPdfReportResultHref(client.latestAnalysisId)}&print=1`
     : analysisHref;
   const homeworkHref = `/homework?clientId=${encodeURIComponent(id)}`;
 
@@ -472,6 +473,19 @@ export default function ClientDetailPage() {
           </SectionTitle>
           <div className="mt-4 sm:mt-6">
             <ClientHomeworkManager clientId={client.id} />
+          </div>
+        </section>
+
+        {/* 目標管理（Client Portal に反映） */}
+        <section
+          className="mt-10 sm:mt-16"
+          aria-labelledby="client-goals-manager-title"
+        >
+          <SectionTitle id="client-goals-manager-title">
+            Goals（Client Portal）
+          </SectionTitle>
+          <div className="mt-4 sm:mt-6">
+            <ClientGoalsManager clientId={client.id} />
           </div>
         </section>
 

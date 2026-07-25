@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — 2026-07-25（講師/クライアント/比較/PDF）
+
+### Added
+- **比較分析**: 二次指標表示、印刷時の数値表＋免責、AIコメント API の認可とルールフォールバック
+- **Client Portal Goals**: 講師のクライアント詳細から目標を追加（`/api/client-portal/goals`）
+- **宿題メディア**: 講師フォームで動画/PDF URL を設定。宿題作成時にポータル通知を作成
+- **クライアント PDF**: 分析詳細の印刷ボタン、`?print=1` 自動印刷、レポート履歴の重複解消
+- **Settings**: 表示名・パスワードの実保存、通知設定の localStorage 永続化、ログアウト
+
 ## [Unreleased] — 2026-07-25（クライアント削除）
 
 ### Added

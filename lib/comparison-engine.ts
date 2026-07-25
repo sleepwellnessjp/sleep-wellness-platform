@@ -393,10 +393,20 @@ export function buildMetricTrendSeries(
     .filter((point): point is MetricTrendPoint => point != null);
 }
 
+/** OpenAI 未設定時・API フォールバック用のルールベース比較コメント */
+export function generateRuleBasedCompareComments(
+  metrics: CompareMetricRow[],
+  scoreDelta: number | null,
+  aiNarrative = "",
+): ComparisonComments {
+  return generateComments(metrics, scoreDelta, null, aiNarrative);
+}
+
 function generateComments(
   metrics: CompareMetricRow[],
   scoreDelta: number | null,
-  after: StoredAnalysis,
+  after: StoredAnalysis | null,
+  narrativeOverride?: string,
 ): ComparisonComments {
   const improved = metrics.filter((m) => m.trend === "improved");
   const worsened = metrics.filter((m) => m.trend === "worsened");
@@ -527,8 +537,9 @@ function generateComments(
   }
 
   const aiNarrative =
-    after.result?.comparisonNarrative?.vsPrevious?.trim() ||
-    after.result?.scoreComment?.trim() ||
+    narrativeOverride?.trim() ||
+    after?.result?.comparisonNarrative?.vsPrevious?.trim() ||
+    after?.result?.scoreComment?.trim() ||
     "";
 
   return {

@@ -18,6 +18,7 @@ import {
   sortHomeworksForInstructor,
   updateClientHomework,
   type ClientHomework,
+  type ClientHomeworkMediaType,
 } from "@/lib/repositories/client-homeworks-repository";
 
 const inputClass =
@@ -72,6 +73,9 @@ export default function ClientHomeworkManager({ clientId }: Props) {
   const [draftDescription, setDraftDescription] = useState("");
   const [draftAssigned, setDraftAssigned] = useState(defaultHomeworkAssignedDate);
   const [draftDue, setDraftDue] = useState(defaultHomeworkDueDate);
+  const [draftMediaType, setDraftMediaType] =
+    useState<ClientHomeworkMediaType>("none");
+  const [draftMediaUrl, setDraftMediaUrl] = useState("");
   const [adding, setAdding] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -79,6 +83,9 @@ export default function ClientHomeworkManager({ clientId }: Props) {
   const [editDescription, setEditDescription] = useState("");
   const [editAssigned, setEditAssigned] = useState("");
   const [editDue, setEditDue] = useState("");
+  const [editMediaType, setEditMediaType] =
+    useState<ClientHomeworkMediaType>("none");
+  const [editMediaUrl, setEditMediaUrl] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +120,8 @@ export default function ClientHomeworkManager({ clientId }: Props) {
     setEditDescription(item.description);
     setEditAssigned(item.assignedDate);
     setEditDue(item.dueDate);
+    setEditMediaType(item.mediaType ?? "none");
+    setEditMediaUrl(item.mediaUrl ?? "");
     setError(null);
   };
 
@@ -122,6 +131,8 @@ export default function ClientHomeworkManager({ clientId }: Props) {
     setEditDescription("");
     setEditAssigned("");
     setEditDue("");
+    setEditMediaType("none");
+    setEditMediaUrl("");
   };
 
   const handleAdd = async () => {
@@ -136,12 +147,16 @@ export default function ClientHomeworkManager({ clientId }: Props) {
         description: draftDescription,
         assignedDate: draftAssigned,
         dueDate: draftDue,
+        mediaType: draftMediaType,
+        mediaUrl: draftMediaType === "none" ? "" : draftMediaUrl,
       });
       setItems((current) => sortHomeworksForInstructor([...current, created]));
       setDraftTitle("");
       setDraftDescription("");
       setDraftAssigned(defaultHomeworkAssignedDate());
       setDraftDue(defaultHomeworkDueDate());
+      setDraftMediaType("none");
+      setDraftMediaUrl("");
       success("宿題を保存しました");
     } catch (err) {
       console.error("[ClientHomeworkManager] create failed:", err);
@@ -166,6 +181,8 @@ export default function ClientHomeworkManager({ clientId }: Props) {
         description: editDescription,
         assignedDate: editAssigned,
         dueDate: editDue,
+        mediaType: editMediaType,
+        mediaUrl: editMediaType === "none" ? "" : editMediaUrl,
       });
       setItems((current) =>
         sortHomeworksForInstructor(
@@ -313,6 +330,42 @@ export default function ClientHomeworkManager({ clientId }: Props) {
                         />
                       </label>
                     </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <label className="block min-w-0">
+                        <span className="text-[12px] font-semibold text-slate-500">
+                          教材タイプ
+                        </span>
+                        <select
+                          value={editMediaType}
+                          onChange={(event) =>
+                            setEditMediaType(
+                              event.target.value as ClientHomeworkMediaType,
+                            )
+                          }
+                          disabled={isBusy}
+                          className={`${inputClass} mt-1.5`}
+                        >
+                          <option value="none">なし</option>
+                          <option value="video">動画URL</option>
+                          <option value="pdf">PDF URL</option>
+                        </select>
+                      </label>
+                      <label className="block min-w-0">
+                        <span className="text-[12px] font-semibold text-slate-500">
+                          教材URL
+                        </span>
+                        <input
+                          type="url"
+                          value={editMediaUrl}
+                          onChange={(event) =>
+                            setEditMediaUrl(event.target.value)
+                          }
+                          disabled={isBusy || editMediaType === "none"}
+                          className={`${inputClass} mt-1.5`}
+                          placeholder="https://"
+                        />
+                      </label>
+                    </div>
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <button
                         type="button"
@@ -349,6 +402,19 @@ export default function ClientHomeworkManager({ clientId }: Props) {
                         {item.description ? (
                           <p className="mt-2 break-words whitespace-pre-wrap text-[14px] leading-6 text-slate-600 sm:leading-7">
                             {item.description}
+                          </p>
+                        ) : null}
+                        {item.mediaType !== "none" && item.mediaUrl ? (
+                          <p className="mt-2 text-[12px] text-slate-500">
+                            教材（{item.mediaType === "video" ? "動画" : "PDF"}）:{" "}
+                            <a
+                              href={item.mediaUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-[#315f68] underline-offset-2 hover:underline"
+                            >
+                              開く
+                            </a>
                           </p>
                         ) : null}
                         <p className="mt-2 break-words text-[12px] text-slate-400">
@@ -444,6 +510,40 @@ export default function ClientHomeworkManager({ clientId }: Props) {
                 onChange={(event) => setDraftDue(event.target.value)}
                 disabled={adding}
                 className={`${inputClass} mt-1.5`}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className="text-[12px] font-semibold text-slate-500">
+                教材タイプ
+              </span>
+              <select
+                value={draftMediaType}
+                onChange={(event) =>
+                  setDraftMediaType(
+                    event.target.value as ClientHomeworkMediaType,
+                  )
+                }
+                disabled={adding}
+                className={`${inputClass} mt-1.5`}
+              >
+                <option value="none">なし</option>
+                <option value="video">動画URL</option>
+                <option value="pdf">PDF URL</option>
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[12px] font-semibold text-slate-500">
+                教材URL
+              </span>
+              <input
+                type="url"
+                value={draftMediaUrl}
+                onChange={(event) => setDraftMediaUrl(event.target.value)}
+                disabled={adding || draftMediaType === "none"}
+                className={`${inputClass} mt-1.5`}
+                placeholder="https://"
               />
             </label>
           </div>

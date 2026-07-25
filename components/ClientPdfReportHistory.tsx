@@ -34,7 +34,14 @@ function ReportActions({
         className="inline-flex min-h-10 items-center justify-center rounded-full border border-[#071426]/12 bg-white px-4 py-2 text-[13px] font-semibold transition hover:border-[#8a6a2d]/40 hover:bg-[#faf7f1]"
         style={{ color: NAVY }}
       >
-        ダウンロード
+        詳細
+      </Link>
+      <Link
+        href={pdfReportResultHref(report.analysisId, true)}
+        className="inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+        style={{ backgroundColor: NAVY }}
+      >
+        印刷/PDF
       </Link>
 
       {onShare || report.share?.enabled ? (
