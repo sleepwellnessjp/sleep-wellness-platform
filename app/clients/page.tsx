@@ -21,6 +21,7 @@ import {
   getClientManagementList,
   type ClientManagementItem,
 } from "@/lib/client-management";
+import { deleteClient } from "@/lib/repositories/client-repository";
 
 function PlusIcon({ className }: { className?: string }) {
   return (
@@ -69,6 +70,8 @@ export default function ClientsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
   const [sleepScoreQuery, setSleepScoreQuery] = useState("");
   const [assignedDayQuery, setAssignedDayQuery] = useState("");
@@ -80,7 +83,8 @@ export default function ClientsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+
+    const load = async () => {
       try {
         const result = await getClientManagementList();
         if (!cancelled) {
@@ -98,11 +102,45 @@ export default function ClientsPage() {
       } finally {
         if (!cancelled) setReady(true);
       }
-    })();
+    };
+
+    void load();
+
+    const onClientsUpdated = () => {
+      void load();
+    };
+    window.addEventListener("swij-clients-updated", onClientsUpdated);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("swij-clients-updated", onClientsUpdated);
     };
   }, []);
+
+  const handleDeleteClient = async (client: ClientManagementItem) => {
+    if (deletingId) return;
+    const confirmed = window.confirm(
+      "このクライアントを削除しますか？\nこの操作は元に戻せません。",
+    );
+    if (!confirmed) return;
+
+    setDeletingId(client.id);
+    setActionError(null);
+    try {
+      await deleteClient(client.id);
+      setClients((current) => current.filter((item) => item.id !== client.id));
+      setTotalCount((current) => Math.max(0, current - 1));
+    } catch (error) {
+      console.error("[clients] deleteClient failed:", error);
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "クライアントの削除に失敗しました。",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredClients = useMemo(
     () =>
@@ -267,152 +305,179 @@ export default function ClientsPage() {
               kind="supabase"
               onRetry={() => window.location.reload()}
             />
-          ) : filteredClients.length === 0 ? (
-            <div
-              className="rounded-3xl border px-5 py-12 text-center sm:px-6 sm:py-16"
-              style={{ borderColor: BORDER }}
-            >
-              <p className="text-[15px] font-medium" style={{ color: NAVY }}>
-                {totalCount === 0
-                  ? "担当クライアントはまだいません"
-                  : "該当するクライアントがいません"}
-              </p>
-              <p className="mt-2 text-sm" style={{ color: MUTED }}>
-                {totalCount === 0
-                  ? "新規クライアント登録から始めましょう。"
-                  : "検索条件を変更するか、新規クライアントを登録してください。"}
-              </p>
-              {totalCount === 0 ? (
-                <Link
-                  href="/clients/new"
-                  className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:hover:opacity-90 sm:active:opacity-100"
-                  style={{ backgroundColor: NAVY }}
-                >
-                  新規クライアント登録
-                </Link>
-              ) : null}
-            </div>
           ) : (
-            <ul
-              className={`grid gap-3 sm:grid-cols-2 sm:gap-4 ${isFiltering ? "opacity-70" : "opacity-100"} transition-opacity duration-150`}
-            >
-              {pageItems.map((client) => (
-                <li key={client.id}>
-                  <article
-                    className="flex h-full flex-col rounded-3xl border bg-white p-4 transition active:bg-slate-50 sm:p-6 sm:hover:-translate-y-0.5 sm:active:bg-white"
-                    style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
-                  >
-                    <div className="flex items-start gap-3 sm:gap-4">
-                      <ClientAvatar client={client} />
-                      <div className="min-w-0 flex-1">
-                        <h3
-                          className="truncate text-[15px] font-semibold tracking-[-0.02em] sm:text-[16px]"
-                          style={{ color: NAVY }}
-                        >
-                          {client.name}
-                        </h3>
-                        <p className="mt-1 text-[12px] sm:text-[13px]" style={{ color: MUTED }}>
-                          {client.age != null ? `${client.age}歳` : "年齢未設定"}
-                          {" · "}
-                          {GENDER_LABELS[client.gender]}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p
-                          className="text-[10px] font-medium tracking-[0.12em] sm:text-[11px]"
-                          style={{ color: MUTED }}
-                        >
-                          睡眠スコア
-                        </p>
-                        <p
-                          className="mt-0.5 text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums sm:text-[1.5rem]"
-                          style={{ color: NAVY }}
-                        >
-                          {client.sleepScore ?? "—"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <dl
-                      className="mt-4 grid grid-cols-2 gap-3 border-t pt-3.5 sm:mt-5 sm:pt-4"
-                      style={{ borderColor: BORDER }}
+            <>
+              {actionError ? (
+                <p
+                  className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700 sm:mb-6"
+                  role="alert"
+                >
+                  {actionError}
+                </p>
+              ) : null}
+              {filteredClients.length === 0 ? (
+                <div
+                  className="rounded-3xl border px-5 py-12 text-center sm:px-6 sm:py-16"
+                  style={{ borderColor: BORDER }}
+                >
+                  <p className="text-[15px] font-medium" style={{ color: NAVY }}>
+                    {totalCount === 0
+                      ? "担当クライアントはまだいません"
+                      : "該当するクライアントがいません"}
+                  </p>
+                  <p className="mt-2 text-sm" style={{ color: MUTED }}>
+                    {totalCount === 0
+                      ? "新規クライアント登録から始めましょう。"
+                      : "検索条件を変更するか、新規クライアントを登録してください。"}
+                  </p>
+                  {totalCount === 0 ? (
+                    <Link
+                      href="/clients/new"
+                      className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 text-[14px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:hover:opacity-90 sm:active:opacity-100"
+                      style={{ backgroundColor: NAVY }}
                     >
-                      <div className="min-w-0">
-                        <dt
-                          className="text-[11px] font-medium tracking-[0.08em]"
-                          style={{ color: MUTED }}
-                        >
-                          前回分析日
-                        </dt>
-                        <dd
-                          className="mt-1 break-words text-[13px] font-medium"
-                          style={{ color: NAVY }}
-                        >
-                          {formatManagementDate(client.lastAnalysisDate)}
-                        </dd>
-                      </div>
-                      <div className="min-w-0">
-                        <dt
-                          className="text-[11px] font-medium tracking-[0.08em]"
-                          style={{ color: MUTED }}
-                        >
-                          次回フォロー日
-                        </dt>
-                        <dd
-                          className="mt-1 break-words text-[13px] font-medium"
-                          style={{ color: NAVY }}
-                        >
-                          {formatManagementDate(client.nextFollowUpDate)}
-                        </dd>
-                      </div>
-                    </dl>
-
-                    <div className="mt-4 sm:mt-5">
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <p
-                          className="text-[11px] font-medium tracking-[0.08em]"
-                          style={{ color: MUTED }}
-                        >
-                          Sleep Journey
-                        </p>
-                        <p
-                          className="text-[12px] font-semibold tabular-nums"
-                          style={{ color: NAVY }}
-                        >
-                          {client.journeyProgress}%
-                        </p>
-                      </div>
-                      <div
-                        className="h-1.5 overflow-hidden rounded-full bg-slate-100"
-                        role="progressbar"
-                        aria-valuenow={client.journeyProgress}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-label={`${client.name}の Sleep Journey 進捗`}
+                      新規クライアント登録
+                    </Link>
+                  ) : null}
+                </div>
+              ) : (
+                <ul
+                  className={`grid gap-3 sm:grid-cols-2 sm:gap-4 ${isFiltering ? "opacity-70" : "opacity-100"} transition-opacity duration-150`}
+                >
+                  {pageItems.map((client) => (
+                    <li key={client.id}>
+                      <article
+                        className="flex h-full flex-col rounded-3xl border bg-white p-4 transition active:bg-slate-50 sm:p-6 sm:hover:-translate-y-0.5 sm:active:bg-white"
+                        style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
                       >
-                        <div
-                          className="h-full rounded-full transition-[width] duration-500"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, client.journeyProgress))}%`,
-                            backgroundColor: NAVY,
-                          }}
-                        />
-                      </div>
-                    </div>
+                        <div className="flex items-start gap-3 sm:gap-4">
+                          <ClientAvatar client={client} />
+                          <div className="min-w-0 flex-1">
+                            <h3
+                              className="truncate text-[15px] font-semibold tracking-[-0.02em] sm:text-[16px]"
+                              style={{ color: NAVY }}
+                            >
+                              {client.name}
+                            </h3>
+                            <p
+                              className="mt-1 text-[12px] sm:text-[13px]"
+                              style={{ color: MUTED }}
+                            >
+                              {client.age != null
+                                ? `${client.age}歳`
+                                : "年齢未設定"}
+                              {" · "}
+                              {GENDER_LABELS[client.gender]}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p
+                              className="text-[10px] font-medium tracking-[0.12em] sm:text-[11px]"
+                              style={{ color: MUTED }}
+                            >
+                              睡眠スコア
+                            </p>
+                            <p
+                              className="mt-0.5 text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums sm:text-[1.5rem]"
+                              style={{ color: NAVY }}
+                            >
+                              {client.sleepScore ?? "—"}
+                            </p>
+                          </div>
+                        </div>
 
-                    <div className="mt-5 flex flex-1 items-end sm:mt-6">
-                      <Link
-                        href={`/clients/${encodeURIComponent(client.id)}`}
-                        className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl border text-[14px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:hover:bg-slate-50 sm:active:bg-transparent"
-                        style={{ borderColor: BORDER, color: NAVY }}
-                      >
-                        詳細
-                      </Link>
-                    </div>
-                  </article>
-                </li>
-              ))}
-            </ul>
+                        <dl
+                          className="mt-4 grid grid-cols-2 gap-3 border-t pt-3.5 sm:mt-5 sm:pt-4"
+                          style={{ borderColor: BORDER }}
+                        >
+                          <div className="min-w-0">
+                            <dt
+                              className="text-[11px] font-medium tracking-[0.08em]"
+                              style={{ color: MUTED }}
+                            >
+                              前回分析日
+                            </dt>
+                            <dd
+                              className="mt-1 break-words text-[13px] font-medium"
+                              style={{ color: NAVY }}
+                            >
+                              {formatManagementDate(client.lastAnalysisDate)}
+                            </dd>
+                          </div>
+                          <div className="min-w-0">
+                            <dt
+                              className="text-[11px] font-medium tracking-[0.08em]"
+                              style={{ color: MUTED }}
+                            >
+                              次回フォロー日
+                            </dt>
+                            <dd
+                              className="mt-1 break-words text-[13px] font-medium"
+                              style={{ color: NAVY }}
+                            >
+                              {formatManagementDate(client.nextFollowUpDate)}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <div className="mt-4 sm:mt-5">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <p
+                              className="text-[11px] font-medium tracking-[0.08em]"
+                              style={{ color: MUTED }}
+                            >
+                              Sleep Journey
+                            </p>
+                            <p
+                              className="text-[12px] font-semibold tabular-nums"
+                              style={{ color: NAVY }}
+                            >
+                              {client.journeyProgress}%
+                            </p>
+                          </div>
+                          <div
+                            className="h-1.5 overflow-hidden rounded-full bg-slate-100"
+                            role="progressbar"
+                            aria-valuenow={client.journeyProgress}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`${client.name}の Sleep Journey 進捗`}
+                          >
+                            <div
+                              className="h-full rounded-full transition-[width] duration-500"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, client.journeyProgress))}%`,
+                                backgroundColor: NAVY,
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-5 flex flex-1 items-end gap-2 sm:mt-6">
+                          <Link
+                            href={`/clients/${encodeURIComponent(client.id)}`}
+                            className="inline-flex min-h-12 w-full flex-1 items-center justify-center rounded-2xl border text-[14px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:hover:bg-slate-50 sm:active:bg-transparent"
+                            style={{ borderColor: BORDER, color: NAVY }}
+                          >
+                            詳細
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteClient(client)}
+                            disabled={Boolean(deletingId)}
+                            aria-label={`${client.name}を削除`}
+                            className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-2xl border px-4 text-[14px] font-semibold transition enabled:active:bg-rose-50 disabled:opacity-50 sm:min-h-10 sm:enabled:hover:bg-rose-50 sm:enabled:active:bg-transparent"
+                            style={{ borderColor: BORDER, color: MUTED }}
+                          >
+                            {deletingId === client.id ? "削除中..." : "削除"}
+                          </button>
+                        </div>
+                      </article>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </section>
 

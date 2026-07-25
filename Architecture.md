@@ -227,7 +227,7 @@ app/api/.../route.ts  →  modules/*/services  →  lib/*
 1. `modules/<id>/` に標準 4 層（components / services / repositories / hooks）を作成  
 2. `modules/registry.ts` に `ModuleManifest` を登録  
 3. `app/<id>/page.tsx` を薄い Route として追加  
-4. 必要なら `proxy.ts` の保護パスに追加  
+4. 画面はデフォルトで認証必須（`proxy.ts` の公開許可リスト外）。新規公開パスが必要なら許可リストに明示追加する。  
 5. Design System 部品のみで UI を組み立て、独自 UI は Module `components/` へ  
 6. データ取得は `hooks/` に置き、画面は表示に専念  
 

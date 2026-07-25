@@ -12,7 +12,7 @@
 | 項目 | 優先度 | 依存 | 想定工数 | リスク | リリース条件 |
 |---|---|---|---|---|---|
 | Supabase 本番適用（migrations 一式） | P0 | なし | 1–2日 | ルート SQL 誤適用 | migrations のみで再現可能 |
-| Auth + Role リダイレクト動作確認 | P0 | Supabase | 1日 | proxy matcher 欠落 | 全保護ルートで未ログイン拒否 |
+| Auth + Role リダイレクト動作確認 | P0 | Supabase | 1日 | 完了（公開は `/` のみ） | 全保護ルートで未ログイン拒否 |
 | クライアント CRUD / プロフィール | P0 | DB | 既存 | RLS | 担当外データ不可 |
 | OCR → 確認 → AI 分析 → 保存 | P0 | OpenAI key | 既存 | コスト/失敗時 UX | E2E 成功 + disclaimer 表示 |
 | クレジット消費の冪等 | P0 | platform RPC | 0.5日 | 二重消費 | 同一分析で二重減算なし |
@@ -38,7 +38,7 @@
 | 継続日数の定義統一（宿題 vs 日次） | P1 | client Home | 1–2日 | 指標混乱 | Glossary と一致 |
 | 通知（実データ配信） | P1 | notifications テーブル | 3–5日 | スパム | demo フォールバック削減 |
 | Settings（パスワード変更等） | P1 | Auth | 2日 | セッション | 主要ブラウザ確認 |
-| proxy matcher 完全一致 | P0 | proxy.ts | 0.5日 | 未保護 | Planned ルートも保護 or 除外明示 |
+| proxy matcher 完全一致 | P0 | proxy.ts | 0.5日 | 完了 | 公開許可リスト＋ catch-all（`/` 以外は認証必須） |
 | Admin 実データ化 | P1 | admin-service | 3–5日 | 権限 | demo-store 本番不使用 |
 | 比較・トレンド表示磨き | P2 | analyses | 2–4日 | 誤解釈 | 非断定コピー |
 

@@ -154,13 +154,14 @@ export function decidePathAccess(
   const authority = authorityFromUserRole(role);
   const path = pathname.split("?")[0]?.split("#")[0] || "/";
 
-  // 公開・認証周辺は常に許可
+  // 公開トップ・認証インフラ・招待/デモ（ログイン後）はロール問わず許可
   if (
     path === "/" ||
     path === "/login" ||
     path.startsWith("/auth/") ||
-    path.startsWith("/invite/") ||
     path === "/forbidden" ||
+    path === "/invite" ||
+    path.startsWith("/invite/") ||
     path === "/demo" ||
     path.startsWith("/demo/")
   ) {

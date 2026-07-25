@@ -37,7 +37,7 @@
 
 ※ 管理者の講師画面利用は proxy 上ブロックされない（`isInstructorOnlyPath` は client/enterprise 向け）。運用方針は **要確認**。
 
-**重大懸念:** `PROTECTED_PREFIXES` にある `/research`, `/retreat`, `/events`, `/companies`, `/reports`, `/billing`, `/notifications` が `proxy.ts` の `config.matcher` に含まれておらず、セッション強制が効かない可能性あり。
+**保護方針:** `proxy.ts` は公開許可リスト方式。未認証でアクセス可能なのは `/`（トップ）と `/login`・`/auth/*`・`/forbidden` のみ。それ以外のページはログイン必須（未ログイン時は `/login?redirect=...` へリダイレクト）。
 
 ---
 
@@ -122,4 +122,4 @@
 1. admin が講師画面で他講師データまで見えるか（RLS は admin SELECT 広げるが UI は講師向け）。
 2. `enterprise` の実データモデル（組織テーブル）は未実装。
 3. portal claim RPC と `protect_profile_role` の実行時整合。
-4. proxy matcher 欠落ルートの本番影響。
+4. ~~proxy matcher 欠落ルートの本番影響~~ → 公開許可リスト＋ catch-all で解消。

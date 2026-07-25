@@ -133,7 +133,7 @@ sleep-wellness-platform/
 | 宿題 | 講師管理・AI 次回までの推奨・クライアント完了 |
 | Sleep Coach / Journey / Insight | ルールベース生成・画面組み込み |
 | クライアント Home | Coach / Journey / 宿題 / 分析履歴（ポータル） |
-| Auth / ルート保護 | login・callback・`proxy.ts` による Role 別保護 |
+| Auth / ルート保護 | 公開は `/` のみ。他は `proxy.ts` でログイン必須・Role 別保護 |
 | Closed Beta 運営 | 招待・同意・フィードバック・Evidence・本部 KPI |
 
 **含まない / 限定:** 本番向け Academy 資格発行の完全硬化、Community / Insights 本番運用、Enterprise / Billing 本実装、サーバ PDF エンジン、GPT 版 Coach。
