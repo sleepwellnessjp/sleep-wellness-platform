@@ -99,6 +99,9 @@ export function useAuth(): AuthState & { signOut: () => Promise<void> } {
     }
     clearDemoSession();
     await refresh();
+    if (typeof window !== "undefined") {
+      window.location.assign("/login");
+    }
   }, [refresh]);
 
   return { ...state, signOut };

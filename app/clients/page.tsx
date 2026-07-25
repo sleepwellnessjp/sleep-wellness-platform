@@ -19,6 +19,7 @@ import {
   filterClientManagementItems,
   formatManagementDate,
   getClientManagementList,
+  listInstructorFilterOptions,
   type ClientManagementItem,
 } from "@/lib/client-management";
 import { deleteClient } from "@/lib/repositories/client-repository";
@@ -73,11 +74,15 @@ export default function ClientsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [nameQuery, setNameQuery] = useState("");
+  const [emailQuery, setEmailQuery] = useState("");
+  const [instructorQuery, setInstructorQuery] = useState("all");
   const [sleepScoreQuery, setSleepScoreQuery] = useState("");
   const [assignedDayQuery, setAssignedDayQuery] = useState("");
   const [page, setPage] = useState(1);
 
   const deferredName = useDeferredValue(nameQuery);
+  const deferredEmail = useDeferredValue(emailQuery);
+  const deferredInstructor = useDeferredValue(instructorQuery);
   const deferredScore = useDeferredValue(sleepScoreQuery);
   const deferredDay = useDeferredValue(assignedDayQuery);
 
@@ -142,14 +147,28 @@ export default function ClientsPage() {
     }
   };
 
+  const instructorOptions = useMemo(
+    () => listInstructorFilterOptions(clients),
+    [clients],
+  );
+
   const filteredClients = useMemo(
     () =>
       filterClientManagementItems(clients, {
         nameQuery: deferredName,
+        emailQuery: deferredEmail,
+        instructorQuery: deferredInstructor,
         sleepScoreQuery: deferredScore,
         assignedDayQuery: deferredDay,
       }),
-    [clients, deferredName, deferredScore, deferredDay],
+    [
+      clients,
+      deferredName,
+      deferredEmail,
+      deferredInstructor,
+      deferredScore,
+      deferredDay,
+    ],
   );
 
   const totalPages = Math.max(
@@ -159,7 +178,13 @@ export default function ClientsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [deferredName, deferredScore, deferredDay]);
+  }, [
+    deferredName,
+    deferredEmail,
+    deferredInstructor,
+    deferredScore,
+    deferredDay,
+  ]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -172,6 +197,8 @@ export default function ClientsPage() {
 
   const isFiltering =
     deferredName !== nameQuery ||
+    deferredEmail !== emailQuery ||
+    deferredInstructor !== instructorQuery ||
     deferredScore !== sleepScoreQuery ||
     deferredDay !== assignedDayQuery;
 
@@ -228,6 +255,46 @@ export default function ClientsPage() {
                 style={{ borderColor: BORDER, color: NAVY }}
               />
             </label>
+            <label className="block">
+              <span
+                className="text-[11px] font-medium tracking-[0.12em]"
+                style={{ color: MUTED }}
+              >
+                メール検索
+              </span>
+              <input
+                type="search"
+                value={emailQuery}
+                onChange={(event) => setEmailQuery(event.target.value)}
+                placeholder="example@email.com"
+                autoComplete="off"
+                className="mt-2 min-h-12 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[16px] outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-[#071426]/08 sm:min-h-0 sm:text-[15px]"
+                style={{ borderColor: BORDER, color: NAVY }}
+              />
+            </label>
+            <label className="block">
+              <span
+                className="text-[11px] font-medium tracking-[0.12em]"
+                style={{ color: MUTED }}
+              >
+                認定講師
+              </span>
+              <select
+                value={instructorQuery}
+                onChange={(event) => setInstructorQuery(event.target.value)}
+                className="mt-2 min-h-12 w-full rounded-2xl border bg-[#fafaf8] px-4 py-3 text-[16px] outline-none transition focus:bg-white focus:ring-4 focus:ring-[#071426]/08 sm:min-h-0 sm:text-[15px]"
+                style={{ borderColor: BORDER, color: NAVY }}
+              >
+                <option value="all">すべて</option>
+                {instructorOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-3.5 grid gap-3.5 sm:mt-4 sm:grid-cols-2 sm:gap-4">
             <label className="block">
               <span
                 className="text-[11px] font-medium tracking-[0.12em]"
@@ -368,6 +435,7 @@ export default function ClientsPage() {
                                 : "年齢未設定"}
                               {" · "}
                               {GENDER_LABELS[client.gender]}
+                              {client.email ? ` · ${client.email}` : ""}
                             </p>
                           </div>
                           <div className="shrink-0 text-right">

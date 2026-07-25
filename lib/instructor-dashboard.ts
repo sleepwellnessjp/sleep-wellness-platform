@@ -5,11 +5,15 @@
 
 import type { StoredClient } from "@/lib/client-store";
 import { analysisSleepScore, loadClients } from "@/lib/repositories/client-repository";
-import { getNextClientAppointment } from "@/lib/repositories/client-appointments-repository";
+import {
+  getNextClientAppointment,
+  listTodayOwnerAppointments,
+} from "@/lib/repositories/client-appointments-repository";
 import { listBetaHomeworks } from "@/lib/repositories/beta-homework-repository";
 import { getProgramDetail } from "@/lib/repositories/program-repository";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { isMissingTableError } from "@/lib/supabase/errors";
 
 export type InstructorTodayClient = {
   id: string;
@@ -42,8 +46,30 @@ export type InstructorQuickLink = {
   emphasize?: boolean;
 };
 
+export type InstructorTodayTodoKind =
+  | "counseling"
+  | "unread_feedback"
+  | "homework_pending"
+  | "new_analysis";
+
+export type InstructorTodayTodoItem = {
+  id: string;
+  kind: InstructorTodayTodoKind;
+  title: string;
+  detail: string;
+  href: string;
+};
+
+export type InstructorTodayTodos = {
+  counseling: InstructorTodayTodoItem[];
+  unreadFeedback: InstructorTodayTodoItem[];
+  homeworkPending: InstructorTodayTodoItem[];
+  newAnalyses: InstructorTodayTodoItem[];
+};
+
 export type InstructorDashboardData = {
   instructorDisplayName: string;
+  todayTodos: InstructorTodayTodos;
   todayClients: InstructorTodayClient[];
   recentActivity: InstructorActivityItem[];
   weekPlan: InstructorWeekPlan;
@@ -67,6 +93,58 @@ export const INSTRUCTOR_QUICK_LINKS: InstructorQuickLink[] = [
 /** 開発・デモ用ダミー（Supabase 未設定かつローカルデータなしのときのみ） */
 export const DUMMY_INSTRUCTOR_DASHBOARD: InstructorDashboardData = {
   instructorDisplayName: "山田",
+  todayTodos: {
+    counseling: [
+      {
+        id: "todo-counsel-1",
+        kind: "counseling",
+        title: "佐藤 美咲",
+        detail: "10:00 · オンライン面談",
+        href: "/clients/client-demo-1",
+      },
+      {
+        id: "todo-counsel-2",
+        kind: "counseling",
+        title: "鈴木 健太",
+        detail: "14:30 · 対面カウンセリング",
+        href: "/clients/client-demo-2",
+      },
+    ],
+    unreadFeedback: [
+      {
+        id: "todo-feedback-1",
+        kind: "unread_feedback",
+        title: "田中 あかり",
+        detail: "メラトニンヨガを続けています…",
+        href: "/clients/client-demo-3",
+      },
+    ],
+    homeworkPending: [
+      {
+        id: "todo-hw-1",
+        kind: "homework_pending",
+        title: "伊藤 翔",
+        detail: "就寝前ルーティン（提出待ち）",
+        href: "/homework",
+      },
+      {
+        id: "todo-hw-2",
+        kind: "homework_pending",
+        title: "加藤 里奈",
+        detail: "呼吸エクササイズ（期限超過）",
+        href: "/homework",
+      },
+    ],
+    newAnalyses: [
+      {
+        id: "todo-analysis-1",
+        kind: "new_analysis",
+        title: "吉田 拓也",
+        detail: "本日の睡眠分析 · スコア 58",
+        href: "/clients/client-demo-10",
+      },
+    ],
+  },
   todayClients: [
     {
       id: "client-demo-1",
@@ -246,6 +324,163 @@ async function nextFollowUpFor(client: StoredClient): Promise<string | null> {
   }
 }
 
+function clientNameById(clients: StoredClient[]): Map<string, string> {
+  return new Map(clients.map((client) => [client.id, client.name]));
+}
+
+async function loadUnreadFeedbackTodos(
+  clients: StoredClient[],
+): Promise<InstructorTodayTodoItem[]> {
+  const names = clientNameById(clients);
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
+  const supabase = createBrowserClient();
+  if (!supabase) return [];
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from("client_messages")
+      .select("id, client_id, body, created_at")
+      .eq("instructor_id", user.id)
+      .eq("sender_role", "client")
+      .is("read_at", null)
+      .order("created_at", { ascending: false })
+      .limit(12);
+
+    if (error) {
+      if (!isMissingTableError(error)) {
+        console.warn("[instructor-dashboard] unread messages:", error.message);
+      }
+      return [];
+    }
+
+    const rows = (data ?? []) as Array<{
+      id: string;
+      client_id: string;
+      body: string | null;
+      created_at: string;
+    }>;
+
+    return rows.map((row) => {
+      const clientName = names.get(row.client_id) ?? "クライアント";
+      const body = (row.body ?? "").trim();
+      return {
+        id: `feedback-${row.id}`,
+        kind: "unread_feedback" as const,
+        title: clientName,
+        detail: body
+          ? body.length > 40
+            ? `${body.slice(0, 40)}…`
+            : body
+          : "未読フィードバック",
+        href: `/clients/${encodeURIComponent(row.client_id)}`,
+      };
+    });
+  } catch (error) {
+    console.warn("[instructor-dashboard] unread feedback failed:", error);
+    return [];
+  }
+}
+
+async function buildTodayTodos(
+  clients: StoredClient[],
+): Promise<InstructorTodayTodos> {
+  const names = clientNameById(clients);
+  const today = todayTokyo();
+
+  let counseling: InstructorTodayTodoItem[] = [];
+  try {
+    const appointments = await listTodayOwnerAppointments();
+    counseling = appointments.map((appointment) => {
+      const clientName = names.get(appointment.clientId) ?? "クライアント";
+      const timeLabel = appointment.startTime
+        ? appointment.startTime.slice(0, 5)
+        : "時間未設定";
+      const place =
+        appointment.locationType === "online"
+          ? "オンライン"
+          : appointment.locationType === "in_person"
+            ? "対面"
+            : appointment.locationType === "phone"
+              ? "電話"
+              : appointment.title || "カウンセリング";
+      return {
+        id: `counsel-${appointment.id}`,
+        kind: "counseling" as const,
+        title: clientName,
+        detail: `${timeLabel} · ${place}`,
+        href: `/clients/${encodeURIComponent(appointment.clientId)}`,
+      };
+    });
+  } catch (error) {
+    console.warn("[instructor-dashboard] today appointments:", error);
+  }
+
+  const unreadFeedback = await loadUnreadFeedbackTodos(clients);
+
+  const homeworkPending: InstructorTodayTodoItem[] = [];
+  await Promise.all(
+    clients.map(async (client) => {
+      try {
+        const homeworks = await listBetaHomeworks(client.id);
+        for (const hw of homeworks) {
+          if (hw.status === "completed") continue;
+          const statusLabel =
+            hw.status === "overdue"
+              ? "期限超過"
+              : hw.status === "not_started"
+                ? "未実施"
+                : "提出待ち";
+          homeworkPending.push({
+            id: `hw-${hw.id}`,
+            kind: "homework_pending",
+            title: client.name,
+            detail: `${hw.title}（${statusLabel}）`,
+            href: "/homework",
+          });
+        }
+      } catch {
+        // homework 未適用環境は無視
+      }
+    }),
+  );
+
+  const newAnalyses: InstructorTodayTodoItem[] = [];
+  for (const client of clients) {
+    for (const analysis of client.analyses) {
+      const day =
+        analysis.analysisDate?.trim() ||
+        (analysis.createdAt ? analysis.createdAt.slice(0, 10) : "");
+      if (day !== today) continue;
+      const score = analysisSleepScore(analysis);
+      newAnalyses.push({
+        id: `analysis-${analysis.id}`,
+        kind: "new_analysis",
+        title: client.name,
+        detail:
+          score != null
+            ? `本日の睡眠分析 · スコア ${score}`
+            : "本日の睡眠分析",
+        href: `/clients/${encodeURIComponent(client.id)}`,
+      });
+    }
+  }
+
+  return {
+    counseling,
+    unreadFeedback,
+    homeworkPending: homeworkPending.slice(0, 12),
+    newAnalyses: newAnalyses.slice(0, 12),
+  };
+}
+
 /**
  * 講師ダッシュボード取得。
  * clients / analyses / appointments / programs / homeworks を集約する。
@@ -265,6 +500,7 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
   const displayName = await resolveDisplayName();
   const today = todayTokyo();
   const weekEnd = addDaysTokyo(today, 7);
+  const todayTodos = await buildTodayTodos(clients);
 
   const followUpDates = await Promise.all(
     clients.map(async (client) => ({
@@ -344,6 +580,7 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
 
   return {
     instructorDisplayName: displayName,
+    todayTodos,
     todayClients,
     recentActivity,
     weekPlan: {
