@@ -203,7 +203,7 @@ export function buildPreviousComparisonSummary(
   if (wellnessTrend.delta != null) {
     items.push({
       label: "Sleep Wellness Score",
-      value: formatSignedScore(wellnessTrend.delta),
+      value: `${toneArrow(wellnessTrend.tone)}${formatSignedScore(wellnessTrend.delta)}`,
       tone: wellnessTrend.tone,
     });
   }
@@ -215,10 +215,11 @@ export function buildPreviousComparisonSummary(
   );
   if (scoreTrend.delta != null) {
     const rounded = Math.round(scoreTrend.delta);
+    const deltaText =
+      rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "睡眠スコア",
-      value:
-        rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0",
+      value: `${toneArrow(scoreTrend.tone)}${deltaText}`,
       tone: scoreTrend.tone,
     });
   }
@@ -231,7 +232,7 @@ export function buildPreviousComparisonSummary(
   if (efficiencyTrend.delta != null) {
     items.push({
       label: "睡眠効率",
-      value: formatSignedPercent(efficiencyTrend.delta),
+      value: `${toneArrow(efficiencyTrend.tone)}${formatSignedPercent(efficiencyTrend.delta)}`,
       tone: efficiencyTrend.tone,
     });
   }
@@ -243,10 +244,11 @@ export function buildPreviousComparisonSummary(
   );
   if (hrvTrend.delta != null) {
     const rounded = Math.round(hrvTrend.delta * 10) / 10;
+    const deltaText =
+      rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "HRV",
-      value:
-        rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0",
+      value: `${toneArrow(hrvTrend.tone)}${deltaText}`,
       tone: hrvTrend.tone,
     });
   }
@@ -259,7 +261,7 @@ export function buildPreviousComparisonSummary(
   if (deepTrend.delta != null) {
     items.push({
       label: "深い睡眠",
-      value: formatSignedMinutes(deepTrend.delta),
+      value: `${toneArrow(deepTrend.tone)}${formatSignedMinutes(deepTrend.delta)}`,
       tone: deepTrend.tone,
     });
   }
@@ -270,14 +272,12 @@ export function buildPreviousComparisonSummary(
     true,
   );
   if (stressTrend.delta != null) {
+    const rounded = Math.round(stressTrend.delta * 10) / 10;
+    const deltaText =
+      rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "ストレス",
-      value:
-        stressTrend.tone === "improved"
-          ? "改善"
-          : stressTrend.tone === "worsened"
-            ? "悪化"
-            : "変化なし",
+      value: `${toneArrow(stressTrend.tone)}${deltaText}`,
       tone: stressTrend.tone,
     });
   }
@@ -290,12 +290,13 @@ export function buildPreviousComparisonSummary(
   if (debtTrend.delta != null) {
     items.push({
       label: "睡眠負債",
-      value:
+      value: `${toneArrow(debtTrend.tone)}${
         debtTrend.tone === "improved"
           ? "減少"
           : debtTrend.tone === "worsened"
             ? "増加"
-            : "変化なし",
+            : "変化なし"
+      }`,
       tone: debtTrend.tone,
     });
   }
@@ -339,9 +340,15 @@ export function buildPreviousHomeworkComparison(
 export function previousComparisonToneColor(
   tone: PreviousComparisonTone,
 ): string {
-  if (tone === "improved") return "#0f6b5c";
-  if (tone === "worsened") return "#a33a3a";
+  if (tone === "improved") return "#2563eb";
+  if (tone === "worsened") return "#dc2626";
   return "#8a6a2d";
+}
+
+function toneArrow(tone: PreviousComparisonTone): string {
+  if (tone === "improved") return "↑";
+  if (tone === "worsened") return "↓";
+  return "→";
 }
 
 function wellnessScoreOf(analysis: StoredAnalysis): number | null {
@@ -401,7 +408,7 @@ export function buildClientMypageComparison(
   if (scoreTrend.delta != null) {
     items.push({
       label: "Sleep Wellness Score",
-      value: formatSignedScore(scoreTrend.delta),
+      value: `${toneArrow(scoreTrend.tone)}${formatSignedScore(scoreTrend.delta)}`,
       tone: scoreTrend.tone,
     });
   }
@@ -414,7 +421,7 @@ export function buildClientMypageComparison(
   if (efficiencyTrend.delta != null) {
     items.push({
       label: "睡眠効率",
-      value: formatSignedPercent(efficiencyTrend.delta),
+      value: `${toneArrow(efficiencyTrend.tone)}${formatSignedPercent(efficiencyTrend.delta)}`,
       tone: efficiencyTrend.tone,
     });
   }
@@ -427,7 +434,7 @@ export function buildClientMypageComparison(
   if (durationTrend.delta != null) {
     items.push({
       label: "睡眠時間",
-      value: formatSignedMinutes(durationTrend.delta),
+      value: `${toneArrow(durationTrend.tone)}${formatSignedMinutes(durationTrend.delta)}`,
       tone: durationTrend.tone,
     });
   }

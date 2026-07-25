@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import InstructorNav from "@/components/InstructorNav";
-import SleepScoreChart from "@/components/SleepScoreChart";
+import MetricTrendChart from "@/components/MetricTrendChart";
 import {
+  PRIMARY_COMPARE_KEYS,
   analysisOptionLabel,
   assessmentStyle,
   buildComparison,
+  buildMetricTrendSeries,
   trendColor,
+  type CompareMetricKey,
+  type CompareMetricRow,
   type ComparisonResult,
   type OverallAssessment,
 } from "@/lib/comparison-engine";
@@ -22,6 +26,19 @@ import {
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
+
+const TREND_CHARTS: Array<{
+  key: CompareMetricKey;
+  title: string;
+  unitHint: string;
+  invertY?: boolean;
+}> = [
+  { key: "sleepScore", title: "睡眠スコア推移", unitHint: "pt" },
+  { key: "deepSleep", title: "深睡眠推移", unitHint: "分" },
+  { key: "hrv", title: "HRV推移", unitHint: "ms" },
+  { key: "sleepEfficiency", title: "睡眠効率推移", unitHint: "%" },
+  { key: "stress", title: "ストレス推移", unitHint: "", invertY: true },
+];
 
 function Section({
   eyebrow,
@@ -125,18 +142,13 @@ export default function ClientComparePage() {
     return buildComparison(beforeAnalysis, afterAnalysis);
   }, [beforeAnalysis, afterAnalysis]);
 
-  const chartPoints = useMemo(() => {
-    return [...analyses]
-      .reverse()
-      .filter(
-        (a) =>
-          typeof a.sleepScore === "number" ||
-          typeof a.wellnessScore === "number",
-      )
-      .map((a) => ({
-        date: a.analysisDate,
-        score: a.sleepScore ?? a.wellnessScore,
-      }));
+  const trendSeries = useMemo(() => {
+    return Object.fromEntries(
+      PRIMARY_COMPARE_KEYS.map((key) => [
+        key,
+        buildMetricTrendSeries(analyses, key),
+      ]),
+    ) as Record<CompareMetricKey, ReturnType<typeof buildMetricTrendSeries>>;
   }, [analyses]);
 
   if (!ready) {
@@ -195,11 +207,11 @@ export default function ClientComparePage() {
           >
             {client.name}
             <span className="mt-2 block text-lg font-medium text-slate-500 sm:mt-0 sm:ml-3 sm:inline sm:text-xl">
-              分析比較
+              比較分析
             </span>
           </h1>
           <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-600 sm:text-base">
-            2回分の睡眠分析を比較し、メラトニンヨガ™や生活改善による変化を確認できます。
+            前回との睡眠スコア・深睡眠・HRV・睡眠効率・ストレスの差を確認し、AI改善コメントで次の指導につなげます。
           </p>
 
           {comparison && (
@@ -237,14 +249,14 @@ export default function ClientComparePage() {
               </h2>
               <div className="mt-6 grid gap-5 sm:grid-cols-2">
                 <AnalysisSelect
-                  label="Before"
+                  label="Before（前回）"
                   value={beforeId}
                   analyses={analyses}
                   onChange={setBeforeId}
                   excludeId={afterId}
                 />
                 <AnalysisSelect
-                  label="After"
+                  label="After（今回）"
                   value={afterId}
                   analyses={analyses}
                   onChange={setAfterId}
@@ -260,9 +272,24 @@ export default function ClientComparePage() {
 
             {comparison && (
               <>
-                <Section eyebrow="SUMMARY" title="比較サマリー">
+                <Section eyebrow="DELTA" title="前回との差分">
+                  <p className="mb-5 text-[13px] leading-6 text-slate-500">
+                    改善は
+                    <span className="mx-1 font-semibold text-[#2563eb]">青↑</span>
+                    、悪化は
+                    <span className="mx-1 font-semibold text-[#dc2626]">赤↓</span>
+                    で表示します。
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+                    {comparison.primaryMetrics.map((row) => (
+                      <PrimaryDeltaCard key={row.key} row={row} />
+                    ))}
+                  </div>
+                </Section>
+
+                <Section eyebrow="SUMMARY" title="指標詳細（Before → After）">
                   <div className="compare-summary-grid space-y-3">
-                    {comparison.metrics.map((row) => (
+                    {comparison.primaryMetrics.map((row) => (
                       <div
                         key={row.key}
                         className="compare-summary-row grid grid-cols-1 gap-3 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center sm:gap-4 sm:px-5"
@@ -315,15 +342,27 @@ export default function ClientComparePage() {
                   </div>
                 </Section>
 
-                <Section eyebrow="AI INSIGHT" title="変化コメント">
+                <Section eyebrow="AI INSIGHT" title="AI改善コメント">
+                  {comparison.comments.aiNarrative ? (
+                    <article className="mb-4 rounded-2xl border border-[#2563eb]/15 bg-[#f8fafc] px-4 py-4 sm:px-5">
+                      <p className="text-[11px] font-semibold tracking-[0.16em] text-[#2563eb]">
+                        AI解説 · 前回比較
+                      </p>
+                      <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+                        {comparison.comments.aiNarrative}
+                      </p>
+                    </article>
+                  ) : null}
                   <div className="compare-comments grid gap-4 sm:grid-cols-2">
                     <CommentBlock
                       title="改善した点"
                       text={comparison.comments.improvements}
+                      tone="improved"
                     />
                     <CommentBlock
                       title="悪化または注意が必要な点"
                       text={comparison.comments.concerns}
+                      tone="worsened"
                     />
                     <CommentBlock
                       title="考えられる要因"
@@ -336,16 +375,25 @@ export default function ClientComparePage() {
                   </div>
                 </Section>
 
-                <Section eyebrow="TREND" title="睡眠スコア推移">
-                  <SleepScoreChart
-                    points={chartPoints}
-                    highlight={{
-                      before: comparison.before.analysisDate,
-                      after: comparison.after.analysisDate,
-                    }}
-                  />
-                  <p className="compare-chart-note mt-4 text-center text-[12px] text-slate-400">
-                    Before（灰）と After（金）を強調表示しています
+                <Section eyebrow="TREND" title="指標の推移（折れ線）">
+                  <div className="space-y-6">
+                    {TREND_CHARTS.map((chart) => (
+                      <MetricTrendChart
+                        key={chart.key}
+                        title={chart.title}
+                        unitHint={chart.unitHint}
+                        invertY={chart.invertY}
+                        points={trendSeries[chart.key] ?? []}
+                        highlight={{
+                          before: comparison.before.analysisDate,
+                          after: comparison.after.analysisDate,
+                        }}
+                        emptyMessage={`${chart.title}のデータがありません`}
+                      />
+                    ))}
+                  </div>
+                  <p className="compare-chart-note mt-5 text-center text-[12px] text-slate-400">
+                    Before（灰）と After（青）を強調表示しています
                   </p>
                 </Section>
 
@@ -388,6 +436,28 @@ export default function ClientComparePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function PrimaryDeltaCard({ row }: { row: CompareMetricRow }) {
+  return (
+    <article className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-3.5 py-4 sm:px-4 sm:py-5">
+      <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-400">
+        {row.label}
+      </p>
+      <p
+        className="mt-2 text-[1.35rem] font-semibold tracking-[-0.04em] tabular-nums sm:text-[1.5rem]"
+        style={{ color: trendColor(row.trend) }}
+      >
+        <span aria-hidden="true">{row.arrow}</span>
+        <span className="ml-1">{row.deltaDisplay}</span>
+      </p>
+      <p className="mt-2 text-[11px] leading-5 text-slate-400">
+        {row.beforeDisplay}
+        <span className="mx-1 text-slate-300">→</span>
+        {row.afterDisplay}
+      </p>
+    </article>
   );
 }
 
@@ -459,12 +529,27 @@ function AnalysisSelect({
   );
 }
 
-function CommentBlock({ title, text }: { title: string; text: string }) {
+function CommentBlock({
+  title,
+  text,
+  tone,
+}: {
+  title: string;
+  text: string;
+  tone?: "improved" | "worsened";
+}) {
+  const accent =
+    tone === "improved"
+      ? "#2563eb"
+      : tone === "worsened"
+        ? "#dc2626"
+        : NAVY;
+
   return (
     <article className="compare-comment rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
       <h3
         className="text-[13px] font-semibold tracking-[-0.01em]"
-        style={{ color: NAVY }}
+        style={{ color: accent }}
       >
         {title}
       </h3>
