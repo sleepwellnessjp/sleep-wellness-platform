@@ -38,13 +38,13 @@ export default function Founder() {
             </p>
 
             <div className="mt-5 text-center sm:mt-6">
-              <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
+              <h2 className="text-[2.35rem] font-bold leading-[1.05] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
                 TAKA
               </h2>
-              <p className="mt-2.5 text-2xl font-semibold leading-snug tracking-[-0.03em] text-white/92 sm:mt-3 sm:text-3xl lg:text-4xl">
+              <p className="mt-3 text-[1.5rem] font-semibold leading-snug tracking-[-0.03em] text-white/92 sm:mt-3.5 sm:text-[1.95rem] lg:text-[2.4rem]">
                 若林貴久
               </p>
-              <p className="mt-4 text-base tracking-[0.06em] text-white/65 sm:mt-5">
+              <p className="mt-5 text-base tracking-[0.06em] text-white/65 sm:mt-6">
                 Sleep Wellness Producer
               </p>
             </div>
