@@ -33,19 +33,23 @@ export default function Founder() {
           </div>
 
           <div className="text-white">
-            <p className="text-xs font-semibold tracking-[0.30em] text-amber-200">
+            <p className="text-center text-xs font-semibold tracking-[0.30em] text-amber-200">
               FOUNDER
             </p>
 
-            <h2 className="mt-4 text-3xl font-semibold leading-[1.08] tracking-[-0.05em] sm:text-4xl lg:text-5xl">
-              TAKA 若林貴久
-            </h2>
+            <div className="mt-5 text-center sm:mt-6">
+              <h2 className="text-4xl font-bold leading-[1.05] tracking-[-0.04em] sm:text-5xl lg:text-6xl">
+                TAKA
+              </h2>
+              <p className="mt-2.5 text-2xl font-semibold leading-snug tracking-[-0.03em] text-white/92 sm:mt-3 sm:text-3xl lg:text-4xl">
+                若林貴久
+              </p>
+              <p className="mt-4 text-base tracking-[0.06em] text-white/65 sm:mt-5">
+                Sleep Wellness Producer
+              </p>
+            </div>
 
-            <p className="mt-3 text-base tracking-[0.06em] text-white/65">
-              Sleep Wellness Producer
-            </p>
-
-            <p className="mt-6 max-w-lg text-base leading-8 text-white/75">
+            <p className="mt-8 max-w-lg text-base leading-8 text-white/75 lg:mt-10">
               睡眠科学・ヨガ・呼吸・瞑想・日本文化を融合し、
               Sleep Wellness Institute Japanを設立。
             </p>
