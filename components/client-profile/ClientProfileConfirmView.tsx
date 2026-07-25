@@ -13,6 +13,7 @@ import {
   AI_IMPORTANCE_HINT,
   EMPTY_DISPLAY,
   EMPTY_DISPLAY_STYLE,
+  formatOccupationLabel,
   getProfileAiImportance,
   NUMBER_RULES,
   PROFILE_LABELS,
@@ -292,9 +293,10 @@ export default function ClientProfileConfirmView({
           onToggle={() => toggleSection("work")}
         >
           <Row label={PROFILE_LABELS.occupation} labelKey="occupation"
-            value={
-              profile.work.occupationCustom || profile.work.occupationPreset
-            }
+            value={formatOccupationLabel(
+              profile.work.occupationCustom,
+              profile.work.occupationPreset,
+            )}
           />
           <Row label={PROFILE_LABELS.workStyle} labelKey="workStyle" value={profile.work.workStyle} />
           <Row label={PROFILE_LABELS.workStartTime} labelKey="workStartTime" value={profile.work.workStartTime} />

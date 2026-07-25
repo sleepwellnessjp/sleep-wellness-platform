@@ -4,7 +4,10 @@
  */
 
 import { attributeLabel } from "@/lib/client-profiles/environment-attributes";
-import type { ClientProfileSections } from "@/lib/client-profiles/types";
+import {
+  formatOccupationLabel,
+  type ClientProfileSections,
+} from "@/lib/client-profiles/types";
 
 export const SLEEP_RELATION_MAX_ITEMS = 5;
 
@@ -67,12 +70,7 @@ function looksDaytimeSleepiness(value: string): boolean {
 }
 
 function resolveOccupation(s: ClientProfileSections): string {
-  return (
-    s.work.occupationCustom?.trim() ||
-    (s.work.occupationPreset && s.work.occupationPreset !== "その他"
-      ? s.work.occupationPreset
-      : "")
-  );
+  return formatOccupationLabel(s.work.occupationCustom, s.work.occupationPreset);
 }
 
 function hasHeatExposure(s: ClientProfileSections): boolean {

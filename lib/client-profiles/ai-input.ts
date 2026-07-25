@@ -23,6 +23,7 @@ import type {
   AnalysisDayContext,
   ClientProfileSections,
 } from "@/lib/client-profiles/types";
+import { formatOccupationLabel } from "@/lib/client-profiles/types";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 
 export type AnalysisAiInputPriority =
@@ -755,12 +756,7 @@ function looksLowExercise(frequency: string): boolean {
 }
 
 function resolveOccupation(s: ClientProfileSections): string {
-  return (
-    s.work.occupationCustom?.trim() ||
-    (s.work.occupationPreset && s.work.occupationPreset !== "その他"
-      ? s.work.occupationPreset
-      : "")
-  );
+  return formatOccupationLabel(s.work.occupationCustom, s.work.occupationPreset);
 }
 
 function heatContext(s: ClientProfileSections): {

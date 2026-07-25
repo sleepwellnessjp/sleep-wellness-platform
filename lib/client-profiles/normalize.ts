@@ -1,5 +1,6 @@
 import {
   CLIENT_PROFILE_SCHEMA_VERSION,
+  canonicalizeOccupationPreset,
   type AnalysisDayContext,
   type ClientProfileBasic,
   type ClientProfileCaffeine,
@@ -84,9 +85,22 @@ export function normalizeClientProfileSections(
   const base = emptyClientProfileSections();
   if (!raw) return base;
 
+  const workRaw = { ...base.work, ...(raw.work ?? {}) };
+  const occupationPreset = workRaw.occupationPreset
+    ? canonicalizeOccupationPreset(workRaw.occupationPreset)
+    : workRaw.occupationPreset;
+  const occupationCustom = workRaw.occupationCustom
+    ? canonicalizeOccupationPreset(workRaw.occupationCustom) ||
+      workRaw.occupationCustom
+    : workRaw.occupationCustom;
+
   return withDerivedProfileFields({
     basic: { ...base.basic, ...(raw.basic ?? {}) },
-    work: { ...base.work, ...(raw.work ?? {}) },
+    work: {
+      ...workRaw,
+      occupationPreset: occupationPreset || undefined,
+      occupationCustom: occupationCustom || undefined,
+    },
     commute: { ...base.commute, ...(raw.commute ?? {}) },
     heatExposure: { ...base.heatExposure, ...(raw.heatExposure ?? {}) },
     lifestyle: { ...base.lifestyle, ...(raw.lifestyle ?? {}) },

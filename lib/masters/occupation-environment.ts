@@ -151,6 +151,9 @@ export const OCCUPATION_NAME_TO_ATTRIBUTE_EXAMPLES: Record<string, string[]> = {
   看護師: ["night_shift", "standing_work", "interpersonal"],
   ホットヨガ講師: ["heat_high", "humidity_high", "standing_work"],
   ホットヨガインストラクター: ["heat_high", "humidity_high", "standing_work"],
+  常温ヨガ講師: ["standing_work"],
+  マットピラティス講師: ["standing_work"],
+  マシンピラティス講師: ["standing_work"],
 };
 
 export type OccupationMasterRecord = {
