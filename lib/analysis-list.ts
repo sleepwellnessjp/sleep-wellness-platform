@@ -67,7 +67,7 @@ function buildItemsFromClients(clients: StoredClient[]): AnalysisListItem[] {
         analysisDate,
         sleepScore: analysisSleepScore(analysis),
         improvementRate,
-        href: `/clients/${encodeURIComponent(client.id)}`,
+        href: `/analysis/result?analysisId=${encodeURIComponent(analysis.id)}`,
       });
     }
   }
@@ -105,7 +105,15 @@ export async function getAnalysisListPageData(): Promise<AnalysisListPageData> {
   if (!isSupabaseConfigured()) {
     return {
       instructorDisplayName: DEMO_INSTRUCTOR_NAME,
-      analyses: sortAnalysisListItems(demoAnalyses(), "date"),
+      analyses: sortAnalysisListItems(
+        demoAnalyses().map((item) => ({
+          ...item,
+          href: item.id.startsWith("analysis-demo-")
+            ? `/clients/${encodeURIComponent(item.clientId)}`
+            : item.href,
+        })),
+        "date",
+      ),
     };
   }
 

@@ -81,6 +81,11 @@ export default function ClientComparePage() {
   const [ready, setReady] = useState(false);
   const [beforeId, setBeforeId] = useState("");
   const [afterId, setAfterId] = useState("");
+  const [aiComments, setAiComments] = useState<ComparisonResult["comments"] | null>(
+    null,
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +146,84 @@ export default function ClientComparePage() {
     if (beforeAnalysis.id === afterAnalysis.id) return null;
     return buildComparison(beforeAnalysis, afterAnalysis);
   }, [beforeAnalysis, afterAnalysis]);
+
+  useEffect(() => {
+    if (!comparison || !client) {
+      setAiComments(null);
+      setAiError(null);
+      setAiLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    setAiLoading(true);
+    setAiError(null);
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/compare-comment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            clientName: client.name,
+            beforeDate: comparison.before.analysisDate,
+            afterDate: comparison.after.analysisDate,
+            assessment: comparison.assessment,
+            scoreDelta: comparison.scoreDelta,
+            metrics: comparison.primaryMetrics.map((row) => ({
+              label: row.label,
+              beforeDisplay: row.beforeDisplay,
+              afterDisplay: row.afterDisplay,
+              deltaDisplay: row.deltaDisplay,
+              trend: row.trend,
+            })),
+          }),
+        });
+        const payload = (await response.json()) as {
+          error?: string;
+          improvements?: string;
+          concerns?: string;
+          factors?: string;
+          nextGuidance?: string;
+          aiNarrative?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error || "AIコメントの取得に失敗しました。");
+        }
+        if (cancelled) return;
+        setAiComments({
+          improvements:
+            payload.improvements?.trim() || comparison.comments.improvements,
+          concerns: payload.concerns?.trim() || comparison.comments.concerns,
+          factors: payload.factors?.trim() || comparison.comments.factors,
+          nextGuidance:
+            payload.nextGuidance?.trim() || comparison.comments.nextGuidance,
+          aiNarrative:
+            payload.aiNarrative?.trim() || comparison.comments.aiNarrative,
+        });
+      } catch (error) {
+        if (cancelled || controller.signal.aborted) return;
+        console.error("[clients/compare] AI comment failed:", error);
+        setAiComments(null);
+        setAiError(
+          error instanceof Error
+            ? error.message
+            : "AIコメントの取得に失敗しました。",
+        );
+      } finally {
+        if (!cancelled) setAiLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [comparison, client]);
+
+  const displayComments = aiComments ?? comparison?.comments ?? null;
 
   const trendSeries = useMemo(() => {
     return Object.fromEntries(
@@ -343,36 +426,49 @@ export default function ClientComparePage() {
                 </Section>
 
                 <Section eyebrow="AI INSIGHT" title="AI改善コメント">
-                  {comparison.comments.aiNarrative ? (
+                  {aiLoading ? (
+                    <p className="mb-4 text-[14px] text-slate-500">
+                      AIコメントを生成しています…
+                    </p>
+                  ) : null}
+                  {aiError && !aiComments ? (
+                    <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-6 text-amber-900">
+                      {aiError}
+                      （差分コメントを表示します）
+                    </p>
+                  ) : null}
+                  {displayComments?.aiNarrative ? (
                     <article className="mb-4 rounded-2xl border border-[#2563eb]/15 bg-[#f8fafc] px-4 py-4 sm:px-5">
                       <p className="text-[11px] font-semibold tracking-[0.16em] text-[#2563eb]">
                         AI解説 · 前回比較
                       </p>
                       <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
-                        {comparison.comments.aiNarrative}
+                        {displayComments.aiNarrative}
                       </p>
                     </article>
                   ) : null}
-                  <div className="compare-comments grid gap-4 sm:grid-cols-2">
-                    <CommentBlock
-                      title="改善した点"
-                      text={comparison.comments.improvements}
-                      tone="improved"
-                    />
-                    <CommentBlock
-                      title="悪化または注意が必要な点"
-                      text={comparison.comments.concerns}
-                      tone="worsened"
-                    />
-                    <CommentBlock
-                      title="考えられる要因"
-                      text={comparison.comments.factors}
-                    />
-                    <CommentBlock
-                      title="次の指導提案"
-                      text={comparison.comments.nextGuidance}
-                    />
-                  </div>
+                  {displayComments ? (
+                    <div className="compare-comments grid gap-4 sm:grid-cols-2">
+                      <CommentBlock
+                        title="改善した点"
+                        text={displayComments.improvements}
+                        tone="improved"
+                      />
+                      <CommentBlock
+                        title="悪化または注意が必要な点"
+                        text={displayComments.concerns}
+                        tone="worsened"
+                      />
+                      <CommentBlock
+                        title="考えられる要因"
+                        text={displayComments.factors}
+                      />
+                      <CommentBlock
+                        title="次の指導提案"
+                        text={displayComments.nextGuidance}
+                      />
+                    </div>
+                  ) : null}
                 </Section>
 
                 <Section eyebrow="TREND" title="指標の推移（折れ線）">
