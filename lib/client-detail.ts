@@ -53,6 +53,8 @@ export type ClientDetailActivityItem = {
   at: string;
   title: string;
   description: string;
+  /** 詳細画面へのリンク（分析・レポートなど） */
+  href?: string | null;
 };
 
 export type ClientDetail = {
@@ -160,6 +162,7 @@ function timelineFromClient(
       description: `Sleep Wellness 分析を完了しました（スコア ${
         analysisSleepScore(analysis) ?? "—"
       }）`,
+      href: `/analysis/result?analysisId=${encodeURIComponent(analysis.id)}`,
     });
     for (const pdf of analysis.pdfHistory.slice(0, 2)) {
       items.push({
@@ -168,6 +171,7 @@ function timelineFromClient(
         at: pdf.createdAt,
         title: "レポート生成",
         description: pdf.label || "PDFレポートを作成しました",
+        href: `/analysis/result?analysisId=${encodeURIComponent(analysis.id)}`,
       });
     }
   }

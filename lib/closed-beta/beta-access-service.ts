@@ -111,9 +111,7 @@ export async function evaluateClosedBetaLoginAccess(
         status: String(certifiedRow.status ?? ""),
         usageStartDate: asDateOnly(certifiedRow.usage_start_date),
       }
-    : hasActiveMembership ||
-        hasAcceptedInvitation ||
-        role === "instructor"
+    : hasActiveMembership || hasAcceptedInvitation
       ? {
           status: "active",
           usageStartDate: null,

@@ -529,6 +529,14 @@ export default function ClientsPage() {
                           >
                             詳細
                           </Link>
+                          <Link
+                            href={`/clients/${encodeURIComponent(client.id)}/profile`}
+                            className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-2xl border px-4 text-[14px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:hover:bg-slate-50 sm:active:bg-transparent"
+                            style={{ borderColor: BORDER, color: NAVY }}
+                            aria-label={`${client.name}を編集`}
+                          >
+                            編集
+                          </Link>
                           <button
                             type="button"
                             onClick={() => void handleDeleteClient(client)}

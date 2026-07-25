@@ -335,12 +335,21 @@ export default function ClientDetailPage() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h1
-                className="break-words text-[1.55rem] font-semibold leading-tight tracking-[-0.04em] sm:text-[2.1rem] sm:leading-normal"
-                style={{ color: NAVY }}
-              >
-                {client.name}
-              </h1>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <h1
+                  className="break-words text-[1.55rem] font-semibold leading-tight tracking-[-0.04em] sm:text-[2.1rem] sm:leading-normal"
+                  style={{ color: NAVY }}
+                >
+                  {client.name}
+                </h1>
+                <Link
+                  href={`/clients/${encodeURIComponent(id)}/profile`}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl border px-4 text-[13px] font-semibold transition active:bg-slate-50 sm:min-h-10 sm:hover:bg-slate-50"
+                  style={{ borderColor: BORDER, color: NAVY }}
+                >
+                  プロフィール編集
+                </Link>
+              </div>
 
               <dl className="mt-5 grid gap-3.5 sm:mt-6 sm:grid-cols-2 sm:gap-4">
                 <div>
@@ -566,12 +575,22 @@ export default function ClientDetailPage() {
                 <TimelineDot kind={item.kind} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-2">
-                    <p
-                      className="break-words text-[14px] font-semibold sm:text-[15px]"
-                      style={{ color: NAVY }}
-                    >
-                      {item.title || ACTIVITY_KIND_LABELS[item.kind]}
-                    </p>
+                    {item.href ? (
+                      <Link
+                        href={item.href}
+                        className="break-words text-[14px] font-semibold transition hover:opacity-80 sm:text-[15px]"
+                        style={{ color: NAVY }}
+                      >
+                        {item.title || ACTIVITY_KIND_LABELS[item.kind]}
+                      </Link>
+                    ) : (
+                      <p
+                        className="break-words text-[14px] font-semibold sm:text-[15px]"
+                        style={{ color: NAVY }}
+                      >
+                        {item.title || ACTIVITY_KIND_LABELS[item.kind]}
+                      </p>
+                    )}
                     <time
                       className="shrink-0 text-[12px] tabular-nums"
                       style={{ color: MUTED }}
