@@ -95,7 +95,7 @@ async function resolvePostAuthDestination(
     // ignore — table may not exist yet
   });
 
-  if (!hasExplicitRedirect) return home;
+  if (!hasExplicitRedirect) return "/dashboard";
   if (
     (role === "client" || role === "enterprise") &&
     isInstructorOnlyPath(requestedRedirect)

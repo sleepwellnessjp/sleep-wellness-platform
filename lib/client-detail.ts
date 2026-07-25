@@ -288,7 +288,7 @@ function buildFromListItem(item: ClientManagementItem): ClientDetail {
     gender: item.gender,
     avatarUrl: item.avatarUrl,
     assignedSince: item.assignedDay,
-    instructorName: DEFAULT_INSTRUCTOR,
+    instructorName: item.instructorName || DEFAULT_INSTRUCTOR,
     sleepScore: item.sleepScore,
     latestAnalysisId: null,
     nextFollowUpDate: item.nextFollowUpDate,

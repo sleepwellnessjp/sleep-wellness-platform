@@ -166,7 +166,7 @@ export async function GET(request: Request) {
         destination = home;
       }
     } else if (!searchParams.get("redirect")) {
-      destination = home;
+      destination = "/dashboard";
     }
   }
 

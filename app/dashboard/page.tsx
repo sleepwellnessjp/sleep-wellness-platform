@@ -23,7 +23,10 @@ import {
   formatSenseiName,
   getInstructorDashboard,
   type InstructorDashboardData,
+  type InstructorTodayTodoItem,
+  type InstructorTodayTodoKind,
 } from "@/lib/instructor-dashboard";
+
 function greetingForNow(date = new Date()): string {
   const hour = date.getHours();
   if (hour < 5) return "こんばんは";
@@ -37,6 +40,80 @@ function deltaTone(delta: number | null): string {
   if (delta > 0) return SUCCESS;
   if (delta < 0) return "#B91C1C";
   return MUTED;
+}
+
+const TODAY_TODO_SECTIONS: Array<{
+  kind: InstructorTodayTodoKind;
+  title: string;
+  empty: string;
+  key: keyof InstructorDashboardData["todayTodos"];
+}> = [
+  {
+    kind: "counseling",
+    title: "今日カウンセリング予定",
+    empty: "本日のカウンセリング予定はありません。",
+    key: "counseling",
+  },
+  {
+    kind: "unread_feedback",
+    title: "未読フィードバック",
+    empty: "未読のフィードバックはありません。",
+    key: "unreadFeedback",
+  },
+  {
+    kind: "homework_pending",
+    title: "提出待ち宿題",
+    empty: "提出待ちの宿題はありません。",
+    key: "homeworkPending",
+  },
+  {
+    kind: "new_analysis",
+    title: "新しい睡眠分析",
+    empty: "本日の新しい睡眠分析はありません。",
+    key: "newAnalyses",
+  },
+];
+
+function TodayTodoList({
+  items,
+  empty,
+}: {
+  items: InstructorTodayTodoItem[];
+  empty: string;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className="px-1 py-3 text-[13px] leading-6" style={{ color: MUTED }}>
+        {empty}
+      </p>
+    );
+  }
+
+  return (
+    <ul className="divide-y" style={{ borderColor: BORDER }}>
+      {items.map((item) => (
+        <li key={item.id} style={{ borderColor: BORDER }}>
+          <Link
+            href={item.href}
+            className="flex flex-col gap-0.5 py-3.5 transition active:opacity-80 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4 sm:py-3.5 sm:hover:opacity-90"
+          >
+            <span
+              className="min-w-0 text-[14px] font-medium tracking-[-0.02em] sm:text-[15px]"
+              style={{ color: NAVY }}
+            >
+              {item.title}
+            </span>
+            <span
+              className="min-w-0 break-words text-[13px] leading-5 sm:max-w-[55%] sm:text-right"
+              style={{ color: MUTED }}
+            >
+              {item.detail}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export default function InstructorDashboardPage() {
@@ -99,7 +176,7 @@ export default function InstructorDashboardPage() {
             className="mt-2 text-[14px] leading-6 sm:mt-3 sm:text-[15px] sm:leading-7"
             style={{ color: MUTED }}
           >
-            今日の担当クライアントと今月の運営指標を確認しましょう。
+            今日やることと担当クライアント、今月の運営指標を確認しましょう。
           </p>
         </header>
 
@@ -152,6 +229,58 @@ export default function InstructorDashboardPage() {
           </div>
         ) : (
           <div className="mt-10 space-y-10 sm:mt-16 sm:space-y-16">
+            {/* 今日やること */}
+            <section aria-labelledby="today-todos-title">
+              <div className="mb-4 flex items-end justify-between gap-3 sm:mb-6 sm:gap-4">
+                <h2
+                  id="today-todos-title"
+                  className="text-base font-semibold tracking-[-0.03em] sm:text-xl"
+                  style={{ color: NAVY }}
+                >
+                  今日やること
+                </h2>
+                <span
+                  className="shrink-0 text-[13px] tabular-nums"
+                  style={{ color: MUTED }}
+                >
+                  {TODAY_TODO_SECTIONS.reduce(
+                    (sum, section) => sum + data.todayTodos[section.key].length,
+                    0,
+                  )}
+                  件
+                </span>
+              </div>
+
+              <div className="space-y-3 sm:space-y-4">
+                {TODAY_TODO_SECTIONS.map((section) => {
+                  const items = data.todayTodos[section.key];
+                  return (
+                    <article
+                      key={section.kind}
+                      className="rounded-3xl border bg-white px-4 py-4 sm:px-6 sm:py-5"
+                      style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
+                    >
+                      <div className="flex items-baseline justify-between gap-3">
+                        <h3
+                          className="text-[14px] font-semibold tracking-[-0.02em] sm:text-[15px]"
+                          style={{ color: NAVY }}
+                        >
+                          {section.title}
+                        </h3>
+                        <span
+                          className="text-[12px] tabular-nums"
+                          style={{ color: MUTED }}
+                        >
+                          {items.length}
+                        </span>
+                      </div>
+                      <TodayTodoList items={items} empty={section.empty} />
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
             {/* 今日の担当クライアント */}
             <section aria-labelledby="today-clients-title">
               <div className="mb-4 flex items-end justify-between gap-3 sm:mb-6 sm:gap-4">

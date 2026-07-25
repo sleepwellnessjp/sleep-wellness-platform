@@ -11,6 +11,7 @@ import {
 } from "@/lib/repositories/client-repository";
 import { getNextClientAppointment } from "@/lib/repositories/client-appointments-repository";
 import { getProgramDetail } from "@/lib/repositories/program-repository";
+import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export type ClientGender = "female" | "male" | "other" | "unspecified";
@@ -18,6 +19,8 @@ export type ClientGender = "female" | "male" | "other" | "unspecified";
 export type ClientManagementItem = {
   id: string;
   name: string;
+  email: string;
+  instructorName: string;
   age: number | null;
   gender: ClientGender;
   /** 画像 URL。null のときはイニシャルアバター */
@@ -50,9 +53,12 @@ export const CLIENT_MANAGEMENT_PAGE_SIZE = 6;
 
 /** 開発・デモ用ダミー（Supabase 未設定かつローカルデータなしのときのみ） */
 export const DUMMY_CLIENT_MANAGEMENT_LIST: ClientManagementItem[] =
-  DEMO_CLIENTS.map((client) => ({
+  DEMO_CLIENTS.map((client, index) => ({
     id: client.id,
     name: client.name,
+    email: `${client.id.replace(/^client-demo-/, "client")}@example.com`,
+    instructorName:
+      index % 5 === 0 ? "佐藤 認定講師" : client.instructorName,
     age: client.age,
     gender: client.gender,
     avatarUrl: null,
@@ -93,8 +99,34 @@ function journeyProgressFromProgram(menuChecked: number, menuTotal: number): num
   return Math.round((menuChecked / menuTotal) * 100);
 }
 
+async function resolveCurrentInstructorName(): Promise<string> {
+  if (!isSupabaseConfigured()) return "認定講師";
+  const supabase = createBrowserClient();
+  if (!supabase) return "認定講師";
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return "認定講師";
+    const { data } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    const name =
+      data &&
+      typeof (data as { display_name?: string | null }).display_name === "string"
+        ? (data as { display_name: string }).display_name.trim()
+        : "";
+    return name || "認定講師";
+  } catch {
+    return "認定講師";
+  }
+}
+
 async function toManagementItem(
   client: StoredClient,
+  instructorName: string,
 ): Promise<ClientManagementItem> {
   const latest = client.analyses[0] ?? null;
   let nextFollowUpDate: string | null = client.nextFollowUpDate ?? null;
@@ -135,6 +167,8 @@ async function toManagementItem(
   return {
     id: client.id,
     name: client.name,
+    email: (client.email ?? "").trim(),
+    instructorName,
     age: typeof client.age === "number" ? client.age : null,
     gender: mapGender(client.gender),
     avatarUrl: null,
@@ -168,7 +202,10 @@ export async function getClientManagementList(): Promise<ClientManagementListRes
     };
   }
 
-  const items = await Promise.all(clients.map((client) => toManagementItem(client)));
+  const instructorName = await resolveCurrentInstructorName();
+  const items = await Promise.all(
+    clients.map((client) => toManagementItem(client, instructorName)),
+  );
   items.sort((a, b) => {
     const aDate = a.lastAnalysisDate ?? a.assignedDay ?? "";
     const bDate = b.lastAnalysisDate ?? b.assignedDay ?? "";
@@ -202,20 +239,47 @@ export function clientInitials(name: string): string {
 
 export type ClientManagementFilters = {
   nameQuery: string;
+  emailQuery: string;
+  instructorQuery: string;
   sleepScoreQuery: string;
   assignedDayQuery: string;
 };
+
+export function listInstructorFilterOptions(
+  clients: ClientManagementItem[],
+): string[] {
+  const names = new Set<string>();
+  for (const client of clients) {
+    const name = client.instructorName.trim();
+    if (name) names.add(name);
+  }
+  return Array.from(names).sort((a, b) => a.localeCompare(b, "ja"));
+}
 
 export function filterClientManagementItems(
   clients: ClientManagementItem[],
   filters: ClientManagementFilters,
 ): ClientManagementItem[] {
   const nameQ = filters.nameQuery.trim().toLowerCase();
+  const emailQ = filters.emailQuery.trim().toLowerCase();
+  const instructorQ = filters.instructorQuery.trim().toLowerCase();
   const scoreQ = filters.sleepScoreQuery.trim();
   const dayQ = filters.assignedDayQuery.trim();
 
   return clients.filter((client) => {
     if (nameQ && !client.name.toLowerCase().includes(nameQ)) {
+      return false;
+    }
+
+    if (emailQ && !client.email.toLowerCase().includes(emailQ)) {
+      return false;
+    }
+
+    if (
+      instructorQ &&
+      instructorQ !== "all" &&
+      !client.instructorName.toLowerCase().includes(instructorQ)
+    ) {
       return false;
     }
 
