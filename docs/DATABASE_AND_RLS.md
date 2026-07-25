@@ -205,7 +205,7 @@ announcements, discussion_posts/comments, likes, case_shares, knowledge_items, e
 
 1. **Academy 資格の自己 INSERT**（本番で悪用可能）
 2. **Developer API が DB ではなく demo API Key / `x-swij-role` に依存**（本番公開危険）
-3. **proxy matcher と PROTECTED_PREFIXES の不一致**（一部ルートが未保護の可能性）
+3. ~~proxy matcher と PROTECTED_PREFIXES の不一致~~ → 公開許可リスト＋ catch-all matcher で解消
 4. **ルート SQL と migrations のドリフト**（誤適用で RLS 破綻）
 5. **リンク client による analyses フル SELECT**（機微 JSON）
 6. **パイロットメールのハードコード**（grant SQL）

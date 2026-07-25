@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — 2026-07-25（クライアント削除）
+
+### Added
+- **クライアント削除**（`/clients`）: 一覧カードに「削除」ボタン。確認ダイアログ後に Supabase `clients` を削除し、一覧を自動更新
+  - 紐づく睡眠分析（`analyses` / `sleep_analyses` 等）は FK `ON DELETE CASCADE` で同時削除
+  - `analysis_history` は明示削除＋マイグレーション `20260725010000_client_delete_analysis_history_cascade.sql` の CASCADE
+
+## [Unreleased] — 2026-07-24（Auth: 公開はトップのみ）
+
+### Changed
+- **認証ゲート強化**（`proxy.ts`）: 公開許可リスト方式に変更。未認証でアクセス可能なのは `/`（トップ）と `/login`・`/auth/*`・`/forbidden` のみ
+  - 認定講師画面を含むそれ以外のページは未ログイン時 `/login?redirect=...` へ自動リダイレクト
+  - matcher を catch-all 化し、新規ルートもデフォルトで保護
+
 ## [1.0.0-beta] — 2026-07-24（Version 1.0 Beta / 認定講師限定公開）
 
 ### Released

@@ -1,5 +1,6 @@
 import {
   createClient,
+  deleteClient,
   getClientById,
   loadClients,
   updateClientProfile,
@@ -11,6 +12,7 @@ export const clientsService = {
   getById: getClientById,
   create: createClient,
   updateProfile: updateClientProfile,
+  delete: deleteClient,
 };
 
 export type ClientsService = typeof clientsService;

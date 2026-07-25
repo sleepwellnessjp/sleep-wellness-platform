@@ -16,52 +16,29 @@ import {
   isSupabaseConfigured,
 } from "@/lib/supabase/config";
 
-const PROTECTED_PREFIXES = [
-  "/dashboard",
-  "/portal",
-  "/admin",
-  "/clients",
-  "/client",
-  "/enterprise",
-  "/school",
-  "/programs",
-  "/academy",
-  "/community",
-  "/insights",
-  "/settings",
-  "/feedback",
-  "/license",
-  "/billing",
-  "/invitations",
-  "/setup",
-  "/analysis",
-  "/journey",
-  "/homework",
-  "/research",
-  "/retreat",
-  "/events",
-  "/companies",
-  "/reports",
-  "/notifications",
-  "/developer",
-  "/knowledge",
-];
-
-function isProtectedPath(pathname: string): boolean {
-  if (pathname === "/setup/beta-verify") return false;
-  if (pathname === "/invite" || pathname.startsWith("/invite/")) return false;
-  if (pathname === "/forbidden") return false;
-  if (PROTECTED_PREFIXES.some((prefix) => pathname === prefix)) {
-    return true;
-  }
-  return PROTECTED_PREFIXES.some(
-    (prefix) => pathname.startsWith(`${prefix}/`),
-  );
+/**
+ * 未認証でもアクセス可能なパス。
+ * プロダクト方針: トップ（/）のみ公開。ログイン・OAuth・権限エラーは認証インフラとして許可。
+ */
+function isPublicPath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  if (pathname === "/login") return true;
+  if (pathname === "/forbidden") return true;
+  if (pathname.startsWith("/auth/")) return true;
+  return false;
 }
 
-function needsSessionRefresh(pathname: string): boolean {
+function isApiPath(pathname: string): boolean {
+  return pathname.startsWith("/api/");
+}
+
+/** ページは公開以外すべて認証必須（新規ルートもデフォルトで保護） */
+function requiresAuth(pathname: string): boolean {
+  return !isApiPath(pathname) && !isPublicPath(pathname);
+}
+
+function needsApiSessionRefresh(pathname: string): boolean {
   return (
-    isProtectedPath(pathname) ||
     pathname.startsWith("/api/platform") ||
     pathname.startsWith("/api/os") ||
     pathname.startsWith("/api/developer") ||
@@ -80,6 +57,10 @@ function needsSessionRefresh(pathname: string): boolean {
     pathname.startsWith("/api/journey") ||
     pathname.startsWith("/api/ai-intelligence")
   );
+}
+
+function needsSessionRefresh(pathname: string): boolean {
+  return requiresAuth(pathname) || needsApiSessionRefresh(pathname);
 }
 
 export async function proxy(request: NextRequest) {
@@ -122,7 +103,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && isProtectedPath(pathname)) {
+  if (!user && requiresAuth(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     const redirectTarget = `${pathname}${request.nextUrl.search}`;
@@ -130,7 +111,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && isProtectedPath(pathname)) {
+  if (user && requiresAuth(pathname)) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role, email")
@@ -270,71 +251,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // 静的アセット以外をすべて対象にし、新規ページもデフォルトで認証必須にする
   matcher: [
-    "/dashboard/:path*",
-    "/portal/:path*",
-    "/admin/:path*",
-    "/clients/:path*",
-    "/client",
-    "/client/:path*",
-    "/enterprise",
-    "/enterprise/:path*",
-    "/school",
-    "/school/:path*",
-    "/programs",
-    "/programs/:path*",
-    "/academy",
-    "/academy/:path*",
-    "/community",
-    "/community/:path*",
-    "/insights",
-    "/insights/:path*",
-    "/settings",
-    "/settings/:path*",
-    "/setup",
-    "/setup/:path*",
-    "/analysis",
-    "/analysis/:path*",
-    "/journey",
-    "/journey/:path*",
-    "/homework",
-    "/homework/:path*",
-    "/reports",
-    "/reports/:path*",
-    "/knowledge",
-    "/knowledge/:path*",
-    "/license",
-    "/license/:path*",
-    "/billing",
-    "/billing/:path*",
-    "/invitations",
-    "/invitations/:path*",
-    "/feedback",
-    "/feedback/:path*",
-    "/notifications",
-    "/notifications/:path*",
-    "/forbidden",
-    "/api/platform/:path*",
-    "/api/os/:path*",
-    "/api/developer/:path*",
-    "/api/setup/:path*",
-    "/api/invitations/:path*",
-    "/api/audit/:path*",
-    "/api/subscription/:path*",
-    "/api/rbac/:path*",
-    "/api/admin/:path*",
-    "/api/feedback",
-    "/api/feedback/:path*",
-    "/api/evidence/:path*",
-    "/api/client-portal/:path*",
-    "/api/beta-invitations",
-    "/api/beta-invitations/:path*",
-    "/api/license",
-    "/api/license/:path*",
-    "/api/ops/:path*",
-    "/api/journey/:path*",
-    "/api/ai-intelligence/:path*",
-    "/developer",
-    "/developer/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest)$).*)",
   ],
 };

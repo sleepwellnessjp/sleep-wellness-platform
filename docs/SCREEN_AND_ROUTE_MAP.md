@@ -20,10 +20,12 @@
 
 | ルート | 画面名 | Role | 目的 | 主なデータ | 主な操作 | 状態 | 遷移元 | 遷移先 | スマホ |
 |---|---|---|---|---|---|---|---|---|---|
-| `/` | ランディング | 全員 | ブランド紹介 | 静的 | Programs/Login へ | Public | — | `/programs`, `/login` | 要確認 |
+| `/` | ランディング | 全員 | ブランド紹介 | 静的 | Login へ | Public（唯一の公開トップ） | — | `/login` | 要確認 |
 | `/login` | ログイン | 全員 | Auth / デモ入場 | Auth | サインイン | Partial | 保護リダイレクト | Role Home | 要確認 |
 | `/auth/callback` | Auth Callback | — | OAuth/確認 | session | 自動 | Done | Supabase | Home | — |
-| `/setup` | スキーマセットアップ | instructor+ | DB 準備案内 | schema API | 確認 | Partial | バナー等 | dashboard | 要確認 |
+| `/setup` | スキーマセットアップ | instructor+ | DB 準備案内 | schema API | 確認 | Partial（要ログイン） | バナー等 | dashboard | 要確認 |
+
+> **認証:** Supabase 設定時、`proxy.ts` は `/`・`/login`・`/auth/*`・`/forbidden` 以外のページを未ログインで `/login?redirect=...` へリダイレクトする。
 
 ---
 
@@ -52,7 +54,7 @@
 |---|---|---|---|---|---|---|---|---|---|
 | `/dashboard` | 講師 Home | instructor | 本日業務 | appointments, homework, insight, news | 閲覧 | Done | login | clients 等 | 要確認 |
 | `/portal` | マイポータル | instructor | 資格・クレジット | platform/me | 閲覧 | Done | nav | academy | 要確認 |
-| `/clients` | クライアント一覧 | instructor | 管理 | clients | 一覧/新規 | Done | dashboard | detail/new | 要確認 |
+| `/clients` | クライアント一覧 | instructor | 管理 | clients | 一覧/新規/削除 | Done | dashboard | detail/new | 要確認 |
 | `/clients/new` | 新規クライアント | instructor | 作成 | clients | 作成 | Done | clients | detail | 要確認 |
 | `/clients/[id]` | クライアント詳細 | instructor | カルテ | analyses, homework, profile | 編集/分析へ | Done | clients | analysis, profile, compare | 要確認 |
 | `/clients/[id]/compare` | 比較 | instructor | 2回比較 | analyses | 閲覧 | Done | detail | — | 要確認 |

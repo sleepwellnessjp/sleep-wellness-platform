@@ -1041,6 +1041,15 @@ export function createClient(input: CreateClientInput): StoredClient {
   return client;
 }
 
+/** クライアントを削除（ローカル）。紐づく分析履歴もまとめて消える。 */
+export function deleteClient(clientId: string): boolean {
+  const clients = loadClients();
+  const next = clients.filter((item) => item.id !== clientId);
+  if (next.length === clients.length) return false;
+  writeClients(next);
+  return true;
+}
+
 /** 既存クライアントの基本情報を更新（ローカル） */
 export function updateClientProfile(
   clientId: string,

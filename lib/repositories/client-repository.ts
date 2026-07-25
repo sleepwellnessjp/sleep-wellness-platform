@@ -9,6 +9,7 @@ import { buildClientSearchText } from "@/lib/client-search";
 import { normalizeClientTags } from "@/lib/client-tags";
 import {
   createClient as createLocalClient,
+  deleteClient as deleteLocalClient,
   getClientById as getLocalClientById,
   loadClients as loadLocalClients,
   recordPdfDownload as recordLocalPdfDownload,
@@ -1154,6 +1155,57 @@ export async function createClient(input: CreateClientInput): Promise<StoredClie
 
   notifyClientsUpdated();
   return mapDbClient(row, []);
+}
+
+/**
+ * クライアントを削除する。
+ * analyses / sleep_analyses / programs 等（client_id CASCADE）は DB 側で同時削除。
+ * analysis_history は明示削除を試し、マイグレーション適用後は CASCADE でも消える。
+ */
+export async function deleteClient(clientId: string): Promise<void> {
+  const trimmedId = clientId.trim();
+  if (!trimmedId) throw new Error("クライアントが見つかりません。");
+
+  const auth = await getSupabaseAuth();
+  if (!auth) {
+    if (!deleteLocalClient(trimmedId)) {
+      throw new Error("クライアントが見つかりません。");
+    }
+    return;
+  }
+
+  const { supabase, userId } = auth;
+  const instructorCol = await resolveInstructorColumn(auth);
+
+  // analysis_history は環境によって CASCADE 未適用のことがあるため、先に明示削除を試みる
+  const { error: historyError } = await supabase
+    .from("analysis_history")
+    .delete()
+    .eq("client_id", trimmedId)
+    .eq("user_id", userId);
+  if (historyError) {
+    console.warn(
+      "[client-repository] deleteClient: analysis_history delete skipped:",
+      historyError.message,
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("clients")
+    .delete()
+    .eq("id", trimmedId)
+    .eq(clientsInstructorFilterColumn(instructorCol), userId)
+    .select("id");
+
+  if (error) {
+    throw formatSupabaseError(error, "deleteClient");
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error("クライアントが見つからないか、削除権限がありません。");
+  }
+
+  notifyClientsUpdated();
 }
 
 export async function updateClientProfile(

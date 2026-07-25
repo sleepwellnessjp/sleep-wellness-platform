@@ -1,5 +1,6 @@
 export {
   createClient,
+  deleteClient,
   getClientById,
   loadClients,
   updateClientProfile,

@@ -18,7 +18,7 @@
 
 | 機能 | 段階 | 根拠（要約） |
 |---|---|---|
-| 認証 | **一部実装** | Supabase Auth（メール）+ `proxy.ts` 保護。未設定時デモ。Role リダイレクトあり |
+| 認証 | **実装済み** | Supabase Auth + `proxy.ts`。公開は `/` のみ（`/login`・`/auth/*`・`/forbidden` は認証インフラ）。未設定時デモ |
 | 管理者画面 | **一部実装** | `/admin/*` UI・API あり。Supabase 時は service、未設定時は `demo-admin-store` |
 | 認定講師画面 | **実装済み** | `/dashboard`, `/clients`, `/programs`, `/analysis/*`, `/portal` |
 | クライアント画面 | **一部実装** | `/client` に Coach/Journey/宿題/履歴。ポータル連携・RLS 依存。デモ可 |
