@@ -20,6 +20,7 @@ import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 import {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
+  SleepStagesOverview,
 } from "@/components/SoxaiVisualCharts";
 import { useToast } from "@/components/ui/Toast";
 import { computeRecoveryIndex } from "@/lib/recovery-index";
@@ -1334,7 +1335,31 @@ function ResultContent({
               <ReportLead>
                 ウェアラブルで測定し、講師が確認した睡眠データです。数値は今回1日分の記録です。
               </ReportLead>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
+
+              <div className="report-sleep-stages rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3.5 py-3.5 sm:px-4 sm:py-4">
+                <p
+                  className="text-[10px] font-semibold tracking-[0.18em]"
+                  style={{ color: GOLD }}
+                >
+                  SLEEP STAGES
+                </p>
+                <h3
+                  className="mt-1 text-[14px] font-semibold tracking-[-0.02em] sm:text-[15px]"
+                  style={{ color: NAVY }}
+                >
+                  睡眠ステージ（REM / ノンレム）
+                </h3>
+                <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                  ノンレム睡眠は浅い睡眠と深い睡眠の合計です。
+                </p>
+                <SleepStagesOverview
+                  metrics={confirmedMetrics}
+                  graph={graphBundle.stages}
+                  variant="featured"
+                />
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-3.5 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4">
                 {MEDICAL_METRIC_ROWS.map(({ label, key }) => (
                   <div
                     key={label}
@@ -1428,7 +1453,11 @@ function ResultContent({
                   {printDetailPanels.map((panel) => (
                     <div
                       key={panel.id}
-                      className="report-detail-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3"
+                      className={`report-detail-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 ${
+                        panel.id === "stages"
+                          ? "min-[480px]:col-span-2 sm:col-span-3"
+                          : ""
+                      }`}
                     >
                       <p
                         className="text-[9px] font-semibold tracking-[0.18em]"
@@ -1834,7 +1863,9 @@ function ResultContent({
             {visualPanels.map((panel) => (
               <div
                 key={panel.id}
-                className="visual-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-4"
+                className={`visual-panel min-w-0 overflow-hidden rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3 py-3 sm:px-3.5 sm:py-4 ${
+                  panel.id === "stages" ? "min-[400px]:col-span-2 sm:col-span-2" : ""
+                }`}
               >
                 <p
                   className="text-[9px] font-semibold tracking-[0.18em]"

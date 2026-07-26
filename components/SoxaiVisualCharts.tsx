@@ -4,12 +4,14 @@ import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import type { GraphPanelData, GraphPoint, SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import {
   clamp,
+  computeSleepStageSummary,
   displayValue,
   parseHHMM,
   parseLeadingNumber,
   parsePercent,
-  stageRatiosFromData,
+  REM_NREM_COLORS,
   STAGE_COLORS,
+  type SleepStageSummary,
 } from "@/lib/soxai-graphs";
 
 const NAVY = "#071426";
@@ -107,6 +109,280 @@ function MiniLineChart({
   );
 }
 
+function RemNonRemDonut({
+  summary,
+  size = 88,
+}: {
+  summary: SleepStageSummary;
+  size?: number;
+}) {
+  const stroke = Math.max(8, Math.round(size * 0.12));
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const remLen = summary.remShare * c;
+  const nremLen = summary.nonRemShare * c;
+  const cx = size / 2;
+  const cy = size / 2;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="shrink-0"
+      aria-hidden
+    >
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="none"
+        stroke="rgba(7,20,38,0.06)"
+        strokeWidth={stroke}
+      />
+      {summary.hasData && summary.nonRemShare > 0 ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke={REM_NREM_COLORS.nonRem}
+          strokeWidth={stroke}
+          strokeDasharray={`${nremLen} ${c - nremLen}`}
+          strokeDashoffset={0}
+          transform={`rotate(-90 ${cx} ${cy})`}
+          strokeLinecap="butt"
+        />
+      ) : null}
+      {summary.hasData && summary.remShare > 0 ? (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke={REM_NREM_COLORS.rem}
+          strokeWidth={stroke}
+          strokeDasharray={`${remLen} ${c - remLen}`}
+          strokeDashoffset={-nremLen}
+          transform={`rotate(-90 ${cx} ${cy})`}
+          strokeLinecap="butt"
+        />
+      ) : null}
+      <text
+        x={cx}
+        y={cy - 4}
+        textAnchor="middle"
+        style={{
+          fill: NAVY,
+          fontSize: size * 0.13,
+          fontWeight: 600,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        REM
+      </text>
+      <text
+        x={cx}
+        y={cy + size * 0.14}
+        textAnchor="middle"
+        style={{
+          fill: REM_NREM_COLORS.rem,
+          fontSize: size * 0.145,
+          fontWeight: 600,
+        }}
+      >
+        {summary.rem.percentText || "—"}
+      </text>
+    </svg>
+  );
+}
+
+/** REM / ノンレムを主軸に、浅い・深いを内訳表示 */
+export function SleepStagesOverview({
+  metrics,
+  graph,
+  variant = "compact",
+}: {
+  metrics: AnalysisMetrics;
+  graph?: GraphPanelData;
+  variant?: "compact" | "featured";
+}) {
+  const summary = computeSleepStageSummary(metrics);
+  const segments = graph?.segments ?? [];
+  const isFeatured = variant === "featured";
+
+  return (
+    <div className={isFeatured ? "mt-1" : "mt-2"}>
+      <div
+        className={
+          isFeatured
+            ? "flex flex-col gap-4 min-[480px]:flex-row min-[480px]:items-center"
+            : "space-y-2.5"
+        }
+      >
+        <div
+          className={
+            isFeatured
+              ? "flex items-center gap-4"
+              : "flex items-center gap-3"
+          }
+        >
+          <RemNonRemDonut
+            summary={summary}
+            size={isFeatured ? 112 : 72}
+          />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 sm:text-[12px]">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: REM_NREM_COLORS.rem }}
+                />
+                REM睡眠
+              </p>
+              <p
+                className={`shrink-0 text-right font-semibold tracking-[-0.02em] ${
+                  isFeatured ? "text-[13px] sm:text-[14px]" : "text-[11px] sm:text-[12px]"
+                }`}
+                style={{ color: NAVY }}
+              >
+                {summary.rem.combined}
+              </p>
+            </div>
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 sm:text-[12px]">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: REM_NREM_COLORS.nonRem }}
+                />
+                ノンレム睡眠
+              </p>
+              <p
+                className={`shrink-0 text-right font-semibold tracking-[-0.02em] ${
+                  isFeatured ? "text-[13px] sm:text-[14px]" : "text-[11px] sm:text-[12px]"
+                }`}
+                style={{ color: NAVY }}
+              >
+                {summary.nonRem.combined}
+              </p>
+            </div>
+            <div
+              className={`w-full overflow-hidden rounded-full ${isFeatured ? "h-2.5" : "h-2"}`}
+              style={{ background: "rgba(7,20,38,0.06)" }}
+              aria-hidden
+            >
+              <div className="flex h-full w-full">
+                <div
+                  style={{
+                    width: `${summary.remShare * 100}%`,
+                    backgroundColor: REM_NREM_COLORS.rem,
+                  }}
+                />
+                <div
+                  style={{
+                    width: `${summary.nonRemShare * 100}%`,
+                    backgroundColor: REM_NREM_COLORS.nonRem,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={
+            isFeatured
+              ? "min-w-0 flex-1 rounded-xl border border-[#071426]/08 bg-[#fafaf8] px-3.5 py-3"
+              : "rounded-lg border border-[#071426]/06 bg-white/60 px-2.5 py-2"
+          }
+        >
+          <p className="text-[9px] font-semibold tracking-[0.14em] text-slate-400">
+            ノンレム内訳
+          </p>
+          <div className="mt-2 space-y-1.5">
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <p className="inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: REM_NREM_COLORS.light }}
+                />
+                浅い睡眠
+              </p>
+              <p
+                className="shrink-0 text-[10px] font-semibold sm:text-[11px]"
+                style={{ color: NAVY }}
+              >
+                {summary.light.combined}
+              </p>
+            </div>
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <p className="inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: REM_NREM_COLORS.deep }}
+                />
+                深い睡眠
+              </p>
+              <p
+                className="shrink-0 text-[10px] font-semibold sm:text-[11px]"
+                style={{ color: NAVY }}
+              >
+                {summary.deep.combined}
+              </p>
+            </div>
+            <div
+              className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full"
+              style={{ background: "rgba(7,20,38,0.06)" }}
+              aria-hidden
+            >
+              <div
+                style={{
+                  width: `${summary.lightOfNonRem * 100}%`,
+                  backgroundColor: REM_NREM_COLORS.light,
+                }}
+              />
+              <div
+                style={{
+                  width: `${summary.deepOfNonRem * 100}%`,
+                  backgroundColor: REM_NREM_COLORS.deep,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {segments.length > 0 ? (
+        <div className={isFeatured ? "mt-3" : "mt-2.5"}>
+          <p className="text-[9px] font-semibold tracking-[0.14em] text-slate-400">
+            ハイプノグラム
+          </p>
+          <div
+            className="mt-1.5 flex h-3 w-full overflow-hidden rounded-full"
+            style={{ background: "rgba(7,20,38,0.06)" }}
+            aria-hidden
+          >
+            {segments.map((seg, i) => {
+              const total = segments.reduce((s, x) => s + (x.ratio ?? 1), 0);
+              const w = total > 0 ? ((seg.ratio ?? 1) / total) * 100 : 0;
+              return (
+                <div
+                  key={`${seg.stage}-${i}`}
+                  style={{
+                    width: `${w}%`,
+                    backgroundColor: STAGE_COLORS[seg.stage],
+                  }}
+                  title={`${seg.stage} ${seg.startTime ?? ""}–${seg.endTime ?? ""}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function HypnogramChart({
   graph,
   metrics,
@@ -114,72 +390,8 @@ function HypnogramChart({
   graph?: GraphPanelData;
   metrics: AnalysisMetrics;
 }) {
-  const segments = graph?.segments ?? [];
-  if (segments.length > 0) {
-    const total = segments.reduce((s, seg) => s + (seg.ratio ?? 1), 0);
-    return (
-      <div className="mt-2">
-        <div
-          className="flex h-4 w-full overflow-hidden rounded-full"
-          style={{ background: "rgba(7,20,38,0.06)" }}
-          aria-hidden
-        >
-          {segments.map((seg, i) => {
-            const w = total > 0 ? ((seg.ratio ?? 1) / total) * 100 : 0;
-            return (
-              <div
-                key={`${seg.stage}-${i}`}
-                style={{
-                  width: `${w}%`,
-                  backgroundColor: STAGE_COLORS[seg.stage],
-                }}
-                title={`${seg.stage} ${seg.startTime ?? ""}–${seg.endTime ?? ""}`}
-              />
-            );
-          })}
-        </div>
-        <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
-          {(["awake", "rem", "light", "deep"] as const).map((stage) => (
-            <span
-              key={stage}
-              className="inline-flex items-center gap-1 text-[10px] text-slate-500"
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: STAGE_COLORS[stage] }}
-              />
-              {stage === "awake"
-                ? "覚醒"
-                : stage === "rem"
-                  ? "REM"
-                  : stage === "light"
-                    ? "浅い"
-                    : "深い"}
-            </span>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const ratios = stageRatiosFromData(metrics, graph);
   return (
-    <div className="mt-2">
-      <div
-        className="flex h-3 w-full overflow-hidden rounded-full"
-        style={{ background: "rgba(7,20,38,0.06)" }}
-        aria-hidden
-      >
-        <div style={{ width: `${ratios.rem * 100}%`, backgroundColor: STAGE_COLORS.rem }} />
-        <div style={{ width: `${ratios.light * 100}%`, backgroundColor: STAGE_COLORS.light }} />
-        <div style={{ width: `${ratios.deep * 100}%`, backgroundColor: STAGE_COLORS.deep }} />
-      </div>
-      <div className="mt-2 flex justify-between">
-        <p className="text-[11px] font-semibold text-slate-500">REM</p>
-        <p className="text-[11px] font-semibold text-slate-500">浅い</p>
-        <p className="text-[11px] font-semibold text-slate-500">深い</p>
-      </div>
-    </div>
+    <SleepStagesOverview metrics={metrics} graph={graph} variant="featured" />
   );
 }
 
@@ -388,14 +600,7 @@ export function buildVisualPanels(
           (g.stages?.points?.length ?? 0) > 0,
       ),
       graph: <HypnogramChart graph={g.stages} metrics={m} />,
-      values: [
-        { label: "REM（時間）", value: displayValue(m.remSleep) },
-        { label: "REM睡眠率", value: displayValue(m.remSleepRate) },
-        { label: "浅い睡眠（時間）", value: displayValue(m.lightSleep) },
-        { label: "浅い睡眠率", value: displayValue(m.lightSleepRate) },
-        { label: "深い睡眠（時間）", value: displayValue(m.deepSleep) },
-        { label: "深い睡眠率", value: displayValue(m.deepSleepRate) },
-      ],
+      // グラフ内に REM / ノンレム / 内訳を表示するため values は省略
     },
     {
       id: "stage-detail",
@@ -569,7 +774,9 @@ export function buildVisualPanels(
   ];
 }
 
-/** Medical Report 用：確認済みメトリクス一覧（単一ソース） */
+/** Medical Report 用：確認済みメトリクス一覧（単一ソース）
+ * 睡眠ステージ（REM / ノンレム / 浅い / 深い）は SleepStagesOverview で別表示
+ */
 export const MEDICAL_METRIC_ROWS: Array<{
   label: string;
   key: keyof AnalysisMetrics;
@@ -584,12 +791,6 @@ export const MEDICAL_METRIC_ROWS: Array<{
   { label: "体内時計", key: "circadianRhythm" },
   { label: "覚醒時間", key: "awakenings" },
   { label: "覚醒率", key: "awakeningRate" },
-  { label: "REM睡眠", key: "remSleep" },
-  { label: "レム睡眠率", key: "remSleepRate" },
-  { label: "浅い睡眠", key: "lightSleep" },
-  { label: "浅い睡眠率", key: "lightSleepRate" },
-  { label: "深い睡眠", key: "deepSleep" },
-  { label: "深い睡眠率", key: "deepSleepRate" },
   { label: "呼吸速度", key: "respiratoryRate" },
   { label: "平均SpO₂", key: "spo2" },
   { label: "安静時心拍数", key: "restingHeartRate" },
