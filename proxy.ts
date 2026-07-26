@@ -18,11 +18,14 @@ import {
 
 /**
  * 未認証でもアクセス可能なパス。
- * /login と OAuth コールバックのみ公開。それ以外のページはログイン必須。
+ * /login・OAuth・認定講師公開ページ。それ以外のページはログイン必須。
  */
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/")) return true;
+  if (pathname === "/instructors" || pathname.startsWith("/instructors/")) {
+    return true;
+  }
   return false;
 }
 
@@ -64,7 +67,8 @@ function needsApiSessionRefresh(pathname: string): boolean {
     pathname.startsWith("/api/license") ||
     pathname.startsWith("/api/ops") ||
     pathname.startsWith("/api/journey") ||
-    pathname.startsWith("/api/ai-intelligence")
+    pathname.startsWith("/api/ai-intelligence") ||
+    pathname.startsWith("/api/instructor/profile")
   );
 }
 

@@ -16,6 +16,15 @@ const nextConfig: NextConfig = {
     proxyTimeout: 300_000,
     proxyClientMaxBodySize: "25mb",
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
   // 既定オフ。開発でバッジを見る場合は NEXT_PUBLIC_SHOW_DEV_INDICATORS=1
   devIndicators: showDevIndicators ? { position: "bottom-left" } : false,
 };
