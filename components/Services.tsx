@@ -23,7 +23,7 @@ const services = [
     title: "Academy",
     description: "NavigatorからInstructorへ。睡眠ウェルネスを伝える人材を育成。",
     image: "/yogafest.jpg",
-    href: "#contact",
+    href: "/academy/certified-instructor",
     cta: "認定講師になる",
   },
 ];
