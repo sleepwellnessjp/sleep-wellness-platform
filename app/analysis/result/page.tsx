@@ -16,11 +16,13 @@ import SessionEvidenceSurveyCard from "@/components/evidence/SessionEvidenceSurv
 import WellnessRadarChart from "@/components/WellnessRadarChart";
 import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextCard";
 import PreviousHomeworkCard from "@/components/PreviousHomeworkCard";
+import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 import {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
 } from "@/components/SoxaiVisualCharts";
 import { useToast } from "@/components/ui/Toast";
+import { computeRecoveryIndex } from "@/lib/recovery-index";
 import {
   AnalysisResult,
   formatImprovementStars,
@@ -1043,6 +1045,10 @@ function ResultContent({
   const confirmedMetrics = result.metrics;
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
+  const recoveryIndex = computeRecoveryIndex({
+    hrv: confirmedMetrics.hrv,
+    restingHeartRate: confirmedMetrics.restingHeartRate,
+  });
   const categoryScores = result.categoryScores;
   const aiPending = result.contentStatus === "pending";
   const aiFailed = result.contentStatus === "error";
@@ -1174,29 +1180,78 @@ function ResultContent({
                   </p>
                 </div>
 
-                <div className="report-score-block shrink-0 text-right">
-                  <p
-                    className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
-                    style={{ color: GOLD }}
-                  >
-                    Sleep Wellness Score
-                  </p>
-                  <p
-                    className="report-score mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
-                    style={{ color: NAVY }}
-                  >
-                    {score}
-                  </p>
-                  <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
-                    / 100
-                  </p>
-                  <p className="mt-2 max-w-[8.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
-                    生活・環境・測定を総合した独自指標
-                    <span className="block">（SOXAIスコアとは別）</span>
-                  </p>
+                <div className="report-score-block flex shrink-0 gap-5 text-right sm:gap-7">
+                  <div>
+                    <p
+                      className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
+                      style={{ color: GOLD }}
+                    >
+                      Sleep Wellness Score
+                    </p>
+                    <p
+                      className="report-score mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
+                      style={{ color: NAVY }}
+                    >
+                      {score}
+                    </p>
+                    <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
+                      / 100
+                    </p>
+                    <p className="mt-2 max-w-[8.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
+                      生活・環境・測定を総合した独自指標
+                      <span className="block">（SOXAIスコアとは別）</span>
+                    </p>
+                  </div>
+                  <div className="border-l border-[#071426]/10 pl-5 sm:pl-7">
+                    <p
+                      className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
+                      style={{ color: GOLD }}
+                    >
+                      回復指数
+                    </p>
+                    {recoveryIndex.available ? (
+                      <>
+                        <p
+                          className="mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
+                          style={{ color: recoveryIndex.accent }}
+                        >
+                          {recoveryIndex.score}
+                        </p>
+                        <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
+                          / 100
+                        </p>
+                        <p
+                          className="mt-2 text-[11px] font-semibold"
+                          style={{ color: recoveryIndex.accent }}
+                        >
+                          {recoveryIndex.emoji} {recoveryIndex.label}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p
+                          className="mt-2 text-[1.15rem] font-semibold leading-snug tracking-[-0.03em] sm:text-[1.35rem]"
+                          style={{ color: NAVY }}
+                        >
+                          —
+                        </p>
+                        <p className="mt-2 max-w-[7.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[9rem] sm:text-[11px] sm:leading-4">
+                          {recoveryIndex.message}
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </header>
+
+            <div className="report-panel report-recovery mt-5 sm:mt-6">
+              <RecoveryIndexCard
+                value={recoveryIndex}
+                hrv={confirmedMetrics.hrv}
+                restingHeartRate={confirmedMetrics.restingHeartRate}
+              />
+            </div>
 
             <section className="report-panel report-basics mt-5 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5">
               <SectionLabel title="① 基本情報" eyebrow="PROFILE" />
