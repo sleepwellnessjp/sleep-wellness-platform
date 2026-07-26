@@ -23,7 +23,17 @@ import type {
   CreateInvitationInput,
   InvitationListFilters,
   InvitationRecord,
+  SendInvitationResult,
 } from "./types";
+
+/** 実メール送信プロバイダが設定されているか（未設定なら送信済みと扱わない） */
+export function isInviteEmailDeliveryConfigured(): boolean {
+  return Boolean(
+    process.env.RESEND_API_KEY?.trim() ||
+      process.env.SMTP_HOST?.trim() ||
+      process.env.INVITE_EMAIL_PROVIDER?.trim(),
+  );
+}
 
 function mapInvitation(row: Record<string, unknown>): InvitationRecord {
   return {
@@ -194,11 +204,26 @@ export async function createInvitation(
   return mapInvitation(data as Record<string, unknown>);
 }
 
-export async function sendInvitation(id: string): Promise<InvitationRecord> {
+export async function sendInvitation(id: string): Promise<SendInvitationResult> {
   if (!isSupabaseConfigured()) {
+    if (!isInviteEmailDeliveryConfigured()) {
+      const existing =
+        listAllDemoInvitations().find((row) => row.id === id) ?? null;
+      if (!existing) throw new Error("招待が見つかりません");
+      return {
+        invitation: existing,
+        emailSent: false,
+        message:
+          "メール送信設定が未完了のため、招待URLとコードを手動で共有してください。",
+      };
+    }
     const updated = sendDemoInvitation(id);
     if (!updated) throw new Error("招待が見つかりません");
-    return updated;
+    return {
+      invitation: updated,
+      emailSent: true,
+      message: "招待メールを送信しました。",
+    };
   }
 
   const profile = await requireInstructor();
@@ -209,6 +234,29 @@ export async function sendInvitation(id: string): Promise<InvitationRecord> {
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Database unavailable");
 
+  const { data: existing, error: existingError } = await supabase
+    .from("invitations")
+    .select("*")
+    .eq("id", id)
+    .eq("instructor_id", profile.id)
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("招待が見つかりません");
+
+  const invitation = mapInvitation(existing as Record<string, unknown>);
+
+  if (!isInviteEmailDeliveryConfigured()) {
+    return {
+      invitation,
+      emailSent: false,
+      message:
+        "メール送信設定が未完了のため、招待URLとコードを手動で共有してください。",
+    };
+  }
+
+  // 実メール送信プロバイダ接続後にここに送信処理を追加する。
+  // 現状は設定フラグのみ。誤って sent にしない。
   const { data, error } = await supabase
     .from("invitations")
     .update({
@@ -221,8 +269,11 @@ export async function sendInvitation(id: string): Promise<InvitationRecord> {
     .single();
 
   if (error) throw new Error(error.message);
-  // 実メール送信は将来接続。現状はレコード更新 + 本文保存のみ。
-  return mapInvitation(data as Record<string, unknown>);
+  return {
+    invitation: mapInvitation(data as Record<string, unknown>),
+    emailSent: true,
+    message: "招待メールを送信しました。",
+  };
 }
 
 export async function revokeInvitation(id: string): Promise<InvitationRecord> {

@@ -89,9 +89,24 @@ export default function InvitationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "send", id }),
       });
-      const json = (await response.json()) as { error?: string };
+      const json = (await response.json()) as {
+        error?: string;
+        emailSent?: boolean;
+        message?: string;
+        invitation?: { code: string };
+      };
       if (!response.ok) throw new Error(json.error ?? "送信に失敗しました");
-      success("招待メールを送信しました（モック）");
+      if (json.emailSent) {
+        success(json.message ?? "招待メールを送信しました");
+      } else {
+        const code = json.invitation?.code;
+        success(
+          json.message ??
+            (code
+              ? `メール未送信のため、招待コード ${code} を手動共有してください`
+              : "メール送信設定が未完了のため、招待コードを手動共有してください"),
+        );
+      }
       await load();
     } catch (err) {
       toastError(err instanceof Error ? err.message : "送信に失敗しました");

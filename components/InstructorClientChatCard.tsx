@@ -7,6 +7,8 @@ import { useToast } from "@/components/ui/Toast";
 import { GOLD, NAVY } from "@/components/ui/tokens";
 import type { ClientPortalMessage } from "@/lib/client-portal/types";
 
+type SendStatus = "idle" | "sending" | "sent" | "error";
+
 /**
  * 認定講師向け: Client Portal チャットへメッセージを送る。
  */
@@ -18,11 +20,14 @@ export default function InstructorClientChatCard({
   const { success, error: toastError } = useToast();
   const [messages, setMessages] = useState<ClientPortalMessage[]>([]);
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<SendStatus>("idle");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setReady(false);
+    setLoadError(null);
     try {
       const res = await fetch(
         `/api/client-portal/messages?clientId=${encodeURIComponent(clientId)}&markRead=1`,
@@ -34,9 +39,10 @@ export default function InstructorClientChatCard({
       if (!res.ok) throw new Error(json.error || "取得に失敗しました");
       setMessages(json.messages ?? []);
     } catch (err) {
-      toastError(
-        err instanceof Error ? err.message : "メッセージの取得に失敗しました",
-      );
+      const msg =
+        err instanceof Error ? err.message : "メッセージの取得に失敗しました";
+      setLoadError(msg);
+      toastError(msg);
       setMessages([]);
     } finally {
       setReady(true);
@@ -50,8 +56,9 @@ export default function InstructorClientChatCard({
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const body = draft.trim();
-    if (!body || sending) return;
-    setSending(true);
+    if (!body || sendStatus === "sending") return;
+    setSendStatus("sending");
+    setStatusMessage("送信中…");
     try {
       const res = await fetch("/api/client-portal/messages", {
         method: "POST",
@@ -71,13 +78,19 @@ export default function InstructorClientChatCard({
       }
       setMessages((prev) => [...prev, json.message!]);
       setDraft("");
+      setSendStatus("sent");
+      setStatusMessage("送信しました");
       success("クライアントへメッセージを送信しました");
     } catch (err) {
-      toastError(err instanceof Error ? err.message : "送信に失敗しました");
-    } finally {
-      setSending(false);
+      const msg = err instanceof Error ? err.message : "送信に失敗しました";
+      console.error("[InstructorClientChatCard] send failed:", err);
+      setSendStatus("error");
+      setStatusMessage(msg);
+      toastError(msg);
     }
   };
+
+  const sending = sendStatus === "sending";
 
   return (
     <div className="rounded-2xl border border-[#8a6a2d]/18 bg-[#fafaf8] px-4 py-4 sm:px-5">
@@ -94,6 +107,8 @@ export default function InstructorClientChatCard({
       <div className="mt-4 max-h-56 space-y-2 overflow-y-auto">
         {!ready ? (
           <SoftSkeleton variant="card" />
+        ) : loadError ? (
+          <p className="text-[13px] text-rose-600">{loadError}</p>
         ) : messages.length === 0 ? (
           <EmptyState
             compact
@@ -128,14 +143,29 @@ export default function InstructorClientChatCard({
           className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-[16px] outline-none focus:border-[#315f68]/40 focus:ring-2 focus:ring-[#315f68]/15 sm:text-[15px]"
           style={{ color: NAVY }}
         />
-        <button
-          type="submit"
-          disabled={sending || !draft.trim()}
-          className="inline-flex min-h-11 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white disabled:opacity-50"
-          style={{ backgroundColor: NAVY }}
-        >
-          {sending ? "送信中…" : "メッセージを送る"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={sending || !draft.trim()}
+            className="inline-flex min-h-11 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white disabled:opacity-50"
+            style={{ backgroundColor: NAVY }}
+          >
+            {sending ? "送信中…" : "メッセージを送る"}
+          </button>
+          {statusMessage ? (
+            <p
+              className={`text-[13px] font-medium ${
+                sendStatus === "error"
+                  ? "text-rose-600"
+                  : sendStatus === "sent"
+                    ? "text-[#315f68]"
+                    : "text-slate-500"
+              }`}
+            >
+              {statusMessage}
+            </p>
+          ) : null}
+        </div>
       </form>
     </div>
   );

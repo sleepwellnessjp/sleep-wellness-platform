@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { GOLD, NAVY } from "@/components/ui/tokens";
-import { linkClientPortalUser } from "@/lib/repositories/client-mypage-repository";
+import {
+  isValidPortalEmail,
+  linkClientPortalUser,
+} from "@/lib/repositories/client-mypage-repository";
 
 /**
  * 認定講師向け: クライアントマイページ（/client）連携メールを設定する。
@@ -21,10 +24,18 @@ export default function ClientPortalLinkCard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setEmail(initialEmail?.trim() ?? "");
+  }, [initialEmail, clientId]);
+
   const save = async () => {
     const trimmed = email.trim();
     if (!trimmed) {
       setError("マイページ連携用のメールアドレスを入力してください。");
+      return;
+    }
+    if (!isValidPortalEmail(trimmed)) {
+      setError("メールアドレスの形式が正しくありません。");
       return;
     }
 
@@ -32,22 +43,16 @@ export default function ClientPortalLinkCard({
     setError(null);
     setMessage(null);
     try {
-      const ok = await linkClientPortalUser({
+      const result = await linkClientPortalUser({
         clientId,
         email: trimmed,
       });
-      if (!ok) {
-        const msg =
-          "連携の保存に失敗しました。SQL マイグレーションの適用を確認してください。";
-        setError(msg);
-        toastError(msg);
-        return;
-      }
-      const okMsg =
-        "保存しました。クライアントが同じメールでログインすると /client が利用できます。";
+      setEmail(result.email);
+      const okMsg = "連携を保存しました";
       setMessage(okMsg);
-      success("マイページ連携を保存しました");
+      success(okMsg);
     } catch (err) {
+      console.error("[ClientPortalLinkCard] save failed:", err);
       const msg =
         err instanceof Error ? err.message : "連携の保存に失敗しました。";
       setError(msg);

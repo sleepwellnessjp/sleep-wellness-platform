@@ -212,6 +212,18 @@ export async function listMyMessages(
     if (!linkedId) return [];
     query = query.eq("client_id", linkedId);
   } else if (clientId) {
+    if (profile.role === "instructor") {
+      const { data: owned, error: ownedError } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("id", clientId)
+        .eq("instructor_id", profile.id)
+        .maybeSingle();
+      if (ownedError) throw new Error(ownedError.message);
+      if (!owned) {
+        throw new Error("担当外のクライアントのメッセージは閲覧できません");
+      }
+    }
     query = query.eq("client_id", clientId);
   } else {
     query = query.eq("instructor_id", profile.id);
@@ -259,6 +271,13 @@ export async function sendMessage(
       .maybeSingle();
     if (clientError) throw new Error(clientError.message);
     if (!clientRow) throw new Error("クライアントが見つかりません");
+    if (
+      profile.role === "instructor" &&
+      clientRow.instructor_id &&
+      String(clientRow.instructor_id) !== profile.id
+    ) {
+      throw new Error("担当外のクライアントのメッセージは操作できません");
+    }
     instructorId = String(clientRow.instructor_id ?? profile.id);
     senderRole = "instructor";
   }
