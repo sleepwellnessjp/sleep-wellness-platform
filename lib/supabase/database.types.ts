@@ -3088,6 +3088,81 @@ export type Database = {
           },
         ];
       };
+      instructor_licenses: {
+        Row: {
+          id: string;
+          instructor_id: string;
+          certification_level_id: string;
+          certification_name: string;
+          license_number: string;
+          issued_at: string;
+          expires_at: string;
+          status: string;
+          required_education_hours: number;
+          completed_education_hours: number;
+          renewal_status: string;
+          renewal_requested_at: string | null;
+          admin_note: string;
+          verification_code: string;
+          issuer_name: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          instructor_id: string;
+          certification_level_id: string;
+          certification_name?: string;
+          license_number: string;
+          issued_at: string;
+          expires_at: string;
+          status?: string;
+          required_education_hours?: number;
+          completed_education_hours?: number;
+          renewal_status?: string;
+          renewal_requested_at?: string | null;
+          admin_note?: string;
+          verification_code?: string;
+          issuer_name?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          instructor_id?: string;
+          certification_level_id?: string;
+          certification_name?: string;
+          license_number?: string;
+          issued_at?: string;
+          expires_at?: string;
+          status?: string;
+          required_education_hours?: number;
+          completed_education_hours?: number;
+          renewal_status?: string;
+          renewal_requested_at?: string | null;
+          admin_note?: string;
+          verification_code?: string;
+          issuer_name?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "instructor_licenses_instructor_id_fkey";
+            columns: ["instructor_id"];
+            isOneToOne: true;
+            referencedRelation: "certified_instructors";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "instructor_licenses_certification_level_id_fkey";
+            columns: ["certification_level_id"];
+            isOneToOne: false;
+            referencedRelation: "certification_levels";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       school_courses: {
         Row: {
           id: string;
@@ -3816,6 +3891,22 @@ export type Database = {
       ensure_monthly_credit: {
         Args: { p_user_id?: string | null };
         Returns: Database["public"]["Tables"]["monthly_credit"]["Row"];
+      };
+      request_instructor_license_renewal: {
+        Args: { p_license_id: string };
+        Returns: Database["public"]["Tables"]["instructor_licenses"]["Row"];
+      };
+      verify_instructor_license: {
+        Args: { p_code: string };
+        Returns: {
+          license_number: string;
+          certification_name: string;
+          holder_name: string;
+          issued_at: string;
+          expires_at: string;
+          status: string;
+          issuer_name: string;
+        }[];
       };
       ensure_instructor_membership: {
         Args: { p_certification_type?: string };

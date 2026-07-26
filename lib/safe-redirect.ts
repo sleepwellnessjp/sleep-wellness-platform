@@ -50,6 +50,9 @@ export function isInstructorOnlyPath(pathname: string): boolean {
   if (isEnterpriseOnlyPath(pathname)) return false;
   if (isSchoolOnlyPath(pathname)) return false;
   const path = appPathname(pathname);
+  if (path === "/license/verify" || path.startsWith("/license/verify/")) {
+    return false;
+  }
   const prefixes = [
     "/dashboard",
     "/portal",

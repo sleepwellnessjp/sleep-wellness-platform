@@ -22,7 +22,8 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/roles", label: "権限", match: "/admin/roles" },
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
   { href: "/admin/schools", label: "認定校", match: "/admin/schools" },
-  { href: "/admin/license", label: "License", match: "/admin/license" },
+  { href: "/admin/licenses", label: "License", match: "/admin/licenses" },
+  { href: "/admin/license", label: "課金License", match: "/admin/license-exact" },
   { href: "/admin/subscriptions", label: "課金", match: "/admin/subscriptions" },
   { href: "/admin/audit", label: "監査", match: "/admin/audit" },
   { href: "/admin/settings", label: "System", match: "/admin/settings" },
@@ -159,8 +160,8 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         id: "license",
         eyebrow: "LICENSE",
         title: "ライセンス",
-        description: "発行・更新・停止・証明書を管理します。",
-        href: "/admin/license",
+        description: "認定講師ライセンスの発行・更新・継続教育を管理します。",
+        href: "/admin/licenses",
       },
       {
         id: "subscriptions",
@@ -418,6 +419,15 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
 export function isNavItemActive(pathname: string, item: OsNavItem): boolean {
   if (item.match === "/admin-exact") {
     return pathname === "/admin";
+  }
+  if (item.match === "/admin/license-exact") {
+    return pathname === "/admin/license";
+  }
+  if (item.match === "/admin/licenses") {
+    return (
+      pathname === "/admin/licenses" ||
+      pathname.startsWith("/admin/licenses/")
+    );
   }
   if (item.match === "/client-exact") {
     return pathname === "/client";

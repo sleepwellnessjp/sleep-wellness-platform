@@ -1,24 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import LicenseCertificateSheet from "@/components/LicenseCertificateSheet";
+import { useEffect, useState } from "react";
+import InstructorLicenseCertificateSheet from "@/components/InstructorLicenseCertificateSheet";
 import OsShell from "@/components/os/OsShell";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SUCCESS, DANGER, TEAL } from "@/components/ui/tokens";
-import { useAuth } from "@/lib/auth/use-auth";
 import {
-  CERTIFICATION_LEVEL_LABELS,
   formatJaDate,
-  formatYen,
-  LICENSE_HISTORY_ACTION_LABELS,
-  LICENSE_STATUS_LABELS,
-  PAYMENT_STATUS_LABELS,
-  SUBSCRIPTION_STATUS_LABELS,
-} from "@/lib/license/constants";
-import type { MyLicenseBundle } from "@/lib/license/types";
+  INSTRUCTOR_LICENSE_STATUS_LABELS,
+  INSTRUCTOR_RENEWAL_STATUS_LABELS,
+} from "@/lib/instructor-license/constants";
+import type { MyInstructorLicenseView } from "@/lib/instructor-license/types";
 import { usePlatformMe } from "@/lib/platform/use-platform-me";
 import { normalizeOsRole, type OsRole } from "@/lib/os/roles";
 
@@ -26,8 +21,10 @@ function statusColor(status: string): string {
   switch (status) {
     case "active":
       return SUCCESS;
-    case "renewal_pending":
+    case "expiring":
       return TEAL;
+    case "pending":
+      return GOLD;
     case "expired":
       return DANGER;
     case "suspended":
@@ -37,64 +34,64 @@ function statusColor(status: string): string {
   }
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("ja-JP", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 export default function LicensePage() {
-  const { isDemoMode } = useAuth();
   const { data, loading: profileLoading } = usePlatformMe();
   const role: OsRole = normalizeOsRole(data?.profile.role ?? "instructor");
 
-  const [bundle, setBundle] = useState<MyLicenseBundle | null>(null);
+  const [view, setView] = useState<MyInstructorLicenseView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renewing, setRenewing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/license", { cache: "no-store" });
+      const json = (await response.json()) as {
+        view?: MyInstructorLicenseView;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(json.error ?? "取得に失敗しました");
+      setView(json.view ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "取得に失敗しました");
+      setView(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/license", { cache: "no-store" });
-        const json = (await response.json()) as {
-          bundle?: MyLicenseBundle;
-          error?: string;
-        };
-        if (!response.ok) throw new Error(json.error ?? "取得に失敗しました");
-        if (!cancelled) setBundle(json.bundle ?? null);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "取得に失敗しました");
-          setBundle(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
     void load();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  const remainingHours = useMemo(() => {
-    const ce = bundle?.continuingEducation;
-    if (!ce) return null;
-    return Math.max(0, ce.requiredHours - ce.hoursCompleted);
-  }, [bundle?.continuingEducation]);
-
-  const onPrintCertificate = () => {
-    window.print();
+  const onRequestRenewal = async () => {
+    setRenewing(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/license", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_renewal" }),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error ?? "更新申請に失敗しました");
+      setMessage("更新申請を受け付けました。事務局の審査をお待ちください。");
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "更新申請に失敗しました");
+    } finally {
+      setRenewing(false);
+    }
   };
+
+  const license = view?.license ?? null;
+  const canRequestRenewal =
+    !!license &&
+    license.status !== "suspended" &&
+    license.renewalStatus !== "requested";
 
   return (
     <OsShell
@@ -115,8 +112,7 @@ export default function LicensePage() {
           ライセンス
         </h1>
         <p className="mt-3 max-w-xl text-[14px] leading-7 text-slate-600 sm:text-[15px]">
-          認定レベル・サブスクリプション・デジタル認定証・継続教育を確認できます。
-          {isDemoMode ? "（デモデータ）" : ""}
+          認定情報・継続教育・デジタル認定証・更新申請を確認できます。
         </p>
       </header>
 
@@ -129,69 +125,129 @@ export default function LicensePage() {
         <SectionCard className="no-print" title="読み込みエラー">
           <p className="text-[14px] text-slate-600">{error}</p>
         </SectionCard>
-      ) : !bundle?.license ? (
+      ) : !view || view.notCertifiedInstructor ? (
         <div className="no-print">
           <EmptyState
-            title="ライセンスがまだありません"
-            description="本部から認定ライセンスが発行されると、こちらに表示されます。"
+            title="認定講師として登録されていません"
+            description="ライセンス確認は認定講師のみ利用できます。事務局へお問い合わせください。"
+          />
+        </div>
+      ) : view.licensePendingSetup || !license ? (
+        <div className="no-print">
+          <EmptyState
+            title="ライセンス情報は現在準備中です"
+            description="ライセンス情報は現在準備中です。事務局へお問い合わせください。"
           />
         </div>
       ) : (
+        <LicenseReadyView
+          view={view}
+          license={license}
+          message={message}
+          renewing={renewing}
+          canRequestRenewal={canRequestRenewal}
+          onRequestRenewal={onRequestRenewal}
+        />
+      )}
+    </OsShell>
+  );
+}
+
+function LicenseReadyView({
+  view,
+  license,
+  message,
+  renewing,
+  canRequestRenewal,
+  onRequestRenewal,
+}: {
+  view: MyInstructorLicenseView;
+  license: NonNullable<MyInstructorLicenseView["license"]>;
+  message: string | null;
+  renewing: boolean;
+  canRequestRenewal: boolean;
+  onRequestRenewal: () => void;
+}) {
+  return (
         <div className="w-full space-y-5 sm:space-y-6">
+          {view.isExpiringSoon ? (
+            <div
+              className="no-print rounded-2xl border px-4 py-3 text-[14px] font-semibold"
+              style={{
+                borderColor: `${TEAL}55`,
+                backgroundColor: `${TEAL}12`,
+                color: NAVY,
+              }}
+            >
+              更新期限が近づいています
+            </div>
+          ) : null}
+
+          {message ? (
+            <p className="no-print text-[14px]" style={{ color: GOLD }}>
+              {message}
+            </p>
+          ) : null}
+
           <SectionCard
             className="no-print"
             eyebrow="LICENSE"
-            title="My License"
+            title="認定ライセンス"
           >
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className="inline-flex rounded-full px-3 py-1 text-[12px] font-semibold text-white"
-                style={{ backgroundColor: statusColor(bundle.license.status) }}
+                style={{ backgroundColor: statusColor(license.status) }}
               >
-                {LICENSE_STATUS_LABELS[bundle.license.status]}
+                {INSTRUCTOR_LICENSE_STATUS_LABELS[license.status]}
               </span>
               <span className="text-[13px] font-semibold" style={{ color: NAVY }}>
-                {
-                  CERTIFICATION_LEVEL_LABELS[
-                    bundle.license.certificationLevel
-                  ]
-                }
+                {license.certificationLevelLabel}
               </span>
             </div>
 
             <dl className="mt-5 grid gap-4 sm:grid-cols-2">
               {[
+                { label: "活動名", value: view.activityName || "—" },
+                { label: "本名", value: view.legalName || "—" },
                 {
-                  label: "現在の認定レベル",
+                  label: "認定レベル",
+                  value: license.certificationLevelLabel,
+                },
+                {
+                  label: "認定資格名",
                   value:
-                    CERTIFICATION_LEVEL_LABELS[
-                      bundle.license.certificationLevel
-                    ],
+                    license.certificationName ||
+                    license.certificationLevelLabel,
                 },
-                {
-                  label: "ライセンス番号",
-                  value: bundle.license.licenseNumber,
-                },
-                {
-                  label: "認定日",
-                  value: formatJaDate(bundle.license.certifiedAt),
-                },
-                {
-                  label: "有効期限",
-                  value: formatJaDate(bundle.license.expiresAt),
-                },
-                {
-                  label: "更新期限までの日数",
-                  value:
-                    bundle.daysUntilExpiry === null
-                      ? "—"
-                      : bundle.daysUntilExpiry >= 0
-                        ? `${bundle.daysUntilExpiry} 日`
-                        : `${Math.abs(bundle.daysUntilExpiry)} 日超過`,
-                },
+                { label: "認定番号", value: license.licenseNumber },
+                { label: "認定日", value: formatJaDate(license.issuedAt) },
+                { label: "有効期限", value: formatJaDate(license.expiresAt) },
                 {
                   label: "ライセンス状態",
-                  value: LICENSE_STATUS_LABELS[bundle.license.status],
+                  value: INSTRUCTOR_LICENSE_STATUS_LABELS[license.status],
+                },
+                {
+                  label: "更新までの残り日数",
+                  value:
+                    view.daysUntilExpiry === null
+                      ? "—"
+                      : view.daysUntilExpiry >= 0
+                        ? `${view.daysUntilExpiry} 日`
+                        : `${Math.abs(view.daysUntilExpiry)} 日超過`,
+                },
+                {
+                  label: "継続教育の必要時間",
+                  value: `${license.requiredEducationHours} 時間`,
+                },
+                {
+                  label: "継続教育の修了時間",
+                  value: `${license.completedEducationHours} 時間`,
+                },
+                {
+                  label: "更新申請状況",
+                  value:
+                    INSTRUCTOR_RENEWAL_STATUS_LABELS[license.renewalStatus],
                 },
               ].map((item) => (
                 <div
@@ -209,266 +265,65 @@ export default function LicensePage() {
                   </dd>
                 </div>
               ))}
+              <div className="rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3.5 sm:col-span-2">
+                <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                  更新条件
+                </dt>
+                <dd
+                  className="mt-1 text-[15px] font-semibold leading-6"
+                  style={{ color: NAVY }}
+                >
+                  {view.renewalCondition}
+                </dd>
+              </div>
             </dl>
 
-            <div className="mt-6">
-              <p
-                className="text-[13px] font-semibold"
-                style={{ color: NAVY }}
+            <div className="mt-6 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={onRequestRenewal}
+                disabled={!canRequestRenewal || renewing}
               >
-                更新履歴
-              </p>
-              {bundle.license.statusHistory.length === 0 ? (
-                <p className="mt-2 text-[13px] text-slate-500">
-                  更新履歴はまだありません。
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {[...bundle.license.statusHistory]
-                    .reverse()
-                    .map((entry, index) => (
-                      <li
-                        key={`${entry.at}-${index}`}
-                        className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3"
-                      >
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p
-                            className="text-[14px] font-semibold"
-                            style={{ color: NAVY }}
-                          >
-                            {LICENSE_HISTORY_ACTION_LABELS[entry.action] ??
-                              entry.action}
-                          </p>
-                          <p className="text-[12px] text-slate-500">
-                            {formatDateTime(entry.at)}
-                          </p>
-                        </div>
-                        {entry.note ? (
-                          <p className="mt-1 text-[13px] text-slate-600">
-                            {entry.note}
-                          </p>
-                        ) : null}
-                        {entry.fromStatus || entry.toStatus ? (
-                          <p className="mt-0.5 text-[12px] text-slate-400">
-                            {entry.fromStatus
-                              ? LICENSE_STATUS_LABELS[entry.fromStatus]
-                              : "—"}
-                            {" → "}
-                            {entry.toStatus
-                              ? LICENSE_STATUS_LABELS[entry.toStatus]
-                              : "—"}
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
-                </ul>
-              )}
+                {license.renewalStatus === "requested"
+                  ? "更新申請済み"
+                  : renewing
+                    ? "申請中…"
+                    : "更新申請"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => window.print()}
+              >
+                デジタル認定証を印刷
+              </Button>
             </div>
-          </SectionCard>
-
-          <SectionCard
-            className="no-print"
-            eyebrow="SUBSCRIPTION"
-            title="Subscription"
-          >
-            {bundle.subscription ? (
-              <>
-                <dl className="grid gap-4 sm:grid-cols-2">
-                  {[
-                    {
-                      label: "現在のプラン",
-                      value:
-                        CERTIFICATION_LEVEL_LABELS[bundle.subscription.plan],
-                    },
-                    {
-                      label: "状態",
-                      value:
-                        SUBSCRIPTION_STATUS_LABELS[bundle.subscription.status],
-                    },
-                    {
-                      label: "月額",
-                      value: formatYen(bundle.subscription.monthlyAmount),
-                    },
-                    {
-                      label: "年額",
-                      value: formatYen(bundle.subscription.yearlyAmount),
-                    },
-                    {
-                      label: "請求サイクル",
-                      value:
-                        bundle.subscription.billingCycle === "yearly"
-                          ? "年額"
-                          : "月額",
-                    },
-                    {
-                      label: "次回更新日",
-                      value: formatJaDate(bundle.subscription.nextRenewalAt),
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3.5"
-                    >
-                      <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
-                        {item.label}
-                      </dt>
-                      <dd
-                        className="mt-1 text-[15px] font-semibold"
-                        style={{ color: NAVY }}
-                      >
-                        {item.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <div className="mt-6">
-                  <p
-                    className="text-[13px] font-semibold"
-                    style={{ color: NAVY }}
-                  >
-                    支払履歴
-                  </p>
-                  {bundle.paymentHistory.length === 0 ? (
-                    <p className="mt-2 text-[13px] text-slate-500">
-                      支払履歴はまだありません。
-                    </p>
-                  ) : (
-                    <ul className="mt-3 space-y-2">
-                      {bundle.paymentHistory.map((pay) => (
-                        <li
-                          key={pay.id}
-                          className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <p
-                              className="text-[14px] font-semibold"
-                              style={{ color: NAVY }}
-                            >
-                              {formatYen(pay.amount)}
-                            </p>
-                            <p className="text-[12px] text-slate-500">
-                              {PAYMENT_STATUS_LABELS[pay.status]} ·{" "}
-                              {formatDateTime(pay.paidAt)}
-                            </p>
-                          </div>
-                          <p className="mt-1 text-[13px] text-slate-600">
-                            {pay.description || "—"}
-                          </p>
-                          <p className="mt-0.5 text-[12px] text-slate-400">
-                            {pay.method || "—"}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </>
-            ) : (
-              <p className="text-[14px] text-slate-600">
-                サブスクリプション情報はありません。
-              </p>
-            )}
           </SectionCard>
 
           <SectionCard
             className="no-print"
             eyebrow="CERTIFICATE"
-            title="Digital Certificate"
+            title="デジタル認定証"
           >
-            {bundle.certificate ? (
-              <div className="space-y-4">
-                <p className="text-[14px] leading-6 text-slate-600">
-                  認定証の表示・印刷（PDF 相当）・QR / 認定番号を確認できます。
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" onClick={onPrintCertificate}>
-                    PDF / 印刷
-                  </Button>
-                </div>
-                <p className="text-[12px] text-slate-500">
-                  認定番号:{" "}
-                  <span className="font-semibold text-slate-700">
-                    {bundle.certificate.certificateNumber}
-                  </span>
-                </p>
-              </div>
-            ) : (
-              <p className="text-[14px] text-slate-600">
-                認定証はまだ発行されていません。
+            <p className="text-[14px] leading-6 text-slate-600">
+              下の認定証を画面で確認するか、印刷 / PDF 保存できます。
+            </p>
+            {view.verificationUrl ? (
+              <p className="mt-3 break-all text-[12px] text-slate-500">
+                確認用 URL: {view.verificationUrl}
               </p>
-            )}
+            ) : null}
           </SectionCard>
 
-          <SectionCard
-            className="no-print"
-            eyebrow="CONTINUING EDUCATION"
-            title="Continuing Education"
-          >
-            {bundle.continuingEducation ? (
-              <dl className="grid gap-4 sm:grid-cols-2">
-                {[
-                  {
-                    label: "受講時間",
-                    value: `${bundle.continuingEducation.hoursCompleted} 時間`,
-                  },
-                  {
-                    label: "取得単位",
-                    value: `${bundle.continuingEducation.creditsEarned} 単位`,
-                  },
-                  {
-                    label: "更新条件",
-                    value: bundle.continuingEducation.renewalRequirement,
-                  },
-                  {
-                    label: "残り必要時間",
-                    value:
-                      remainingHours === null
-                        ? "—"
-                        : `${remainingHours} 時間`,
-                  },
-                  {
-                    label: "対象期間",
-                    value: `${formatJaDate(bundle.continuingEducation.periodStart)} 〜 ${formatJaDate(bundle.continuingEducation.periodEnd)}`,
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className={`rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3.5 ${
-                      item.label === "更新条件" || item.label === "対象期間"
-                        ? "sm:col-span-2"
-                        : ""
-                    }`}
-                  >
-                    <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
-                      {item.label}
-                    </dt>
-                    <dd
-                      className="mt-1 text-[15px] font-semibold leading-6"
-                      style={{ color: NAVY }}
-                    >
-                      {item.value}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-[14px] text-slate-600">
-                継続教育の記録はまだありません。
-              </p>
-            )}
-          </SectionCard>
-
-          {bundle.certificate ? (
+          {view.verificationUrl ? (
             <div className="report-print-root pt-2">
-              <LicenseCertificateSheet
-                license={bundle.license}
-                certificate={bundle.certificate}
+              <InstructorLicenseCertificateSheet
+                license={license}
+                activityName={view.activityName}
+                verificationUrl={view.verificationUrl}
               />
             </div>
           ) : null}
         </div>
-      )}
-    </OsShell>
   );
 }
