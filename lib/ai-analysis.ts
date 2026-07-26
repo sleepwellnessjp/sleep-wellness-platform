@@ -15,6 +15,10 @@ import {
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import type { ImprovementItem } from "@/lib/improvement-priority";
 import type { NextActionGoal } from "@/lib/analysis-session";
+import {
+  buildCounselingSupport,
+  flattenCounselingSupport,
+} from "@/lib/counseling-support";
 
 export const AI_SLEEP_ANALYSIS_VERSION = "1.0" as const;
 
@@ -74,6 +78,8 @@ export type AiSleepAnalysisInput = {
     stress?: string | null;
     restingHeartRate?: string | null;
     circadianRhythm?: string | null;
+    sleepLatency?: string | null;
+    sleepDebt?: string | null;
   };
   lifestyle: {
     breakfast?: string | null;
@@ -1359,6 +1365,8 @@ export function aiInputFromMetricsAndLifestyle(args: {
       stress: args.metrics.stress ?? null,
       restingHeartRate: args.metrics.restingHeartRate ?? null,
       circadianRhythm: args.metrics.circadianRhythm ?? null,
+      sleepLatency: args.metrics.sleepLatency ?? null,
+      sleepDebt: args.metrics.sleepDebt ?? null,
     },
     lifestyle: args.lifestyle,
   };
@@ -1483,111 +1491,82 @@ export function toNextActionGoals(
 
 export function toInstructorSuggestions(
   output: AiSleepAnalysisOutput,
+  input?: AiSleepAnalysisInput,
 ): string[] {
-  const topIssues = pickAttentionItems(output.items, 3);
-  const hearingTopics = [
-    topIssues.some((i) => i.key === "alcohol")
-      ? "飲酒量・終了時刻の実感を詳しく確認"
-      : "朝の気分・日中の眠気を詳しくヒアリング",
-    "宿題の続けやすさと負担感を次回確認",
-  ].slice(0, 2);
-
-  const nextComparisonData = topIssues.slice(0, 2).map((item) => {
-    if (item.key === "hrv" || item.key === "restingHeartRate") return "HRVの推移";
-    if (item.key === "deepSleep") return "深睡眠時間の変化";
-    if (item.key === "sleepDuration") return "睡眠時間の変化";
-    if (item.key === "stress") return "ストレス指標の変化";
-    if (item.key === "sleepEfficiency") return "睡眠効率と覚醒時間の推移";
-    return `${item.label}の変化`;
-  });
-  if (nextComparisonData.length < 1) {
-    nextComparisonData.push("Sleep Wellness Score の変化");
-  }
-
-  const lifestyleChecks = topIssues.slice(0, 2).map((item) => {
-    if (item.key === "alcohol") return "飲酒終了時刻と深睡眠の関連";
-    if (item.key === "circadianRhythm") return "就寝・起床時刻のずれ";
-    if (item.key === "caffeine") return "午後以降のカフェイン摂取";
-    if (item.key === "meals") return "夕食時刻と入眠の間隔";
-    if (item.key === "exercise") return "運動実施時刻と回復感";
-    return `${item.label}に関する当日習慣`;
-  });
-  if (lifestyleChecks.length < 1) {
-    lifestyleChecks.push("就寝前ルーティンの実施状況");
-  }
-
-  const observationPoints = topIssues.slice(0, 2).map((item) => {
-    if (item.key === "stress" || item.key === "hrv") {
-      return "日中ストレスとHRVの連動";
-    }
-    if (item.key === "awakenings") return "途中覚醒のタイミングと長さ";
-    if (item.key === "deepSleep") return "深睡眠の安定度";
-    return `${item.label}の変動幅`;
-  });
-  if (observationPoints.length < 1) {
-    observationPoints.push("単日変動か継続傾向かの見極め");
-  }
-
-  const improvementOutlook = topIssues.slice(0, 2).map((item) => {
-    if (item.key === "alcohol") {
-      return "飲酒終了を早めると深睡眠・HRVが整いやすい可能性";
-    }
-    if (item.key === "deepSleep") {
-      return "就寝前ルーティンの定着で深睡眠が安定しやすい可能性";
-    }
-    if (item.key === "sleepEfficiency" || item.key === "awakenings") {
-      return "入眠前の刺激を減らすと睡眠効率が上がりやすい可能性";
-    }
-    if (item.key === "stress" || item.key === "hrv") {
-      return "切り替え習慣を入れるとHRVが安定しやすい可能性";
-    }
-    if (item.key === "circadianRhythm") {
-      return "起床時刻を揃えるとリズム指標が整いやすい可能性";
-    }
-    return `${item.label}の整えでスコア改善が見込める可能性`;
-  });
-  if (improvementOutlook.length < 1) {
-    improvementOutlook.push("優先課題への小さな習慣変更で改善が見込める可能性");
-  }
-
-  return [
-    ...hearingTopics.map((item) => `ヒアリング：${item}`),
-    ...nextComparisonData.map((item) => `次回比較：${item}`),
-    ...lifestyleChecks.map((item) => `生活習慣：${item}`),
-    ...improvementOutlook.map((item) => `改善見込み：${item}`),
-    ...observationPoints.map((item) => `観察：${item}`),
-  ].slice(0, 15);
+  return flattenCounselingSupport(
+    buildCounselingSupportFromAi(output, input),
+  );
 }
 
 export function toInstructorCounseling(
   output: AiSleepAnalysisOutput,
+  input?: AiSleepAnalysisInput,
 ): import("@/lib/analysis-session").InstructorCounselingPlan {
-  const flat = toInstructorSuggestions(output);
-  const hearingTopics: string[] = [];
-  const nextComparisonData: string[] = [];
-  const lifestyleChecks: string[] = [];
-  const improvementOutlook: string[] = [];
-  const observationPoints: string[] = [];
-  for (const item of flat) {
-    if (item.startsWith("ヒアリング：")) {
-      hearingTopics.push(item.replace(/^ヒアリング：/, ""));
-    } else if (item.startsWith("次回比較：")) {
-      nextComparisonData.push(item.replace(/^次回比較：/, ""));
-    } else if (item.startsWith("生活習慣：")) {
-      lifestyleChecks.push(item.replace(/^生活習慣：/, ""));
-    } else if (item.startsWith("改善見込み：")) {
-      improvementOutlook.push(item.replace(/^改善見込み：/, ""));
-    } else if (item.startsWith("観察：")) {
-      observationPoints.push(item.replace(/^観察：/, ""));
+  const sections = buildCounselingSupportFromAi(output, input);
+  return {
+    goodPoints: sections.goodPoints,
+    needsImprovement: sections.needsImprovement,
+    possibleFactors: sections.possibleFactors,
+    questionCandidates: sections.questionCandidates,
+  };
+}
+
+function buildCounselingSupportFromAi(
+  output: AiSleepAnalysisOutput,
+  input?: AiSleepAnalysisInput,
+) {
+  const metrics = {
+    sleepScore: input?.metrics.sleepScore ?? null,
+    sleepDuration: input?.metrics.sleepDuration ?? null,
+    sleepEfficiency: input?.metrics.sleepEfficiency ?? null,
+    deepSleep: input?.metrics.deepSleep ?? null,
+    remSleep: input?.metrics.remSleep ?? null,
+    awakenings: input?.metrics.awakenings ?? null,
+    hrv: input?.metrics.hrv ?? null,
+    stress: input?.metrics.stress ?? null,
+    restingHeartRate: input?.metrics.restingHeartRate ?? null,
+    sleepLatency: input?.metrics.sleepLatency ?? null,
+    sleepDebt: input?.metrics.sleepDebt ?? null,
+  };
+
+  // input が無い場合は評価済み items から値を復元
+  for (const item of output.items) {
+    const raw =
+      item.rawValue == null || item.rawValue === ""
+        ? null
+        : String(item.rawValue);
+    if (!raw) continue;
+    if (item.key === "deepSleep" && !metrics.deepSleep) metrics.deepSleep = raw;
+    if (item.key === "remSleep" && !metrics.remSleep) metrics.remSleep = raw;
+    if (item.key === "sleepEfficiency" && !metrics.sleepEfficiency) {
+      metrics.sleepEfficiency = raw;
+    }
+    if (item.key === "awakenings" && !metrics.awakenings) {
+      metrics.awakenings = raw;
+    }
+    if (item.key === "hrv" && !metrics.hrv) metrics.hrv = raw;
+    if (item.key === "stress" && !metrics.stress) metrics.stress = raw;
+    if (item.key === "restingHeartRate" && !metrics.restingHeartRate) {
+      metrics.restingHeartRate = raw;
+    }
+    if (item.key === "sleepDuration" && !metrics.sleepDuration) {
+      metrics.sleepDuration = raw;
     }
   }
-  return {
-    hearingTopics: hearingTopics.slice(0, 3),
-    nextComparisonData: nextComparisonData.slice(0, 3),
-    lifestyleChecks: lifestyleChecks.slice(0, 3),
-    improvementOutlook: improvementOutlook.slice(0, 3),
-    observationPoints: observationPoints.slice(0, 3),
-  };
+
+  return buildCounselingSupport({
+    metrics,
+    lifestyle: input?.lifestyle
+      ? {
+          caffeine: input.lifestyle.caffeine,
+          alcohol: input.lifestyle.alcohol,
+          preBedBehavior: input.lifestyle.preBedBehavior,
+          notes: input.lifestyle.notes,
+          dinner: input.lifestyle.dinner,
+          bathing: input.lifestyle.bathing,
+        }
+      : null,
+  });
 }
 
 export type AiRecommendationCategory =
@@ -1794,6 +1773,7 @@ export type AnalysisResultAiFields = {
 
 export function toAnalysisResultFields(
   output: AiSleepAnalysisOutput,
+  input?: AiSleepAnalysisInput,
 ): AnalysisResultAiFields {
   const topIssues = pickAttentionItems(output.items, 3);
   const goods = pickGoodItems(output.items, 2);
@@ -1817,7 +1797,7 @@ export function toAnalysisResultFields(
           .join("・")
       : "習慣の再現性";
   const topIssueLabel = attention[0]?.label ?? "生活リズム";
-  const instructorCounseling = toInstructorCounseling(output);
+  const instructorCounseling = toInstructorCounseling(output, input);
   const categoryScores = {
     body: Math.round(output.wellnessScore * 0.98),
     mind: Math.round(output.wellnessScore * 0.96),
@@ -1874,7 +1854,7 @@ export function toAnalysisResultFields(
       .concat(topIssues.length < 2 ? ["就寝前行動の実施率"] : [])
       .slice(0, 4),
     recommendationsUntilNext: toNextActionGoals(output),
-    instructorSuggestions: toInstructorSuggestions(output),
+    instructorSuggestions: toInstructorSuggestions(output, input),
     instructorCounseling,
     melatoninYogaPlan: {
       recommendedPhase:

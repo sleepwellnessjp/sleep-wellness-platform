@@ -184,41 +184,34 @@ const analysisSchema = {
       type: "object",
       additionalProperties: false,
       required: [
-        "hearingTopics",
-        "nextComparisonData",
-        "lifestyleChecks",
-        "improvementOutlook",
-        "observationPoints",
+        "goodPoints",
+        "needsImprovement",
+        "possibleFactors",
+        "questionCandidates",
       ],
       properties: {
-        hearingTopics: {
+        goodPoints: {
           type: "array",
-          minItems: 1,
-          maxItems: 3,
+          minItems: 0,
+          maxItems: 5,
           items: { type: "string" },
         },
-        nextComparisonData: {
+        needsImprovement: {
           type: "array",
-          minItems: 1,
-          maxItems: 3,
+          minItems: 0,
+          maxItems: 5,
           items: { type: "string" },
         },
-        lifestyleChecks: {
+        possibleFactors: {
           type: "array",
           minItems: 1,
-          maxItems: 3,
+          maxItems: 4,
           items: { type: "string" },
         },
-        improvementOutlook: {
+        questionCandidates: {
           type: "array",
-          minItems: 1,
-          maxItems: 3,
-          items: { type: "string" },
-        },
-        observationPoints: {
-          type: "array",
-          minItems: 1,
-          maxItems: 3,
+          minItems: 0,
+          maxItems: 4,
           items: { type: "string" },
         },
       },
@@ -423,7 +416,9 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   必ず 2〜4件の配列（1件以下・空は禁止）。各項目は1文（目安 50〜90文字）。
   【必須】数値・指標名を含め、「なぜ良いと言えるのか」をデータ根拠で書く。
   例:
-  - 「深睡眠1時間38分が確保されているため、身体回復は比較的良好であると考えられます」
+  - 「深睡眠が1時間15分確保されています」
+  - 「REM睡眠が1時間58分確保されています」
+  ※深い睡眠・REMの時間だけで身体や記憶の回復が良好とは断定しない
   - 「HRV72msは、自律神経の回復状態が良好である可能性があります」
   根拠のない美辞麗句・数値なしの褒め言葉は禁止。
   改善点・注意点・「〜が課題」のような文言をここへ入れない。
@@ -547,23 +542,30 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   認定講師のカウンセリング支援専用。クライアント向け行動指示ではない。
   Insight・今日やる3つ・AI宿題・improvements の言い換え・コピーは禁止。
   毎回の分析内容に応じて自動生成する（定型の使い回し禁止）。
-  認定講師がカウンセリング中にそのまま口頭で使える、具体的で短い確認・観察の文言にする。
-  必ず次の5カテゴリを埋める（各1〜3件・短文・目安 24〜56文字）:
-    ・hearingTopics … 今回重点的にヒアリングする内容
-    ・nextComparisonData … 次回比較するデータ（指標名・観点）
-    ・lifestyleChecks … 生活習慣で確認すること
-    ・improvementOutlook … 改善が見込めるポイント（データ根拠つきの見通し。断定禁止）
-    ・observationPoints … 注意して観察するポイント
+  必ず次の4カテゴリを埋める（各短文）:
+    ・goodPoints … 今回のデータから確認できる良好だった項目のみ（0〜5件）
+    ・needsImprovement … 今回のデータから確認できる改善余地のある項目のみ（0〜5件）
+    ・possibleFactors … 入力された生活情報と睡眠データから考えられる要因（1〜4件）。断定禁止
+    ・questionCandidates … 改善が必要な点・考えられる要因を確認する質問のみ（0〜4件）
+  【厳守ルール】
+  - 良好な点と改善が必要な点を混同しない
+  - 原因と改善提案を混同しない（possibleFactors に改善方法・提案を書かない）
+  - 前回比較がない場合、「改善した」「悪化した」と表現しない
+  - 深い睡眠やREM睡眠の時間だけで、身体や記憶の回復が良好と断定しない
+  - HRVを「安定帯」「基準範囲内」と書くのは、本人の基準値や過去データがある場合だけ
+  - 生活情報が未入力の場合、原因を推測せず possibleFactors は「原因はデータだけでは特定できないため、講師による確認が必要です」のみ
+  - possibleFactors の表現は必ず「〜の影響が考えられます」「〜が関係している可能性があります」「講師による確認が必要です」のいずれか
+  - 医療的な診断や断定はしない。数値と文章を矛盾させない
   良い例:
-    hearingTopics: 「深睡眠が短い夜の飲酒終了時刻の実感」
-    nextComparisonData: 「HRVと睡眠効率の推移」
-    lifestyleChecks: 「夕食時刻と就寝の間隔」
-    improvementOutlook: 「飲酒終了を早めると深睡眠が伸びやすい可能性」
-    observationPoints: 「途中覚醒が続く単日か継続傾向か」
+    goodPoints: 「深い睡眠が1時間15分確保されています」
+    needsImprovement: 「入眠潜時が55分と長めです」
+    possibleFactors: 「就寝前のスマートフォン利用が、入眠の遅れに関係している可能性があります」
+    questionCandidates: 「昨夜、床に就いてから眠るまでに何をしていましたか？」
   悪い例（禁止）:
-    - 「今日はアルコールを控える」（クライアント向け行動）
-    - 「睡眠を改善しましょう」（抽象・定型）
-    - improvements と同じ文言のコピー
+    - 「身体回復は良好」（深睡眠時間からの断定）
+    - 「カフェインを控えましょう」（改善提案を要因欄へ）
+    - 生活未入力なのに要因を推測する
+    - goodPoints に改善余地のある項目を入れる／needsImprovement に良好項目を入れる
 
 ⑩ melatoninYogaPlan（メラトニンヨガ™連携）※必須・SWIJ独自
   分析結果から、メラトニンヨガ™の実践提案を書く。一般的なヨガ助言ではない。
@@ -605,7 +607,7 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 | karteSummary (Insight) | クライアント＋講師 | 最重要課題・判断根拠・最効果行動 | 行動リスト・宿題・ヒアリング文 |
 | todaysRecommendations | クライアント | 今日やる具体アクション3つ（領域横断・毎回異なる） | 長期計画・講師への提案 |
 | recommendationsUntilNext | クライアント | 優先順位付き宿題4〜6 | 観察観点のみ・今日だけのコピー |
-| instructorCounseling | 認定講師のみ | 重点ヒアリング／次回比較／生活習慣確認／改善見込み／観察 | クライアント向け行動指示 |
+| instructorCounseling | 認定講師のみ | 良好な点／改善が必要な点／考えられる要因／質問候補 | クライアント向け行動指示・原因の断定 |
 | melatoninYogaPlan | クライアント＋講師 | Phase・呼吸・入浴・朝 | 一般ヨガ論・医療指示 |
 同じ内容を別フィールドへコピーしない。方向性が似ていても文言と粒度を分ける。
 
@@ -1125,7 +1127,7 @@ ${previousBlock}
 ⑥ todaysRecommendations＝今日やる3つ（必ずちょうど3件。睡眠データ／体内時計／ストレス／飲酒／運動／生活習慣から選ぶ。固定文・毎回同じテンプレ禁止）
 ⑦ nextComparisonPoints＝次回比較ポイント（2〜4件。次回見るべき観点の短文）
 ⑧ recommendationsUntilNext＝AI宿題（必ず4〜6件。先頭ほど優先。今日／今週／継続を配分。毎回自動生成。今日やる3つと同じ文言禁止）
-⑨ instructorCounseling＝AIから講師への提案（hearingTopics／nextComparisonData／lifestyleChecks／improvementOutlook／observationPoints 各1〜3件。クライアント向け行動指示禁止）
+⑨ instructorCounseling＝AIから講師への提案（goodPoints／needsImprovement／possibleFactors／questionCandidates。原因断定・改善提案の混同禁止）
 ⑩ melatoninYogaPlan＝メラトニンヨガ™連携（recommendedPhase／breathing／bathing／morningAction）
 ⑪ comparisonNarrative＝前回比較 vsPrevious・初回比較 vsFirst（初回は両方空文字 ""）
 

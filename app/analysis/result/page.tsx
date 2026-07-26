@@ -43,6 +43,7 @@ import {
 import { startProgressiveAnalysisBackground } from "@/lib/analysis-progressive";
 import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
 import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import { formatGenderLabel, hasAgeAndGender } from "@/lib/client-profile";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import {
@@ -448,29 +449,24 @@ function InstructorCommentField({
     items: string[];
   }> = [
     {
-      title: "今回重点的にヒアリングする内容",
-      eyebrow: "HEARING",
-      items: plan?.hearingTopics ?? [],
+      title: "良好な点",
+      eyebrow: "GOOD",
+      items: plan?.goodPoints ?? [],
     },
     {
-      title: "次回比較するデータ",
-      eyebrow: "NEXT DATA",
-      items: plan?.nextComparisonData ?? [],
+      title: "改善が必要な点",
+      eyebrow: "IMPROVE",
+      items: plan?.needsImprovement ?? [],
     },
     {
-      title: "生活習慣で確認すること",
-      eyebrow: "LIFESTYLE",
-      items: plan?.lifestyleChecks ?? [],
+      title: "考えられる要因",
+      eyebrow: "FACTORS",
+      items: plan?.possibleFactors ?? [],
     },
     {
-      title: "改善が見込めるポイント",
-      eyebrow: "OUTLOOK",
-      items: plan?.improvementOutlook ?? [],
-    },
-    {
-      title: "注意して観察するポイント",
-      eyebrow: "OBSERVE",
-      items: plan?.observationPoints ?? [],
+      title: "質問候補",
+      eyebrow: "QUESTIONS",
+      items: plan?.questionCandidates ?? [],
     },
   ].filter((group) => group.items.length > 0);
 
@@ -890,6 +886,8 @@ function ResultContent({
   const [previousSleepScore, setPreviousSleepScore] = useState<number | null>(
     null,
   );
+  const [previousMetrics, setPreviousMetrics] =
+    useState<AnalysisMetrics | null>(null);
 
   useEffect(() => {
     setResult(initialResult);
@@ -941,6 +939,7 @@ function ResultContent({
       setFirstComparison(null);
       setPreviousHomework(null);
       setPreviousSleepScore(null);
+      setPreviousMetrics(null);
       setFollowAlerts(
         buildAiFollowAlerts({
           analyses: [analysisResultToStoredShape(result)],
@@ -963,6 +962,7 @@ function ResultContent({
           setFirstComparison(null);
           setPreviousHomework(null);
           setPreviousSleepScore(null);
+          setPreviousMetrics(null);
           setFollowAlerts(
             buildAiFollowAlerts({
               analyses: [analysisResultToStoredShape(result)],
@@ -988,6 +988,7 @@ function ResultContent({
           setPreviousComparison(null);
           setPreviousHomework(null);
           setPreviousSleepScore(null);
+          setPreviousMetrics(null);
         } else {
           setPreviousComparison(
             buildPreviousComparisonSummary(previous, current),
@@ -1001,6 +1002,7 @@ function ResultContent({
                 ? previous.result.score
                 : null;
           setPreviousSleepScore(prevScore);
+          setPreviousMetrics(previous.metrics ?? previous.result?.metrics ?? null);
         }
 
         setFirstComparison(
@@ -1029,6 +1031,7 @@ function ResultContent({
           setFirstComparison(null);
           setPreviousHomework(null);
           setPreviousSleepScore(null);
+          setPreviousMetrics(null);
           setFollowAlerts(
             buildAiFollowAlerts({
               analyses: [analysisResultToStoredShape(result)],
@@ -1779,6 +1782,7 @@ function ResultContent({
             <AnalysisAiIntelligenceSection
               result={result}
               previousSleepScore={previousSleepScore}
+              previousMetrics={previousMetrics}
             />
 
             <section className="report-panel mt-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5">

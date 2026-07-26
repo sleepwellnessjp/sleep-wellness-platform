@@ -245,14 +245,15 @@ export function buildAnalysisResultFromWorkspace(
   workspace: SleepAnalysisWorkspace,
 ): AnalysisResult {
   const { client, soxai, lifestyle } = workspace;
-  const output = runWorkspaceAiAnalysis({
+  const input = aiInputFromSoxaiAndLifestyle({
     clientName: client.name,
     measurementDate: client.analysisDate,
     instructorName: client.instructorName,
     soxai,
     lifestyle,
   });
-  const ai = toAnalysisResultFields(output);
+  const output = generateAiSleepAnalysisSync(input);
+  const ai = toAnalysisResultFields(output, input);
   const score = ai.score || parseSleepScore(soxai.sleepScore) || 72;
   const profileRelation =
     composeLifestyleNotes(lifestyle) || ai.profileRelation;

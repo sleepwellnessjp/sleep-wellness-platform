@@ -77,13 +77,52 @@ export type InstructorAssistantBriefing = {
   featureId: "instructor_assistant";
   clientId: string;
   clientName: string;
-  improvementPoints: string[];
-  worseningCauses: string[];
+  /** ① 良好な点 */
+  goodPoints: string[];
+  /** ② 改善が必要な点 */
+  needsImprovement: string[];
+  /** ③ 考えられる要因 */
+  possibleFactors: string[];
+  /** ④ 質問候補 */
   questionCandidates: string[];
+  /** @deprecated 旧UI互換。新規生成では空配列 */
+  improvementPoints?: string[];
+  /** @deprecated 旧UI互換。新規生成では空配列 */
+  worseningCauses?: string[];
   counselingAgenda: string[];
   homeworkSuggestions: InstructorAssistantHomework[];
   generatedAt: string;
   source: AiIntelligenceSource;
+};
+
+export type InstructorAssistantMetrics = {
+  deepSleep?: string | null;
+  remSleep?: string | null;
+  sleepEfficiency?: string | null;
+  sleepLatency?: string | null;
+  sleepDebt?: string | null;
+  awakenings?: string | null;
+  hrv?: string | null;
+  restingHeartRate?: string | null;
+  sleepDuration?: string | null;
+  stress?: string | null;
+};
+
+export type InstructorAssistantLifestyle = {
+  caffeine?: string | null;
+  caffeineTime?: string | null;
+  caffeineDone?: string | null;
+  alcohol?: string | null;
+  alcoholDrank?: string | null;
+  alcoholEndTime?: string | null;
+  preBedBehavior?: string | null;
+  notes?: string | null;
+  stress?: string | null;
+  dinner?: string | null;
+  dinnerTime?: string | null;
+  bathing?: string | null;
+  condition?: string | null;
+  work?: string | null;
 };
 
 export type InstructorAssistantContext = {
@@ -94,8 +133,15 @@ export type InstructorAssistantContext = {
   sleepEfficiency: number | null;
   stress: number | null;
   hrv: number | null;
-  goodPoints: string[];
-  improvements: string[];
+  metrics?: InstructorAssistantMetrics | null;
+  previousMetrics?: InstructorAssistantMetrics | null;
+  lifestyle?: InstructorAssistantLifestyle | null;
+  previousHrvValues?: number[] | null;
+  previousRhrValues?: number[] | null;
+  /** @deprecated 互換用。生成では metrics を優先 */
+  goodPoints?: string[];
+  /** @deprecated 互換用 */
+  improvements?: string[];
 };
 
 export type InstructorAssistantGenerator = (
