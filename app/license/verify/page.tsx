@@ -5,10 +5,28 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
   formatJaDate,
-  INSTRUCTOR_LICENSE_STATUS_LABELS,
+  LICENSE_ISSUER_ORG,
+  PUBLIC_LICENSE_STATUS_LABELS,
+  resolveCertificationName,
 } from "@/lib/instructor-license/constants";
-import type { PublicLicenseVerification } from "@/lib/instructor-license/types";
-import { GOLD, NAVY } from "@/components/ui/tokens";
+import type {
+  PublicLicenseStatusLabel,
+  PublicLicenseVerification,
+} from "@/lib/instructor-license/types";
+import { DANGER, GOLD, NAVY, SUCCESS } from "@/components/ui/tokens";
+
+function statusColor(status: PublicLicenseStatusLabel): string {
+  switch (status) {
+    case "active":
+      return SUCCESS;
+    case "expired":
+      return DANGER;
+    case "suspended":
+    case "withdrawn":
+    default:
+      return "#64748b";
+  }
+}
 
 function VerifyInner() {
   const searchParams = useSearchParams();
@@ -55,8 +73,10 @@ function VerifyInner() {
     };
   }, [code]);
 
+  const publicStatus = result?.publicStatus ?? "suspended";
+
   return (
-    <main className="min-h-screen bg-[#f7f4ee] px-4 py-12 sm:px-6">
+    <main className="min-h-screen bg-[#f7f4ee] px-4 py-12 pb-[calc(var(--sw-beta-chrome-offset)+2rem)] sm:px-6">
       <div className="mx-auto max-w-lg rounded-[28px] border border-[#d8b36a]/40 bg-white px-6 py-10 shadow-sm sm:px-10">
         <div className="flex flex-col items-center text-center">
           <Image
@@ -84,37 +104,71 @@ function VerifyInner() {
         {loading ? (
           <p className="mt-8 text-center text-[14px] text-slate-500">確認中…</p>
         ) : error ? (
-          <p className="mt-8 text-center text-[14px] text-slate-600">{error}</p>
+          <div className="mt-8 space-y-4 text-center">
+            <span
+              className="inline-flex rounded-full px-4 py-1.5 text-[13px] font-semibold text-white"
+              style={{ backgroundColor: DANGER }}
+            >
+              無効
+            </span>
+            <p className="text-[14px] text-slate-600">{error}</p>
+          </div>
         ) : result ? (
-          <dl className="mt-8 space-y-4 text-left">
-            {[
-              { label: "認定講師名", value: result.holderName },
-              { label: "認定資格名", value: result.certificationName },
-              { label: "認定番号", value: result.licenseNumber },
-              { label: "認定日", value: formatJaDate(result.issuedAt) },
-              { label: "有効期限", value: formatJaDate(result.expiresAt) },
-              {
-                label: "状態",
-                value: INSTRUCTOR_LICENSE_STATUS_LABELS[result.status],
-              },
-              { label: "発行者", value: result.issuerName },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3"
+          <div className="mt-8 space-y-5">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span
+                className="inline-flex rounded-full px-5 py-2 text-[15px] font-semibold text-white"
+                style={{ backgroundColor: statusColor(publicStatus) }}
               >
-                <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
-                  {item.label}
-                </dt>
-                <dd
-                  className="mt-1 text-[15px] font-semibold"
-                  style={{ color: NAVY }}
+                {PUBLIC_LICENSE_STATUS_LABELS[publicStatus]}
+              </span>
+              <p className="text-[12px] text-slate-500">
+                {publicStatus === "active"
+                  ? "この認定証は現在有効です"
+                  : publicStatus === "expired"
+                    ? "この認定証は有効期限を過ぎています"
+                    : publicStatus === "withdrawn"
+                      ? "この認定証は取消されています"
+                      : "この認定証は停止中です"}
+              </p>
+            </div>
+
+            <dl className="space-y-4 text-left">
+              {[
+                { label: "活動名", value: result.holderName },
+                {
+                  label: "認定資格名",
+                  value: resolveCertificationName(result.certificationName),
+                },
+                { label: "認定番号", value: result.licenseNumber },
+                { label: "認定日", value: formatJaDate(result.issuedAt) },
+                { label: "有効期限", value: formatJaDate(result.expiresAt) },
+                {
+                  label: "状態",
+                  value: PUBLIC_LICENSE_STATUS_LABELS[publicStatus],
+                },
+                {
+                  label: "発行者",
+                  value: result.issuerName || LICENSE_ISSUER_ORG,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-slate-200/80 bg-[#fafaf8] px-4 py-3"
                 >
-                  {item.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    {item.label}
+                  </dt>
+                  <dd
+                    className="mt-1 text-[15px] font-semibold"
+                    style={{ color: NAVY }}
+                  >
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         ) : null}
       </div>
     </main>

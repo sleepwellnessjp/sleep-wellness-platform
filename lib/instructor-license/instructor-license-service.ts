@@ -10,11 +10,18 @@ import {
   generateVerificationCode,
   isInstructorLicenseStatus,
   isInstructorRenewalStatus,
+  LICENSE_ISSUER_ORG,
   licenseVerificationUrl,
   renewalConditionText,
+  resolveActivityName,
+  resolveCertificationName,
   resolveDisplayStatus,
+  SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+  toPublicLicenseStatusLabel,
+  toPublicLicenseVerdict,
 } from "./constants";
 import type {
+  AdminCertifiedInstructorListItem,
   AdminInstructorLicenseFilters,
   AdminInstructorLicenseListItem,
   InstructorLicenseRecord,
@@ -22,6 +29,7 @@ import type {
   InstructorRenewalStatus,
   MyInstructorLicenseView,
   PublicLicenseVerification,
+  UpsertCertifiedInstructorInput,
   UpsertInstructorLicenseInput,
 } from "./types";
 
@@ -45,9 +53,8 @@ export type LicenseLookupDiagnostic = {
   hint: string | null;
 };
 
-/** 本番未適用でも落ちない基本列（public_display_name / legal_name は任意） */
 const CERTIFIED_INSTRUCTOR_SELECT =
-  "id, display_name, email, level_id, user_id, instructor_number, certified_at, renews_at, status";
+  "id, display_name, public_name, public_display_name, legal_name, email, level_id, user_id, instructor_number, certified_at, renews_at, status, admin_memo";
 
 const CERTIFIED_INSTRUCTORS_PATH = "public.certified_instructors";
 const INSTRUCTOR_LICENSES_PATH = "public.instructor_licenses";
@@ -202,7 +209,9 @@ function mapLicense(
     certificationLevelId: String(row.certification_level_id ?? ""),
     certificationLevelLabel:
       levelLabel ?? String(row.certification_level_id ?? ""),
-    certificationName: String(row.certification_name ?? ""),
+    certificationName: resolveCertificationName(
+      String(row.certification_name ?? ""),
+    ),
     licenseNumber: String(row.license_number ?? ""),
     issuedAt: String(row.issued_at ?? "").slice(0, 10),
     expiresAt,
@@ -217,18 +226,50 @@ function mapLicense(
       : null,
     adminNote: String(row.admin_note ?? ""),
     verificationCode: String(row.verification_code ?? ""),
-    issuerName: String(row.issuer_name ?? "Sleep Wellness Institute Japan"),
+    issuerName: String(row.issuer_name ?? LICENSE_ISSUER_ORG),
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
   };
 }
 
+function legalNameFromInstructor(row: LicenseRow): string {
+  return String(row.legal_name ?? "").trim();
+}
+
+function buildMyLicenseView(
+  profile: { email?: string | null },
+  instructorRow: LicenseRow,
+  license: InstructorLicenseRecord,
+): MyInstructorLicenseView {
+  const remaining = daysUntil(license.expiresAt);
+  return {
+    license,
+    activityName: activityNameFromInstructor(instructorRow),
+    legalName: legalNameFromInstructor(instructorRow),
+    email: String(instructorRow.email ?? profile.email ?? ""),
+    daysUntilExpiry: remaining,
+    isExpiringSoon:
+      remaining >= 0 &&
+      remaining <= EXPIRING_SOON_DAYS &&
+      license.status !== "suspended",
+    renewalCondition: renewalConditionText(
+      license.requiredEducationHours,
+      license.completedEducationHours,
+    ),
+    verificationUrl: license.verificationCode
+      ? licenseVerificationUrl(license.verificationCode)
+      : null,
+    licensePendingSetup: false,
+    notCertifiedInstructor: false,
+  };
+}
+
 function activityNameFromInstructor(row: LicenseRow): string {
-  return (
-    String(row.public_display_name ?? "").trim() ||
-    String(row.display_name ?? "").trim() ||
-    "—"
-  );
+  return resolveActivityName({
+    publicName: String(row.public_name ?? ""),
+    publicDisplayName: String(row.public_display_name ?? ""),
+    displayName: String(row.display_name ?? ""),
+  });
 }
 
 function emptyNotRegisteredView(
@@ -417,6 +458,28 @@ async function fetchMyLicenseViaBundleRpc(
   }
 
   const instructorRow = bundle.instructor;
+  // 本人以外の講師データは返さない
+  if (
+    instructorRow.user_id != null &&
+    String(instructorRow.user_id) !== profile.id
+  ) {
+    console.error("[instructor-license] bundle returned non-owned instructor", {
+      uid: profile.id,
+      rowUserId: instructorRow.user_id,
+    });
+    return {
+      view: null,
+      diagnostic: toLookupDiagnostic(
+        "rpc:get_my_instructor_license_bundle",
+        filter,
+        profile.id,
+        { message: "owner mismatch" },
+        "rls",
+      ),
+      missingFunction: false,
+    };
+  }
+
   if (!bundle.license) {
     console.info("[instructor-license] bundle: license pending setup", {
       path: INSTRUCTOR_LICENSES_PATH,
@@ -434,28 +497,8 @@ async function fetchMyLicenseViaBundleRpc(
     bundle.license,
     bundle.level_label ? String(bundle.level_label) : undefined,
   );
-  const remaining = daysUntil(license.expiresAt);
   return {
-    view: {
-      license,
-      activityName: activityNameFromInstructor(instructorRow),
-      legalName: String(instructorRow.legal_name ?? "").trim(),
-      email: String(instructorRow.email ?? profile.email),
-      daysUntilExpiry: remaining,
-      isExpiringSoon:
-        remaining >= 0 &&
-        remaining <= EXPIRING_SOON_DAYS &&
-        license.status !== "suspended",
-      renewalCondition: renewalConditionText(
-        license.requiredEducationHours,
-        license.completedEducationHours,
-      ),
-      verificationUrl: license.verificationCode
-        ? licenseVerificationUrl(license.verificationCode)
-        : null,
-      licensePendingSetup: false,
-      notCertifiedInstructor: false,
-    },
+    view: buildMyLicenseView(profile, instructorRow, license),
     diagnostic: null,
     missingFunction: false,
   };
@@ -576,7 +619,7 @@ function pendingLicenseView(
   return {
     license: null,
     activityName: activityNameFromInstructor(instructorRow),
-    legalName: String(instructorRow.legal_name ?? "").trim(),
+    legalName: legalNameFromInstructor(instructorRow),
     email: String(instructorRow.email ?? profile.email ?? ""),
     daysUntilExpiry: null,
     isExpiringSoon: false,
@@ -595,15 +638,8 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
   if (!supabase) throw new Error("Supabase が設定されていません");
 
   console.info("[instructor-license] resolve my license", {
-    path: "rpc:get_my_instructor_license_bundle → fallback selects",
-    filter: { user_id: profile.id },
     uid: profile.id,
-    email: profile.email,
     role: profile.role,
-    rlsPolicies: [
-      "certified_instructors_select_own_or_admin (user_id = auth.uid() OR admin)",
-      "instructor_licenses_select_own_or_admin (via certified_instructors.user_id)",
-    ],
   });
 
   // 1) security definer 一括取得（RLS / user_id 未連結 / protect トリガー問題を回避）
@@ -633,10 +669,8 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
 
     if (instructor) {
       console.info("[instructor-license] ensured certified instructor", {
-        path: CERTIFIED_INSTRUCTORS_PATH,
         instructorId: String(instructor.id),
         uid: profile.id,
-        recoveredFrom: lookup.diagnostic?.category ?? "not_registered",
       });
     } else if (lookup.diagnostic) {
       throw new InstructorLicenseLookupError(MSG_FETCH_FAILED, lookup.diagnostic);
@@ -681,7 +715,6 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
       licenseError,
     );
     logLicenseLookupError("license lookup failed", diagnostic);
-    // テーブル未作成・未同期は「未登録」として扱う（読み込みエラーにしない）
     if (isMissingRelationError(licenseError.message)) {
       return pendingLicenseView(profile, instructorRow);
     }
@@ -689,12 +722,6 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
   }
 
   if (!licenseRow) {
-    console.info("[instructor-license] license not registered", {
-      category: "not_registered",
-      path: INSTRUCTOR_LICENSES_PATH,
-      filter: licenseFilter,
-      uid: profile.id,
-    });
     return pendingLicenseView(profile, instructorRow);
   }
 
@@ -711,28 +738,11 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
     if (level?.label) levelLabel = String(level.label);
   }
 
-  const license = mapLicense(licenseRow as LicenseRow, levelLabel);
-  const remaining = daysUntil(license.expiresAt);
-
-  return {
-    license,
-    activityName: activityNameFromInstructor(instructorRow),
-    legalName: String(instructorRow.legal_name ?? "").trim(),
-    email: String(instructorRow.email ?? profile.email),
-    daysUntilExpiry: remaining,
-    isExpiringSoon:
-      remaining >= 0 && remaining <= EXPIRING_SOON_DAYS &&
-      license.status !== "suspended",
-    renewalCondition: renewalConditionText(
-      license.requiredEducationHours,
-      license.completedEducationHours,
-    ),
-    verificationUrl: license.verificationCode
-      ? licenseVerificationUrl(license.verificationCode)
-      : null,
-    licensePendingSetup: false,
-    notCertifiedInstructor: false,
-  };
+  return buildMyLicenseView(
+    profile,
+    instructorRow,
+    mapLicense(licenseRow as LicenseRow, levelLabel),
+  );
 }
 
 export async function requestMyLicenseRenewal(): Promise<InstructorLicenseRecord> {
@@ -947,7 +957,7 @@ export async function upsertAdminInstructorLicense(
   const payload = {
     instructor_id: input.instructorId.trim(),
     certification_level_id: input.certificationLevelId.trim(),
-    certification_name: input.certificationName.trim(),
+    certification_name: resolveCertificationName(input.certificationName),
     license_number: input.licenseNumber.trim(),
     issued_at: input.issuedAt.slice(0, 10),
     expires_at: input.expiresAt.slice(0, 10),
@@ -1084,13 +1094,234 @@ export async function verifyInstructorLicensePublic(
   if (!row) return null;
 
   const statusRaw = String(row.status ?? "active");
+  const expiresAt = String(row.expires_at ?? "").slice(0, 10);
+  const storedStatus = isInstructorLicenseStatus(statusRaw)
+    ? statusRaw
+    : "active";
+  const status = resolveDisplayStatus(storedStatus, expiresAt);
   return {
     licenseNumber: String(row.license_number ?? ""),
-    certificationName: String(row.certification_name ?? ""),
+    certificationName: resolveCertificationName(
+      String(row.certification_name ?? ""),
+    ),
     holderName: String(row.holder_name ?? ""),
     issuedAt: String(row.issued_at ?? "").slice(0, 10),
-    expiresAt: String(row.expires_at ?? "").slice(0, 10),
-    status: isInstructorLicenseStatus(statusRaw) ? statusRaw : "active",
-    issuerName: String(row.issuer_name ?? "Sleep Wellness Institute Japan"),
+    expiresAt,
+    status,
+    publicStatus: toPublicLicenseStatusLabel(storedStatus, expiresAt),
+    verdict: toPublicLicenseVerdict(status, expiresAt),
+    issuerName: String(row.issuer_name ?? LICENSE_ISSUER_ORG),
   };
+}
+
+export async function listAdminCertifiedInstructors(): Promise<
+  AdminCertifiedInstructorListItem[]
+> {
+  await requireAdminProfile();
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) throw new Error("Supabase が設定されていません");
+
+  const [
+    { data: instructors, error: instructorError },
+    { data: licenses, error: licenseError },
+    { data: levels },
+  ] = await Promise.all([
+    supabase
+      .from("certified_instructors")
+      .select(CERTIFIED_INSTRUCTOR_SELECT)
+      .order("display_name", { ascending: true }),
+    supabase.from("instructor_licenses").select("*"),
+    supabase.from("certification_levels").select("id, label"),
+  ]);
+
+  if (instructorError) {
+    throw new Error(MSG_FETCH_FAILED);
+  }
+  if (licenseError && !isMissingRelationError(licenseError.message)) {
+    throw new Error(MSG_FETCH_FAILED);
+  }
+
+  const levelLabelById = new Map<string, string>();
+  for (const level of levels ?? []) {
+    levelLabelById.set(String(level.id), String(level.label));
+  }
+
+  const licenseByInstructor = new Map<string, LicenseRow>();
+  for (const row of licenses ?? []) {
+    licenseByInstructor.set(
+      String((row as LicenseRow).instructor_id),
+      row as LicenseRow,
+    );
+  }
+
+  return (instructors ?? []).map((row) => {
+    const r = row as LicenseRow;
+    const licenseRow = licenseByInstructor.get(String(r.id));
+    return {
+      instructorId: String(r.id),
+      userId: String(r.user_id ?? ""),
+      email: String(r.email ?? ""),
+      activityName: activityNameFromInstructor(r),
+      legalName: String(r.legal_name ?? "").trim(),
+      levelId: String(r.level_id ?? "instructor"),
+      instructorNumber: String(r.instructor_number ?? ""),
+      certifiedAt: String(r.certified_at ?? "").slice(0, 10),
+      renewsAt: String(r.renews_at ?? "").slice(0, 10),
+      instructorStatus: String(r.status ?? "active"),
+      adminMemo: String(r.admin_memo ?? ""),
+      license: licenseRow
+        ? mapLicense(
+            licenseRow,
+            levelLabelById.get(
+              String(licenseRow.certification_level_id ?? ""),
+            ),
+          )
+        : null,
+    } satisfies AdminCertifiedInstructorListItem;
+  });
+}
+
+export async function upsertAdminCertifiedInstructor(
+  input: UpsertCertifiedInstructorInput,
+): Promise<AdminCertifiedInstructorListItem> {
+  await requireAdminProfile();
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) throw new Error("Supabase が設定されていません");
+
+  const email = input.email.trim().toLowerCase();
+  const publicName = input.publicName.trim();
+  const legalName = input.legalName.trim();
+  const displayName =
+    (input.displayName ?? "").trim() || publicName || legalName;
+  const levelId = (input.levelId || "instructor").trim() || "instructor";
+  const instructorNumber = input.instructorNumber.trim();
+  const certifiedAt = input.certifiedAt.slice(0, 10);
+  const renewsAt = input.renewsAt.slice(0, 10);
+
+  if (!email) throw new Error("メールアドレスを入力してください");
+  if (!publicName) throw new Error("活動名を入力してください");
+  if (!instructorNumber) throw new Error("認定番号を入力してください");
+  if (!certifiedAt || !renewsAt) {
+    throw new Error("認定日と有効期限を入力してください");
+  }
+
+  const payload = {
+    email,
+    public_name: publicName,
+    public_display_name: publicName,
+    legal_name: legalName,
+    display_name: displayName,
+    level_id: levelId,
+    instructor_number: instructorNumber,
+    certified_at: certifiedAt,
+    renews_at: renewsAt,
+    admin_memo: (input.adminMemo ?? "").trim(),
+    ...(input.userId ? { user_id: input.userId } : {}),
+  };
+
+  let instructorId = input.id?.trim() ?? "";
+
+  if (instructorId) {
+    const { data, error } = await supabase
+      .from("certified_instructors")
+      .update(payload)
+      .eq("id", instructorId)
+      .select(CERTIFIED_INSTRUCTOR_SELECT)
+      .single();
+    if (error || !data) {
+      throw new Error(error?.message || "認定講師の更新に失敗しました");
+    }
+    instructorId = String((data as LicenseRow).id);
+  } else {
+    const userId = input.userId?.trim();
+    if (!userId) {
+      throw new Error(
+        "新規登録には連携するユーザー ID（profiles.id）が必要です。先にアカウントを作成してください。",
+      );
+    }
+    const insertBody: Database["public"]["Tables"]["certified_instructors"]["Insert"] =
+      {
+        ...payload,
+        user_id: userId,
+        status: "active",
+      };
+    const { data, error } = await supabase
+      .from("certified_instructors")
+      .insert(insertBody)
+      .select(CERTIFIED_INSTRUCTOR_SELECT)
+      .single();
+    if (error || !data) {
+      throw new Error(error?.message || "認定講師の登録に失敗しました");
+    }
+    instructorId = String((data as LicenseRow).id);
+  }
+
+  if (input.issueLicense) {
+    const existing = await supabase
+      .from("instructor_licenses")
+      .select("id")
+      .eq("instructor_id", instructorId)
+      .maybeSingle();
+
+    const licenseStatus: InstructorLicenseStatus =
+      input.licenseStatus && isInstructorLicenseStatus(input.licenseStatus)
+        ? input.licenseStatus
+        : "active";
+
+    if (existing.data?.id) {
+      await upsertAdminInstructorLicense({
+        id: String(existing.data.id),
+        instructorId,
+        certificationLevelId: levelId,
+        certificationName: SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+        licenseNumber: instructorNumber,
+        issuedAt: certifiedAt,
+        expiresAt: renewsAt,
+        status: licenseStatus,
+        requiredEducationHours: Number(input.requiredEducationHours ?? 0),
+        completedEducationHours: Number(input.completedEducationHours ?? 0),
+      });
+    } else {
+      await upsertAdminInstructorLicense({
+        instructorId,
+        certificationLevelId: levelId,
+        certificationName: SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+        licenseNumber: instructorNumber,
+        issuedAt: certifiedAt,
+        expiresAt: renewsAt,
+        status: licenseStatus,
+        requiredEducationHours: Number(input.requiredEducationHours ?? 12),
+        completedEducationHours: Number(input.completedEducationHours ?? 0),
+      });
+    }
+  }
+
+  const list = await listAdminCertifiedInstructors();
+  const found = list.find((item) => item.instructorId === instructorId);
+  if (!found) throw new Error("登録後の取得に失敗しました");
+  return found;
+}
+
+export async function setAdminInstructorLicenseStatus(
+  licenseId: string,
+  status: InstructorLicenseStatus,
+): Promise<InstructorLicenseRecord> {
+  await requireAdminProfile();
+  if (!isInstructorLicenseStatus(status)) {
+    throw new Error("ライセンス状態が不正です");
+  }
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) throw new Error("Supabase が設定されていません");
+
+  const { data, error } = await supabase
+    .from("instructor_licenses")
+    .update({ status })
+    .eq("id", licenseId)
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "ライセンス状態の更新に失敗しました");
+  }
+  return mapLicense(data as LicenseRow);
 }
