@@ -134,8 +134,8 @@ export async function listBetaHomeworks(
     .select("*")
     .eq("instructor_id", auth.userId)
     .eq("client_id", clientId)
-    .order("due_date", { ascending: true })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("due_date", { ascending: true });
 
   if (error) throw mapLoadError(error, "listBetaHomeworks");
   return ((data ?? []) as DbRow[]).map(mapRow);
