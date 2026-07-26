@@ -949,6 +949,15 @@ export async function upsertAdminInstructorLicense(
     throw new Error("ライセンス状態が不正です");
   }
 
+  const issuedAt = input.issuedAt.slice(0, 10);
+  const expiresAt = input.expiresAt.slice(0, 10);
+  if (!issuedAt || !expiresAt) {
+    throw new Error("認定日と有効期限を入力してください");
+  }
+  if (expiresAt < issuedAt) {
+    throw new Error("有効期限は認定日以降の日付を指定してください");
+  }
+
   const renewalStatus: InstructorRenewalStatus =
     input.renewalStatus && isInstructorRenewalStatus(input.renewalStatus)
       ? input.renewalStatus
@@ -959,8 +968,8 @@ export async function upsertAdminInstructorLicense(
     certification_level_id: input.certificationLevelId.trim(),
     certification_name: resolveCertificationName(input.certificationName),
     license_number: input.licenseNumber.trim(),
-    issued_at: input.issuedAt.slice(0, 10),
-    expires_at: input.expiresAt.slice(0, 10),
+    issued_at: issuedAt,
+    expires_at: expiresAt,
     status: input.status as InstructorLicenseStatus,
     required_education_hours: Number(input.requiredEducationHours) || 0,
     completed_education_hours: Number(input.completedEducationHours) || 0,
@@ -1204,19 +1213,21 @@ export async function upsertAdminCertifiedInstructor(
   if (!certifiedAt || !renewsAt) {
     throw new Error("認定日と有効期限を入力してください");
   }
+  if (renewsAt < certifiedAt) {
+    throw new Error("有効期限は認定日以降の日付を指定してください");
+  }
 
-  const payload = {
+  // display_name は既存互換のため更新時は触らない（新規のみ設定）
+  const basePayload = {
     email,
     public_name: publicName,
     public_display_name: publicName,
     legal_name: legalName,
-    display_name: displayName,
     level_id: levelId,
     instructor_number: instructorNumber,
     certified_at: certifiedAt,
     renews_at: renewsAt,
     admin_memo: (input.adminMemo ?? "").trim(),
-    ...(input.userId ? { user_id: input.userId } : {}),
   };
 
   let instructorId = input.id?.trim() ?? "";
@@ -1224,7 +1235,7 @@ export async function upsertAdminCertifiedInstructor(
   if (instructorId) {
     const { data, error } = await supabase
       .from("certified_instructors")
-      .update(payload)
+      .update(basePayload)
       .eq("id", instructorId)
       .select(CERTIFIED_INSTRUCTOR_SELECT)
       .single();
@@ -1241,7 +1252,8 @@ export async function upsertAdminCertifiedInstructor(
     }
     const insertBody: Database["public"]["Tables"]["certified_instructors"]["Insert"] =
       {
-        ...payload,
+        ...basePayload,
+        display_name: displayName,
         user_id: userId,
         status: "active",
       };

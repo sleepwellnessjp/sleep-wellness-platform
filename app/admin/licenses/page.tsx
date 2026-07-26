@@ -350,12 +350,17 @@ export default function AdminLicensesPage() {
                       }}
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p
-                          className="text-[14px] font-semibold"
-                          style={{ color: NAVY }}
-                        >
-                          {item.activityName || item.legalName || "—"}
-                        </p>
+                        <div>
+                          <p
+                            className="text-[14px] font-semibold"
+                            style={{ color: NAVY }}
+                          >
+                            活動名：{item.activityName || "—"}
+                          </p>
+                          <p className="mt-0.5 text-[12px] text-slate-600">
+                            本名：{item.legalName || "未登録"}
+                          </p>
+                        </div>
                         <span className="text-[12px] text-slate-500">
                           {INSTRUCTOR_LICENSE_STATUS_LABELS[item.status]}
                         </span>
@@ -390,7 +395,8 @@ export default function AdminLicensesPage() {
                   <option value="">選択してください</option>
                   {candidates.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.activityName || item.legalName}（{item.email}）
+                      活動名：{item.activityName || "—"} / 本名：
+                      {item.legalName || "未登録"}（{item.email}）
                     </option>
                   ))}
                 </select>
@@ -415,18 +421,18 @@ export default function AdminLicensesPage() {
                 <dl className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
-                      氏名（本名）
-                    </dt>
-                    <dd className="mt-1 text-[14px] font-semibold" style={{ color: NAVY }}>
-                      {selected.legalName || "—"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
                       活動名
                     </dt>
                     <dd className="mt-1 text-[14px] font-semibold" style={{ color: NAVY }}>
                       {selected.activityName || "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                      本名
+                    </dt>
+                    <dd className="mt-1 text-[14px] font-semibold" style={{ color: NAVY }}>
+                      {selected.legalName || "未登録"}
                     </dd>
                   </div>
                   <div className="sm:col-span-2">
