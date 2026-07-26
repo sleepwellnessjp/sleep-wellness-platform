@@ -278,3 +278,9 @@ where not exists (
   where il.instructor_id = ci.id
 )
 on conflict (instructor_id) do nothing;
+
+-- ------------------------------------------------------------
+-- 5) 本人 certified_instructors 確保
+-- ------------------------------------------------------------
+-- supabase/migrations/20260726190000_ensure_my_certified_instructor.sql を
+-- SQL Editor で続けて実行してください（protect バイパス + ensure + bundle RPC）。

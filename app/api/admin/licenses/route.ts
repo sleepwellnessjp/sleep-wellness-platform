@@ -48,9 +48,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ licenses, candidates });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "取得に失敗しました";
-    const mapped = toJapaneseInstructorLicenseError(message);
+    const mapped = toJapaneseInstructorLicenseError(error);
     return NextResponse.json(
       { error: mapped.error },
       { status: mapped.status === 400 ? 500 : mapped.status },
@@ -131,9 +129,7 @@ export async function POST(request: Request) {
       { status: input.id ? 200 : 201 },
     );
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "保存に失敗しました";
-    const mapped = toJapaneseInstructorLicenseError(message);
+    const mapped = toJapaneseInstructorLicenseError(error);
     return NextResponse.json(
       { error: mapped.error },
       { status: mapped.status },
@@ -239,9 +235,7 @@ export async function PATCH(request: Request) {
     });
     return NextResponse.json({ license });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "更新に失敗しました";
-    const mapped = toJapaneseInstructorLicenseError(message);
+    const mapped = toJapaneseInstructorLicenseError(error);
     return NextResponse.json(
       { error: mapped.error },
       { status: mapped.status },

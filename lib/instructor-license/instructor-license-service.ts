@@ -27,6 +27,165 @@ import type {
 
 type LicenseRow = Record<string, unknown>;
 
+/** エラー分類（調査用） */
+export type LicenseErrorCategory =
+  | "not_registered"
+  | "rls"
+  | "query"
+  | "column_mismatch";
+
+export type LicenseLookupDiagnostic = {
+  category: LicenseErrorCategory;
+  path: string;
+  filter: Record<string, unknown>;
+  uid: string | null;
+  code: string | null;
+  supabaseMessage: string;
+  details: string | null;
+  hint: string | null;
+};
+
+/** 本番未適用でも落ちない基本列（public_display_name / legal_name は任意） */
+const CERTIFIED_INSTRUCTOR_SELECT =
+  "id, display_name, email, level_id, user_id, instructor_number, certified_at, renews_at, status";
+
+const CERTIFIED_INSTRUCTORS_PATH = "public.certified_instructors";
+const INSTRUCTOR_LICENSES_PATH = "public.instructor_licenses";
+
+const MSG_NOT_REGISTERED = "ライセンス情報はまだ登録されていません";
+const MSG_FETCH_FAILED = "認定講師情報を取得できませんでした";
+
+function isMissingRelationError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("could not find the table") ||
+    (m.includes("schema cache") && m.includes("table")) ||
+    /relation ["'].*["'] does not exist/i.test(message)
+  );
+}
+
+function isMissingColumnError(message: string, code?: string): boolean {
+  if (code === "42703") return true;
+  const m = message.toLowerCase();
+  return (
+    (m.includes("could not find the") && m.includes("column")) ||
+    /column ["'].*["'] does not exist/i.test(message) ||
+    (m.includes("schema cache") && m.includes("column"))
+  );
+}
+
+function isRlsOrPermissionError(message: string, code?: string): boolean {
+  if (code === "42501" || code === "PGRST301") return true;
+  const m = message.toLowerCase();
+  return (
+    m.includes("permission denied") ||
+    m.includes("row-level security") ||
+    m.includes("rls") ||
+    m.includes("new row violates row-level security")
+  );
+}
+
+export function classifyLicenseSupabaseError(
+  error: { message: string; code?: string },
+): LicenseErrorCategory {
+  if (isMissingColumnError(error.message, error.code)) {
+    return "column_mismatch";
+  }
+  if (isRlsOrPermissionError(error.message, error.code)) {
+    return "rls";
+  }
+  return "query";
+}
+
+export class InstructorLicenseLookupError extends Error {
+  readonly diagnostic: LicenseLookupDiagnostic;
+
+  constructor(
+    userMessage: string,
+    diagnostic: LicenseLookupDiagnostic,
+  ) {
+    super(userMessage);
+    this.name = "InstructorLicenseLookupError";
+    this.diagnostic = diagnostic;
+  }
+}
+
+function logLicenseLookupError(
+  label: string,
+  diagnostic: LicenseLookupDiagnostic,
+  extras?: Record<string, unknown>,
+) {
+  console.error(`[instructor-license] ${label}`, {
+    category: diagnostic.category,
+    path: diagnostic.path,
+    filter: diagnostic.filter,
+    uid: diagnostic.uid,
+    code: diagnostic.code,
+    supabaseMessage: diagnostic.supabaseMessage,
+    details: diagnostic.details,
+    hint: diagnostic.hint,
+    rlsNote:
+      diagnostic.category === "rls"
+        ? "RLS/権限エラーの可能性（policy / grant / auth.uid 不一致）"
+        : null,
+    ...extras,
+  });
+}
+
+function logLicenseSupabaseResult(
+  label: string,
+  meta: {
+    path: string;
+    filter: Record<string, unknown>;
+    uid: string | null;
+    data: unknown;
+    error: { message: string; code?: string; details?: string; hint?: string } | null;
+  },
+) {
+  const hasRow =
+    meta.data != null &&
+    !(Array.isArray(meta.data) && meta.data.length === 0);
+  console.info(`[instructor-license] ${label}`, {
+    path: meta.path,
+    filter: meta.filter,
+    uid: meta.uid,
+    hasData: hasRow,
+    dataPreview: hasRow
+      ? Array.isArray(meta.data)
+        ? { count: meta.data.length, firstKeys: Object.keys((meta.data[0] as object) ?? {}) }
+        : { keys: Object.keys((meta.data as object) ?? {}) }
+      : null,
+    error: meta.error
+      ? {
+          code: meta.error.code ?? null,
+          message: meta.error.message,
+          details: meta.error.details ?? null,
+          hint: meta.error.hint ?? null,
+          category: classifyLicenseSupabaseError(meta.error),
+        }
+      : null,
+  });
+}
+
+function toLookupDiagnostic(
+  path: string,
+  filter: Record<string, unknown>,
+  uid: string | null,
+  error: { message: string; code?: string; details?: string; hint?: string },
+  category?: LicenseErrorCategory,
+): LicenseLookupDiagnostic {
+  return {
+    category: category ?? classifyLicenseSupabaseError(error),
+    path,
+    filter,
+    uid,
+    code: error.code ?? null,
+    supabaseMessage: error.message,
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+  };
+}
+
 function mapLicense(
   row: LicenseRow,
   levelLabel?: string,
@@ -72,24 +231,360 @@ function activityNameFromInstructor(row: LicenseRow): string {
   );
 }
 
-export function toJapaneseInstructorLicenseError(message: string): {
+function emptyNotRegisteredView(
+  profile: { displayName?: string | null; email?: string | null },
+  extras?: Partial<MyInstructorLicenseView>,
+): MyInstructorLicenseView {
+  return {
+    license: null,
+    activityName: profile.displayName || profile.email || "",
+    legalName: "",
+    email: profile.email || "",
+    daysUntilExpiry: null,
+    isExpiringSoon: false,
+    renewalCondition: "",
+    verificationUrl: null,
+    licensePendingSetup: false,
+    notCertifiedInstructor: true,
+    ...extras,
+  };
+}
+
+export function toJapaneseInstructorLicenseError(
+  error: unknown,
+): {
   error: string;
   status: number;
+  errorType?: "not_found" | "auth" | "forbidden" | "unavailable" | "fetch";
+  diagnostic?: LicenseLookupDiagnostic;
 } {
+  if (error instanceof InstructorLicenseLookupError) {
+    const category = error.diagnostic.category;
+    if (category === "column_mismatch") {
+      return {
+        error: MSG_FETCH_FAILED,
+        status: 502,
+        errorType: "fetch",
+        diagnostic: error.diagnostic,
+      };
+    }
+    if (category === "rls") {
+      return {
+        error: MSG_FETCH_FAILED,
+        status: 502,
+        errorType: "fetch",
+        diagnostic: error.diagnostic,
+      };
+    }
+    if (category === "not_registered") {
+      return {
+        error: MSG_NOT_REGISTERED,
+        status: 404,
+        errorType: "not_found",
+        diagnostic: error.diagnostic,
+      };
+    }
+    return {
+      error: MSG_FETCH_FAILED,
+      status: 502,
+      errorType: "fetch",
+      diagnostic: error.diagnostic,
+    };
+  }
+
+  const message =
+    error instanceof Error ? error.message : String(error ?? "取得に失敗しました");
+
   if (message === "Unauthorized" || message === "ログインが必要です") {
-    return { error: "ログインが必要です", status: 401 };
+    return { error: "ログインが必要です", status: 401, errorType: "auth" };
   }
   if (message === "Forbidden") {
-    return { error: "この操作を行う権限がありません", status: 403 };
+    return {
+      error: "この操作を行う権限がありません",
+      status: 403,
+      errorType: "forbidden",
+    };
   }
-  if (message.includes("schema cache") || message.includes("does not exist")) {
+  if (message === MSG_NOT_REGISTERED) {
+    return { error: MSG_NOT_REGISTERED, status: 404, errorType: "not_found" };
+  }
+  if (message === MSG_FETCH_FAILED) {
+    return { error: MSG_FETCH_FAILED, status: 502, errorType: "fetch" };
+  }
+  if (isMissingRelationError(message) || isMissingColumnError(message)) {
     return {
       error:
         "ライセンス用テーブルが未作成です。Supabase SQL Editor でマイグレーションを実行してください。",
       status: 503,
+      errorType: "unavailable",
     };
   }
-  return { error: message, status: 400 };
+  return { error: message, status: 400, errorType: "fetch" };
+}
+
+type LicenseBundleRpc = {
+  ok?: boolean;
+  not_certified_instructor?: boolean;
+  instructor?: LicenseRow | null;
+  license?: LicenseRow | null;
+  level_label?: string | null;
+};
+
+async function fetchMyLicenseViaBundleRpc(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  profile: { id: string; email: string; displayName: string; role: string },
+): Promise<{
+  view: MyInstructorLicenseView | null;
+  diagnostic: LicenseLookupDiagnostic | null;
+  missingFunction: boolean;
+}> {
+  const filter = {
+    auth_uid: profile.id,
+    email: profile.email,
+    role: profile.role,
+    rls: "bypassed_by_security_definer",
+  };
+  const { data, error } = await supabase.rpc("get_my_instructor_license_bundle");
+
+  logLicenseSupabaseResult("bundle rpc result", {
+    path: "rpc:get_my_instructor_license_bundle",
+    filter,
+    uid: profile.id,
+    data,
+    error,
+  });
+
+  if (error) {
+    const missingFunction =
+      error.message.includes("Could not find the function") ||
+      error.message.includes("schema cache");
+    const notRegistered =
+      error.message.includes("認定講師として登録されていません") ||
+      error.message.includes("ログインが必要です");
+    const diagnostic = toLookupDiagnostic(
+      "rpc:get_my_instructor_license_bundle",
+      filter,
+      profile.id,
+      error,
+      notRegistered
+        ? "not_registered"
+        : classifyLicenseSupabaseError(error),
+    );
+    logLicenseLookupError("bundle rpc failed", diagnostic, {
+      missingFunction,
+      role: profile.role,
+    });
+    if (missingFunction) {
+      return { view: null, diagnostic: null, missingFunction: true };
+    }
+    if (notRegistered) {
+      return {
+        view: emptyNotRegisteredView(profile),
+        diagnostic: null,
+        missingFunction: false,
+      };
+    }
+    return { view: null, diagnostic, missingFunction: false };
+  }
+
+  const bundle = (data ?? null) as LicenseBundleRpc | null;
+  if (!bundle || bundle.ok === false) {
+    return {
+      view: null,
+      diagnostic: toLookupDiagnostic(
+        "rpc:get_my_instructor_license_bundle",
+        filter,
+        profile.id,
+        { message: "empty bundle payload" },
+        "query",
+      ),
+      missingFunction: false,
+    };
+  }
+
+  if (bundle.not_certified_instructor || !bundle.instructor) {
+    console.info("[instructor-license] bundle: not certified instructor", {
+      path: "rpc:get_my_instructor_license_bundle",
+      filter,
+      uid: profile.id,
+      role: profile.role,
+    });
+    return {
+      view: emptyNotRegisteredView(profile),
+      diagnostic: null,
+      missingFunction: false,
+    };
+  }
+
+  const instructorRow = bundle.instructor;
+  if (!bundle.license) {
+    console.info("[instructor-license] bundle: license pending setup", {
+      path: INSTRUCTOR_LICENSES_PATH,
+      filter: { instructor_id: String(instructorRow.id) },
+      uid: profile.id,
+    });
+    return {
+      view: pendingLicenseView(profile, instructorRow),
+      diagnostic: null,
+      missingFunction: false,
+    };
+  }
+
+  const license = mapLicense(
+    bundle.license,
+    bundle.level_label ? String(bundle.level_label) : undefined,
+  );
+  const remaining = daysUntil(license.expiresAt);
+  return {
+    view: {
+      license,
+      activityName: activityNameFromInstructor(instructorRow),
+      legalName: String(instructorRow.legal_name ?? "").trim(),
+      email: String(instructorRow.email ?? profile.email),
+      daysUntilExpiry: remaining,
+      isExpiringSoon:
+        remaining >= 0 &&
+        remaining <= EXPIRING_SOON_DAYS &&
+        license.status !== "suspended",
+      renewalCondition: renewalConditionText(
+        license.requiredEducationHours,
+        license.completedEducationHours,
+      ),
+      verificationUrl: license.verificationCode
+        ? licenseVerificationUrl(license.verificationCode)
+        : null,
+      licensePendingSetup: false,
+      notCertifiedInstructor: false,
+    },
+    diagnostic: null,
+    missingFunction: false,
+  };
+}
+
+async function lookupCertifiedInstructorByUserId(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  userId: string,
+): Promise<{
+  row: LicenseRow | null;
+  diagnostic: LicenseLookupDiagnostic | null;
+}> {
+  const filter = { user_id: userId, rls: "certified_instructors_select_own_or_admin" };
+  const { data, error } = await supabase
+    .from("certified_instructors")
+    .select(CERTIFIED_INSTRUCTOR_SELECT)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  logLicenseSupabaseResult("instructor select", {
+    path: CERTIFIED_INSTRUCTORS_PATH,
+    filter,
+    uid: userId,
+    data,
+    error,
+  });
+
+  if (error) {
+    const diagnostic = toLookupDiagnostic(
+      CERTIFIED_INSTRUCTORS_PATH,
+      filter,
+      userId,
+      error,
+      isMissingRelationError(error.message)
+        ? "query"
+        : classifyLicenseSupabaseError(error),
+    );
+    logLicenseLookupError("instructor lookup failed", diagnostic);
+    return { row: null, diagnostic };
+  }
+
+  if (!data) {
+    console.info("[instructor-license] instructor not found by user_id", {
+      category: "not_registered",
+      path: CERTIFIED_INSTRUCTORS_PATH,
+      filter,
+      uid: userId,
+      note: "RLS で隠されているか、user_id 未連結の可能性",
+    });
+  }
+
+  return { row: (data as LicenseRow | null) ?? null, diagnostic: null };
+}
+
+async function ensureCertifiedInstructorForCurrentUser(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  profile: { id: string; email: string; displayName: string; role: string },
+): Promise<{
+  row: LicenseRow | null;
+  diagnostic: LicenseLookupDiagnostic | null;
+}> {
+  const filter = {
+    auth_uid: profile.id,
+    email: profile.email,
+    role: profile.role,
+    rls: "bypassed_by_security_definer",
+  };
+  const { data, error } = await supabase.rpc("ensure_my_certified_instructor");
+
+  logLicenseSupabaseResult("ensure rpc result", {
+    path: "rpc:ensure_my_certified_instructor",
+    filter,
+    uid: profile.id,
+    data,
+    error,
+  });
+
+  if (error) {
+    const notRegistered =
+      error.message.includes("認定講師として登録されていません") ||
+      error.message.includes("ログインが必要です");
+    const diagnostic = toLookupDiagnostic(
+      "rpc:ensure_my_certified_instructor",
+      filter,
+      profile.id,
+      error,
+      notRegistered
+        ? "not_registered"
+        : classifyLicenseSupabaseError(error),
+    );
+    logLicenseLookupError("ensure_my_certified_instructor failed", diagnostic);
+
+    // RPC 未適用・未登録は呼び出し元でフォールバック
+    if (
+      notRegistered ||
+      isMissingRelationError(error.message) ||
+      error.message.includes("Could not find the function")
+    ) {
+      return {
+        row: null,
+        diagnostic: notRegistered ? diagnostic : null,
+      };
+    }
+    return { row: null, diagnostic };
+  }
+
+  if (!data) return { row: null, diagnostic: null };
+  return {
+    row: (Array.isArray(data) ? data[0] : data) as LicenseRow,
+    diagnostic: null,
+  };
+}
+
+function pendingLicenseView(
+  profile: { email?: string | null },
+  instructorRow: LicenseRow,
+): MyInstructorLicenseView {
+  return {
+    license: null,
+    activityName: activityNameFromInstructor(instructorRow),
+    legalName: String(instructorRow.legal_name ?? "").trim(),
+    email: String(instructorRow.email ?? profile.email ?? ""),
+    daysUntilExpiry: null,
+    isExpiringSoon: false,
+    renewalCondition: "",
+    verificationUrl: null,
+    licensePendingSetup: true,
+    notCertifiedInstructor: false,
+  };
 }
 
 export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView> {
@@ -99,71 +594,108 @@ export async function getMyInstructorLicense(): Promise<MyInstructorLicenseView>
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Supabase が設定されていません");
 
-  const { data: instructor, error: instructorError } = await supabase
-    .from("certified_instructors")
-    .select(
-      "id, display_name, public_display_name, legal_name, email, level_id, user_id",
-    )
-    .eq("user_id", profile.id)
-    .maybeSingle();
+  console.info("[instructor-license] resolve my license", {
+    path: "rpc:get_my_instructor_license_bundle → fallback selects",
+    filter: { user_id: profile.id },
+    uid: profile.id,
+    email: profile.email,
+    role: profile.role,
+    rlsPolicies: [
+      "certified_instructors_select_own_or_admin (user_id = auth.uid() OR admin)",
+      "instructor_licenses_select_own_or_admin (via certified_instructors.user_id)",
+    ],
+  });
 
-  if (instructorError) {
-    console.error(
-      "[instructor-license] instructor lookup failed:",
-      instructorError.message,
-    );
-    throw new Error("認定講師情報の取得に失敗しました");
+  // 1) security definer 一括取得（RLS / user_id 未連結 / protect トリガー問題を回避）
+  const bundled = await fetchMyLicenseViaBundleRpc(supabase, {
+    id: profile.id,
+    email: profile.email ?? "",
+    displayName: profile.displayName ?? "",
+    role: profile.role,
+  });
+  if (bundled.view) return bundled.view;
+  if (bundled.diagnostic && !bundled.missingFunction) {
+    throw new InstructorLicenseLookupError(MSG_FETCH_FAILED, bundled.diagnostic);
+  }
+
+  // 2) RPC 未適用時フォールバック: SELECT → ensure → license SELECT
+  const lookup = await lookupCertifiedInstructorByUserId(supabase, profile.id);
+  let instructor = lookup.row;
+
+  if (!instructor) {
+    const ensured = await ensureCertifiedInstructorForCurrentUser(supabase, {
+      id: profile.id,
+      email: profile.email ?? "",
+      displayName: profile.displayName ?? "",
+      role: profile.role,
+    });
+    instructor = ensured.row;
+
+    if (instructor) {
+      console.info("[instructor-license] ensured certified instructor", {
+        path: CERTIFIED_INSTRUCTORS_PATH,
+        instructorId: String(instructor.id),
+        uid: profile.id,
+        recoveredFrom: lookup.diagnostic?.category ?? "not_registered",
+      });
+    } else if (lookup.diagnostic) {
+      throw new InstructorLicenseLookupError(MSG_FETCH_FAILED, lookup.diagnostic);
+    } else if (ensured.diagnostic?.category === "not_registered") {
+      return emptyNotRegisteredView(profile);
+    } else if (ensured.diagnostic) {
+      throw new InstructorLicenseLookupError(
+        MSG_FETCH_FAILED,
+        ensured.diagnostic,
+      );
+    }
   }
 
   if (!instructor) {
-    return {
-      license: null,
-      activityName: profile.displayName || profile.email || "",
-      legalName: "",
-      email: profile.email || "",
-      daysUntilExpiry: null,
-      isExpiringSoon: false,
-      renewalCondition: "",
-      verificationUrl: null,
-      licensePendingSetup: false,
-      notCertifiedInstructor: true,
-    };
+    return emptyNotRegisteredView(profile);
   }
 
-  const instructorRow = instructor as LicenseRow;
+  const instructorRow = instructor;
+  const licenseFilter = {
+    instructor_id: String(instructorRow.id),
+    rls: "instructor_licenses_select_own_or_admin",
+  };
   const { data: licenseRow, error: licenseError } = await supabase
     .from("instructor_licenses")
     .select("*")
     .eq("instructor_id", String(instructorRow.id))
     .maybeSingle();
 
+  logLicenseSupabaseResult("license select", {
+    path: INSTRUCTOR_LICENSES_PATH,
+    filter: licenseFilter,
+    uid: profile.id,
+    data: licenseRow,
+    error: licenseError,
+  });
+
   if (licenseError) {
-    console.error(
-      "[instructor-license] license lookup failed:",
-      licenseError.message,
+    const diagnostic = toLookupDiagnostic(
+      INSTRUCTOR_LICENSES_PATH,
+      licenseFilter,
+      profile.id,
+      licenseError,
     );
-    if (
-      licenseError.message.includes("schema cache") ||
-      licenseError.message.includes("does not exist")
-    ) {
-      throw new Error(toJapaneseInstructorLicenseError(licenseError.message).error);
+    logLicenseLookupError("license lookup failed", diagnostic);
+    // テーブル未作成・未同期は「未登録」として扱う（読み込みエラーにしない）
+    if (isMissingRelationError(licenseError.message)) {
+      return pendingLicenseView(profile, instructorRow);
     }
-    throw new Error("ライセンス情報の取得に失敗しました");
+    throw new InstructorLicenseLookupError(MSG_FETCH_FAILED, diagnostic);
   }
 
   if (!licenseRow) {
-    return {
-      license: null,
-      activityName: activityNameFromInstructor(instructorRow),
-      legalName: String(instructorRow.legal_name ?? "").trim(),
-      email: String(instructorRow.email ?? profile.email),
-      daysUntilExpiry: null,
-      isExpiringSoon: false,
-      renewalCondition: "",
-      verificationUrl: null,
-      licensePendingSetup: true,
-      notCertifiedInstructor: false,
-    };
+    console.info("[instructor-license] license not registered", {
+      category: "not_registered",
+      path: INSTRUCTOR_LICENSES_PATH,
+      filter: licenseFilter,
+      uid: profile.id,
+    });
+    return pendingLicenseView(profile, instructorRow);
   }
 
   const levelId = String(
@@ -227,7 +759,13 @@ export async function requestMyLicenseRenewal(): Promise<InstructorLicenseRecord
   );
 
   if (error) {
-    console.error("[instructor-license] renewal rpc failed:", error.message);
+    const diagnostic = toLookupDiagnostic(
+      "rpc:request_instructor_license_renewal",
+      { license_id: current.license.id },
+      profile.id,
+      error,
+    );
+    logLicenseLookupError("renewal rpc failed", diagnostic);
     throw new Error(error.message || "更新申請に失敗しました");
   }
 
@@ -251,30 +789,33 @@ export async function listAdminInstructorLicenses(
         .order("updated_at", { ascending: false }),
       supabase
         .from("certified_instructors")
-        .select(
-          "id, user_id, display_name, public_display_name, legal_name, email, level_id",
-        ),
+        .select(CERTIFIED_INSTRUCTOR_SELECT),
       supabase.from("certification_levels").select("id, label"),
     ]);
 
   if (licenseError) {
-    console.error(
-      "[instructor-license] admin list failed:",
-      licenseError.message,
+    const diagnostic = toLookupDiagnostic(
+      INSTRUCTOR_LICENSES_PATH,
+      {},
+      null,
+      licenseError,
     );
+    logLicenseLookupError("admin list failed", diagnostic);
     throw new Error(
-      licenseError.message.includes("schema cache") ||
-        licenseError.message.includes("does not exist")
-        ? toJapaneseInstructorLicenseError(licenseError.message).error
-        : "ライセンス一覧の取得に失敗しました",
+      isMissingRelationError(licenseError.message)
+        ? toJapaneseInstructorLicenseError(licenseError).error
+        : MSG_FETCH_FAILED,
     );
   }
   if (instructorError) {
-    console.error(
-      "[instructor-license] instructors failed:",
-      instructorError.message,
+    const diagnostic = toLookupDiagnostic(
+      CERTIFIED_INSTRUCTORS_PATH,
+      {},
+      null,
+      instructorError,
     );
-    throw new Error("認定講師一覧の取得に失敗しました");
+    logLicenseLookupError("instructors failed", diagnostic);
+    throw new Error(MSG_FETCH_FAILED);
   }
 
   const levelLabelById = new Map<string, string>();
@@ -352,9 +893,7 @@ export async function listInstructorsWithoutLicense(): Promise<
   const [{ data: instructors }, { data: licenses }] = await Promise.all([
     supabase
       .from("certified_instructors")
-      .select(
-        "id, display_name, public_display_name, legal_name, email, level_id, instructor_number, certified_at, renews_at",
-      )
+      .select(CERTIFIED_INSTRUCTOR_SELECT)
       .order("display_name", { ascending: true }),
     supabase.from("instructor_licenses").select("instructor_id"),
   ]);
