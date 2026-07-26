@@ -52,7 +52,7 @@ export default function Hero() {
             </Link>
 
             <Link
-              href="#contact"
+              href="/academy/certified-instructor"
               className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20 sm:text-base"
             >
               認定講師になる

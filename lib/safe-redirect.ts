@@ -53,6 +53,13 @@ export function isInstructorOnlyPath(pathname: string): boolean {
   if (path === "/license/verify" || path.startsWith("/license/verify/")) {
     return false;
   }
+  // 認定講師養成講座の公開案内ページは講師専用パスから除外
+  if (
+    path === "/academy/certified-instructor" ||
+    path.startsWith("/academy/certified-instructor/")
+  ) {
+    return false;
+  }
   const prefixes = [
     "/dashboard",
     "/portal",

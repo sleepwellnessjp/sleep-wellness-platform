@@ -167,7 +167,9 @@ export function decidePathAccess(
     path === "/instructors" ||
     path.startsWith("/instructors/") ||
     path === "/license/verify" ||
-    path.startsWith("/license/verify/")
+    path.startsWith("/license/verify/") ||
+    path === "/academy/certified-instructor" ||
+    path.startsWith("/academy/certified-instructor/")
   ) {
     return {
       allowed: true,
