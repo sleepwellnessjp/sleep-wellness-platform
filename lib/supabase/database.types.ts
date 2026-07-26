@@ -3892,6 +3892,14 @@ export type Database = {
         Args: { p_user_id?: string | null };
         Returns: Database["public"]["Tables"]["monthly_credit"]["Row"];
       };
+      ensure_my_certified_instructor: {
+        Args: Record<string, never>;
+        Returns: Database["public"]["Tables"]["certified_instructors"]["Row"];
+      };
+      get_my_instructor_license_bundle: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
       request_instructor_license_renewal: {
         Args: { p_license_id: string };
         Returns: Database["public"]["Tables"]["instructor_licenses"]["Row"];

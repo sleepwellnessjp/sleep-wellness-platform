@@ -41,31 +41,107 @@ export default function LicensePage() {
   const [view, setView] = useState<MyInstructorLicenseView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<{
+    path?: string | null;
+    filter?: Record<string, unknown> | null;
+    uid?: string | null;
+    category?: string | null;
+    code?: string | null;
+    supabaseMessage?: string | null;
+    details?: string | null;
+    hint?: string | null;
+    status?: number;
+  } | null>(null);
   const [renewing, setRenewing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setDiagnostic(null);
     try {
       const response = await fetch("/api/license", { cache: "no-store" });
       const json = (await response.json()) as {
         view?: MyInstructorLicenseView;
         error?: string;
+        errorType?: string;
+        path?: string;
+        filter?: Record<string, unknown> | null;
+        uid?: string | null;
+        category?:
+          | "not_registered"
+          | "rls"
+          | "query"
+          | "column_mismatch"
+          | null;
+        code?: string | null;
+        supabaseMessage?: string | null;
+        details?: string | null;
+        hint?: string | null;
       };
-      if (!response.ok) throw new Error(json.error ?? "取得に失敗しました");
+      if (!response.ok) {
+        const nextDiagnostic = {
+          path: json.path ?? "/api/license",
+          filter: json.filter ?? null,
+          uid: json.uid ?? data?.profile.id ?? null,
+          category: json.category ?? null,
+          code: json.code ?? null,
+          supabaseMessage: json.supabaseMessage ?? null,
+          details: json.details ?? null,
+          hint: json.hint ?? null,
+          status: response.status,
+        };
+        console.error("[license] fetch failed", {
+          ...nextDiagnostic,
+          error: json.error,
+          errorType: json.errorType,
+        });
+        if (json.errorType === "not_found") {
+          setView({
+            license: null,
+            activityName: data?.profile.displayName || data?.profile.email || "",
+            legalName: "",
+            email: data?.profile.email || "",
+            daysUntilExpiry: null,
+            isExpiringSoon: false,
+            renewalCondition: "",
+            verificationUrl: null,
+            licensePendingSetup: false,
+            notCertifiedInstructor: true,
+          });
+          setError(null);
+          setDiagnostic(null);
+          return;
+        }
+        setDiagnostic(nextDiagnostic);
+        throw new Error(
+          json.error ?? "認定講師情報を取得できませんでした",
+        );
+      }
       setView(json.view ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "取得に失敗しました");
+      console.error("[license] load error", {
+        path: "/api/license → public.certified_instructors / public.instructor_licenses",
+        uid: data?.profile.id ?? null,
+        err,
+      });
+      setError(
+        err instanceof Error
+          ? err.message
+          : "認定講師情報を取得できませんでした",
+      );
       setView(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // 認証（platform me）の読み込み完了後に取得する
   useEffect(() => {
+    if (profileLoading) return;
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auth settled gate
+  }, [profileLoading, data?.profile.id]);
 
   const onRequestRenewal = async () => {
     setRenewing(true);
@@ -124,19 +200,54 @@ export default function LicensePage() {
       ) : error ? (
         <SectionCard className="no-print" title="読み込みエラー">
           <p className="text-[14px] text-slate-600">{error}</p>
+          {diagnostic ? (
+            <dl className="mt-4 space-y-2 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[12px] text-slate-600">
+              <div>
+                <dt className="font-semibold text-slate-500">診断情報</dt>
+                <dd className="mt-1 break-all font-mono leading-5">
+                  {[
+                    diagnostic.category
+                      ? `category=${diagnostic.category}`
+                      : null,
+                    diagnostic.status ? `http=${diagnostic.status}` : null,
+                    diagnostic.path ? `path=${diagnostic.path}` : null,
+                    diagnostic.uid ? `uid=${diagnostic.uid}` : null,
+                    diagnostic.code ? `code=${diagnostic.code}` : null,
+                    diagnostic.supabaseMessage
+                      ? `supabase=${diagnostic.supabaseMessage}`
+                      : null,
+                    diagnostic.details
+                      ? `details=${diagnostic.details}`
+                      : null,
+                    diagnostic.hint ? `hint=${diagnostic.hint}` : null,
+                    diagnostic.filter
+                      ? `filter=${JSON.stringify(diagnostic.filter)}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n")}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+          <div className="mt-4">
+            <Button type="button" variant="secondary" onClick={() => void load()}>
+              再読み込み
+            </Button>
+          </div>
         </SectionCard>
       ) : !view || view.notCertifiedInstructor ? (
         <div className="no-print">
           <EmptyState
-            title="認定講師として登録されていません"
+            title="ライセンス情報はまだ登録されていません"
             description="ライセンス確認は認定講師のみ利用できます。事務局へお問い合わせください。"
           />
         </div>
       ) : view.licensePendingSetup || !license ? (
         <div className="no-print">
           <EmptyState
-            title="ライセンス情報は現在準備中です"
-            description="ライセンス情報は現在準備中です。事務局へお問い合わせください。"
+            title="ライセンス情報はまだ登録されていません"
+            description="認定講師レコードは確認できましたが、ライセンス情報が未登録です。事務局へお問い合わせください。"
           />
         </div>
       ) : (
