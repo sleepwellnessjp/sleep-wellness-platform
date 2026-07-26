@@ -45,6 +45,7 @@ const INSTRUCTOR_NAV: OsNavItem[] = [
   { href: "/journey", label: "Journey", match: "/journey" },
   { href: "/homework", label: "Homework", match: "/homework" },
   { href: "/invitations", label: "招待", match: "/invitations" },
+  { href: "/instructor/profile", label: "公開プロフィール", match: "/instructor/profile" },
   { href: "/notifications", label: "通知", match: "/notifications" },
   { href: "/knowledge", label: "Knowledge", match: "/knowledge" },
   { href: "/reports", label: "Report", match: "/reports" },
@@ -275,6 +276,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         title: "クライアント招待",
         description: "招待メールと招待コードを発行します。",
         href: "/invitations",
+      },
+      {
+        id: "public-profile",
+        eyebrow: "PROFILE",
+        title: "公開プロフィール",
+        description: "認定講師紹介ページに掲載する写真・自己紹介を編集します。",
+        href: "/instructor/profile",
       },
       {
         id: "license",
