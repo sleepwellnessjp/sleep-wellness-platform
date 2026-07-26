@@ -46,14 +46,34 @@ export function demoInstructorAssistantContext(
     sleepEfficiency: 84,
     stress: 48,
     hrv: 41,
-    goodPoints: [
-      "就寝時刻が前回より安定している",
-      "深睡眠の比率がわずかに改善",
-    ],
-    improvements: [
-      "中途覚醒の頻度を減らす",
-      "午後のカフェインを見直す",
-    ],
+    metrics: {
+      deepSleep: "1時間15分",
+      remSleep: "1時間58分",
+      sleepEfficiency: "87%",
+      sleepLatency: "55分",
+      sleepDebt: "1時間57分",
+      awakenings: "3回・42分",
+      hrv: "41",
+      restingHeartRate: "58",
+      sleepDuration: "6時間40分",
+      stress: "48",
+    },
+    previousMetrics: {
+      deepSleep: "1時間05分",
+      remSleep: "1時間40分",
+      sleepEfficiency: "84%",
+      hrv: "39",
+      restingHeartRate: "60",
+    },
+    lifestyle: {
+      caffeine: "コーヒー",
+      caffeineTime: "17時頃",
+      alcohol: "なし",
+      preBedBehavior: "就寝前にスマートフォン",
+      notes: "",
+    },
+    previousHrvValues: [38, 40, 42],
+    previousRhrValues: [57, 59, 61],
     ...overrides,
   };
 }

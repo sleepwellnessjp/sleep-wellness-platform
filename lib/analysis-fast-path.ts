@@ -8,6 +8,7 @@ import {
   aiInputFromMetricsAndLifestyle,
   evaluateAllItems,
   generateRuleBasedAiSleepAnalysis,
+  toInstructorCounseling,
   type AiAnalysisItem,
   type AiSleepAnalysisInput,
 } from "@/lib/ai-analysis";
@@ -200,12 +201,47 @@ export function buildCategoryScoresFromItems(
 function lifestyleForRules(
   lifestyle: AnalysisRequest["lifestyle"],
 ): AiSleepAnalysisInput["lifestyle"] {
+  const caffeineParts = [
+    lifestyle.caffeine,
+    lifestyle.caffeineDone,
+    lifestyle.caffeineType,
+    lifestyle.caffeineAmount,
+    lifestyle.caffeineTime,
+    lifestyle.caffeineNotes,
+  ]
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+  const alcoholParts = [
+    lifestyle.alcohol,
+    lifestyle.alcoholDrank,
+    lifestyle.alcoholType,
+    lifestyle.alcoholAmount,
+    lifestyle.alcoholEndTime,
+    lifestyle.alcoholNotes,
+  ]
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+  const dinnerParts = [
+    lifestyle.dinnerContent,
+    lifestyle.dinnerTime,
+    lifestyle.dinnerEaten,
+  ]
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+  const preBedParts = [
+    lifestyle.condition,
+    lifestyle.notes,
+    lifestyle.stress,
+  ]
+    .map((v) => (v ?? "").trim())
+    .filter(Boolean);
+
   return {
     breakfast: lifestyle.breakfastContent || lifestyle.breakfastEaten || null,
     lunch: lifestyle.lunchContent || lifestyle.lunchEaten || null,
-    dinner: lifestyle.dinnerContent || lifestyle.dinnerEaten || null,
-    alcohol: lifestyle.alcohol || lifestyle.alcoholDrank || null,
-    caffeine: lifestyle.caffeine || lifestyle.caffeineDone || null,
+    dinner: dinnerParts.join(" ") || null,
+    alcohol: alcoholParts.join(" ") || null,
+    caffeine: caffeineParts.join(" ") || null,
     exercise:
       lifestyle.exercise ||
       lifestyle.yoga ||
@@ -213,7 +249,7 @@ function lifestyleForRules(
       lifestyle.otherExerciseName ||
       null,
     bathing: lifestyle.bathing || null,
-    preBedBehavior: lifestyle.condition || lifestyle.notes || null,
+    preBedBehavior: preBedParts.join(" ") || null,
     notes: lifestyle.notes || null,
   };
 }
@@ -264,6 +300,15 @@ export function buildScoreFirstAnalysisResult(
       lifestyle: request.lifestyle,
     });
 
+  const ruleInput = aiInputFromMetricsAndLifestyle({
+    clientName: request.lifestyle.clientName,
+    measurementDate: request.lifestyle.measurementDate,
+    metrics,
+    lifestyle: lifestyleForRules(request.lifestyle),
+  });
+  const ruleOutput = generateRuleBasedAiSleepAnalysis(ruleInput);
+  const instructorCounseling = toInstructorCounseling(ruleOutput, ruleInput);
+
   const hasAgeGender =
     Boolean(request.lifestyle.age?.trim()) &&
     Boolean(request.lifestyle.gender?.trim());
@@ -279,6 +324,7 @@ export function buildScoreFirstAnalysisResult(
     nextComparisonPoints: [],
     recommendationsUntilNext: [],
     instructorSuggestions: [],
+    instructorCounseling,
     score,
     scoreBreakdown,
     categoryScores,

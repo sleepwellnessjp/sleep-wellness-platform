@@ -10,6 +10,7 @@ import {
   type PredictiveAnalysis,
 } from "@/lib/ai-intelligence";
 import type { AnalysisResult } from "@/lib/analysis-session";
+import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 
 function parseMetric(value: string | number | null | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -18,10 +19,20 @@ function parseMetric(value: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function improvementTexts(result: AnalysisResult): string[] {
-  return (result.improvements ?? []).map((item) =>
-    typeof item === "string" ? item : item.text,
-  );
+function pickMetrics(metrics: AnalysisMetrics | undefined) {
+  if (!metrics) return null;
+  return {
+    deepSleep: metrics.deepSleep || null,
+    remSleep: metrics.remSleep || null,
+    sleepEfficiency: metrics.sleepEfficiency || null,
+    sleepLatency: metrics.sleepLatency || null,
+    sleepDebt: metrics.sleepDebt || null,
+    awakenings: metrics.awakenings || null,
+    hrv: metrics.hrv || null,
+    restingHeartRate: metrics.restingHeartRate || null,
+    sleepDuration: metrics.sleepDuration || null,
+    stress: metrics.stress || null,
+  };
 }
 
 /**
@@ -31,9 +42,11 @@ function improvementTexts(result: AnalysisResult): string[] {
 export default function AnalysisAiIntelligenceSection({
   result,
   previousSleepScore = null,
+  previousMetrics = null,
 }: {
   result: AnalysisResult;
   previousSleepScore?: number | null;
+  previousMetrics?: AnalysisMetrics | null;
 }) {
   const [assistant, setAssistant] = useState<InstructorAssistantBriefing | null>(
     null,
@@ -52,6 +65,25 @@ export default function AnalysisAiIntelligenceSection({
         ? result.score
         : parseMetric(metrics?.sleepScore);
 
+    // 分析時に生成済みのカウンセリング支援があれば画面でも同一内容を優先
+    if (result.instructorCounseling) {
+      const plan = result.instructorCounseling;
+      const fromPlan: InstructorAssistantBriefing = {
+        featureId: "instructor_assistant",
+        clientId,
+        clientName,
+        goodPoints: plan.goodPoints ?? [],
+        needsImprovement: plan.needsImprovement ?? [],
+        possibleFactors: plan.possibleFactors ?? [],
+        questionCandidates: plan.questionCandidates ?? [],
+        counselingAgenda: [],
+        homeworkSuggestions: [],
+        generatedAt: new Date().toISOString(),
+        source: "rules",
+      };
+      setAssistant(fromPlan);
+    }
+
     setLoading(true);
     setError(null);
 
@@ -69,8 +101,23 @@ export default function AnalysisAiIntelligenceSection({
               sleepEfficiency: parseMetric(metrics?.sleepEfficiency),
               stress: parseMetric(metrics?.stress),
               hrv: parseMetric(metrics?.hrv),
-              goodPoints: result.goodPoints ?? [],
-              improvements: improvementTexts(result),
+              metrics: pickMetrics(metrics),
+              previousMetrics: pickMetrics(previousMetrics ?? undefined),
+              lifestyle: {
+                alcohol: result.drinkingHabit || null,
+                stress: result.snoringNasal || null,
+                notes: result.medicalHistory || null,
+              },
+              previousHrvValues: previousMetrics?.hrv
+                ? [parseMetric(previousMetrics.hrv)].filter(
+                    (n): n is number => n != null,
+                  )
+                : [],
+              previousRhrValues: previousMetrics?.restingHeartRate
+                ? [parseMetric(previousMetrics.restingHeartRate)].filter(
+                    (n): n is number => n != null,
+                  )
+                : [],
             }),
           }),
           fetch(AI_INTELLIGENCE_ROUTES.api.predictive, {
@@ -111,7 +158,10 @@ export default function AnalysisAiIntelligenceSection({
           throw new Error(predJson.error ?? "予測取得に失敗");
         }
         if (!cancelled) {
-          setAssistant(assistJson.briefing ?? null);
+          // instructorCounseling がある場合は分析結果側を優先（PDFと一致）
+          if (!result.instructorCounseling) {
+            setAssistant(assistJson.briefing ?? null);
+          }
           setPredictive(predJson.analysis ?? null);
         }
       } catch (err: unknown) {
@@ -128,9 +178,9 @@ export default function AnalysisAiIntelligenceSection({
     return () => {
       cancelled = true;
     };
-  }, [result, previousSleepScore]);
+  }, [result, previousSleepScore, previousMetrics]);
 
-  if (loading) {
+  if (loading && !assistant) {
     return (
       <div className="mt-5 space-y-3 sm:mt-6">
         <SoftSkeleton variant="coach" />
@@ -138,7 +188,7 @@ export default function AnalysisAiIntelligenceSection({
     );
   }
 
-  if (error) {
+  if (error && !assistant) {
     return (
       <p className="mt-5 text-[13px] text-[#a33a3a] sm:mt-6" role="alert">
         {error}

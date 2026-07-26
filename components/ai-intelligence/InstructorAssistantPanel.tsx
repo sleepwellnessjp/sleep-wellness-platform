@@ -5,21 +5,22 @@ import AiSourceBadge from "@/components/ai-intelligence/AiSourceBadge";
 import { GOLD, GOLD_LIGHT, NAVY, TEAL } from "@/components/ui/tokens";
 import type { InstructorAssistantBriefing } from "@/lib/ai-intelligence";
 
-const HOMEWORK_LABEL: Record<
-  InstructorAssistantBriefing["homeworkSuggestions"][number]["category"],
-  string
-> = {
-  homework: "宿題",
-  breathing: "呼吸法",
-  yoga: "メラトニンヨガ™",
-  lifestyle: "生活習慣",
-};
-
 export default function InstructorAssistantPanel({
   briefing,
 }: {
   briefing: InstructorAssistantBriefing;
 }) {
+  const goodPoints =
+    briefing.goodPoints?.length > 0
+      ? briefing.goodPoints
+      : (briefing.improvementPoints ?? []);
+  const needsImprovement = briefing.needsImprovement ?? [];
+  const possibleFactors =
+    briefing.possibleFactors?.length > 0
+      ? briefing.possibleFactors
+      : (briefing.worseningCauses ?? []);
+  const questions = briefing.questionCandidates ?? [];
+
   return (
     <section className="rounded-[24px] border border-[#8a6a2d]/28 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-5 sm:px-6 sm:py-6">
       <p
@@ -35,54 +36,21 @@ export default function InstructorAssistantPanel({
         AI カウンセリング支援 · {briefing.clientName}
       </h3>
       <p className="mt-1 text-[13px] text-slate-500">
-        分析結果に基づく改善点・質問候補・Homework提案です。
+        分析結果に基づく良好な点・改善が必要な点・考えられる要因・質問候補です。
       </p>
 
       <div className="mt-5 columns-1 gap-4 md:columns-2">
-        <AssistBlock step="1" title="改善点">
-          <BulletList items={briefing.improvementPoints} tone="improve" />
+        <AssistBlock step="1" title="良好な点">
+          <BulletList items={goodPoints} tone="improve" />
         </AssistBlock>
-        <AssistBlock step="2" title="悪化原因">
-          <BulletList items={briefing.worseningCauses} tone="worsen" />
+        <AssistBlock step="2" title="改善が必要な点">
+          <BulletList items={needsImprovement} tone="worsen" />
         </AssistBlock>
-        <AssistBlock step="3" title="質問候補">
-          <BulletList items={briefing.questionCandidates} tone="neutral" />
+        <AssistBlock step="3" title="考えられる要因">
+          <BulletList items={possibleFactors} tone="neutral" />
         </AssistBlock>
-        <AssistBlock step="4" title="今日のカウンセリング内容">
-          <ol className="list-decimal space-y-2 pl-4">
-            {briefing.counselingAgenda.map((item) => (
-              <li
-                key={item}
-                className="text-[14px] leading-7 font-medium"
-                style={{ color: NAVY }}
-              >
-                {item}
-              </li>
-            ))}
-          </ol>
-        </AssistBlock>
-        <AssistBlock step="5" title="Homework提案">
-          <ul className="space-y-3">
-            {briefing.homeworkSuggestions.map((hw) => (
-              <li
-                key={hw.title}
-                className="rounded-xl border border-[#071426]/06 bg-white/90 px-3 py-3"
-              >
-                <p className="text-[11px] font-semibold tracking-[0.1em] text-slate-400">
-                  {HOMEWORK_LABEL[hw.category]}
-                </p>
-                <p
-                  className="mt-1 text-[14px] font-semibold"
-                  style={{ color: NAVY }}
-                >
-                  {hw.title}
-                </p>
-                <p className="mt-1 text-[13px] leading-6 text-slate-600">
-                  {hw.reason}
-                </p>
-              </li>
-            ))}
-          </ul>
+        <AssistBlock step="4" title="質問候補">
+          <BulletList items={questions} tone="neutral" />
         </AssistBlock>
       </div>
 
@@ -134,6 +102,13 @@ function BulletList({
 }) {
   const color =
     tone === "improve" ? TEAL : tone === "worsen" ? "#B45309" : GOLD;
+  if (items.length === 0) {
+    return (
+      <p className="text-[13px] leading-6 text-slate-500">
+        該当する項目は今回のデータからは確認できませんでした。
+      </p>
+    );
+  }
   return (
     <ul className="space-y-2">
       {items.map((item) => (

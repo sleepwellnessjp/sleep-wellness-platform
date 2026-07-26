@@ -236,16 +236,24 @@ export type MelatoninYogaPlan = {
  * クライアント向け行動指示ではない。認定講師がそのままカウンセリングに使える粒度。
  */
 export type InstructorCounselingPlan = {
-  /** 今回重点的にヒアリングする内容 */
-  hearingTopics: string[];
-  /** 次回比較するデータ */
-  nextComparisonData: string[];
-  /** 生活習慣で確認すること */
-  lifestyleChecks: string[];
-  /** 改善が見込めるポイント */
-  improvementOutlook: string[];
-  /** 注意して観察するポイント */
-  observationPoints: string[];
+  /** ① 良好な点 */
+  goodPoints: string[];
+  /** ② 改善が必要な点 */
+  needsImprovement: string[];
+  /** ③ 考えられる要因 */
+  possibleFactors: string[];
+  /** ④ 質問候補 */
+  questionCandidates: string[];
+  /** @deprecated 旧フォーマット互換 */
+  hearingTopics?: string[];
+  /** @deprecated 旧フォーマット互換 */
+  nextComparisonData?: string[];
+  /** @deprecated 旧フォーマット互換 */
+  lifestyleChecks?: string[];
+  /** @deprecated 旧フォーマット互換 */
+  improvementOutlook?: string[];
+  /** @deprecated 旧フォーマット互換 */
+  observationPoints?: string[];
 };
 
 /**
@@ -347,7 +355,7 @@ export type AnalysisResult = {
   instructorSuggestions: string[];
   /**
    * ⑨AIから講師への提案（構造化）。
-   * 重点ヒアリング / 次回比較データ / 生活習慣確認 / 改善見込み / 観察ポイント。
+   * 良好な点 / 改善が必要な点 / 考えられる要因 / 質問候補。
    */
   instructorCounseling?: InstructorCounselingPlan;
   /**
@@ -831,39 +839,67 @@ function normalizeInstructorCounseling(
 ): InstructorCounselingPlan | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const record = raw as Record<string, unknown>;
+
+  let goodPoints = normalizeStringList(record.goodPoints, 5);
+  let needsImprovement = normalizeStringList(record.needsImprovement, 5);
+  let possibleFactors = normalizeStringList(record.possibleFactors, 4);
+  let questionCandidates = normalizeStringList(record.questionCandidates, 4);
+
+  // 旧フォーマット互換
   const hearingTopics = normalizeStringList(record.hearingTopics, 3);
   const nextComparisonData = normalizeStringList(record.nextComparisonData, 3);
-  // 新フォーマット
   let lifestyleChecks = normalizeStringList(record.lifestyleChecks, 3);
   let improvementOutlook = normalizeStringList(record.improvementOutlook, 3);
   const observationPoints = normalizeStringList(record.observationPoints, 3);
-  // 旧 priorityChecks 互換 → 生活習慣確認へ吸収
   const legacyPriority = normalizeStringList(record.priorityChecks, 3);
   if (lifestyleChecks.length === 0 && legacyPriority.length > 0) {
     lifestyleChecks = legacyPriority;
   }
-  // 旧 expectedImprovements / promisingImprovements 互換
   if (improvementOutlook.length === 0) {
     improvementOutlook = normalizeStringList(
       record.expectedImprovements ?? record.promisingImprovements,
       3,
     );
   }
+
+  const hasNew =
+    goodPoints.length > 0 ||
+    needsImprovement.length > 0 ||
+    possibleFactors.length > 0 ||
+    questionCandidates.length > 0;
+  const hasLegacy =
+    hearingTopics.length > 0 ||
+    nextComparisonData.length > 0 ||
+    lifestyleChecks.length > 0 ||
+    improvementOutlook.length > 0 ||
+    observationPoints.length > 0;
+
+  if (!hasNew && hasLegacy) {
+    // 旧データの見出しを可能な範囲で新4区分へ寄せる（断定表現は付けない）
+    if (questionCandidates.length === 0) {
+      questionCandidates = hearingTopics;
+    }
+    if (needsImprovement.length === 0) {
+      needsImprovement = improvementOutlook;
+    }
+    if (possibleFactors.length === 0) {
+      possibleFactors = [...lifestyleChecks, ...observationPoints].slice(0, 4);
+    }
+  }
+
   if (
-    hearingTopics.length === 0 &&
-    nextComparisonData.length === 0 &&
-    lifestyleChecks.length === 0 &&
-    improvementOutlook.length === 0 &&
-    observationPoints.length === 0
+    goodPoints.length === 0 &&
+    needsImprovement.length === 0 &&
+    possibleFactors.length === 0 &&
+    questionCandidates.length === 0
   ) {
     return undefined;
   }
   return {
-    hearingTopics,
-    nextComparisonData,
-    lifestyleChecks,
-    improvementOutlook,
-    observationPoints,
+    goodPoints,
+    needsImprovement,
+    possibleFactors,
+    questionCandidates,
   };
 }
 
@@ -873,17 +909,15 @@ export function flattenInstructorCounseling(
 ): string[] {
   if (!plan) return [];
   return [
-    ...plan.hearingTopics.map((item) => `ヒアリング：${item}`),
-    ...plan.nextComparisonData.map((item) => `次回比較：${item}`),
-    ...plan.lifestyleChecks.map((item) => `生活習慣：${item}`),
-    ...plan.improvementOutlook.map((item) => `改善見込み：${item}`),
-    ...plan.observationPoints.map((item) => `観察：${item}`),
-  ].slice(0, 15);
+    ...plan.goodPoints.map((item) => `良好な点：${item}`),
+    ...plan.needsImprovement.map((item) => `改善が必要な点：${item}`),
+    ...plan.possibleFactors.map((item) => `考えられる要因：${item}`),
+    ...plan.questionCandidates.map((item) => `質問候補：${item}`),
+  ].slice(0, 16);
 }
 
 /**
  * 主案の空カテゴリをフォールバックで補完する。
- * AI が一部だけ返した場合でも、5カテゴリが揃うようにする。
  */
 export function mergeInstructorCounseling(
   primary: InstructorCounselingPlan | undefined,
@@ -891,29 +925,27 @@ export function mergeInstructorCounseling(
 ): InstructorCounselingPlan | undefined {
   if (!primary && !fallback) return undefined;
   const pick = (a: string[] | undefined, b: string[] | undefined) =>
-    (a && a.length > 0 ? a : (b ?? [])).slice(0, 3);
+    (a && a.length > 0 ? a : (b ?? [])).slice(0, 5);
   const merged: InstructorCounselingPlan = {
-    hearingTopics: pick(primary?.hearingTopics, fallback?.hearingTopics),
-    nextComparisonData: pick(
-      primary?.nextComparisonData,
-      fallback?.nextComparisonData,
+    goodPoints: pick(primary?.goodPoints, fallback?.goodPoints),
+    needsImprovement: pick(
+      primary?.needsImprovement,
+      fallback?.needsImprovement,
     ),
-    lifestyleChecks: pick(primary?.lifestyleChecks, fallback?.lifestyleChecks),
-    improvementOutlook: pick(
-      primary?.improvementOutlook,
-      fallback?.improvementOutlook,
-    ),
-    observationPoints: pick(
-      primary?.observationPoints,
-      fallback?.observationPoints,
-    ),
+    possibleFactors: pick(
+      primary?.possibleFactors,
+      fallback?.possibleFactors,
+    ).slice(0, 4),
+    questionCandidates: pick(
+      primary?.questionCandidates,
+      fallback?.questionCandidates,
+    ).slice(0, 4),
   };
   if (
-    merged.hearingTopics.length === 0 &&
-    merged.nextComparisonData.length === 0 &&
-    merged.lifestyleChecks.length === 0 &&
-    merged.improvementOutlook.length === 0 &&
-    merged.observationPoints.length === 0
+    merged.goodPoints.length === 0 &&
+    merged.needsImprovement.length === 0 &&
+    merged.possibleFactors.length === 0 &&
+    merged.questionCandidates.length === 0
   ) {
     return undefined;
   }
@@ -922,69 +954,77 @@ export function mergeInstructorCounseling(
 
 /**
  * フラットな講師提案から構造化へ復元（プレフィックス付き文字列向け）。
- * プレフィックスが無い場合はヒアリングへまとめる。
  */
 export function parseInstructorSuggestionsToCounseling(
   items: string[],
 ): InstructorCounselingPlan | undefined {
   if (items.length === 0) return undefined;
-  const hearingTopics: string[] = [];
-  const nextComparisonData: string[] = [];
-  const lifestyleChecks: string[] = [];
-  const improvementOutlook: string[] = [];
-  const observationPoints: string[] = [];
+  const goodPoints: string[] = [];
+  const needsImprovement: string[] = [];
+  const possibleFactors: string[] = [];
+  const questionCandidates: string[] = [];
   const uncategorized: string[] = [];
 
   for (const raw of items) {
     const item = raw.trim();
     if (!item) continue;
-    if (/^(ヒアリング|追加ヒアリング|重点ヒアリング)[：:]/.test(item)) {
-      hearingTopics.push(
-        item.replace(/^(ヒアリング|追加ヒアリング|重点ヒアリング)[：:]\s*/, ""),
+    if (/^(良好な点|良かった点)[：:]/.test(item)) {
+      goodPoints.push(item.replace(/^(良好な点|良かった点)[：:]\s*/, ""));
+    } else if (/^(改善が必要な点|改善点|整えたい点)[：:]/.test(item)) {
+      needsImprovement.push(
+        item.replace(/^(改善が必要な点|改善点|整えたい点)[：:]\s*/, ""),
+      );
+    } else if (/^(考えられる要因|悪化原因|要因)[：:]/.test(item)) {
+      possibleFactors.push(
+        item.replace(/^(考えられる要因|悪化原因|要因)[：:]\s*/, ""),
+      );
+    } else if (/^(質問候補|ヒアリング|追加ヒアリング|重点ヒアリング)[：:]/.test(item)) {
+      questionCandidates.push(
+        item.replace(
+          /^(質問候補|ヒアリング|追加ヒアリング|重点ヒアリング)[：:]\s*/,
+          "",
+        ),
       );
     } else if (/^(次回比較|比較)[：:]/.test(item)) {
-      nextComparisonData.push(item.replace(/^(次回比較|比較)[：:]\s*/, ""));
+      // 旧プレフィックス — 質問候補へ寄せない（比較観点は別役割）
+      uncategorized.push(item.replace(/^(次回比較|比較)[：:]\s*/, ""));
     } else if (/^(生活習慣|生活確認)[：:]/.test(item)) {
-      lifestyleChecks.push(item.replace(/^(生活習慣|生活確認)[：:]\s*/, ""));
+      possibleFactors.push(item.replace(/^(生活習慣|生活確認)[：:]\s*/, ""));
     } else if (/^(改善見込み|改善|改善ポイント)[：:]/.test(item)) {
-      improvementOutlook.push(
+      needsImprovement.push(
         item.replace(/^(改善見込み|改善|改善ポイント)[：:]\s*/, ""),
       );
     } else if (/^(観察|注意観察|観察ポイント)[：:]/.test(item)) {
-      observationPoints.push(
+      possibleFactors.push(
         item.replace(/^(観察|注意観察|観察ポイント)[：:]\s*/, ""),
       );
     } else if (/^(確認|優先確認)[：:]/.test(item)) {
-      // 旧プレフィックス互換
-      lifestyleChecks.push(item.replace(/^(確認|優先確認)[：:]\s*/, ""));
+      possibleFactors.push(item.replace(/^(確認|優先確認)[：:]\s*/, ""));
     } else {
       uncategorized.push(item);
     }
   }
 
   for (const item of uncategorized) {
-    if (hearingTopics.length < 3) hearingTopics.push(item);
-    else if (lifestyleChecks.length < 3) lifestyleChecks.push(item);
-    else if (improvementOutlook.length < 3) improvementOutlook.push(item);
-    else if (nextComparisonData.length < 3) nextComparisonData.push(item);
-    else if (observationPoints.length < 3) observationPoints.push(item);
+    if (questionCandidates.length < 4) questionCandidates.push(item);
+    else if (needsImprovement.length < 5) needsImprovement.push(item);
+    else if (possibleFactors.length < 4) possibleFactors.push(item);
+    else if (goodPoints.length < 5) goodPoints.push(item);
   }
 
   if (
-    hearingTopics.length === 0 &&
-    nextComparisonData.length === 0 &&
-    lifestyleChecks.length === 0 &&
-    improvementOutlook.length === 0 &&
-    observationPoints.length === 0
+    goodPoints.length === 0 &&
+    needsImprovement.length === 0 &&
+    possibleFactors.length === 0 &&
+    questionCandidates.length === 0
   ) {
     return undefined;
   }
   return {
-    hearingTopics: hearingTopics.slice(0, 3),
-    nextComparisonData: nextComparisonData.slice(0, 3),
-    lifestyleChecks: lifestyleChecks.slice(0, 3),
-    improvementOutlook: improvementOutlook.slice(0, 3),
-    observationPoints: observationPoints.slice(0, 3),
+    goodPoints: goodPoints.slice(0, 5),
+    needsImprovement: needsImprovement.slice(0, 5),
+    possibleFactors: possibleFactors.slice(0, 4),
+    questionCandidates: questionCandidates.slice(0, 4),
   };
 }
 

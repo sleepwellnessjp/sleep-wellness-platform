@@ -32,7 +32,7 @@ export const AI_INTELLIGENCE_FEATURE_DESCRIPTIONS: Record<
   sleep_coach:
     "毎朝の睡眠状態・コンディション・おすすめ行動・メラトニンヨガ™・励ましを提供します。",
   instructor_assistant:
-    "分析画面で改善点・悪化原因・質問候補・カウンセリング内容・Homeworkを提案します。",
+    "分析画面で良好な点・改善が必要な点・考えられる要因・質問候補を提案します。",
   swij_intelligence:
     "全国平均・年代別比較・改善率/講師ランキング・イベント効果・季節変動を分析します。",
   predictive_analysis:

@@ -84,6 +84,11 @@ export async function getInstructorAssistantBriefing(
     sleepEfficiency: ctx.sleepEfficiency ?? null,
     stress: ctx.stress ?? null,
     hrv: ctx.hrv ?? null,
+    metrics: ctx.metrics ?? null,
+    previousMetrics: ctx.previousMetrics ?? null,
+    lifestyle: ctx.lifestyle ?? null,
+    previousHrvValues: ctx.previousHrvValues ?? null,
+    previousRhrValues: ctx.previousRhrValues ?? null,
     goodPoints: ctx.goodPoints ?? [],
     improvements: ctx.improvements ?? [],
   });
