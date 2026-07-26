@@ -26,6 +26,7 @@ import {
   type InstructorTodayTodoItem,
   type InstructorTodayTodoKind,
 } from "@/lib/instructor-dashboard";
+import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 
 function greetingForNow(date = new Date()): string {
   const hour = date.getHours();
@@ -184,6 +185,32 @@ export default function InstructorDashboardPage() {
           <div className="mt-8 animate-fade-up sm:mt-10">
             <InstructorOpsMetrics data={ops} />
           </div>
+        ) : null}
+
+        {data?.latestRecovery ? (
+          <section
+            className="mt-8 animate-fade-up sm:mt-10"
+            aria-labelledby="recovery-index-title"
+          >
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2 sm:mb-4">
+              <h2
+                id="recovery-index-title"
+                className="text-base font-semibold tracking-[-0.03em] sm:text-xl"
+                style={{ color: NAVY }}
+              >
+                直近の回復指数
+              </h2>
+              <Link
+                href={`/clients/${encodeURIComponent(data.latestRecovery.clientId)}`}
+                className="text-[12px] font-medium sm:text-[13px]"
+                style={{ color: GOLD }}
+              >
+                {data.latestRecovery.clientName} ·{" "}
+                {data.latestRecovery.analysisDate}
+              </Link>
+            </div>
+            <RecoveryIndexCard value={data.latestRecovery.recovery} compact />
+          </section>
         ) : null}
 
         {showDemoBanner ? (

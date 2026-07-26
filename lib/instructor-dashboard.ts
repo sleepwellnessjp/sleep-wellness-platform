@@ -14,6 +14,10 @@ import { getProgramDetail } from "@/lib/repositories/program-repository";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { isMissingTableError } from "@/lib/supabase/errors";
+import {
+  computeRecoveryIndex,
+  type RecoveryIndexResult,
+} from "@/lib/recovery-index";
 
 export type InstructorTodayClient = {
   id: string;
@@ -74,6 +78,13 @@ export type InstructorDashboardData = {
   recentActivity: InstructorActivityItem[];
   weekPlan: InstructorWeekPlan;
   quickLinks: InstructorQuickLink[];
+  /** 直近分析から算出した回復指数（HRV×安静時心拍）。無い場合は null */
+  latestRecovery: {
+    clientId: string;
+    clientName: string;
+    analysisDate: string;
+    recovery: RecoveryIndexResult;
+  } | null;
 };
 
 export const INSTRUCTOR_QUICK_LINKS: InstructorQuickLink[] = [
@@ -217,6 +228,15 @@ export const DUMMY_INSTRUCTOR_DASHBOARD: InstructorDashboardData = {
     homeworkPendingCount: 8,
   },
   quickLinks: INSTRUCTOR_QUICK_LINKS,
+  latestRecovery: {
+    clientId: "client-demo-1",
+    clientName: "佐藤 美咲",
+    analysisDate: "2026-07-24",
+    recovery: computeRecoveryIndex({
+      hrv: "48 ms",
+      restingHeartRate: "56 bpm",
+    }),
+  },
 };
 
 function todayTokyo(): string {
@@ -632,6 +652,27 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
   const unanalyzedCount = clients.filter((client) => client.analyses.length === 0)
     .length;
 
+  let latestRecovery: InstructorDashboardData["latestRecovery"] = null;
+  let latestAt = "";
+  for (const client of clients) {
+    for (const analysis of client.analyses) {
+      const at = analysis.createdAt || `${analysis.analysisDate}T12:00:00+09:00`;
+      if (latestAt && at <= latestAt) continue;
+      const recovery = computeRecoveryIndex({
+        hrv: analysis.metrics?.hrv,
+        restingHeartRate: analysis.metrics?.restingHeartRate,
+      });
+      if (!recovery.available) continue;
+      latestAt = at;
+      latestRecovery = {
+        clientId: client.id,
+        clientName: client.name,
+        analysisDate: analysis.analysisDate,
+        recovery,
+      };
+    }
+  }
+
   return {
     instructorDisplayName: displayName,
     todayTodos,
@@ -643,6 +684,7 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
       homeworkPendingCount,
     },
     quickLinks: INSTRUCTOR_QUICK_LINKS,
+    latestRecovery,
   };
 }
 
