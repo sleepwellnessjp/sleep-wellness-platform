@@ -178,9 +178,12 @@ function buildWhy(
   ];
 }
 
-function buildAdvice(level: RecoveryLevel): RecoveryIndexResult & {
-  available: true;
-}["advice"] {
+function buildAdvice(level: RecoveryLevel): {
+  exercise: string;
+  sleep: string;
+  nutrition: string;
+  stress: string;
+} {
   switch (level) {
     case "excellent":
       return {
