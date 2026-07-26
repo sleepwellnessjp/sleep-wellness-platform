@@ -26,6 +26,9 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/instructors" || pathname.startsWith("/instructors/")) {
     return true;
   }
+  if (pathname === "/license/verify" || pathname.startsWith("/license/verify/")) {
+    return true;
+  }
   return false;
 }
 
