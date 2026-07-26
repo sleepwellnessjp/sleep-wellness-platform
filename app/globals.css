@@ -32,7 +32,7 @@
   --sw-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --sw-duration-page: 420ms;
   /* Closed Beta Chrome（右下 BETA / Version / Feedback）用オフセット */
-  --sw-beta-chrome-offset: 6.25rem;
+  --sw-beta-chrome-offset: 7.5rem;
 }
 
 /**
@@ -935,5 +935,27 @@ body {
 @media print {
   [data-beta-chrome] {
     display: none !important;
+  }
+
+  .license-print-root {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .license-certificate-sheet {
+    border-radius: 0 !important;
+    border: 1.25pt solid #b89242 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 14mm 12mm !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .license-certificate-sheet .license-cert-frame {
+    inset: 6mm !important;
+    border-radius: 0 !important;
   }
 }

@@ -3,7 +3,8 @@ export type InstructorLicenseStatus =
   | "expiring"
   | "expired"
   | "suspended"
-  | "pending";
+  | "pending"
+  | "withdrawn";
 
 export type InstructorRenewalStatus =
   | "not_requested"
@@ -77,12 +78,62 @@ export type AdminInstructorLicenseFilters = {
   expiry?: "all" | "within_90" | "expired" | "over_90";
 };
 
+/** 公開認証ページの判定結果 */
+export type PublicLicenseVerdict = "valid" | "invalid" | "expired";
+
+/** 公開認証ページの状態表記（有効・期限切れ・停止・取消） */
+export type PublicLicenseStatusLabel =
+  | "active"
+  | "expired"
+  | "suspended"
+  | "withdrawn";
+
 export type PublicLicenseVerification = {
   licenseNumber: string;
   certificationName: string;
+  /** 活動名のみ（本名は含めない） */
   holderName: string;
   issuedAt: string;
   expiresAt: string;
   status: InstructorLicenseStatus;
+  /** 公開用状態: 有効 / 期限切れ / 停止 / 取消 */
+  publicStatus: PublicLicenseStatusLabel;
+  /** 有効 / 無効 / 期限切れ */
+  verdict: PublicLicenseVerdict;
   issuerName: string;
+};
+
+/** 管理者向け: 認定講師 + ライセンス一覧 */
+export type AdminCertifiedInstructorListItem = {
+  instructorId: string;
+  userId: string;
+  email: string;
+  activityName: string;
+  legalName: string;
+  levelId: string;
+  instructorNumber: string;
+  certifiedAt: string;
+  renewsAt: string;
+  instructorStatus: string;
+  adminMemo: string;
+  license: InstructorLicenseRecord | null;
+};
+
+export type UpsertCertifiedInstructorInput = {
+  id?: string;
+  email: string;
+  publicName: string;
+  legalName: string;
+  displayName?: string;
+  levelId: string;
+  instructorNumber: string;
+  certifiedAt: string;
+  renewsAt: string;
+  userId?: string | null;
+  adminMemo?: string;
+  /** 同時にライセンスを発行する場合 */
+  issueLicense?: boolean;
+  licenseStatus?: InstructorLicenseStatus;
+  requiredEducationHours?: number;
+  completedEducationHours?: number;
 };

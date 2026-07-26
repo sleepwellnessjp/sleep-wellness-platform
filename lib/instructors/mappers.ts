@@ -18,8 +18,13 @@ function asStringArray(value: unknown): string[] {
 }
 
 export function activityNameOf(row: CertifiedInstructorRow): string {
-  const publicName = (row.public_display_name ?? "").trim();
+  const rowAny = row as CertifiedInstructorRow & {
+    public_name?: string | null;
+  };
+  const publicName = (rowAny.public_name ?? "").trim();
   if (publicName) return publicName;
+  const legacyPublic = (row.public_display_name ?? "").trim();
+  if (legacyPublic) return legacyPublic;
   return (row.display_name ?? "").trim() || "認定講師";
 }
 

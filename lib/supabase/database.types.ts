@@ -2961,6 +2961,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           profile_image_url: string | null;
+          public_name: string;
           public_display_name: string;
           legal_name: string;
           show_legal_name: boolean;
@@ -3002,6 +3003,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           profile_image_url?: string | null;
+          public_name?: string;
           public_display_name?: string;
           legal_name?: string;
           show_legal_name?: boolean;
@@ -3043,6 +3045,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           profile_image_url?: string | null;
+          public_name?: string;
           public_display_name?: string;
           legal_name?: string;
           show_legal_name?: boolean;

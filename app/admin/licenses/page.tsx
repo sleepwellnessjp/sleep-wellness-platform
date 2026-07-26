@@ -12,6 +12,8 @@ import {
   INSTRUCTOR_LICENSE_STATUS_LABELS,
   INSTRUCTOR_RENEWAL_STATUSES,
   INSTRUCTOR_RENEWAL_STATUS_LABELS,
+  resolveCertificationName,
+  SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
   todayIso,
 } from "@/lib/instructor-license/constants";
 import type {
@@ -123,7 +125,7 @@ export default function AdminLicensesPage() {
   useEffect(() => {
     if (!selected) return;
     setEditLevelId(selected.certificationLevelId);
-    setEditCertName(selected.certificationName);
+    setEditCertName(resolveCertificationName(selected.certificationName));
     setEditNumber(selected.licenseNumber);
     setEditIssued(selected.issuedAt);
     setEditExpires(selected.expiresAt);
@@ -215,7 +217,9 @@ export default function AdminLicensesPage() {
         body: JSON.stringify({
           instructorId: candidate.id,
           certificationLevelId: candidate.levelId,
-          certificationName: level?.label ?? candidate.levelId,
+          certificationName: resolveCertificationName(
+            level?.label ?? SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+          ),
           licenseNumber: candidate.instructorNumber,
           issuedAt: candidate.certifiedAt || todayIso(),
           expiresAt: candidate.renewsAt || todayIso(),
@@ -444,7 +448,7 @@ export default function AdminLicensesPage() {
                       setEditLevelId(e.target.value);
                       const level = levels.find((item) => item.id === e.target.value);
                       if (level) {
-                        setEditCertName(level.label);
+                        setEditCertName(resolveCertificationName(level.label));
                         setEditRequiredHours(String(level.ceHoursRequired));
                       }
                     }}

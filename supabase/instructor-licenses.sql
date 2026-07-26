@@ -250,7 +250,11 @@ insert into public.instructor_licenses (
 select
   ci.id,
   ci.level_id,
-  coalesce(nullif(trim(cl.label), ''), ci.level_id),
+  case
+    when lower(trim(coalesce(cl.label, ci.level_id, ''))) in ('instructor', '')
+      then 'Sleep Wellness Instructor'
+    else coalesce(nullif(trim(cl.label), ''), 'Sleep Wellness Instructor')
+  end,
   ci.instructor_number,
   ci.certified_at,
   ci.renews_at,
@@ -284,3 +288,8 @@ on conflict (instructor_id) do nothing;
 -- ------------------------------------------------------------
 -- supabase/migrations/20260726190000_ensure_my_certified_instructor.sql を
 -- SQL Editor で続けて実行してください（protect バイパス + ensure + bundle RPC）。
+--
+-- 6) 活動名/本名・公開検証・withdrawn
+-- ------------------------------------------------------------
+-- supabase/migrations/20260726200000_certified_instructor_names_and_license_status.sql
+-- を SQL Editor で実行してください。

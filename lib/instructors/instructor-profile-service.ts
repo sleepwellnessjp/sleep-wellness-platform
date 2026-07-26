@@ -19,7 +19,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 type Client = SupabaseClient<Database>;
 
 const PUBLIC_SELECT =
-  "id, user_id, school_id, level_id, instructor_number, display_name, email, status, certified_at, renews_at, usage_start_date, suspended_at, withdrawn_at, last_renewed_at, status_history, admin_memo, created_at, updated_at, profile_image_url, public_display_name, legal_name, show_legal_name, headline, bio, career, activity_area, service_area, online_available, yoga_specialties, pilates_specialties, specialties, available_programs, instagram_url, website_url, contact_email, is_public, recommendation_note, display_order, profile_updated_at";
+  "id, user_id, school_id, level_id, instructor_number, display_name, email, status, certified_at, renews_at, usage_start_date, suspended_at, withdrawn_at, last_renewed_at, status_history, admin_memo, created_at, updated_at, profile_image_url, public_name, public_display_name, legal_name, show_legal_name, headline, bio, career, activity_area, service_area, online_available, yoga_specialties, pilates_specialties, specialties, available_programs, instagram_url, website_url, contact_email, is_public, recommendation_note, display_order, profile_updated_at";
 
 async function requireClient(): Promise<Client> {
   const supabase = await createServerSupabaseClient();
@@ -127,7 +127,9 @@ export async function updateOwnInstructorProfile(
     {};
 
   if (input.publicDisplayName !== undefined) {
-    patch.public_display_name = input.publicDisplayName.trim().slice(0, 80);
+    const name = input.publicDisplayName.trim().slice(0, 80);
+    patch.public_display_name = name;
+    patch.public_name = name;
   }
   if (input.legalName !== undefined) {
     patch.legal_name = input.legalName.trim().slice(0, 80);
@@ -232,7 +234,9 @@ export async function updateInstructorProfileAsAdmin(
   const patch: Database["public"]["Tables"]["certified_instructors"]["Update"] =
     {};
   if (input.publicDisplayName !== undefined) {
-    patch.public_display_name = input.publicDisplayName.trim().slice(0, 80);
+    const name = input.publicDisplayName.trim().slice(0, 80);
+    patch.public_display_name = name;
+    patch.public_name = name;
   }
   if (input.legalName !== undefined) {
     patch.legal_name = input.legalName.trim().slice(0, 80);
