@@ -47,35 +47,23 @@ create index if not exists certified_instructors_user_id_idx
 
 -- ------------------------------------------------------------
 -- 2) 既存「若林貴久」レコードの補完
---    活動名は既存 display_name を維持（公開表示の連続性を優先）
---    → public_name = display_name（若林貴久）、legal_name = 若林貴久
---    ※ 'TAKA' にはしない（認定証・/license の既存表示を壊さないため）
+--    public_name（活動名）= TAKA
+--    legal_name（本名）= 若林貴久
+--    display_name は既存互換のため変更しない
 -- ------------------------------------------------------------
 update public.certified_instructors
 set
-  public_name = coalesce(
-    nullif(trim(public_name), ''),
-    nullif(trim(display_name), ''),
-    '若林貴久'
-  ),
-  legal_name = coalesce(nullif(trim(legal_name), ''), '若林貴久')
+  public_name = 'TAKA',
+  legal_name = '若林貴久',
+  public_display_name = 'TAKA'
 where
   display_name ilike '%若林%'
   or public_name ilike '%若林%'
   or public_display_name ilike '%若林%'
   or legal_name ilike '%若林%'
   or display_name ilike '%TAKA%'
-  or public_name ilike '%TAKA%';
-
-update public.certified_instructors
-set public_display_name = public_name
-where
-  (
-    display_name ilike '%若林%'
-    or public_name ilike '%若林%'
-    or legal_name ilike '%若林%'
-  )
-  and coalesce(trim(public_display_name), '') is distinct from coalesce(trim(public_name), '');
+  or public_name ilike '%TAKA%'
+  or public_display_name ilike '%TAKA%';
 
 -- ------------------------------------------------------------
 -- 3) instructor_licenses: withdrawn 追加 + 資格名正規化

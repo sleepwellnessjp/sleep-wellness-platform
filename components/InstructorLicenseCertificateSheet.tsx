@@ -3,6 +3,7 @@
 import Image from "next/image";
 import {
   formatJaDate,
+  formatLegalNameDisplay,
   LICENSE_ISSUER_FOUNDER_NAME,
   LICENSE_ISSUER_FOUNDER_TITLE,
   LICENSE_ISSUER_ORG,
@@ -14,19 +15,21 @@ import { GOLD, NAVY } from "@/components/ui/tokens";
 
 type Props = {
   license: InstructorLicenseRecord;
-  activityName: string;
+  /** 認定証の氏名は本名（legal_name）を使用。活動名は使わない */
+  legalName: string;
   verificationUrl: string;
   className?: string;
 };
 
 export default function InstructorLicenseCertificateSheet({
   license,
-  activityName,
+  legalName,
   verificationUrl,
   className = "",
 }: Props) {
   const qrSrc = qrImageSrc(verificationUrl, 140);
   const certificationName = resolveCertificationName(license.certificationName);
+  const holderName = formatLegalNameDisplay(legalName);
 
   return (
     <article
@@ -62,7 +65,7 @@ export default function InstructorLicenseCertificateSheet({
         </p>
 
         <p className="mt-11 text-[1.35rem] font-semibold tracking-[-0.03em] sm:mt-12 sm:text-[1.65rem]">
-          {activityName}
+          {holderName}
         </p>
         <div className="mt-3 h-px w-36 bg-[#d8b36a]/75 sm:w-44" />
 

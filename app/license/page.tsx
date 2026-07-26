@@ -508,7 +508,7 @@ function LicenseReadyView({
         <div className="report-print-root license-print-root pt-2 pb-8 sm:pb-4">
           <InstructorLicenseCertificateSheet
             license={license}
-            activityName={view.activityName}
+            legalName={view.legalName}
             verificationUrl={view.verificationUrl}
           />
         </div>
