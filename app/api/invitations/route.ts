@@ -61,15 +61,24 @@ export async function POST(request: Request) {
     }
 
     if (body.action === "send" && body.id) {
-      const invitation = await sendInvitation(body.id);
+      const result = await sendInvitation(body.id);
       await safeAudit({
         action: "invitation_send",
         resourceType: "invitation",
-        resourceId: invitation.id,
-        summary: `招待メールを送信しました（${invitation.clientEmail}）`,
-        payload: { code: invitation.code },
+        resourceId: result.invitation.id,
+        summary: result.emailSent
+          ? `招待メールを送信しました（${result.invitation.clientEmail}）`
+          : `招待を発行しました（メール未送信: ${result.invitation.clientEmail}）`,
+        payload: {
+          code: result.invitation.code,
+          emailSent: result.emailSent,
+        },
       });
-      return NextResponse.json({ invitation });
+      return NextResponse.json({
+        invitation: result.invitation,
+        emailSent: result.emailSent,
+        message: result.message,
+      });
     }
 
     if (body.action === "revoke" && body.id) {

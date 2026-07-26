@@ -24,6 +24,12 @@ export type InvitationRecord = {
   updatedAt: string;
 };
 
+export type SendInvitationResult = {
+  invitation: InvitationRecord;
+  emailSent: boolean;
+  message: string;
+};
+
 export type CreateInvitationInput = {
   clientName: string;
   clientEmail: string;

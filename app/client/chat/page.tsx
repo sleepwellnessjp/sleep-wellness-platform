@@ -32,7 +32,10 @@ export default function ClientChatPage() {
   const [messages, setMessages] = useState<ClientPortalMessage[]>([]);
   const [ready, setReady] = useState(false);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle",
+  );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
@@ -72,8 +75,9 @@ export default function ClientChatPage() {
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const body = draft.trim();
-    if (!body || sending) return;
-    setSending(true);
+    if (!body || sendStatus === "sending") return;
+    setSendStatus("sending");
+    setStatusMessage("送信中…");
     try {
       const res = await fetch("/api/client-portal/messages", {
         method: "POST",
@@ -93,13 +97,19 @@ export default function ClientChatPage() {
       }
       setMessages((prev) => [...prev, json.message!]);
       setDraft("");
+      setSendStatus("sent");
+      setStatusMessage("送信しました");
       success("メッセージを送信しました");
     } catch (err) {
-      toastError(err instanceof Error ? err.message : "送信に失敗しました");
-    } finally {
-      setSending(false);
+      console.error("[ClientChatPage] send failed:", err);
+      const msg = err instanceof Error ? err.message : "送信に失敗しました";
+      setSendStatus("error");
+      setStatusMessage(msg);
+      toastError(msg);
     }
   };
+
+  const sending = sendStatus === "sending";
 
   return (
     <ClientPortalShell eyebrow="CHAT" title="Chat">
@@ -110,7 +120,7 @@ export default function ClientChatPage() {
           <EmptyState
             compact
             illustration="generic"
-            title="メッセージはまだありません"
+            title="まだメッセージがありません"
             description="認定講師に相談したいことがあれば、下の欄から送信できます。"
           />
         ) : (
@@ -155,7 +165,7 @@ export default function ClientChatPage() {
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row">
+        <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="min-w-0 flex-1">
             <span className="sr-only">メッセージ</span>
             <textarea
@@ -167,14 +177,29 @@ export default function ClientChatPage() {
               style={{ color: NAVY }}
             />
           </label>
-          <button
-            type="submit"
-            disabled={sending || !draft.trim()}
-            className="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-[14px] font-semibold text-white disabled:opacity-50 sm:self-end"
-            style={{ backgroundColor: NAVY }}
-          >
-            {sending ? "送信中…" : "送信"}
-          </button>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <button
+              type="submit"
+              disabled={sending || !draft.trim()}
+              className="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-[14px] font-semibold text-white disabled:opacity-50"
+              style={{ backgroundColor: NAVY }}
+            >
+              {sending ? "送信中…" : "送信"}
+            </button>
+            {statusMessage ? (
+              <p
+                className={`text-[12px] font-medium ${
+                  sendStatus === "error"
+                    ? "text-rose-600"
+                    : sendStatus === "sent"
+                      ? "text-[#315f68]"
+                      : "text-slate-500"
+                }`}
+              >
+                {statusMessage}
+              </p>
+            ) : null}
+          </div>
         </form>
       </SectionCard>
     </ClientPortalShell>

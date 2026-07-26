@@ -19,7 +19,10 @@ import {
 import { createBrowserClient } from "@/lib/supabase/client";
 import { readClientsInstructorId } from "@/lib/supabase/clients-instructor-column";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { formatSupabaseError } from "@/lib/supabase/errors";
+import {
+  formatSupabaseError,
+  readSupabaseError,
+} from "@/lib/supabase/errors";
 import {
   buildStructuredMetrics,
   parseStructuredFromStorage,
@@ -397,37 +400,94 @@ export async function updateOwnHomeworkChecks(
   return true;
 }
 
+export function isValidPortalEmail(email: string): boolean {
+  const trimmed = email.trim();
+  if (!trimmed || trimmed.length > 254) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+function toLinkPortalUserError(error: unknown): Error {
+  const parsed = readSupabaseError(error);
+  const raw = `${parsed.message} ${parsed.details} ${parsed.hint}`.toLowerCase();
+
+  if (/could not find the function|link_client_portal_user/i.test(raw)) {
+    return new Error(
+      "連携用のデータベース関数が見つかりません。supabase/fix-client-portal-link-chat.sql を SQL Editor で実行してください。",
+    );
+  }
+  if (/not authenticated/i.test(raw)) {
+    return new Error("ログインが必要です。再ログインしてから保存してください。");
+  }
+  if (/client not found or not owned/i.test(raw)) {
+    return new Error(
+      "担当外のクライアント、またはクライアントが見つかりません。",
+    );
+  }
+  if (/invalid email format/i.test(raw)) {
+    return new Error("メールアドレスの形式が正しくありません。");
+  }
+  if (
+    /email already linked to another client/i.test(raw) ||
+    /clients_auth_user_id_uidx|duplicate key/i.test(raw)
+  ) {
+    return new Error(
+      "このメールアドレスは別のクライアントに既に連携されています。",
+    );
+  }
+
+  return formatSupabaseError(error, "linkClientPortalUser");
+}
+
 /**
  * 認定講師がクライアントのマイページ連携メール / auth を設定。
+ * 失敗時は例外を投げ、開発用ログに Supabase エラーを残す。
  */
 export async function linkClientPortalUser(input: {
   clientId: string;
   email?: string;
   authUserId?: string;
-}): Promise<boolean> {
-  const auth = await getAuth();
-  if (!auth) {
-    // ローカルは email だけ保存
+}): Promise<{ email: string; authUserId: string | null }> {
+  const email = input.email?.trim() ?? "";
+  if (!email) {
+    throw new Error("マイページ連携用のメールアドレスを入力してください。");
+  }
+  if (!isValidPortalEmail(email)) {
+    throw new Error("メールアドレスの形式が正しくありません。");
+  }
+
+  if (!isSupabaseConfigured()) {
     const client = getLocalClientById(input.clientId);
-    if (!client || !input.email?.trim()) return false;
+    if (!client) {
+      throw new Error("クライアントが見つかりません。");
+    }
     const { updateClientProfile } = await import(
       "@/lib/repositories/client-repository"
     );
-    await updateClientProfile(input.clientId, { email: input.email.trim() });
-    return true;
+    await updateClientProfile(input.clientId, { email });
+    notifyClientsUpdated();
+    return { email, authUserId: null };
   }
 
-  const { error } = await auth.supabase.rpc("link_client_portal_user", {
+  const auth = await getAuth();
+  if (!auth) {
+    throw new Error("ログインが必要です。再ログインしてから保存してください。");
+  }
+
+  const { data, error } = await auth.supabase.rpc("link_client_portal_user", {
     p_client_id: input.clientId,
-    p_email: input.email?.trim() || null,
+    p_email: email,
     p_auth_user_id: input.authUserId ?? null,
   });
 
   if (error) {
     console.error("[client-mypage] link_client_portal_user failed:", error);
-    return false;
+    throw toLinkPortalUserError(error);
   }
 
+  const row = data as { email?: string | null; auth_user_id?: string | null } | null;
   notifyClientsUpdated();
-  return true;
+  return {
+    email: String(row?.email ?? email),
+    authUserId: row?.auth_user_id ? String(row.auth_user_id) : null,
+  };
 }

@@ -71,6 +71,8 @@ export type ClientDetail = {
   latestAnalysisId: string | null;
   /** ISO date YYYY-MM-DD — clients.next_follow_up_date */
   nextFollowUpDate: string | null;
+  /** マイページ連携 / 招待用メール */
+  email: string | null;
   metrics: ClientDetailMetrics;
   progress: ClientDetailProgress;
   timeline: ClientDetailActivityItem[];
@@ -296,6 +298,7 @@ function buildFromListItem(item: ClientManagementItem): ClientDetail {
     sleepScore: item.sleepScore,
     latestAnalysisId: null,
     nextFollowUpDate: item.nextFollowUpDate,
+    email: null,
     metrics: defaultMetrics(item.sleepScore),
     progress: defaultProgress(item.sleepScore),
     timeline: defaultTimeline(item),
@@ -395,6 +398,7 @@ export async function getClientDetail(
           : null,
     latestAnalysisId: latest?.id ?? null,
     nextFollowUpDate: client.nextFollowUpDate?.trim() || null,
+    email: client.email?.trim() || null,
     metrics: metricsFromAnalysis(latest),
     progress: progressFromAnalyses(client.analyses),
     timeline: timelineFromClient(client, journeyUpdatedAt, homeworkItems),

@@ -454,10 +454,14 @@ export default function ClientDetailPage() {
             Client Portal 連携
           </SectionTitle>
           <div className="mt-4 space-y-4 sm:mt-6">
-            <ClientPortalLinkCard clientId={client.id} />
+            <ClientPortalLinkCard
+              clientId={client.id}
+              initialEmail={client.email ?? undefined}
+            />
             <ClientInviteCard
               clientId={client.id}
               clientName={client.name}
+              initialEmail={client.email ?? undefined}
             />
             <InstructorClientChatCard clientId={client.id} />
           </div>
