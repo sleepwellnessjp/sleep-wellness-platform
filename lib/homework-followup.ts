@@ -366,20 +366,34 @@ function buildDummyForClient(
 /**
  * Homework / Follow-up 画面用データを取得。
  * Supabase 接続時は homework / follow_up_records から読み込む。
+ * clientId は必須（グローバルナビからの遷移は呼び出し側で一覧を表示する）。
  */
 export async function getHomeworkFollowUp(
   clientId: string | null | undefined,
 ): Promise<HomeworkFollowUpPageData> {
-  const id =
-    clientId?.trim() ||
-    DUMMY_CLIENT_MANAGEMENT_LIST[0]?.id ||
-    "client-demo-1";
+  const id = clientId?.trim() ?? "";
+
+  if (!id) {
+    if (!isSupabaseConfigured()) {
+      const fallback =
+        DUMMY_CLIENT_MANAGEMENT_LIST[0]?.id || "client-demo-1";
+      return buildDummyForClient(fallback, await getClientDetail(fallback));
+    }
+    throw new DataAccessError(
+      "not_found",
+      "クライアントを選択してください。",
+    );
+  }
 
   let detail: ClientDetail | null = null;
   try {
     detail = await getClientDetail(id);
   } catch (error) {
     console.error("[homework-followup] getClientDetail failed:", error);
+    throw new DataAccessError(
+      "load_failed",
+      userMessageFromUnknown(error),
+    );
   }
 
   if (!isSupabaseConfigured()) {
@@ -388,24 +402,10 @@ export async function getHomeworkFollowUp(
 
   const auth = await getInstructorAuth();
   if (!auth) {
-    if (!detail) {
-      throw new DataAccessError(
-        "unauthenticated",
-        "ログインが必要です。認定講師アカウントでサインインしてください。",
-      );
-    }
-    // セッション切れでも詳細がある場合は空データで返す
-    return {
-      clientId: id,
-      name: detail.name,
-      avatarUrl: detail.avatarUrl,
-      sleepScore: detail.sleepScore,
-      instructorName: detail.instructorName,
-      nextFollowUpDate: detail.nextFollowUpDate,
-      homeworks: [],
-      followUps: [],
-      summary: computeProgressSummary([]),
-    };
+    throw new DataAccessError(
+      "unauthenticated",
+      "ログインが必要です。認定講師アカウントでサインインしてください。",
+    );
   }
 
   if (!detail) {

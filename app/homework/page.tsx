@@ -6,6 +6,7 @@ import {
   FormEvent,
   Suspense,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -22,6 +23,11 @@ import {
   SURFACE_WARM,
   TEAL,
 } from "@/components/ui/tokens";
+import {
+  formatManagementDate,
+  getClientManagementList,
+  type ClientManagementItem,
+} from "@/lib/client-management";
 import {
   clientInitials,
   computeProgressSummary,
@@ -188,9 +194,137 @@ function ProgressBar({ rate }: { rate: number }) {
   );
 }
 
+function HomeworkRosterView() {
+  const [clients, setClients] = useState<ClientManagementItem[]>([]);
+  const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    void (async () => {
+      try {
+        const result = await getClientManagementList();
+        if (!cancelled) setClients(result.clients);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(userMessageFromUnknown(error));
+          setClients([]);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <main className="min-h-screen" style={{ backgroundColor: SURFACE }}>
+      <InstructorNav eyebrow="HOMEWORK" />
+      <div className="mx-auto max-w-3xl px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-8 sm:px-10 sm:pb-16 sm:pt-12">
+        <header className="mb-8 sm:mb-10">
+          <p
+            className="text-[10px] font-semibold tracking-[0.22em]"
+            style={{ color: GOLD }}
+          >
+            HOMEWORK / FOLLOW-UP
+          </p>
+          <h1
+            className="mt-2 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] sm:mt-3 sm:text-4xl"
+            style={{ color: NAVY }}
+          >
+            クライアントを選択
+          </h1>
+          <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-600 sm:text-[15px] sm:leading-7">
+            Homeworkを確認・作成する担当クライアントを選んでください。
+          </p>
+        </header>
+
+        {!ready ? (
+          <div className="space-y-3" aria-busy="true" aria-label="読み込み中">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-28 animate-pulse rounded-3xl bg-slate-100"
+              />
+            ))}
+          </div>
+        ) : loadError ? (
+          <ErrorState
+            title="クライアント一覧を表示できません"
+            message={loadError}
+            kind="supabase"
+          />
+        ) : clients.length === 0 ? (
+          <div className="rounded-3xl border bg-white px-5 py-10 text-center sm:px-8" style={{ borderColor: BORDER }}>
+            <p className="text-[15px] font-medium" style={{ color: NAVY }}>
+              担当クライアントはまだいません
+            </p>
+            <p className="mt-2 text-[14px] leading-6 text-slate-500">
+              Clientsからクライアントを登録すると、ここでHomeworkを作成できます。
+            </p>
+            <Link
+              href="/clients"
+              className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
+              style={{ backgroundColor: NAVY }}
+            >
+              Clientsへ
+            </Link>
+          </div>
+        ) : (
+          <ul className="space-y-3">
+            {clients.map((client) => (
+              <li key={client.id}>
+                <Link
+                  href={`/homework?clientId=${encodeURIComponent(client.id)}`}
+                  className="flex flex-col gap-3 rounded-[24px] border border-[#071426]/08 bg-white px-4 py-4 transition hover:border-[#8a6a2d]/30 hover:bg-[#faf7f1]/40 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
+                >
+                  <div
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white"
+                    style={{ backgroundColor: NAVY }}
+                    aria-hidden
+                  >
+                    {clientInitials(client.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate text-[15px] font-semibold tracking-[-0.02em]"
+                      style={{ color: NAVY }}
+                    >
+                      {client.name}
+                    </p>
+                    <p className="mt-1 text-[13px] text-slate-500">
+                      次回フォロー{" "}
+                      {formatManagementDate(client.nextFollowUpDate)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-left sm:text-right">
+                    <p className="text-[11px] tracking-[0.08em] text-slate-400">
+                      SCORE
+                    </p>
+                    <p
+                      className="text-[1.35rem] font-semibold tabular-nums tracking-[-0.04em]"
+                      style={{ color: NAVY }}
+                    >
+                      {client.sleepScore ?? "—"}
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </main>
+  );
+}
+
 function HomeworkPageContent() {
   const searchParams = useSearchParams();
   const clientId = searchParams.get("clientId")?.trim() || "";
+  const addSectionRef = useRef<HTMLElement | null>(null);
 
   const [data, setData] = useState<HomeworkFollowUpPageData | null>(null);
   const [homeworks, setHomeworks] = useState<HomeworkItem[]>([]);
@@ -206,13 +340,14 @@ function HomeworkPageContent() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!clientId) return;
     let cancelled = false;
     setReady(false);
     setLoadError(null);
 
     void (async () => {
       try {
-        const next = await getHomeworkFollowUp(clientId || null);
+        const next = await getHomeworkFollowUp(clientId);
         if (cancelled) return;
         setData(next);
         setHomeworks(next.homeworks);
@@ -236,7 +371,18 @@ function HomeworkPageContent() {
     };
   }, [clientId]);
 
+  if (!clientId) {
+    return <HomeworkRosterView />;
+  }
+
   const summary = computeProgressSummary(homeworks);
+
+  function scrollToAddHomework() {
+    addSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      document.getElementById("hw-title")?.focus();
+    }, 350);
+  }
 
   function updateDraft<K extends keyof NewHomeworkDraft>(
     key: K,
@@ -334,11 +480,18 @@ function HomeworkPageContent() {
             kind="supabase"
           />
           <Link
-            href="/clients"
+            href="/homework"
             className="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >
-            一覧へ戻る
+            クライアントを選択
+          </Link>
+          <Link
+            href="/clients"
+            className="mt-3 inline-flex min-h-11 items-center justify-center text-[14px] font-medium transition active:opacity-70"
+            style={{ color: MUTED }}
+          >
+            ← Clients一覧へ
           </Link>
         </div>
       </main>
@@ -453,118 +606,148 @@ function HomeworkPageContent() {
             Homework List
           </SectionTitle>
 
-          <ul className="space-y-3 sm:space-y-4">
-            {homeworks.map((item) => (
-              <li key={item.id} className="min-w-0">
-                <article
-                  className="rounded-3xl border bg-white p-4 sm:p-6"
-                  style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
-                >
-                  <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
-                    <div className="min-w-0">
-                      <h3
-                        className="break-words text-[1rem] font-semibold tracking-[-0.03em] sm:text-[1.05rem]"
-                        style={{ color: NAVY }}
-                      >
-                        {item.title}
-                      </h3>
-                      <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
-                        {item.description}
-                      </p>
+          {homeworks.length === 0 ? (
+            <div
+              className="rounded-3xl border bg-white px-5 py-10 text-center sm:px-8 sm:py-12"
+              style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
+            >
+              <p
+                className="text-[15px] font-semibold tracking-[-0.02em] sm:text-base"
+                style={{ color: NAVY }}
+              >
+                Homeworkはまだ登録されていません
+              </p>
+              <p className="mt-2 text-[14px] leading-6 text-slate-500">
+                最初の課題を作成して、クライアントの実践をサポートしましょう。
+              </p>
+              <button
+                type="button"
+                onClick={scrollToAddHomework}
+                className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-8 py-3.5 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:hover:opacity-90 sm:active:opacity-100"
+                style={{ backgroundColor: NAVY }}
+              >
+                Homeworkを作成
+              </button>
+            </div>
+          ) : (
+            <ul className="space-y-3 sm:space-y-4">
+              {homeworks.map((item) => (
+                <li key={item.id} className="min-w-0">
+                  <article
+                    className="rounded-3xl border bg-white p-4 sm:p-6"
+                    style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
+                  >
+                    <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-3">
+                      <div className="min-w-0">
+                        <h3
+                          className="break-words text-[1rem] font-semibold tracking-[-0.03em] sm:text-[1.05rem]"
+                          style={{ color: NAVY }}
+                        >
+                          {item.title}
+                        </h3>
+                        <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
+                          {item.description}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge status={item.status} />
+                        <PriorityBadge priority={item.priority} />
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <StatusBadge status={item.status} />
-                      <PriorityBadge priority={item.priority} />
-                    </div>
-                  </div>
 
-                  <dl className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-3 sm:gap-3">
-                    <div
-                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
-                      style={{ backgroundColor: SURFACE_WARM }}
-                    >
-                      <dt
-                        className="text-[10px] font-semibold tracking-[0.14em]"
-                        style={{ color: MUTED }}
+                    <dl className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-3 sm:gap-3">
+                      <div
+                        className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
+                        style={{ backgroundColor: SURFACE_WARM }}
                       >
-                        開始日
-                      </dt>
-                      <dd className="mt-1 break-words text-[14px] font-medium">
-                        {formatHomeworkDate(item.startDate)}
-                      </dd>
-                    </div>
-                    <div
-                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
-                      style={{ backgroundColor: SURFACE_WARM }}
-                    >
-                      <dt
-                        className="text-[10px] font-semibold tracking-[0.14em]"
-                        style={{ color: MUTED }}
+                        <dt
+                          className="text-[10px] font-semibold tracking-[0.14em]"
+                          style={{ color: MUTED }}
+                        >
+                          開始日
+                        </dt>
+                        <dd className="mt-1 break-words text-[14px] font-medium">
+                          {formatHomeworkDate(item.startDate)}
+                        </dd>
+                      </div>
+                      <div
+                        className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
+                        style={{ backgroundColor: SURFACE_WARM }}
                       >
-                        期限
-                      </dt>
-                      <dd className="mt-1 break-words text-[14px] font-medium">
-                        {formatHomeworkDate(item.dueDate)}
-                      </dd>
-                    </div>
-                    <div
-                      className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
-                      style={{ backgroundColor: SURFACE_WARM }}
-                    >
-                      <dt
-                        className="text-[10px] font-semibold tracking-[0.14em]"
-                        style={{ color: MUTED }}
+                        <dt
+                          className="text-[10px] font-semibold tracking-[0.14em]"
+                          style={{ color: MUTED }}
+                        >
+                          期限
+                        </dt>
+                        <dd className="mt-1 break-words text-[14px] font-medium">
+                          {formatHomeworkDate(item.dueDate)}
+                        </dd>
+                      </div>
+                      <div
+                        className="min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
+                        style={{ backgroundColor: SURFACE_WARM }}
                       >
-                        実施頻度
-                      </dt>
-                      <dd className="mt-1 break-words text-[14px] font-medium">
-                        {HOMEWORK_FREQUENCY_LABELS[item.frequency]}
-                      </dd>
-                    </div>
-                  </dl>
+                        <dt
+                          className="text-[10px] font-semibold tracking-[0.14em]"
+                          style={{ color: MUTED }}
+                        >
+                          実施頻度
+                        </dt>
+                        <dd className="mt-1 break-words text-[14px] font-medium">
+                          {HOMEWORK_FREQUENCY_LABELS[item.frequency]}
+                        </dd>
+                      </div>
+                    </dl>
 
-                  <div className="mt-4 sm:mt-5">
-                    <ProgressBar rate={item.progressRate} />
-                  </div>
-
-                  {item.instructorComment ? (
-                    <div className="mt-4 min-w-0 sm:mt-5">
-                      <p
-                        className="text-[11px] font-medium tracking-[0.1em]"
-                        style={{ color: MUTED }}
-                      >
-                        講師コメント
-                      </p>
-                      <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
-                        {item.instructorComment}
-                      </p>
+                    <div className="mt-4 sm:mt-5">
+                      <ProgressBar rate={item.progressRate} />
                     </div>
-                  ) : null}
 
-                  {item.clientMessage ? (
-                    <div
-                      className="mt-4 min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
-                      style={{ backgroundColor: "rgba(49, 95, 104, 0.06)" }}
-                    >
-                      <p
-                        className="text-[10px] font-semibold tracking-[0.14em]"
-                        style={{ color: TEAL }}
+                    {item.instructorComment ? (
+                      <div className="mt-4 min-w-0 sm:mt-5">
+                        <p
+                          className="text-[11px] font-medium tracking-[0.1em]"
+                          style={{ color: MUTED }}
+                        >
+                          講師コメント
+                        </p>
+                        <p className="mt-2 break-words text-[14px] leading-6 text-slate-600 sm:leading-7 sm:text-[15px]">
+                          {item.instructorComment}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {item.clientMessage ? (
+                      <div
+                        className="mt-4 min-w-0 rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5"
+                        style={{ backgroundColor: "rgba(49, 95, 104, 0.06)" }}
                       >
-                        クライアントへのメッセージ
-                      </p>
-                      <p className="mt-1.5 break-words text-[14px] leading-6 text-slate-700">
-                        {item.clientMessage}
-                      </p>
-                    </div>
-                  ) : null}
-                </article>
-              </li>
-            ))}
-          </ul>
+                        <p
+                          className="text-[10px] font-semibold tracking-[0.14em]"
+                          style={{ color: TEAL }}
+                        >
+                          クライアントへのメッセージ
+                        </p>
+                        <p className="mt-1.5 break-words text-[14px] leading-6 text-slate-700">
+                          {item.clientMessage}
+                        </p>
+                      </div>
+                    ) : null}
+                  </article>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* ③ Add Homework */}
-        <section className="mt-10 sm:mt-16" aria-labelledby="add-title">
+        <section
+          ref={addSectionRef}
+          id="add-homework"
+          className="mt-10 scroll-mt-24 sm:mt-16"
+          aria-labelledby="add-title"
+        >
           <div
             className="rounded-3xl border bg-white p-4 sm:p-8"
             style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
