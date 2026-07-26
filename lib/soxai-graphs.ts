@@ -425,6 +425,173 @@ const STAGE_COLORS: Record<SleepStageSegment["stage"], string> = {
   deep: "#315f68",
 };
 
+/** REM / ノンレム対比用（ノンレム = 浅い + 深い） */
+export const REM_NREM_COLORS = {
+  rem: "#0f6b5c",
+  nonRem: "#315f68",
+  light: "#b89242",
+  deep: "#1e4a52",
+} as const;
+
+function formatStageMinutes(totalMinutes: number): string {
+  const abs = Math.abs(Math.round(totalMinutes));
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  if (h === 0) return `${m}分`;
+  if (m === 0) return `${h}時間`;
+  return `${h}時間${m}分`;
+}
+
+function formatStagePercent(pct: number): string {
+  const shown = Number.isInteger(pct) ? String(pct) : String(Math.round(pct * 10) / 10);
+  return `${shown}%`;
+}
+
+export type SleepStagePart = {
+  minutes: number | null;
+  percent: number | null;
+  durationText: string;
+  percentText: string;
+  /** 「1時間28分 · 20%」または片方のみ / 未測定 */
+  combined: string;
+};
+
+export type SleepStageSummary = {
+  rem: SleepStagePart;
+  nonRem: SleepStagePart;
+  light: SleepStagePart;
+  deep: SleepStagePart;
+  /** REM vs ノンレムの棒/ドーナツ用（合計1、データなしは0） */
+  remShare: number;
+  nonRemShare: number;
+  /** ノンレム内の浅い/深い比率（合計1） */
+  lightOfNonRem: number;
+  deepOfNonRem: number;
+  hasData: boolean;
+};
+
+function buildStagePart(
+  minutes: number | null,
+  percent: number | null,
+): SleepStagePart {
+  const durationText = minutes != null ? formatStageMinutes(minutes) : "";
+  const percentText = percent != null ? formatStagePercent(percent) : "";
+  let combined = "未測定";
+  if (durationText && percentText) combined = `${durationText} · ${percentText}`;
+  else if (durationText) combined = durationText;
+  else if (percentText) combined = percentText;
+  return { minutes, percent, durationText, percentText, combined };
+}
+
+/**
+ * REM / ノンレム（浅い+深い）と内訳を算出。
+ * 割合は明示%を優先し、なければ時間から再計算する。
+ */
+export function computeSleepStageSummary(
+  metrics: AnalysisMetrics,
+): SleepStageSummary {
+  const remM = parseDurationMinutes(metrics.remSleep);
+  const lightM = parseDurationMinutes(metrics.lightSleep);
+  const deepM = parseDurationMinutes(metrics.deepSleep);
+  const remP = parsePercent(metrics.remSleepRate);
+  const lightP = parsePercent(metrics.lightSleepRate);
+  const deepP = parsePercent(metrics.deepSleepRate);
+
+  const nonRemM =
+    lightM != null || deepM != null
+      ? (lightM ?? 0) + (deepM ?? 0)
+      : null;
+  const nonRemPFromRates =
+    lightP != null || deepP != null ? (lightP ?? 0) + (deepP ?? 0) : null;
+
+  let remPct = remP;
+  let nonRemPct = nonRemPFromRates;
+  if (remPct == null && nonRemPct == null && remM != null && nonRemM != null) {
+    const sum = remM + nonRemM;
+    if (sum > 0) {
+      remPct = (remM / sum) * 100;
+      nonRemPct = (nonRemM / sum) * 100;
+    }
+  } else if (remPct == null && nonRemPct != null) {
+    remPct = Math.max(0, 100 - nonRemPct);
+  } else if (nonRemPct == null && remPct != null) {
+    nonRemPct = Math.max(0, 100 - remPct);
+  }
+
+  let lightPct = lightP;
+  let deepPct = deepP;
+  if (
+    (lightPct == null || deepPct == null) &&
+    lightM != null &&
+    deepM != null &&
+    lightM + deepM > 0 &&
+    nonRemPct != null
+  ) {
+    const shareLight = lightM / (lightM + deepM);
+    if (lightPct == null) lightPct = nonRemPct * shareLight;
+    if (deepPct == null) deepPct = nonRemPct * (1 - shareLight);
+  }
+
+  const rem = buildStagePart(remM, remPct);
+  const nonRem = buildStagePart(nonRemM, nonRemPct);
+  const light = buildStagePart(lightM, lightPct);
+  const deep = buildStagePart(deepM, deepPct);
+
+  const hasData =
+    rem.combined !== "未測定" ||
+    nonRem.combined !== "未測定" ||
+    light.combined !== "未測定" ||
+    deep.combined !== "未測定";
+
+  const remShareRaw =
+    remPct ??
+    (remM != null && nonRemM != null && remM + nonRemM > 0
+      ? (remM / (remM + nonRemM)) * 100
+      : remM != null && remM > 0
+        ? 100
+        : 0);
+  const nonRemShareRaw =
+    nonRemPct ??
+    (remM != null && nonRemM != null && remM + nonRemM > 0
+      ? (nonRemM / (remM + nonRemM)) * 100
+      : nonRemM != null && nonRemM > 0
+        ? 100
+        : 0);
+  const shareSum = remShareRaw + nonRemShareRaw;
+  const remShare = shareSum > 0 ? remShareRaw / shareSum : 0;
+  const nonRemShare = shareSum > 0 ? nonRemShareRaw / shareSum : 0;
+
+  const lightMin = lightM ?? 0;
+  const deepMin = deepM ?? 0;
+  const nremMinSum = lightMin + deepMin;
+  let lightOfNonRem = 0.5;
+  let deepOfNonRem = 0.5;
+  if (nremMinSum > 0) {
+    lightOfNonRem = lightMin / nremMinSum;
+    deepOfNonRem = deepMin / nremMinSum;
+  } else if (lightPct != null || deepPct != null) {
+    const lp = lightPct ?? 0;
+    const dp = deepPct ?? 0;
+    const ps = lp + dp;
+    if (ps > 0) {
+      lightOfNonRem = lp / ps;
+      deepOfNonRem = dp / ps;
+    }
+  }
+
+  return {
+    rem,
+    nonRem,
+    light,
+    deep,
+    remShare,
+    nonRemShare,
+    lightOfNonRem,
+    deepOfNonRem,
+    hasData,
+  };
+}
+
 /** OCR hypnogram segments → 比率（metrics フォールバック込み） */
 export function stageRatiosFromData(
   metrics: AnalysisMetrics,
