@@ -187,6 +187,320 @@ function AdminLinkButton({
   );
 }
 
+type InstructorEditFormProps = {
+  selected: AdminCertifiedInstructorListItem;
+  editPublicName: string;
+  setEditPublicName: (value: string) => void;
+  editLegalName: string;
+  setEditLegalName: (value: string) => void;
+  editEmail: string;
+  setEditEmail: (value: string) => void;
+  editLevelId: string;
+  setEditLevelId: (value: string) => void;
+  editCertifiedAt: string;
+  setEditCertifiedAt: (value: string) => void;
+  editExpiresAt: string;
+  setEditExpiresAt: (value: string) => void;
+  editRequiredHours: string;
+  setEditRequiredHours: (value: string) => void;
+  editCompletedHours: string;
+  setEditCompletedHours: (value: string) => void;
+  editRenewalStatus: InstructorRenewalStatus;
+  setEditRenewalStatus: (value: InstructorRenewalStatus) => void;
+  saveState: SaveState;
+  fieldErrors: string[];
+  verificationCode: string;
+  verifyHref: string;
+  certificateHref: string;
+  hasLicense: boolean;
+  liveProgressPercent: number;
+  levels: CertificationLevelRecord[];
+  levelLabel: (levelId: string) => string;
+  onSave: (event: FormEvent) => void;
+  onClose: () => void;
+};
+
+function InstructorEditForm({
+  selected,
+  editPublicName,
+  setEditPublicName,
+  editLegalName,
+  setEditLegalName,
+  editEmail,
+  setEditEmail,
+  editLevelId,
+  setEditLevelId,
+  editCertifiedAt,
+  setEditCertifiedAt,
+  editExpiresAt,
+  setEditExpiresAt,
+  editRequiredHours,
+  setEditRequiredHours,
+  editCompletedHours,
+  setEditCompletedHours,
+  editRenewalStatus,
+  setEditRenewalStatus,
+  saveState,
+  fieldErrors,
+  verificationCode,
+  verifyHref,
+  certificateHref,
+  hasLicense,
+  liveProgressPercent,
+  levels,
+  levelLabel,
+  onSave,
+  onClose,
+}: InstructorEditFormProps) {
+  return (
+    <form className="space-y-5" onSubmit={(event) => void onSave(event)}>
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <ReadonlyRow label="認定資格名">
+          {SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
+        </ReadonlyRow>
+        <ReadonlyRow label="認定番号">
+          <span className="font-mono">
+            {selected.license?.licenseNumber ||
+              selected.instructorNumber ||
+              "—"}
+          </span>
+        </ReadonlyRow>
+        <ReadonlyRow label="確認コード">
+          <span className="break-all font-mono text-[13px]">
+            {verificationCode || "—"}
+          </span>
+        </ReadonlyRow>
+        <ReadonlyRow label="ライセンス状態">
+          {statusLabelForItem(selected)}
+        </ReadonlyRow>
+        <ReadonlyRow label="残り日数">
+          <RemainingDaysCell item={selected} />
+        </ReadonlyRow>
+        <ReadonlyRow label="認証ページURL">
+          {verifyHref ? (
+            <a
+              href={verifyHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="break-all text-[13px] font-semibold text-[#315f68] hover:text-[#8a6a2d]"
+            >
+              {verifyHref}
+            </a>
+          ) : (
+            "—"
+          )}
+        </ReadonlyRow>
+      </dl>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-[13px] font-semibold text-slate-600">
+          活動名
+          <input
+            className={inputClass}
+            value={editPublicName}
+            onChange={(event) => setEditPublicName(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+        <label className="block text-[13px] font-semibold text-slate-600">
+          本名
+          <input
+            className={inputClass}
+            value={editLegalName}
+            onChange={(event) => setEditLegalName(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+      </div>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        メールアドレス
+        <input
+          className={inputClass}
+          type="email"
+          value={editEmail}
+          onChange={(event) => setEditEmail(event.target.value)}
+          required
+          disabled={saveState === "saving"}
+          autoComplete="off"
+        />
+        <p className="mt-2 text-[12px] leading-5 text-slate-500">
+          ※ログイン用メールアドレスの変更は別途アカウント設定が必要です。
+        </p>
+      </label>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        認定レベル
+        <select
+          className={selectClass}
+          value={editLevelId}
+          onChange={(event) => setEditLevelId(event.target.value)}
+          disabled={saveState === "saving"}
+        >
+          {levels.length === 0 ? (
+            <option value={editLevelId}>{levelLabel(editLevelId)}</option>
+          ) : (
+            levels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.label}
+              </option>
+            ))
+          )}
+        </select>
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-[13px] font-semibold text-slate-600">
+          認定日
+          <input
+            className={inputClass}
+            type="date"
+            value={editCertifiedAt}
+            onChange={(event) => setEditCertifiedAt(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+        <label className="block text-[13px] font-semibold text-slate-600">
+          有効期限
+          <input
+            className={inputClass}
+            type="date"
+            value={editExpiresAt}
+            onChange={(event) => setEditExpiresAt(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+        <p
+          className="text-[11px] font-semibold tracking-[0.16em]"
+          style={{ color: GOLD }}
+        >
+          CONTINUING EDUCATION
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <label className="block text-[13px] font-semibold text-slate-600">
+            継続教育の必要時間
+            <input
+              className={inputClass}
+              type="number"
+              min={0}
+              step={1}
+              value={editRequiredHours}
+              onChange={(event) => setEditRequiredHours(event.target.value)}
+              disabled={saveState === "saving" || !hasLicense}
+            />
+          </label>
+          <label className="block text-[13px] font-semibold text-slate-600">
+            継続教育の修了時間
+            <input
+              className={inputClass}
+              type="number"
+              min={0}
+              step={1}
+              value={editCompletedHours}
+              onChange={(event) => setEditCompletedHours(event.target.value)}
+              disabled={saveState === "saving" || !hasLicense}
+            />
+          </label>
+        </div>
+        <div className="mt-4">
+          <EducationBar
+            required={Number(editRequiredHours) || 0}
+            completed={Number(editCompletedHours) || 0}
+          />
+          <p className="mt-2 text-[12px] text-slate-500">
+            表示上の進捗は {liveProgressPercent}%
+            （必要時間以上でも100%が上限）
+          </p>
+        </div>
+        {!hasLicense ? (
+          <p className="mt-3 text-[12px] text-amber-800">
+            ライセンス未発行のため継続教育は編集できません。
+          </p>
+        ) : null}
+      </div>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        更新申請状況
+        <select
+          className={selectClass}
+          value={editRenewalStatus}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (isInstructorRenewalStatus(value)) {
+              setEditRenewalStatus(value);
+            }
+          }}
+          disabled={saveState === "saving" || !hasLicense}
+        >
+          {INSTRUCTOR_RENEWAL_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {INSTRUCTOR_RENEWAL_STATUS_LABELS[status]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {fieldErrors.length > 0 ? (
+        <ul className="space-y-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900">
+          {fieldErrors.map((error) => (
+            <li key={error}>・{error}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-4">
+        <p className="text-[13px] font-semibold text-slate-700">管理用リンク</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <AdminLinkButton
+            href="/license"
+            label="My Licenseを開く"
+            disabled={!hasLicense}
+            reason="ライセンスが未発行のため開けません"
+          />
+          <AdminLinkButton
+            href={verifyHref || "#"}
+            label="公開認証ページを開く"
+            disabled={!verificationCode}
+            reason="確認コードがないため開けません"
+          />
+          <AdminLinkButton
+            href={certificateHref || "#"}
+            label="デジタル認定証を開く"
+            disabled={!hasLicense}
+            reason="ライセンスが未発行のため開けません"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Button
+          type="submit"
+          disabled={saveState === "saving"}
+          className="min-h-12 w-full sm:w-auto"
+        >
+          {saveState === "saving" ? "保存中…" : "保存する"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-12 w-full sm:w-auto"
+          onClick={onClose}
+          disabled={saveState === "saving"}
+        >
+          閉じる
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 export default function AdminCertifiedInstructorsPage() {
   const [instructors, setInstructors] = useState<
     AdminCertifiedInstructorListItem[]
@@ -360,19 +674,27 @@ export default function AdminCertifiedInstructorsPage() {
 
   const selectInstructor = (id: string) => {
     setSelectedId(id);
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById("instructor-detail")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setSaveState("idle");
+    setSaveMessage(null);
+    setFieldErrors([]);
   };
 
   const closeDetail = () => {
+    if (saveState === "saving") return;
     setSelectedId(null);
     setSaveState("idle");
     setSaveMessage(null);
     setFieldErrors([]);
   };
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDetail();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, saveState]);
 
   const validate = (): string[] => {
     const errors: string[] = [];
@@ -517,8 +839,7 @@ export default function AdminCertifiedInstructorsPage() {
           </p>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <SectionCard title="認定講師一覧" eyebrow="LIST">
+        <SectionCard title="認定講師一覧" eyebrow="LIST">
             <div className="space-y-3">
               <label className="block text-[13px] font-semibold text-slate-600">
                 検索（活動名・本名・メール・認定番号）
@@ -601,7 +922,9 @@ export default function AdminCertifiedInstructorsPage() {
                         <th className="py-2 pr-3 font-semibold">状態</th>
                         <th className="py-2 pr-3 font-semibold">継続教育</th>
                         <th className="py-2 pr-3 font-semibold">更新申請</th>
-                        <th className="py-2 font-semibold">操作</th>
+                        <th className="sticky right-0 z-10 bg-[#fafaf8] py-2 pl-3 font-semibold shadow-[-8px_0_12px_-10px_rgba(7,20,38,0.18)]">
+                          操作
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -670,11 +993,17 @@ export default function AdminCertifiedInstructorsPage() {
                                   ]
                                 : "—"}
                             </td>
-                            <td className="py-3">
+                            <td
+                              className="sticky right-0 z-10 py-3 pl-3 shadow-[-8px_0_12px_-10px_rgba(7,20,38,0.12)]"
+                              style={{
+                                backgroundColor: active ? SURFACE_WARM : "white",
+                              }}
+                            >
                               <Button
                                 type="button"
                                 variant="secondary"
                                 size="sm"
+                                className="whitespace-nowrap"
                                 onClick={() =>
                                   selectInstructor(item.instructorId)
                                 }
@@ -754,12 +1083,12 @@ export default function AdminCertifiedInstructorsPage() {
                               />
                             </div>
                           ) : null}
-                          <div className="mt-4">
+                          <div className="mt-4 flex justify-end">
                             <Button
                               type="button"
                               variant="secondary"
                               size="sm"
-                              className="min-h-11 w-full"
+                              className="min-h-11"
                               onClick={() =>
                                 selectInstructor(item.instructorId)
                               }
@@ -776,281 +1105,86 @@ export default function AdminCertifiedInstructorsPage() {
             )}
           </SectionCard>
 
-          <div id="instructor-detail" className="scroll-mt-24 space-y-6">
-            <SectionCard
-              title={selected ? "講師詳細・編集" : "講師詳細"}
-              eyebrow="DETAIL"
+        {selected ? (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-[#071426]/45 p-0 sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instructor-edit-title"
+            onClick={closeDetail}
+          >
+            <div
+              className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_-40px_rgba(7,20,38,0.55)] sm:max-w-3xl sm:rounded-[28px]"
+              onClick={(event) => event.stopPropagation()}
             >
-              {!selected ? (
-                <p className="text-[14px] text-slate-600">
-                  一覧の「詳細・編集」から講師を選択してください。
-                </p>
-              ) : (
-                <form className="space-y-5" onSubmit={(e) => void onSave(e)}>
-                  <dl className="grid gap-3 sm:grid-cols-2">
-                    <ReadonlyRow label="認定資格名">
-                      {SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
-                    </ReadonlyRow>
-                    <ReadonlyRow label="認定番号">
-                      <span className="font-mono">
-                        {selected.license?.licenseNumber ||
-                          selected.instructorNumber ||
-                          "—"}
-                      </span>
-                    </ReadonlyRow>
-                    <ReadonlyRow label="確認コード">
-                      <span className="break-all font-mono text-[13px]">
-                        {verificationCode || "—"}
-                      </span>
-                    </ReadonlyRow>
-                    <ReadonlyRow label="ライセンス状態">
-                      {statusLabelForItem(selected)}
-                    </ReadonlyRow>
-                    <ReadonlyRow label="残り日数">
-                      <RemainingDaysCell item={selected} />
-                    </ReadonlyRow>
-                    <ReadonlyRow label="認証ページURL">
-                      {verifyHref ? (
-                        <a
-                          href={verifyHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="break-all text-[13px] font-semibold text-[#315f68] hover:text-[#8a6a2d]"
-                        >
-                          {verifyHref}
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </ReadonlyRow>
-                  </dl>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block text-[13px] font-semibold text-slate-600">
-                      活動名
-                      <input
-                        className={inputClass}
-                        value={editPublicName}
-                        onChange={(event) =>
-                          setEditPublicName(event.target.value)
-                        }
-                        required
-                        disabled={saveState === "saving"}
-                      />
-                    </label>
-                    <label className="block text-[13px] font-semibold text-slate-600">
-                      本名
-                      <input
-                        className={inputClass}
-                        value={editLegalName}
-                        onChange={(event) =>
-                          setEditLegalName(event.target.value)
-                        }
-                        required
-                        disabled={saveState === "saving"}
-                      />
-                    </label>
-                  </div>
-
-                  <label className="block text-[13px] font-semibold text-slate-600">
-                    メールアドレス
-                    <input
-                      className={inputClass}
-                      type="email"
-                      value={editEmail}
-                      onChange={(event) => setEditEmail(event.target.value)}
-                      required
-                      disabled={saveState === "saving"}
-                      autoComplete="off"
-                    />
-                    <p className="mt-2 text-[12px] leading-5 text-slate-500">
-                      ※ログイン用メールアドレスの変更は別途アカウント設定が必要です。
-                    </p>
-                  </label>
-
-                  <label className="block text-[13px] font-semibold text-slate-600">
-                    認定レベル
-                    <select
-                      className={selectClass}
-                      value={editLevelId}
-                      onChange={(event) => setEditLevelId(event.target.value)}
-                      disabled={saveState === "saving"}
-                    >
-                      {levels.length === 0 ? (
-                        <option value={editLevelId}>
-                          {levelLabel(editLevelId)}
-                        </option>
-                      ) : (
-                        levels.map((level) => (
-                          <option key={level.id} value={level.id}>
-                            {level.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block text-[13px] font-semibold text-slate-600">
-                      認定日
-                      <input
-                        className={inputClass}
-                        type="date"
-                        value={editCertifiedAt}
-                        onChange={(event) =>
-                          setEditCertifiedAt(event.target.value)
-                        }
-                        required
-                        disabled={saveState === "saving"}
-                      />
-                    </label>
-                    <label className="block text-[13px] font-semibold text-slate-600">
-                      有効期限
-                      <input
-                        className={inputClass}
-                        type="date"
-                        value={editExpiresAt}
-                        onChange={(event) =>
-                          setEditExpiresAt(event.target.value)
-                        }
-                        required
-                        disabled={saveState === "saving"}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                    <p
-                      className="text-[11px] font-semibold tracking-[0.16em]"
-                      style={{ color: GOLD }}
-                    >
-                      CONTINUING EDUCATION
-                    </p>
-                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                      <label className="block text-[13px] font-semibold text-slate-600">
-                        継続教育の必要時間
-                        <input
-                          className={inputClass}
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={editRequiredHours}
-                          onChange={(event) =>
-                            setEditRequiredHours(event.target.value)
-                          }
-                          disabled={saveState === "saving" || !hasLicense}
-                        />
-                      </label>
-                      <label className="block text-[13px] font-semibold text-slate-600">
-                        継続教育の修了時間
-                        <input
-                          className={inputClass}
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={editCompletedHours}
-                          onChange={(event) =>
-                            setEditCompletedHours(event.target.value)
-                          }
-                          disabled={saveState === "saving" || !hasLicense}
-                        />
-                      </label>
-                    </div>
-                    <div className="mt-4">
-                      <EducationBar
-                        required={Number(editRequiredHours) || 0}
-                        completed={Number(editCompletedHours) || 0}
-                      />
-                      <p className="mt-2 text-[12px] text-slate-500">
-                        表示上の進捗は {liveProgressPercent}%
-                        （必要時間以上でも100%が上限）
-                      </p>
-                    </div>
-                    {!hasLicense ? (
-                      <p className="mt-3 text-[12px] text-amber-800">
-                        ライセンス未発行のため継続教育は編集できません。
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <label className="block text-[13px] font-semibold text-slate-600">
-                    更新申請状況
-                    <select
-                      className={selectClass}
-                      value={editRenewalStatus}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        if (isInstructorRenewalStatus(value)) {
-                          setEditRenewalStatus(value);
-                        }
-                      }}
-                      disabled={saveState === "saving" || !hasLicense}
-                    >
-                      {INSTRUCTOR_RENEWAL_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {INSTRUCTOR_RENEWAL_STATUS_LABELS[status]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {fieldErrors.length > 0 ? (
-                    <ul className="space-y-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900">
-                      {fieldErrors.map((error) => (
-                        <li key={error}>・{error}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-
-                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-4">
-                    <p className="text-[13px] font-semibold text-slate-700">
-                      管理用リンク
-                    </p>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                      <AdminLinkButton
-                        href="/license"
-                        label="My Licenseを開く"
-                        disabled={!hasLicense}
-                        reason="ライセンスが未発行のため開けません"
-                      />
-                      <AdminLinkButton
-                        href={verifyHref || "#"}
-                        label="公開認証ページを開く"
-                        disabled={!verificationCode}
-                        reason="確認コードがないため開けません"
-                      />
-                      <AdminLinkButton
-                        href={certificateHref || "#"}
-                        label="デジタル認定証を開く"
-                        disabled={!hasLicense}
-                        reason="ライセンスが未発行のため開けません"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                    <Button
-                      type="submit"
-                      disabled={saveState === "saving"}
-                      className="min-h-12 w-full sm:w-auto"
-                    >
-                      {saveState === "saving" ? "保存中…" : "保存する"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="min-h-12 w-full sm:w-auto"
-                      onClick={closeDetail}
-                      disabled={saveState === "saving"}
-                    >
-                      閉じる
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </SectionCard>
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+                <div>
+                  <p
+                    className="text-[11px] font-semibold tracking-[0.16em]"
+                    style={{ color: GOLD }}
+                  >
+                    DETAIL
+                  </p>
+                  <h2
+                    id="instructor-edit-title"
+                    className="mt-1 text-lg font-semibold tracking-[-0.03em]"
+                    style={{ color: NAVY }}
+                  >
+                    講師詳細・編集
+                  </h2>
+                  <p className="mt-1 text-[13px] text-slate-600">
+                    {selected.activityName} /{" "}
+                    {formatLegalNameDisplay(selected.legalName)}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeDetail}
+                  disabled={saveState === "saving"}
+                  aria-label="閉じる"
+                >
+                  閉じる
+                </Button>
+              </div>
+              <div className="px-5 py-5 sm:px-6 sm:py-6">
+                <InstructorEditForm
+                  selected={selected}
+                  editPublicName={editPublicName}
+                  setEditPublicName={setEditPublicName}
+                  editLegalName={editLegalName}
+                  setEditLegalName={setEditLegalName}
+                  editEmail={editEmail}
+                  setEditEmail={setEditEmail}
+                  editLevelId={editLevelId}
+                  setEditLevelId={setEditLevelId}
+                  editCertifiedAt={editCertifiedAt}
+                  setEditCertifiedAt={setEditCertifiedAt}
+                  editExpiresAt={editExpiresAt}
+                  setEditExpiresAt={setEditExpiresAt}
+                  editRequiredHours={editRequiredHours}
+                  setEditRequiredHours={setEditRequiredHours}
+                  editCompletedHours={editCompletedHours}
+                  setEditCompletedHours={setEditCompletedHours}
+                  editRenewalStatus={editRenewalStatus}
+                  setEditRenewalStatus={setEditRenewalStatus}
+                  saveState={saveState}
+                  fieldErrors={fieldErrors}
+                  verificationCode={verificationCode}
+                  verifyHref={verifyHref}
+                  certificateHref={certificateHref}
+                  hasLicense={hasLicense}
+                  liveProgressPercent={liveProgressPercent}
+                  levels={levels}
+                  levelLabel={levelLabel}
+                  onSave={onSave}
+                  onClose={closeDetail}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <p className="text-[12px] text-slate-500">
           一般ユーザー・認定講師本人はこのページにアクセスできません。API
