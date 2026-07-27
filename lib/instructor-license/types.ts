@@ -126,15 +126,28 @@ export type UpsertCertifiedInstructorInput = {
   legalName: string;
   displayName?: string;
   levelId: string;
-  instructorNumber: string;
+  /** 新規登録時は空で自動生成 */
+  instructorNumber?: string;
   certifiedAt: string;
   renewsAt: string;
   userId?: string | null;
   adminMemo?: string;
+  certificationName?: string;
   /** 同時にライセンスを発行／更新する場合 */
   issueLicense?: boolean;
   licenseStatus?: InstructorLicenseStatus;
   requiredEducationHours?: number;
   completedEducationHours?: number;
   renewalStatus?: InstructorRenewalStatus;
+};
+
+export type CreateAdminCertifiedInstructorInput = {
+  email: string;
+  publicName: string;
+  legalName: string;
+  levelId: string;
+  certifiedAt: string;
+  renewsAt: string;
+  certificationName?: string;
+  licenseStatus?: InstructorLicenseStatus;
 };

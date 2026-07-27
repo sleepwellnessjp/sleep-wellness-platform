@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  createAdminCertifiedInstructor,
   listAdminCertifiedInstructors,
   setAdminInstructorLicenseStatus,
   toJapaneseInstructorLicenseError,
@@ -14,6 +15,7 @@ import {
   todayIso,
 } from "@/lib/instructor-license/constants";
 import type {
+  CreateAdminCertifiedInstructorInput,
   InstructorLicenseStatus,
   UpsertCertifiedInstructorInput,
 } from "@/lib/instructor-license/types";
@@ -41,11 +43,13 @@ export async function GET() {
 type Body = {
   action?:
     | "upsert_instructor"
+    | "create_instructor"
     | "issue_license"
     | "set_license_status"
     | "approve_renewal"
     | "reject_renewal";
   instructor?: UpsertCertifiedInstructorInput;
+  create?: CreateAdminCertifiedInstructorInput;
   instructorId?: string;
   licenseId?: string;
   status?: string;
@@ -91,6 +95,17 @@ export async function POST(request: Request) {
         { instructor },
         { status: body.instructor.id ? 200 : 201 },
       );
+    }
+
+    if (action === "create_instructor") {
+      if (!body.create) {
+        return NextResponse.json(
+          { error: "登録情報が必要です" },
+          { status: 400 },
+        );
+      }
+      const instructor = await createAdminCertifiedInstructor(body.create);
+      return NextResponse.json({ instructor }, { status: 201 });
     }
 
     if (action === "issue_license") {
