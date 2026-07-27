@@ -47,7 +47,7 @@ export type InstructorPublicDetail = InstructorPublicCard & {
 
 export type InstructorProfileEditable = {
   id: string;
-  userId: string;
+  userId: string | null;
   profileImageUrl: string | null;
   publicDisplayName: string;
   legalName: string;

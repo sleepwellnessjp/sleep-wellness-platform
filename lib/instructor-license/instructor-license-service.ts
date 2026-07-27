@@ -1387,9 +1387,7 @@ export async function upsertAdminCertifiedInstructor(
       {
         ...basePayload,
         display_name: displayName,
-        // DB スキーマ上は user_id が必須/任意の整合が環境により異なる可能性があるため、
-        // 型的には any を介して null を許容する（後日連結で使用される）。
-        user_id: (userId || null) as any,
+        user_id: userId || null,
         status: "active",
       };
     const { data, error } = await supabase
@@ -1398,7 +1396,17 @@ export async function upsertAdminCertifiedInstructor(
       .select(CERTIFIED_INSTRUCTOR_SELECT)
       .single();
     if (error || !data) {
-      throw new Error(error?.message || "認定講師の登録に失敗しました");
+      const message = error?.message || "認定講師の登録に失敗しました";
+      if (
+        /null value.*user_id|user_id.*not-null|violates not-null constraint/i.test(
+          message,
+        )
+      ) {
+        throw new Error(
+          "認定講師の登録に失敗しました。Supabase で certified_instructors.user_id を NULL 許可にするマイグレーション（20260727100000_certified_instructors_user_id_nullable.sql）を実行してください。",
+        );
+      }
+      throw new Error(message);
     }
     instructorId = String((data as LicenseRow).id);
   }
