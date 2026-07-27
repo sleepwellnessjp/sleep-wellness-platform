@@ -7,12 +7,15 @@ import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SURFACE_WARM } from "@/components/ui/tokens";
 import {
+  addYearsIso,
+  daysUntil,
   formatJaDate,
   INSTRUCTOR_LICENSE_STATUSES,
   INSTRUCTOR_LICENSE_STATUS_LABELS,
   INSTRUCTOR_RENEWAL_STATUSES,
   INSTRUCTOR_RENEWAL_STATUS_LABELS,
   resolveCertificationName,
+  resolveDisplayStatus,
   SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
   todayIso,
 } from "@/lib/instructor-license/constants";
@@ -245,6 +248,83 @@ export default function AdminLicensesPage() {
     }
   };
 
+  const runLicenseAction = async (
+    action: "suspend" | "resume" | "renew",
+  ) => {
+    if (!selected) return;
+
+    const confirmMessage =
+      action === "suspend"
+        ? "このライセンスを停止しますか？\n停止中は公開認証ページで「無効」と表示されます。"
+        : action === "resume"
+          ? "このライセンスを再開しますか？"
+          : "このライセンスを1年間更新しますか？";
+    if (!window.confirm(confirmMessage)) return;
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      if (action === "suspend" || action === "resume") {
+        if (action === "resume" && daysUntil(selected.expiresAt) < 0) {
+          throw new Error(
+            "有効期限が切れています。再開前に有効期限を更新してください。",
+          );
+        }
+        const response = await fetch("/api/admin/certified-instructors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set_license_status",
+            licenseId: selected.id,
+            status: action === "suspend" ? "suspended" : "active",
+          }),
+        });
+        const json = (await response.json()) as { error?: string };
+        if (!response.ok) throw new Error(json.error ?? "操作に失敗しました");
+        setMessage(
+          action === "suspend"
+            ? "ライセンスを停止しました"
+            : "ライセンスを再開しました",
+        );
+        await load();
+        return;
+      }
+
+      const remaining = daysUntil(selected.expiresAt);
+      const nextExpires = addYearsIso(
+        remaining >= 0 ? selected.expiresAt : todayIso(),
+        1,
+      );
+      const response = await fetch("/api/admin/licenses", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selected.id,
+          action: "save",
+          instructorId: selected.instructorId,
+          certificationLevelId: editLevelId || selected.certificationLevelId,
+          certificationName: editCertName || selected.certificationName,
+          licenseNumber: editNumber || selected.licenseNumber,
+          issuedAt: editIssued || selected.issuedAt,
+          expiresAt: nextExpires,
+          status: "active",
+          requiredEducationHours: Number(editRequiredHours) || 0,
+          completedEducationHours: Number(editCompletedHours) || 0,
+          renewalStatus: editRenewal,
+          adminNote: editNote,
+        }),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error ?? "更新に失敗しました");
+      setMessage("ライセンスを1年間更新しました");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "操作に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <AdminShell
       eyebrow="LICENSE"
@@ -411,6 +491,7 @@ export default function AdminLicensesPage() {
             </div>
           </SectionCard>
 
+          <div className="space-y-5">
           <SectionCard title="ライセンス編集" eyebrow="EDIT">
             {!selected ? (
               <p className="text-[14px] text-slate-600">
@@ -601,6 +682,157 @@ export default function AdminLicensesPage() {
               </form>
             )}
           </SectionCard>
+
+          {selected ? (
+            <SectionCard title="ライセンス管理" eyebrow="ACTIONS">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    認定番号
+                  </dt>
+                  <dd className="mt-1.5 font-mono text-[14px] font-semibold text-[#071426]">
+                    {selected.licenseNumber || "—"}
+                  </dd>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    確認コード
+                  </dt>
+                  <dd className="mt-1.5 break-all font-mono text-[13px] font-semibold text-[#071426]">
+                    {selected.verificationCode || "—"}
+                  </dd>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    認定日
+                  </dt>
+                  <dd className="mt-1.5 text-[14px] font-semibold text-[#071426]">
+                    {formatJaDate(selected.issuedAt)}
+                  </dd>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    有効期限
+                  </dt>
+                  <dd className="mt-1.5 text-[14px] font-semibold text-[#071426]">
+                    {formatJaDate(selected.expiresAt)}
+                  </dd>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    現在の状態
+                  </dt>
+                  <dd className="mt-1.5 text-[14px] font-semibold text-[#071426]">
+                    {
+                      INSTRUCTOR_LICENSE_STATUS_LABELS[
+                        resolveDisplayStatus(selected.status, selected.expiresAt)
+                      ]
+                    }
+                  </dd>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+                  <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+                    残り日数
+                  </dt>
+                  <dd className="mt-1.5 text-[14px] font-semibold text-[#071426]">
+                    {(() => {
+                      const days = daysUntil(selected.expiresAt);
+                      return days >= 0
+                        ? `${days} 日`
+                        : `${Math.abs(days)} 日超過`;
+                    })()}
+                  </dd>
+                </div>
+              </dl>
+
+              {selected.status === "suspended" &&
+              daysUntil(selected.expiresAt) < 0 ? (
+                <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-6 text-amber-900">
+                  有効期限が切れています。再開前に有効期限を更新してください。
+                </p>
+              ) : null}
+
+              <div className="mt-5 flex flex-col gap-3">
+                {(() => {
+                  const displayStatus = resolveDisplayStatus(
+                    selected.status,
+                    selected.expiresAt,
+                  );
+                  const isSuspended = selected.status === "suspended";
+                  const isExpired =
+                    !isSuspended &&
+                    (selected.status === "expired" || displayStatus === "expired");
+                  const isActive =
+                    !isSuspended &&
+                    !isExpired &&
+                    selected.status !== "withdrawn" &&
+                    (selected.status === "active" ||
+                      selected.status === "expiring" ||
+                      displayStatus === "active" ||
+                      displayStatus === "expiring");
+
+                  return (
+                    <>
+                      {isActive ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("suspend")}
+                          >
+                            停止する
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("renew")}
+                          >
+                            1年間更新
+                          </Button>
+                        </>
+                      ) : null}
+                      {isSuspended ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="min-h-12 w-full"
+                            disabled={saving || daysUntil(selected.expiresAt) < 0}
+                            onClick={() => void runLicenseAction("resume")}
+                          >
+                            再開する
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("renew")}
+                          >
+                            1年間更新
+                          </Button>
+                        </>
+                      ) : null}
+                      {isExpired ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-12 w-full"
+                          disabled={saving}
+                          onClick={() => void runLicenseAction("renew")}
+                        >
+                          1年間更新
+                        </Button>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </div>
+            </SectionCard>
+          ) : null}
+          </div>
         </div>
       )}
     </AdminShell>
