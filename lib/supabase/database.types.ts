@@ -2943,7 +2943,7 @@ export type Database = {
       certified_instructors: {
         Row: {
           id: string;
-          user_id: string;
+          user_id: string | null;
           school_id: string | null;
           level_id: string;
           instructor_number: string;
@@ -2985,7 +2985,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
-          user_id: string;
+          user_id?: string | null;
           school_id?: string | null;
           level_id: string;
           instructor_number: string;
@@ -3027,7 +3027,7 @@ export type Database = {
         };
         Update: {
           id?: string;
-          user_id?: string;
+          user_id?: string | null;
           school_id?: string | null;
           level_id?: string;
           instructor_number?: string;
