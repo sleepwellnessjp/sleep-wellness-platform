@@ -10,19 +10,19 @@ const partners = [
   {
     name: "SOXAI",
     role: "Sleep Technology",
-    image: "/soxai-taka.jpg",
+    image: "/soxai.jpg",
     alt: "SOXAI",
   },
   {
     name: "YogaWorks",
     role: "Yoga Practice",
-    image: "/melatonin-yoga.jpg",
+    image: "/yogaworks.jpg",
     alt: "YogaWorks",
   },
   {
     name: "めがみの森",
     role: "Nature Retreat",
-    image: "/sleep-analysis.jpg",
+    image: "/megaminomori.JPG",
     alt: "めがみの森",
   },
 ];
