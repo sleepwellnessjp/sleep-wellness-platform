@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import InstructorBetaLaunchChrome from "@/components/beta/InstructorBetaLaunchChrome";
 import InstructorNav from "@/components/InstructorNav";
 import InstructorOpsMetrics from "@/components/ops/InstructorOpsMetrics";
+import { useResolvedOsRole } from "@/components/os/OsTopBar";
 import {
   BORDER,
   CARD_SHADOW,
@@ -15,6 +17,7 @@ import {
   SURFACE,
 } from "@/components/ui/tokens";
 import { SWIJ_EYEBROW_INSTRUCTOR } from "@/lib/brand/swij-brand";
+import { isAdminOsRole } from "@/lib/os/roles";
 import type { InstructorOpsDashboard } from "@/lib/ops/types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
@@ -118,11 +121,21 @@ function TodayTodoList({
 }
 
 export default function InstructorDashboardPage() {
+  const router = useRouter();
+  const role = useResolvedOsRole("instructor");
   const [data, setData] = useState<InstructorDashboardData | null>(null);
   const [ops, setOps] = useState<InstructorOpsDashboard | null>(null);
   const [showDemoBanner, setShowDemoBanner] = useState(false);
 
+  // Founder / HQ（admin・super_admin）は本部画面へ誘導
   useEffect(() => {
+    if (isAdminOsRole(role)) {
+      router.replace("/admin");
+    }
+  }, [role, router]);
+
+  useEffect(() => {
+    if (isAdminOsRole(role)) return;
     let cancelled = false;
     void (async () => {
       const next = await getInstructorDashboard();
@@ -139,11 +152,26 @@ export default function InstructorDashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     setShowDemoBanner(!isSupabaseConfigured());
   }, []);
+
+  if (isAdminOsRole(role)) {
+    return (
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="min-h-screen"
+        style={{ backgroundColor: SURFACE, color: NAVY }}
+      >
+        <div className="mx-auto max-w-3xl px-4 py-16 text-center text-sm text-slate-500">
+          本部管理画面へ移動しています…
+        </div>
+      </main>
+    );
+  }
 
   const senseiName = formatSenseiName(data?.instructorDisplayName ?? "");
   const greeting = greetingForNow();

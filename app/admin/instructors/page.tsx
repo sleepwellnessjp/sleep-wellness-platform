@@ -2,10 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "@/components/AdminShell";
+import { useResolvedOsRole } from "@/components/os/OsTopBar";
 import Button from "@/components/ui/Button";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
+import { isAdminOsRole } from "@/lib/os/roles";
 import {
   addYearsIso,
   daysUntil,
@@ -804,6 +806,8 @@ function LicenseManagementCard({
 }
 
 export default function AdminCertifiedInstructorsPage() {
+  const role = useResolvedOsRole("admin");
+  const canManageInstructors = isAdminOsRole(role);
   const [instructors, setInstructors] = useState<
     AdminCertifiedInstructorListItem[]
   >([]);
@@ -865,6 +869,7 @@ export default function AdminCertifiedInstructorsPage() {
   }, []);
 
   const openCreateModal = () => {
+    if (!canManageInstructors) return;
     if (saveState === "saving" || licenseBusy) return;
     resetCreateForm();
     setCreateOpen(true);
@@ -1447,16 +1452,18 @@ export default function AdminCertifiedInstructorsPage() {
         ) : null}
 
         <SectionCard title="認定講師一覧" eyebrow="LIST">
-            <div className="mb-4 flex justify-end">
-              <Button
-                type="button"
-                className="min-h-12 w-full sm:w-auto"
-                onClick={openCreateModal}
-                disabled={loading || saveState === "saving" || licenseBusy}
-              >
-                ＋ 新規認定講師を追加
-              </Button>
-            </div>
+            {canManageInstructors ? (
+              <div className="mb-4 flex justify-end">
+                <Button
+                  type="button"
+                  className="min-h-12 w-full sm:w-auto"
+                  onClick={openCreateModal}
+                  disabled={loading || saveState === "saving" || licenseBusy}
+                >
+                  ＋ 新規認定講師を追加
+                </Button>
+              </div>
+            ) : null}
             <div className="space-y-3">
               <label className="block text-[13px] font-semibold text-slate-600">
                 検索（活動名・本名・メール・認定番号）
@@ -1722,7 +1729,7 @@ export default function AdminCertifiedInstructorsPage() {
             )}
           </SectionCard>
 
-        {createOpen ? (
+        {createOpen && canManageInstructors ? (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-[#071426]/45 p-0 sm:items-center sm:p-4"
             role="dialog"

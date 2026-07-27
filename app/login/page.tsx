@@ -95,7 +95,8 @@ async function resolvePostAuthDestination(
     // ignore — table may not exist yet
   });
 
-  if (!hasExplicitRedirect) return "/dashboard";
+  // ロール別 Home（admin / super_admin → /admin、instructor → /dashboard 等）
+  if (!hasExplicitRedirect) return home;
   if (
     (role === "client" || role === "enterprise") &&
     isInstructorOnlyPath(requestedRedirect)

@@ -87,7 +87,8 @@ export const PERMISSION_MATRIX: PermissionMatrix = {
     admin_hq: "none",
     admin_roles: "none",
     admin_schools: "view",
-    admin_certification: "view",
+    // 認定講師管理・新規追加は Founder(admin) / Super Admin のみ
+    admin_certification: "none",
     admin_license: "view",
     admin_subscriptions: "view",
     admin_invitations: "none",
