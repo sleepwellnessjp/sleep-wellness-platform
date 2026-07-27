@@ -17,6 +17,7 @@ import {
   INSTRUCTOR_LICENSE_STATUSES,
   INSTRUCTOR_RENEWAL_STATUS_LABELS,
   INSTRUCTOR_RENEWAL_STATUSES,
+  isInstructorLicenseStatus,
   isInstructorRenewalStatus,
   licenseVerificationUrl,
   resolveCertificationName,
@@ -510,6 +511,208 @@ function InstructorEditForm({
   );
 }
 
+type InstructorCreateFormProps = {
+  createPublicName: string;
+  setCreatePublicName: (value: string) => void;
+  createLegalName: string;
+  setCreateLegalName: (value: string) => void;
+  createEmail: string;
+  setCreateEmail: (value: string) => void;
+  createCertificationName: string;
+  setCreateCertificationName: (value: string) => void;
+  createCertifiedAt: string;
+  setCreateCertifiedAt: (value: string) => void;
+  createExpiresAt: string;
+  setCreateExpiresAt: (value: string) => void;
+  createLevelId: string;
+  setCreateLevelId: (value: string) => void;
+  createLicenseStatus: InstructorLicenseStatus;
+  setCreateLicenseStatus: (value: InstructorLicenseStatus) => void;
+  saveState: SaveState;
+  fieldErrors: string[];
+  levels: CertificationLevelRecord[];
+  levelLabel: (levelId: string) => string;
+  onSubmit: (event: FormEvent) => void;
+  onClose: () => void;
+};
+
+function InstructorCreateForm({
+  createPublicName,
+  setCreatePublicName,
+  createLegalName,
+  setCreateLegalName,
+  createEmail,
+  setCreateEmail,
+  createCertificationName,
+  setCreateCertificationName,
+  createCertifiedAt,
+  setCreateCertifiedAt,
+  createExpiresAt,
+  setCreateExpiresAt,
+  createLevelId,
+  setCreateLevelId,
+  createLicenseStatus,
+  setCreateLicenseStatus,
+  saveState,
+  fieldErrors,
+  levels,
+  levelLabel,
+  onSubmit,
+  onClose,
+}: InstructorCreateFormProps) {
+  return (
+    <form className="space-y-5" onSubmit={(event) => void onSubmit(event)}>
+      <p className="text-[13px] leading-7 text-slate-600">
+        認定番号と確認コードは登録時に自動生成されます。メールアドレスに紐づくログインアカウントがある場合は自動で連携します。
+      </p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-[13px] font-semibold text-slate-600">
+          活動名
+          <input
+            className={inputClass}
+            value={createPublicName}
+            onChange={(event) => setCreatePublicName(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+        <label className="block text-[13px] font-semibold text-slate-600">
+          本名
+          <input
+            className={inputClass}
+            value={createLegalName}
+            onChange={(event) => setCreateLegalName(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+      </div>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        メールアドレス
+        <input
+          className={inputClass}
+          type="email"
+          value={createEmail}
+          onChange={(event) => setCreateEmail(event.target.value)}
+          required
+          disabled={saveState === "saving"}
+          autoComplete="off"
+        />
+      </label>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        資格名
+        <input
+          className={inputClass}
+          value={createCertificationName}
+          onChange={(event) => setCreateCertificationName(event.target.value)}
+          required
+          disabled={saveState === "saving"}
+        />
+      </label>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        資格レベル
+        <select
+          className={selectClass}
+          value={createLevelId}
+          onChange={(event) => setCreateLevelId(event.target.value)}
+          disabled={saveState === "saving"}
+        >
+          {levels.length === 0 ? (
+            <option value={createLevelId}>{levelLabel(createLevelId)}</option>
+          ) : (
+            levels.map((level) => (
+              <option key={level.id} value={level.id}>
+                {level.label}
+              </option>
+            ))
+          )}
+        </select>
+      </label>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-[13px] font-semibold text-slate-600">
+          認定日
+          <input
+            className={inputClass}
+            type="date"
+            value={createCertifiedAt}
+            onChange={(event) => {
+              const next = event.target.value;
+              setCreateCertifiedAt(next);
+              if (next) setCreateExpiresAt(addYearsIso(next, 1));
+            }}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+        <label className="block text-[13px] font-semibold text-slate-600">
+          有効期限
+          <input
+            className={inputClass}
+            type="date"
+            value={createExpiresAt}
+            onChange={(event) => setCreateExpiresAt(event.target.value)}
+            required
+            disabled={saveState === "saving"}
+          />
+        </label>
+      </div>
+
+      <label className="block text-[13px] font-semibold text-slate-600">
+        ライセンス状態
+        <select
+          className={selectClass}
+          value={createLicenseStatus}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (isInstructorLicenseStatus(value)) {
+              setCreateLicenseStatus(value);
+            }
+          }}
+          disabled={saveState === "saving"}
+        >
+          {INSTRUCTOR_LICENSE_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {INSTRUCTOR_LICENSE_STATUS_LABELS[status]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {fieldErrors.length > 0 ? (
+        <ul className="space-y-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900">
+          {fieldErrors.map((error) => (
+            <li key={error}>・{error}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <Button
+          type="submit"
+          disabled={saveState === "saving"}
+          className="min-h-12 w-full sm:w-auto"
+        >
+          {saveState === "saving" ? "登録中…" : "登録する"}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-12 w-full sm:w-auto"
+          onClick={onClose}
+          disabled={saveState === "saving"}
+        >
+          閉じる
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function LicenseManagementCard({
   selected,
   verificationCode,
@@ -629,6 +832,49 @@ export default function AdminCertifiedInstructorsPage() {
   const [editCompletedHours, setEditCompletedHours] = useState("0");
   const [editRenewalStatus, setEditRenewalStatus] =
     useState<InstructorRenewalStatus>("not_requested");
+
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSaveState, setCreateSaveState] = useState<SaveState>("idle");
+  const [createFieldErrors, setCreateFieldErrors] = useState<string[]>([]);
+  const [createPublicName, setCreatePublicName] = useState("");
+  const [createLegalName, setCreateLegalName] = useState("");
+  const [createEmail, setCreateEmail] = useState("");
+  const [createCertificationName, setCreateCertificationName] = useState(
+    SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+  );
+  const [createCertifiedAt, setCreateCertifiedAt] = useState(todayIso());
+  const [createExpiresAt, setCreateExpiresAt] = useState(
+    addYearsIso(todayIso(), 1),
+  );
+  const [createLevelId, setCreateLevelId] = useState("instructor");
+  const [createLicenseStatus, setCreateLicenseStatus] =
+    useState<InstructorLicenseStatus>("active");
+
+  const resetCreateForm = useCallback(() => {
+    const certified = todayIso();
+    setCreatePublicName("");
+    setCreateLegalName("");
+    setCreateEmail("");
+    setCreateCertificationName(SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME);
+    setCreateCertifiedAt(certified);
+    setCreateExpiresAt(addYearsIso(certified, 1));
+    setCreateLevelId("instructor");
+    setCreateLicenseStatus("active");
+    setCreateFieldErrors([]);
+    setCreateSaveState("idle");
+  }, []);
+
+  const openCreateModal = () => {
+    if (saveState === "saving" || licenseBusy) return;
+    resetCreateForm();
+    setCreateOpen(true);
+  };
+
+  const closeCreateModal = () => {
+    if (createSaveState === "saving") return;
+    setCreateOpen(false);
+    resetCreateForm();
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -960,13 +1206,102 @@ export default function AdminCertifiedInstructorsPage() {
   };
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId && !createOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDetail();
+      if (event.key === "Escape") {
+        if (createOpen) closeCreateModal();
+        else closeDetail();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, saveState]);
+  }, [selectedId, createOpen, saveState, createSaveState]);
+
+  const validateCreate = (): string[] => {
+    const errors: string[] = [];
+    if (!createPublicName.trim()) errors.push("活動名は必須です");
+    if (!createLegalName.trim()) errors.push("本名は必須です");
+    if (!createEmail.trim()) {
+      errors.push("メールアドレスは必須です");
+    } else if (!EMAIL_RE.test(createEmail.trim())) {
+      errors.push("メールアドレスの形式が正しくありません");
+    }
+    if (!createCertifiedAt) errors.push("認定日は必須です");
+    if (!createExpiresAt) errors.push("有効期限は必須です");
+    if (
+      createCertifiedAt &&
+      createExpiresAt &&
+      createExpiresAt < createCertifiedAt
+    ) {
+      errors.push("有効期限が認定日より前にならないようにしてください");
+    }
+    if (!createCertificationName.trim()) errors.push("資格名は必須です");
+    return errors;
+  };
+
+  const onCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (createSaveState === "saving") return;
+
+    const errors = validateCreate();
+    setCreateFieldErrors(errors);
+    if (errors.length > 0) {
+      setCreateSaveState("error");
+      return;
+    }
+
+    setCreateSaveState("saving");
+    try {
+      const response = await fetch("/api/admin/certified-instructors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_instructor",
+          create: {
+            publicName: createPublicName.trim(),
+            legalName: createLegalName.trim(),
+            email: createEmail.trim(),
+            certificationName: createCertificationName.trim(),
+            certifiedAt: createCertifiedAt,
+            renewsAt: createExpiresAt,
+            levelId: createLevelId || "instructor",
+            licenseStatus: createLicenseStatus,
+          },
+        }),
+      });
+      const json = (await response.json()) as {
+        instructor?: AdminCertifiedInstructorListItem;
+        error?: string;
+      };
+      if (response.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent("/admin/instructors")}`;
+        return;
+      }
+      if (response.status === 403) {
+        window.location.href = "/forbidden";
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(json.error ?? "登録に失敗しました");
+      }
+
+      await load();
+      setCreateOpen(false);
+      resetCreateForm();
+      setSaveState("success");
+      setSaveMessage("認定講師を登録しました");
+      if (json.instructor?.instructorId) {
+        setSelectedId(json.instructor.instructorId);
+      }
+    } catch (error) {
+      setCreateSaveState("error");
+      setCreateFieldErrors([
+        error instanceof Error ? error.message : "登録に失敗しました",
+      ]);
+    } finally {
+      setCreateSaveState((prev) => (prev === "saving" ? "idle" : prev));
+    }
+  };
 
   const validate = (): string[] => {
     const errors: string[] = [];
@@ -1112,6 +1447,16 @@ export default function AdminCertifiedInstructorsPage() {
         ) : null}
 
         <SectionCard title="認定講師一覧" eyebrow="LIST">
+            <div className="mb-4 flex justify-end">
+              <Button
+                type="button"
+                className="min-h-12 w-full sm:w-auto"
+                onClick={openCreateModal}
+                disabled={loading || saveState === "saving" || licenseBusy}
+              >
+                ＋ 新規認定講師を追加
+              </Button>
+            </div>
             <div className="space-y-3">
               <label className="block text-[13px] font-semibold text-slate-600">
                 検索（活動名・本名・メール・認定番号）
@@ -1376,6 +1721,75 @@ export default function AdminCertifiedInstructorsPage() {
               </>
             )}
           </SectionCard>
+
+        {createOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-[#071426]/45 p-0 sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instructor-create-title"
+            onClick={closeCreateModal}
+          >
+            <div
+              className="max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_-40px_rgba(7,20,38,0.55)] sm:max-w-3xl sm:rounded-[28px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+                <div>
+                  <p
+                    className="text-[11px] font-semibold tracking-[0.16em]"
+                    style={{ color: GOLD }}
+                  >
+                    NEW INSTRUCTOR
+                  </p>
+                  <h2
+                    id="instructor-create-title"
+                    className="mt-1 text-lg font-semibold tracking-[-0.03em]"
+                    style={{ color: NAVY }}
+                  >
+                    新規認定講師の追加
+                  </h2>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeCreateModal}
+                  disabled={createSaveState === "saving"}
+                  aria-label="閉じる"
+                >
+                  閉じる
+                </Button>
+              </div>
+              <div className="px-5 py-5 sm:px-6 sm:py-6">
+                <InstructorCreateForm
+                  createPublicName={createPublicName}
+                  setCreatePublicName={setCreatePublicName}
+                  createLegalName={createLegalName}
+                  setCreateLegalName={setCreateLegalName}
+                  createEmail={createEmail}
+                  setCreateEmail={setCreateEmail}
+                  createCertificationName={createCertificationName}
+                  setCreateCertificationName={setCreateCertificationName}
+                  createCertifiedAt={createCertifiedAt}
+                  setCreateCertifiedAt={setCreateCertifiedAt}
+                  createExpiresAt={createExpiresAt}
+                  setCreateExpiresAt={setCreateExpiresAt}
+                  createLevelId={createLevelId}
+                  setCreateLevelId={setCreateLevelId}
+                  createLicenseStatus={createLicenseStatus}
+                  setCreateLicenseStatus={setCreateLicenseStatus}
+                  saveState={createSaveState}
+                  fieldErrors={createFieldErrors}
+                  levels={levels}
+                  levelLabel={levelLabel}
+                  onSubmit={onCreate}
+                  onClose={closeCreateModal}
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {selected ? (
           <div
