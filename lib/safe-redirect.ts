@@ -91,8 +91,6 @@ export function isSchoolAllowedAdminPath(pathname: string): boolean {
   return (
     path === "/admin/schools" ||
     path.startsWith("/admin/schools/") ||
-    path === "/admin/certification" ||
-    path.startsWith("/admin/certification/") ||
     path === "/admin/license" ||
     path.startsWith("/admin/license/") ||
     path === "/admin/subscriptions" ||

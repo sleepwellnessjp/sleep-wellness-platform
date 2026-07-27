@@ -166,7 +166,8 @@ export async function GET(request: Request) {
         destination = home;
       }
     } else if (!searchParams.get("redirect")) {
-      destination = "/dashboard";
+      // ロール別 Home（Founder/admin / super_admin → /admin）
+      destination = home;
     }
   }
 

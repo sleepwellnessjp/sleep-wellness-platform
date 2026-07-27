@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import AdminShell from "@/components/AdminShell";
+import { useResolvedOsRole } from "@/components/os/OsTopBar";
 import Button from "@/components/ui/Button";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SURFACE_WARM } from "@/components/ui/tokens";
 import { SWIJ_EYEBROW_OPS } from "@/lib/brand/swij-brand";
+import { isAdminOsRole } from "@/lib/os/roles";
 import {
   formatPercent,
   INSTRUCTOR_OPS_STATUS_LABELS,
@@ -19,6 +21,8 @@ import type { SchoolDetailBundle } from "@/lib/ops/types";
 export default function AdminSchoolDetailPage() {
   const params = useParams();
   const id = String(params.id ?? "");
+  const role = useResolvedOsRole("admin");
+  const canManageInstructors = isAdminOsRole(role);
   const [detail, setDetail] = useState<SchoolDetailBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,13 +134,15 @@ export default function AdminSchoolDetailPage() {
                   <li className="py-6 text-sm text-slate-400">所属講師はいません</li>
                 ) : null}
               </ul>
-              <Link
-                href="/admin/certification"
-                className="mt-3 inline-block text-[12px] font-semibold"
-                style={{ color: GOLD }}
-              >
-                認定講師管理へ →
-              </Link>
+              {canManageInstructors ? (
+                <Link
+                  href="/admin/certification"
+                  className="mt-3 inline-block text-[12px] font-semibold"
+                  style={{ color: GOLD }}
+                >
+                  認定講師管理へ →
+                </Link>
+              ) : null}
             </SectionCard>
 
             <SectionCard title="受講生" eyebrow="STUDENTS">
