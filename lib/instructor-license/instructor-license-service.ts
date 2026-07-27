@@ -4,6 +4,7 @@ import {
 } from "@/lib/platform/platform-service";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
+import { generateCertificateNumber } from "@/lib/academy/scoring";
 import {
   daysUntil,
   EXPIRING_SOON_DAYS,
@@ -24,6 +25,7 @@ import type {
   AdminCertifiedInstructorListItem,
   AdminInstructorLicenseFilters,
   AdminInstructorLicenseListItem,
+  CreateAdminCertifiedInstructorInput,
   InstructorLicenseRecord,
   InstructorLicenseStatus,
   InstructorRenewalStatus,
@@ -1190,6 +1192,102 @@ export async function listAdminCertifiedInstructors(): Promise<
   });
 }
 
+async function resolveProfileIdByEmail(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  email: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return String((data as LicenseRow).id ?? "").trim() || null;
+}
+
+async function assertEmailAvailableForNewInstructor(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  email: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("certified_instructors")
+    .select("id")
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error("メールアドレスの確認に失敗しました");
+  }
+  if (data) {
+    throw new Error(
+      "このメールアドレスの認定講師は既に登録されています。別のメールアドレスを使用するか、既存の講師を編集してください。",
+    );
+  }
+}
+
+async function assertUserAvailableForNewInstructor(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  userId: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("certified_instructors")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error("アカウント紐づけの確認に失敗しました");
+  }
+  if (data) {
+    throw new Error("このアカウントは既に認定講師として登録されています");
+  }
+}
+
+async function generateUniqueInstructorNumber(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+): Promise<string> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = generateCertificateNumber();
+    const { data, error } = await supabase
+      .from("certified_instructors")
+      .select("id")
+      .eq("instructor_number", candidate)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      throw new Error("認定番号の生成に失敗しました");
+    }
+    if (!data) return candidate;
+  }
+  throw new Error("認定番号の生成に失敗しました。再度お試しください。");
+}
+
+export async function createAdminCertifiedInstructor(
+  input: CreateAdminCertifiedInstructorInput,
+): Promise<AdminCertifiedInstructorListItem> {
+  const licenseStatus: InstructorLicenseStatus =
+    input.licenseStatus && isInstructorLicenseStatus(input.licenseStatus)
+      ? input.licenseStatus
+      : "active";
+
+  return upsertAdminCertifiedInstructor({
+    email: input.email,
+    publicName: input.publicName,
+    legalName: input.legalName,
+    levelId: input.levelId || "instructor",
+    certifiedAt: input.certifiedAt,
+    renewsAt: input.renewsAt,
+    certificationName:
+      input.certificationName?.trim() || SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+    issueLicense: true,
+    licenseStatus,
+    requiredEducationHours: 12,
+    completedEducationHours: 0,
+    renewalStatus: "not_requested",
+  });
+}
+
 export async function upsertAdminCertifiedInstructor(
   input: UpsertCertifiedInstructorInput,
 ): Promise<AdminCertifiedInstructorListItem> {
@@ -1203,9 +1301,13 @@ export async function upsertAdminCertifiedInstructor(
   const displayName =
     (input.displayName ?? "").trim() || publicName || legalName;
   const levelId = (input.levelId || "instructor").trim() || "instructor";
-  const instructorNumber = input.instructorNumber.trim();
+  const certificationName = resolveCertificationName(
+    input.certificationName ?? SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+  );
+  let instructorNumber = (input.instructorNumber ?? "").trim();
   const certifiedAt = input.certifiedAt.slice(0, 10);
   const renewsAt = input.renewsAt.slice(0, 10);
+  const isNew = !input.id?.trim();
 
   if (!email) throw new Error("メールアドレスを入力してください");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -1213,12 +1315,20 @@ export async function upsertAdminCertifiedInstructor(
   }
   if (!publicName) throw new Error("活動名を入力してください");
   if (!legalName) throw new Error("本名を入力してください");
-  if (!instructorNumber) throw new Error("認定番号を入力してください");
   if (!certifiedAt || !renewsAt) {
     throw new Error("認定日と有効期限を入力してください");
   }
   if (renewsAt < certifiedAt) {
     throw new Error("有効期限は認定日以降の日付を指定してください");
+  }
+
+  if (isNew) {
+    await assertEmailAvailableForNewInstructor(supabase, email);
+    if (!instructorNumber) {
+      instructorNumber = await generateUniqueInstructorNumber(supabase);
+    }
+  } else if (!instructorNumber) {
+    throw new Error("認定番号を入力してください");
   }
 
   const requiredEducationHours = Number(input.requiredEducationHours ?? 0);
@@ -1263,17 +1373,23 @@ export async function upsertAdminCertifiedInstructor(
     }
     instructorId = String((data as LicenseRow).id);
   } else {
-    const userId = input.userId?.trim();
+    let userId = input.userId?.trim() ?? "";
     if (!userId) {
-      throw new Error(
-        "新規登録には連携するユーザー ID（profiles.id）が必要です。先にアカウントを作成してください。",
-      );
+      const resolvedUserId = await resolveProfileIdByEmail(supabase, email);
+      if (resolvedUserId) userId = resolvedUserId;
+    }
+    // ログインアカウント（profiles）が未作成でも、認定講師レコードだけ作成できるようにする。
+    // user_id は後日本人が同一メールでアカウントを作成した際に、既存の紐づけ処理で安全に連結される。
+    if (userId) {
+      await assertUserAvailableForNewInstructor(supabase, userId);
     }
     const insertBody: Database["public"]["Tables"]["certified_instructors"]["Insert"] =
       {
         ...basePayload,
         display_name: displayName,
-        user_id: userId,
+        // DB スキーマ上は user_id が必須/任意の整合が環境により異なる可能性があるため、
+        // 型的には any を介して null を許容する（後日連結で使用される）。
+        user_id: (userId || null) as any,
         status: "active",
       };
     const { data, error } = await supabase
@@ -1304,7 +1420,7 @@ export async function upsertAdminCertifiedInstructor(
         id: String(existing.data.id),
         instructorId,
         certificationLevelId: levelId,
-        certificationName: SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+        certificationName,
         licenseNumber: instructorNumber,
         issuedAt: certifiedAt,
         expiresAt: renewsAt,
@@ -1317,7 +1433,7 @@ export async function upsertAdminCertifiedInstructor(
       await upsertAdminInstructorLicense({
         instructorId,
         certificationLevelId: levelId,
-        certificationName: SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
+        certificationName,
         licenseNumber: instructorNumber,
         issuedAt: certifiedAt,
         expiresAt: renewsAt,
