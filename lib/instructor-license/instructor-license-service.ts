@@ -5,10 +5,8 @@ import {
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import {
-  addYearsIso,
   daysUntil,
   EXPIRING_SOON_DAYS,
-  generateLicenseNumber,
   generateVerificationCode,
   isInstructorLicenseStatus,
   isInstructorRenewalStatus,
@@ -19,7 +17,6 @@ import {
   resolveCertificationName,
   resolveDisplayStatus,
   SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
-  todayIso,
   toPublicLicenseStatusLabel,
   toPublicLicenseVerdict,
 } from "./constants";
@@ -57,7 +54,7 @@ export type LicenseLookupDiagnostic = {
 };
 
 const CERTIFIED_INSTRUCTOR_SELECT =
-  "id, display_name, public_name, public_display_name, legal_name, email, level_id, user_id, instructor_number, certified_at, renews_at, status, admin_memo, last_renewed_at, status_history";
+  "id, display_name, public_name, public_display_name, legal_name, email, level_id, user_id, instructor_number, certified_at, renews_at, status, admin_memo";
 
 const CERTIFIED_INSTRUCTORS_PATH = "public.certified_instructors";
 const INSTRUCTOR_LICENSES_PATH = "public.instructor_licenses";
@@ -1010,15 +1007,6 @@ export async function upsertAdminInstructorLicense(
       console.error("[instructor-license] update failed:", error?.message);
       throw new Error(error?.message || "ライセンスの更新に失敗しました");
     }
-    // 正: instructor_licenses.expires_at → certified_instructors.renews_at を同期
-    await supabase
-      .from("certified_instructors")
-      .update({
-        renews_at: expiresAt,
-        certified_at: issuedAt,
-        instructor_number: payload.license_number,
-      })
-      .eq("id", payload.instructor_id);
     return mapLicense(data as LicenseRow);
   }
 
@@ -1032,14 +1020,6 @@ export async function upsertAdminInstructorLicense(
     console.error("[instructor-license] insert failed:", error?.message);
     throw new Error(error?.message || "ライセンスの登録に失敗しました");
   }
-  await supabase
-    .from("certified_instructors")
-    .update({
-      renews_at: expiresAt,
-      certified_at: issuedAt,
-      instructor_number: payload.license_number,
-    })
-    .eq("id", payload.instructor_id);
   return mapLicense(data as LicenseRow);
 }
 
@@ -1070,9 +1050,11 @@ export async function decideAdminRenewal(
   };
 
   if (decision === "approved") {
-    const remaining = daysUntil(current.expiresAt);
-    const baseIso = remaining >= 0 ? current.expiresAt : todayIso();
-    patch.expires_at = addYearsIso(baseIso, 1);
+    const nextExpires = new Date(`${current.expiresAt}T00:00:00`);
+    if (!Number.isNaN(nextExpires.getTime())) {
+      nextExpires.setFullYear(nextExpires.getFullYear() + 1);
+      patch.expires_at = nextExpires.toISOString().slice(0, 10);
+    }
     patch.status = "active";
     patch.completed_education_hours = 0;
   } else {
@@ -1096,19 +1078,6 @@ export async function decideAdminRenewal(
     console.error("[instructor-license] renewal decide failed:", error?.message);
     throw new Error("更新申請の処理に失敗しました");
   }
-
-  if (decision === "approved" && patch.expires_at) {
-    await syncInstructorStatusHistory({
-      supabase,
-      instructorId: current.instructorId,
-      action: "renew",
-      toStatus: "active",
-      note: `更新申請承認 → ${patch.expires_at}`,
-      renewsAt: String(patch.expires_at),
-      touchLastRenewed: true,
-    });
-  }
-
   return mapLicense(data as LicenseRow);
 }
 
@@ -1209,9 +1178,6 @@ export async function listAdminCertifiedInstructors(): Promise<
       renewsAt: String(r.renews_at ?? "").slice(0, 10),
       instructorStatus: String(r.status ?? "active"),
       adminMemo: String(r.admin_memo ?? ""),
-      lastRenewedAt: r.last_renewed_at
-        ? String(r.last_renewed_at).slice(0, 10)
-        : null,
       license: licenseRow
         ? mapLicense(
             licenseRow,
@@ -1381,25 +1347,6 @@ export async function setAdminInstructorLicenseStatus(
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Supabase が設定されていません");
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("instructor_licenses")
-    .select("*")
-    .eq("id", licenseId)
-    .single();
-
-  if (fetchError || !existing) {
-    throw new Error("ライセンスが見つかりません");
-  }
-
-  const current = mapLicense(existing as LicenseRow);
-
-  // 再開時: 有効期限切れなら状態だけ active にしない
-  if (status === "active" && daysUntil(current.expiresAt) < 0) {
-    throw new Error(
-      "有効期限が切れています。再開前に有効期限を更新してください。",
-    );
-  }
-
   const { data, error } = await supabase
     .from("instructor_licenses")
     .update({ status })
@@ -1410,301 +1357,5 @@ export async function setAdminInstructorLicenseStatus(
   if (error || !data) {
     throw new Error(error?.message || "ライセンス状態の更新に失敗しました");
   }
-
-  // certified_instructors 側の状態・履歴も可能な範囲で同期
-  await syncInstructorStatusHistory({
-    supabase,
-    instructorId: current.instructorId,
-    action: status === "suspended" ? "suspend" : status === "active" ? "reactivate" : "status",
-    toStatus: status === "suspended" ? "suspended" : "active",
-    note: `instructor_licenses.status → ${status}`,
-  });
-
-  return mapLicense(data as LicenseRow);
-}
-
-type StatusHistoryEntry = {
-  at: string;
-  action: string;
-  fromStatus: string;
-  toStatus: string;
-  note: string;
-  actorEmail: string;
-};
-
-function asStatusHistory(value: unknown): StatusHistoryEntry[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (item): item is StatusHistoryEntry =>
-      Boolean(item) && typeof item === "object",
-  );
-}
-
-async function syncInstructorStatusHistory(input: {
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>;
-  instructorId: string;
-  action: string;
-  toStatus: string;
-  note: string;
-  renewsAt?: string;
-  touchLastRenewed?: boolean;
-}): Promise<void> {
-  const { data: instructor } = await input.supabase
-    .from("certified_instructors")
-    .select("id, status, status_history, renews_at")
-    .eq("id", input.instructorId)
-    .maybeSingle();
-
-  if (!instructor) return;
-
-  const row = instructor as LicenseRow;
-  const fromStatus = String(row.status ?? "active");
-  const stamp = new Date().toISOString();
-  const patch: Database["public"]["Tables"]["certified_instructors"]["Update"] =
-    {
-      status: input.toStatus,
-      status_history: [
-        ...asStatusHistory(row.status_history),
-        {
-          at: stamp,
-          action: input.action,
-          fromStatus,
-          toStatus: input.toStatus,
-          note: input.note,
-          actorEmail: "",
-        },
-      ] as unknown as Database["public"]["Tables"]["certified_instructors"]["Update"]["status_history"],
-    };
-
-  if (input.renewsAt) {
-    patch.renews_at = input.renewsAt.slice(0, 10);
-  }
-  if (input.touchLastRenewed) {
-    patch.last_renewed_at = todayIso();
-  }
-  if (input.toStatus === "suspended") {
-    patch.suspended_at = stamp;
-  }
-  if (input.toStatus === "active") {
-    patch.suspended_at = null;
-  }
-
-  await input.supabase
-    .from("certified_instructors")
-    .update(patch)
-    .eq("id", input.instructorId);
-}
-
-async function allocateUniqueLicenseNumber(
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
-  preferred?: string,
-): Promise<string> {
-  const candidates: string[] = [];
-  const preferredTrim = (preferred ?? "").trim();
-  if (preferredTrim) candidates.push(preferredTrim);
-  for (let i = 0; i < 5; i += 1) {
-    candidates.push(generateLicenseNumber());
-  }
-
-  for (const candidate of candidates) {
-    const { data } = await supabase
-      .from("instructor_licenses")
-      .select("id")
-      .eq("license_number", candidate)
-      .maybeSingle();
-    if (!data) return candidate;
-  }
-  // 最終手段: UUID ベースでほぼ衝突しない
-  return generateLicenseNumber();
-}
-
-async function allocateUniqueVerificationCode(
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
-): Promise<string> {
-  for (let i = 0; i < 8; i += 1) {
-    const code = generateVerificationCode();
-    const { data } = await supabase
-      .from("instructor_licenses")
-      .select("id")
-      .eq("verification_code", code)
-      .maybeSingle();
-    if (!data) return code;
-  }
-  return generateVerificationCode();
-}
-
-/**
- * 認定講師へ Sleep Wellness Instructor ライセンスを新規発行する。
- * 既存ライセンスがある場合はエラー。
- */
-export async function issueAdminInstructorLicense(
-  instructorId: string,
-  options?: {
-    issuedAt?: string;
-    expiresAt?: string;
-    levelId?: string;
-  },
-): Promise<InstructorLicenseRecord> {
-  await requireAdminProfile();
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase が設定されていません");
-
-  const id = instructorId.trim();
-  if (!id) throw new Error("認定講師 ID が必要です");
-
-  const { data: existingLicense } = await supabase
-    .from("instructor_licenses")
-    .select("id")
-    .eq("instructor_id", id)
-    .maybeSingle();
-  if (existingLicense?.id) {
-    throw new Error("この講師には既にライセンスが発行されています");
-  }
-
-  const { data: instructor, error: instructorError } = await supabase
-    .from("certified_instructors")
-    .select(CERTIFIED_INSTRUCTOR_SELECT)
-    .eq("id", id)
-    .single();
-
-  if (instructorError || !instructor) {
-    throw new Error("認定講師が見つかりません");
-  }
-
-  const row = instructor as LicenseRow;
-  const issuedAt = (
-    options?.issuedAt ||
-    String(row.certified_at ?? "") ||
-    todayIso()
-  ).slice(0, 10);
-  const expiresAt = (
-    options?.expiresAt ||
-    String(row.renews_at ?? "") ||
-    addYearsIso(issuedAt, 1)
-  ).slice(0, 10);
-
-  if (!issuedAt || !expiresAt) {
-    throw new Error("認定日と有効期限を入力してください");
-  }
-  if (expiresAt < issuedAt) {
-    throw new Error("有効期限は認定日以降の日付を指定してください");
-  }
-
-  const levelId =
-    (options?.levelId ?? String(row.level_id ?? "instructor")).trim() ||
-    "instructor";
-  const licenseNumber = await allocateUniqueLicenseNumber(
-    supabase,
-    String(row.instructor_number ?? ""),
-  );
-  const verificationCode = await allocateUniqueVerificationCode(supabase);
-
-  const payload: Database["public"]["Tables"]["instructor_licenses"]["Insert"] =
-    {
-      instructor_id: id,
-      certification_level_id: levelId,
-      certification_name: SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
-      license_number: licenseNumber,
-      issued_at: issuedAt,
-      expires_at: expiresAt,
-      status: "active",
-      required_education_hours: 12,
-      completed_education_hours: 0,
-      renewal_status: "not_requested",
-      verification_code: verificationCode,
-      admin_note: "",
-    };
-
-  const { data, error } = await supabase
-    .from("instructor_licenses")
-    .insert(payload)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("[instructor-license] issue failed:", error?.message);
-    throw new Error(error?.message || "ライセンスの発行に失敗しました");
-  }
-
-  // 認定番号・有効期限を講師マスタ側へ同期（正は instructor_licenses.expires_at）
-  await supabase
-    .from("certified_instructors")
-    .update({
-      instructor_number: licenseNumber,
-      certified_at: issuedAt,
-      renews_at: expiresAt,
-      status: "active",
-    })
-    .eq("id", id);
-
-  await syncInstructorStatusHistory({
-    supabase,
-    instructorId: id,
-    action: "issue_license",
-    toStatus: "active",
-    note: `ライセンス発行 ${licenseNumber}`,
-    renewsAt: expiresAt,
-  });
-
-  return mapLicense(data as LicenseRow);
-}
-
-/**
- * ライセンスを1年間更新する。
- * 現在の有効期限が未来 → その日から+1年 / 過去 → 本日から+1年。
- * 状態を active にし、certified_instructors.renews_at / last_renewed_at を同期。
- */
-export async function renewAdminInstructorLicenseOneYear(
-  licenseId: string,
-): Promise<InstructorLicenseRecord> {
-  await requireAdminProfile();
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) throw new Error("Supabase が設定されていません");
-
-  const { data: existing, error: fetchError } = await supabase
-    .from("instructor_licenses")
-    .select("*")
-    .eq("id", licenseId)
-    .single();
-
-  if (fetchError || !existing) {
-    throw new Error("ライセンスが見つかりません");
-  }
-
-  const current = mapLicense(existing as LicenseRow);
-  if (current.status === "withdrawn") {
-    throw new Error("退会済みのライセンスは更新できません");
-  }
-
-  const remaining = daysUntil(current.expiresAt);
-  const baseIso = remaining >= 0 ? current.expiresAt : todayIso();
-  const nextExpires = addYearsIso(baseIso, 1);
-
-  const { data, error } = await supabase
-    .from("instructor_licenses")
-    .update({
-      expires_at: nextExpires,
-      status: "active" as InstructorLicenseStatus,
-      renewal_status: "approved" as InstructorRenewalStatus,
-    })
-    .eq("id", licenseId)
-    .select("*")
-    .single();
-
-  if (error || !data) {
-    console.error("[instructor-license] renew failed:", error?.message);
-    throw new Error(error?.message || "ライセンスの更新に失敗しました");
-  }
-
-  await syncInstructorStatusHistory({
-    supabase,
-    instructorId: current.instructorId,
-    action: "renew",
-    toStatus: "active",
-    note: `1年間更新 → ${nextExpires}`,
-    renewsAt: nextExpires,
-    touchLastRenewed: true,
-  });
-
   return mapLicense(data as LicenseRow);
 }
