@@ -525,20 +525,23 @@ function LicenseManagementCard({
   const storedStatus = license?.status ?? null;
   const displayStatus = effectiveStatus(selected);
   const remaining = remainingDaysForItem(selected);
-  const canIssue = !license;
-  const canSuspend = Boolean(
-    license && (storedStatus === "active" || storedStatus === "expiring"),
-  );
-  const canResume = Boolean(license && storedStatus === "suspended");
-  const canRenew = Boolean(
+
+  const isUnissued = !license;
+  const isSuspended = Boolean(license && storedStatus === "suspended");
+  const isExpired = Boolean(
     license &&
+      !isSuspended &&
+      (storedStatus === "expired" || displayStatus === "expired"),
+  );
+  const isActive = Boolean(
+    license &&
+      !isSuspended &&
+      !isExpired &&
       storedStatus !== "withdrawn" &&
       (storedStatus === "active" ||
-        storedStatus === "expired" ||
         storedStatus === "expiring" ||
-        displayStatus === "expired" ||
-        displayStatus === "expiring" ||
-        displayStatus === "active"),
+        displayStatus === "active" ||
+        displayStatus === "expiring"),
   );
 
   return (
@@ -568,14 +571,14 @@ function LicenseManagementCard({
         </ReadonlyRow>
       </dl>
 
-      {canResume && remaining != null && remaining < 0 ? (
+      {isSuspended && remaining != null && remaining < 0 ? (
         <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-6 text-amber-900">
           有効期限が切れています。再開前に有効期限を更新してください。
         </p>
       ) : null}
 
       <div className="mt-5 flex flex-col gap-3">
-        {canIssue ? (
+        {isUnissued ? (
           <Button
             type="button"
             className="min-h-12 w-full"
@@ -585,28 +588,49 @@ function LicenseManagementCard({
             ライセンス発行
           </Button>
         ) : null}
-        {canSuspend ? (
-          <Button
-            type="button"
-            variant="danger"
-            className="min-h-12 w-full"
-            disabled={busy}
-            onClick={() => onRequestAction("suspend")}
-          >
-            停止
-          </Button>
+        {isActive ? (
+          <>
+            <Button
+              type="button"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestAction("suspend")}
+            >
+              停止する
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestAction("renew")}
+            >
+              1年間更新
+            </Button>
+          </>
         ) : null}
-        {canResume ? (
-          <Button
-            type="button"
-            className="min-h-12 w-full"
-            disabled={busy || (remaining != null && remaining < 0)}
-            onClick={() => onRequestAction("resume")}
-          >
-            再開
-          </Button>
+        {isSuspended ? (
+          <>
+            <Button
+              type="button"
+              className="min-h-12 w-full"
+              disabled={busy || (remaining != null && remaining < 0)}
+              onClick={() => onRequestAction("resume")}
+            >
+              再開する
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestAction("renew")}
+            >
+              1年間更新
+            </Button>
+          </>
         ) : null}
-        {canRenew ? (
+        {isExpired ? (
           <Button
             type="button"
             variant="secondary"
