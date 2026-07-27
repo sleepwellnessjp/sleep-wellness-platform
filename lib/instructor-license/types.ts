@@ -131,9 +131,10 @@ export type UpsertCertifiedInstructorInput = {
   renewsAt: string;
   userId?: string | null;
   adminMemo?: string;
-  /** 同時にライセンスを発行する場合 */
+  /** 同時にライセンスを発行／更新する場合 */
   issueLicense?: boolean;
   licenseStatus?: InstructorLicenseStatus;
   requiredEducationHours?: number;
   completedEducationHours?: number;
+  renewalStatus?: InstructorRenewalStatus;
 };

@@ -2,11 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "@/components/AdminShell";
-import InstructorLicenseCertificateSheet from "@/components/InstructorLicenseCertificateSheet";
 import Button from "@/components/ui/Button";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
+import { GOLD, NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
 import {
   daysUntil,
   daysUntilExpiryColor,
@@ -16,6 +15,9 @@ import {
   INSTRUCTOR_LICENSE_STATUS_LABELS,
   INSTRUCTOR_LICENSE_STATUSES,
   INSTRUCTOR_RENEWAL_STATUS_LABELS,
+  INSTRUCTOR_RENEWAL_STATUSES,
+  isInstructorRenewalStatus,
+  licenseVerificationUrl,
   resolveCertificationName,
   resolveDisplayStatus,
   SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
@@ -24,12 +26,16 @@ import {
 import type {
   AdminCertifiedInstructorListItem,
   InstructorLicenseStatus,
+  InstructorRenewalStatus,
 } from "@/lib/instructor-license/types";
+import type { CertificationLevelRecord } from "@/lib/ops/types";
 
 const inputClass =
   "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[16px] text-[#071426] outline-none transition focus:border-[#315f68] focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:text-[15px]";
 
 const selectClass = inputClass;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -95,21 +101,89 @@ function EducationBar({
   completed: number;
 }) {
   const percent = educationProgressPercent(required, completed);
-  const filled = Math.round(percent / 10);
   return (
     <div>
-      <p className="text-[12px] text-slate-600">
-        {completed} / {required}時間（{percent}%）
-      </p>
-      <p
-        className="mt-1 font-mono text-[12px] tracking-tight"
-        style={{ color: TEAL }}
-        aria-hidden
+      <div className="flex items-center justify-between gap-2 text-[12px] text-slate-600">
+        <span>
+          {completed} / {required}時間
+        </span>
+        <span className="font-semibold" style={{ color: TEAL }}>
+          {percent}%
+        </span>
+      </div>
+      <div
+        className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-slate-200"
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="継続教育の進捗"
       >
-        {"■".repeat(filled)}
-        {"□".repeat(Math.max(0, 10 - filled))}
-      </p>
+        <div
+          className="h-full rounded-full transition-[width] duration-300"
+          style={{
+            width: `${percent}%`,
+            backgroundColor: TEAL,
+          }}
+        />
+      </div>
     </div>
+  );
+}
+
+function ReadonlyRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3">
+      <dt className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-[14px] font-semibold text-[#071426]">
+        {children}
+      </dd>
+    </div>
+  );
+}
+
+function AdminLinkButton({
+  href,
+  label,
+  disabled,
+  reason,
+}: {
+  href: string;
+  label: string;
+  disabled: boolean;
+  reason: string;
+}) {
+  if (disabled) {
+    return (
+      <div>
+        <button
+          type="button"
+          disabled
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-200 bg-slate-100 px-4 text-[13px] font-semibold text-slate-400 sm:w-auto"
+        >
+          {label}
+        </button>
+        <p className="mt-1.5 text-[12px] text-slate-500">{reason}</p>
+      </div>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[#8a6a2d]/35 bg-white px-4 text-[13px] font-semibold text-[#8a6a2d] transition hover:border-[#8a6a2d]/55 hover:bg-[#fafaf8] sm:w-auto"
+    >
+      {label}
+    </a>
   );
 }
 
@@ -117,12 +191,13 @@ export default function AdminCertifiedInstructorsPage() {
   const [instructors, setInstructors] = useState<
     AdminCertifiedInstructorListItem[]
   >([]);
+  const [levels, setLevels] = useState<CertificationLevelRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showCertificate, setShowCertificate] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<string[]>([]);
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -131,36 +206,45 @@ export default function AdminCertifiedInstructorsPage() {
 
   const [editPublicName, setEditPublicName] = useState("");
   const [editLegalName, setEditLegalName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editLevelId, setEditLevelId] = useState("instructor");
   const [editCertifiedAt, setEditCertifiedAt] = useState(todayIso());
   const [editExpiresAt, setEditExpiresAt] = useState(todayIso());
-  const [editLicenseStatus, setEditLicenseStatus] =
-    useState<InstructorLicenseStatus>("active");
+  const [editRequiredHours, setEditRequiredHours] = useState("12");
+  const [editCompletedHours, setEditCompletedHours] = useState("0");
+  const [editRenewalStatus, setEditRenewalStatus] =
+    useState<InstructorRenewalStatus>("not_requested");
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const response = await fetch("/api/admin/certified-instructors", {
-        cache: "no-store",
-      });
-      const json = (await response.json()) as {
+      const [instructorRes, levelRes] = await Promise.all([
+        fetch("/api/admin/certified-instructors", { cache: "no-store" }),
+        fetch("/api/admin/ops?resource=levels", { cache: "no-store" }),
+      ]);
+      const json = (await instructorRes.json()) as {
         instructors?: AdminCertifiedInstructorListItem[];
         error?: string;
       };
-      if (response.status === 401) {
+      const levelJson = (await levelRes.json()) as {
+        levels?: CertificationLevelRecord[];
+      };
+      if (instructorRes.status === 401) {
         window.location.href = `/login?redirect=${encodeURIComponent("/admin/instructors")}`;
         return;
       }
-      if (response.status === 403) {
+      if (instructorRes.status === 403) {
         window.location.href = "/forbidden";
         return;
       }
-      if (!response.ok) throw new Error(json.error ?? "取得に失敗しました");
+      if (!instructorRes.ok) throw new Error(json.error ?? "取得に失敗しました");
       const list = json.instructors ?? [];
       setInstructors(list);
+      setLevels(levelJson.levels ?? []);
       setSelectedId((prev) => {
         if (prev && list.some((item) => item.instructorId === prev)) return prev;
-        return list[0]?.instructorId ?? null;
+        return null;
       });
     } catch (error) {
       setLoadError(
@@ -204,8 +288,7 @@ export default function AdminCertifiedInstructorsPage() {
       if (unlinkedOnly && item.userId.trim()) return false;
 
       if (expiringSoonOnly) {
-        const expires =
-          item.license?.expiresAt || item.renewsAt || "";
+        const expires = item.license?.expiresAt || item.renewsAt || "";
         if (!expires) return false;
         const days = daysUntil(expires);
         if (days < 0 || days > 30) return false;
@@ -232,51 +315,97 @@ export default function AdminCertifiedInstructorsPage() {
     if (!selected) {
       setEditPublicName("");
       setEditLegalName("");
+      setEditEmail("");
+      setEditLevelId("instructor");
       setEditCertifiedAt(todayIso());
       setEditExpiresAt(todayIso());
-      setEditLicenseStatus("active");
-      setShowCertificate(false);
+      setEditRequiredHours("12");
+      setEditCompletedHours("0");
+      setEditRenewalStatus("not_requested");
+      setFieldErrors([]);
       return;
     }
     setEditPublicName(
       selected.activityName === "—" ? "" : selected.activityName,
     );
     setEditLegalName(selected.legalName);
+    setEditEmail(selected.email);
+    setEditLevelId(
+      selected.license?.certificationLevelId ||
+        selected.levelId ||
+        "instructor",
+    );
     setEditCertifiedAt(
       selected.license?.issuedAt || selected.certifiedAt || todayIso(),
     );
     setEditExpiresAt(
       selected.license?.expiresAt || selected.renewsAt || todayIso(),
     );
-    setEditLicenseStatus(selected.license?.status ?? "active");
-    setShowCertificate(false);
+    setEditRequiredHours(
+      String(selected.license?.requiredEducationHours ?? 12),
+    );
+    setEditCompletedHours(
+      String(selected.license?.completedEducationHours ?? 0),
+    );
+    setEditRenewalStatus(selected.license?.renewalStatus ?? "not_requested");
     setSaveState("idle");
     setSaveMessage(null);
+    setFieldErrors([]);
   }, [selected]);
 
-  const selectInstructor = (id: string, scrollToDetail = false) => {
+  const liveProgressPercent = educationProgressPercent(
+    Number(editRequiredHours) || 0,
+    Number(editCompletedHours) || 0,
+  );
+
+  const selectInstructor = (id: string) => {
     setSelectedId(id);
-    if (scrollToDetail) {
-      window.requestAnimationFrame(() => {
-        document
-          .getElementById("instructor-detail")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById("instructor-detail")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const closeDetail = () => {
+    setSelectedId(null);
+    setSaveState("idle");
+    setSaveMessage(null);
+    setFieldErrors([]);
+  };
+
+  const validate = (): string[] => {
+    const errors: string[] = [];
+    if (!editPublicName.trim()) errors.push("活動名は必須です");
+    if (!editLegalName.trim()) errors.push("本名は必須です");
+    if (!editEmail.trim()) {
+      errors.push("メールアドレスは必須です");
+    } else if (!EMAIL_RE.test(editEmail.trim())) {
+      errors.push("メールアドレスの形式が正しくありません");
     }
+    if (editExpiresAt < editCertifiedAt) {
+      errors.push("有効期限が認定日より前にならないようにしてください");
+    }
+    const required = Number(editRequiredHours);
+    const completed = Number(editCompletedHours);
+    if (!Number.isFinite(required) || required < 0) {
+      errors.push("継続教育の必要時間は0以上で入力してください");
+    }
+    if (!Number.isFinite(completed) || completed < 0) {
+      errors.push("継続教育の修了時間は0以上で入力してください");
+    }
+    return errors;
   };
 
   const onSave = async (event: FormEvent) => {
     event.preventDefault();
     if (!selected || saveState === "saving") return;
 
-    if (!editPublicName.trim()) {
+    const errors = validate();
+    setFieldErrors(errors);
+    if (errors.length > 0) {
       setSaveState("error");
-      setSaveMessage("活動名を入力してください");
-      return;
-    }
-    if (editExpiresAt < editCertifiedAt) {
-      setSaveState("error");
-      setSaveMessage("有効期限は認定日以降の日付を指定してください");
+      setSaveMessage("更新に失敗しました。入力内容と権限を確認してください");
       return;
     }
 
@@ -290,10 +419,10 @@ export default function AdminCertifiedInstructorsPage() {
           action: "upsert_instructor",
           instructor: {
             id: selected.instructorId,
-            email: selected.email,
+            email: editEmail.trim(),
             publicName: editPublicName.trim(),
             legalName: editLegalName.trim(),
-            levelId: selected.levelId || "instructor",
+            levelId: editLevelId || "instructor",
             instructorNumber:
               selected.license?.licenseNumber ||
               selected.instructorNumber ||
@@ -302,11 +431,10 @@ export default function AdminCertifiedInstructorsPage() {
             renewsAt: editExpiresAt,
             adminMemo: selected.adminMemo,
             issueLicense: Boolean(selected.license),
-            licenseStatus: editLicenseStatus,
-            requiredEducationHours:
-              selected.license?.requiredEducationHours ?? 12,
-            completedEducationHours:
-              selected.license?.completedEducationHours ?? 0,
+            licenseStatus: selected.license?.status ?? "active",
+            requiredEducationHours: Number(editRequiredHours),
+            completedEducationHours: Number(editCompletedHours),
+            renewalStatus: editRenewalStatus,
           },
         }),
       });
@@ -323,7 +451,7 @@ export default function AdminCertifiedInstructorsPage() {
         return;
       }
       if (!response.ok) {
-        throw new Error(json.error ?? "保存に失敗しました");
+        throw new Error(json.error ?? "更新に失敗しました");
       }
 
       const updated = json.instructor;
@@ -337,12 +465,11 @@ export default function AdminCertifiedInstructorsPage() {
         await load();
       }
       setSaveState("success");
-      setSaveMessage("保存しました。/license・認定証・認証ページへ反映されます。");
-    } catch (error) {
+      setSaveMessage("認定講師情報を更新しました");
+      setFieldErrors([]);
+    } catch {
       setSaveState("error");
-      setSaveMessage(
-        error instanceof Error ? error.message : "保存に失敗しました",
-      );
+      setSaveMessage("更新に失敗しました。入力内容と権限を確認してください");
     }
   };
 
@@ -354,6 +481,21 @@ export default function AdminCertifiedInstructorsPage() {
         : saveState === "saving"
           ? "border-slate-200 bg-white text-slate-700"
           : "border-slate-200 bg-white text-slate-700";
+
+  const verificationCode =
+    selected?.license?.verificationCode?.trim() ?? "";
+  const verifyHref = verificationCode
+    ? licenseVerificationUrl(verificationCode)
+    : "";
+  const certificateHref = selected
+    ? `/admin/instructors/certificate?id=${encodeURIComponent(selected.instructorId)}`
+    : "";
+  const hasLicense = Boolean(selected?.license);
+
+  const levelLabel = (levelId: string) => {
+    const found = levels.find((level) => level.id === levelId);
+    return found?.label || levelId || "—";
+  };
 
   return (
     <AdminShell
@@ -443,7 +585,6 @@ export default function AdminCertifiedInstructorsPage() {
               </p>
             ) : (
               <>
-                {/* Desktop table */}
                 <div className="mt-4 hidden overflow-x-auto md:block">
                   <table className="min-w-full text-left text-[13px]">
                     <thead>
@@ -512,7 +653,7 @@ export default function AdminCertifiedInstructorsPage() {
                             <td className="py-3 pr-3">
                               {statusLabelForItem(item)}
                             </td>
-                            <td className="py-3 pr-3">
+                            <td className="py-3 pr-3 min-w-[140px]">
                               {license ? (
                                 <EducationBar
                                   required={license.requiredEducationHours}
@@ -535,10 +676,10 @@ export default function AdminCertifiedInstructorsPage() {
                                 variant="secondary"
                                 size="sm"
                                 onClick={() =>
-                                  selectInstructor(item.instructorId, true)
+                                  selectInstructor(item.instructorId)
                                 }
                               >
-                                詳細
+                                詳細・編集
                               </Button>
                             </td>
                           </tr>
@@ -548,7 +689,6 @@ export default function AdminCertifiedInstructorsPage() {
                   </table>
                 </div>
 
-                {/* Mobile cards */}
                 <ul className="mt-4 space-y-3 md:hidden">
                   {filtered.map((item) => {
                     const license = item.license;
@@ -586,9 +726,6 @@ export default function AdminCertifiedInstructorsPage() {
                           <dl className="mt-3 grid grid-cols-1 gap-1.5 text-[12px] text-slate-600">
                             <div>メール：{item.email || "—"}</div>
                             <div>
-                              紐づけ：{accountLinkLabel(item.userId)}
-                            </div>
-                            <div>
                               資格：
                               {resolveCertificationName(
                                 license?.certificationName,
@@ -601,24 +738,12 @@ export default function AdminCertifiedInstructorsPage() {
                                 "—"}
                             </div>
                             <div>
-                              認定日：
-                              {formatJaDate(certifiedAtForItem(item))}
-                            </div>
-                            <div>
                               有効期限：
                               {formatJaDate(expiresAtForItem(item))}
                             </div>
                             <div>
                               残り日数：
                               <RemainingDaysCell item={item} />
-                            </div>
-                            <div>
-                              更新申請：
-                              {license
-                                ? INSTRUCTOR_RENEWAL_STATUS_LABELS[
-                                    license.renewalStatus
-                                  ]
-                                : "—"}
                             </div>
                           </dl>
                           {license ? (
@@ -636,10 +761,10 @@ export default function AdminCertifiedInstructorsPage() {
                               size="sm"
                               className="min-h-11 w-full"
                               onClick={() =>
-                                selectInstructor(item.instructorId, true)
+                                selectInstructor(item.instructorId)
                               }
                             >
-                              詳細
+                              詳細・編集
                             </Button>
                           </div>
                         </article>
@@ -658,94 +783,114 @@ export default function AdminCertifiedInstructorsPage() {
             >
               {!selected ? (
                 <p className="text-[14px] text-slate-600">
-                  一覧の「詳細」から講師を選択してください。
+                  一覧の「詳細・編集」から講師を選択してください。
                 </p>
               ) : (
-                <form className="space-y-4" onSubmit={(e) => void onSave(e)}>
-                  <dl className="grid gap-2 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3 text-[13px] text-slate-600">
-                    <div>
-                      メール：
-                      <span className="font-semibold text-slate-800">
-                        {selected.email || "—"}
-                      </span>
-                    </div>
-                    <div>
-                      紐づけ：
-                      <span className="font-semibold text-slate-800">
-                        {accountLinkLabel(selected.userId)}
-                      </span>
-                    </div>
-                    <div>
-                      認定資格名：
-                      <span className="font-semibold text-slate-800">
-                        {resolveCertificationName(
-                          selected.license?.certificationName,
-                        ) || SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
-                      </span>
-                    </div>
-                    <div>
-                      認定番号：
-                      <span className="font-mono font-semibold text-slate-800">
+                <form className="space-y-5" onSubmit={(e) => void onSave(e)}>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <ReadonlyRow label="認定資格名">
+                      {SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
+                    </ReadonlyRow>
+                    <ReadonlyRow label="認定番号">
+                      <span className="font-mono">
                         {selected.license?.licenseNumber ||
                           selected.instructorNumber ||
                           "—"}
                       </span>
-                    </div>
-                    <div>
-                      認定日：
-                      <span className="font-semibold text-slate-800">
-                        {formatJaDate(certifiedAtForItem(selected))}
+                    </ReadonlyRow>
+                    <ReadonlyRow label="確認コード">
+                      <span className="break-all font-mono text-[13px]">
+                        {verificationCode || "—"}
                       </span>
-                    </div>
-                    <div>
-                      有効期限：
-                      <span className="font-semibold text-slate-800">
-                        {formatJaDate(expiresAtForItem(selected))}
-                      </span>
-                    </div>
-                    <div>
-                      残り日数：
+                    </ReadonlyRow>
+                    <ReadonlyRow label="ライセンス状態">
+                      {statusLabelForItem(selected)}
+                    </ReadonlyRow>
+                    <ReadonlyRow label="残り日数">
                       <RemainingDaysCell item={selected} />
-                    </div>
-                    <div>
-                      状態：
-                      <span className="font-semibold text-slate-800">
-                        {statusLabelForItem(selected)}
-                      </span>
-                    </div>
-                    {selected.license ? (
-                      <div className="pt-1">
-                        <EducationBar
-                          required={selected.license.requiredEducationHours}
-                          completed={selected.license.completedEducationHours}
-                        />
-                      </div>
-                    ) : null}
+                    </ReadonlyRow>
+                    <ReadonlyRow label="認証ページURL">
+                      {verifyHref ? (
+                        <a
+                          href={verifyHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="break-all text-[13px] font-semibold text-[#315f68] hover:text-[#8a6a2d]"
+                        >
+                          {verifyHref}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </ReadonlyRow>
                   </dl>
 
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-[13px] font-semibold text-slate-600">
+                      活動名
+                      <input
+                        className={inputClass}
+                        value={editPublicName}
+                        onChange={(event) =>
+                          setEditPublicName(event.target.value)
+                        }
+                        required
+                        disabled={saveState === "saving"}
+                      />
+                    </label>
+                    <label className="block text-[13px] font-semibold text-slate-600">
+                      本名
+                      <input
+                        className={inputClass}
+                        value={editLegalName}
+                        onChange={(event) =>
+                          setEditLegalName(event.target.value)
+                        }
+                        required
+                        disabled={saveState === "saving"}
+                      />
+                    </label>
+                  </div>
+
                   <label className="block text-[13px] font-semibold text-slate-600">
-                    活動名（public_name）
+                    メールアドレス
                     <input
                       className={inputClass}
-                      value={editPublicName}
-                      onChange={(event) =>
-                        setEditPublicName(event.target.value)
-                      }
+                      type="email"
+                      value={editEmail}
+                      onChange={(event) => setEditEmail(event.target.value)}
                       required
                       disabled={saveState === "saving"}
+                      autoComplete="off"
                     />
+                    <p className="mt-2 text-[12px] leading-5 text-slate-500">
+                      ※ログイン用メールアドレスの変更は別途アカウント設定が必要です。
+                    </p>
                   </label>
+
                   <label className="block text-[13px] font-semibold text-slate-600">
-                    本名（legal_name）
-                    <input
-                      className={inputClass}
-                      value={editLegalName}
-                      onChange={(event) => setEditLegalName(event.target.value)}
-                      placeholder="未登録可"
+                    認定レベル
+                    <select
+                      className={selectClass}
+                      value={editLevelId}
+                      onChange={(event) => setEditLevelId(event.target.value)}
                       disabled={saveState === "saving"}
-                    />
+                    >
+                      {levels.length === 0 ? (
+                        <option value={editLevelId}>
+                          {levelLabel(editLevelId)}
+                        </option>
+                      ) : (
+                        levels.map((level) => (
+                          <option key={level.id} value={level.id}>
+                            {level.label}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
+
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <label className="block text-[13px] font-semibold text-slate-600">
                       認定日
                       <input
@@ -773,34 +918,115 @@ export default function AdminCertifiedInstructorsPage() {
                       />
                     </label>
                   </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                    <p
+                      className="text-[11px] font-semibold tracking-[0.16em]"
+                      style={{ color: GOLD }}
+                    >
+                      CONTINUING EDUCATION
+                    </p>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <label className="block text-[13px] font-semibold text-slate-600">
+                        継続教育の必要時間
+                        <input
+                          className={inputClass}
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={editRequiredHours}
+                          onChange={(event) =>
+                            setEditRequiredHours(event.target.value)
+                          }
+                          disabled={saveState === "saving" || !hasLicense}
+                        />
+                      </label>
+                      <label className="block text-[13px] font-semibold text-slate-600">
+                        継続教育の修了時間
+                        <input
+                          className={inputClass}
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={editCompletedHours}
+                          onChange={(event) =>
+                            setEditCompletedHours(event.target.value)
+                          }
+                          disabled={saveState === "saving" || !hasLicense}
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-4">
+                      <EducationBar
+                        required={Number(editRequiredHours) || 0}
+                        completed={Number(editCompletedHours) || 0}
+                      />
+                      <p className="mt-2 text-[12px] text-slate-500">
+                        表示上の進捗は {liveProgressPercent}%
+                        （必要時間以上でも100%が上限）
+                      </p>
+                    </div>
+                    {!hasLicense ? (
+                      <p className="mt-3 text-[12px] text-amber-800">
+                        ライセンス未発行のため継続教育は編集できません。
+                      </p>
+                    ) : null}
+                  </div>
+
                   <label className="block text-[13px] font-semibold text-slate-600">
-                    ライセンス状態
+                    更新申請状況
                     <select
                       className={selectClass}
-                      value={editLicenseStatus}
-                      onChange={(event) =>
-                        setEditLicenseStatus(
-                          event.target.value as InstructorLicenseStatus,
-                        )
-                      }
-                      disabled={saveState === "saving" || !selected.license}
+                      value={editRenewalStatus}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (isInstructorRenewalStatus(value)) {
+                          setEditRenewalStatus(value);
+                        }
+                      }}
+                      disabled={saveState === "saving" || !hasLicense}
                     >
-                      {INSTRUCTOR_LICENSE_STATUSES.map((status) => (
+                      {INSTRUCTOR_RENEWAL_STATUSES.map((status) => (
                         <option key={status} value={status}>
-                          {INSTRUCTOR_LICENSE_STATUS_LABELS[status]}
+                          {INSTRUCTOR_RENEWAL_STATUS_LABELS[status]}
                         </option>
                       ))}
                     </select>
                   </label>
-                  {!selected.license ? (
-                    <p className="text-[13px] text-amber-800">
-                      ライセンス未発行のため状態変更はできません（第2段階で発行予定）。
+
+                  {fieldErrors.length > 0 ? (
+                    <ul className="space-y-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-900">
+                      {fieldErrors.map((error) => (
+                        <li key={error}>・{error}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-4">
+                    <p className="text-[13px] font-semibold text-slate-700">
+                      管理用リンク
                     </p>
-                  ) : (
-                    <p className="text-[12px] text-slate-500">
-                      有効期限を過ぎている場合、DB が active でも一覧では「期限切れ」と表示します。
-                    </p>
-                  )}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                      <AdminLinkButton
+                        href="/license"
+                        label="My Licenseを開く"
+                        disabled={!hasLicense}
+                        reason="ライセンスが未発行のため開けません"
+                      />
+                      <AdminLinkButton
+                        href={verifyHref || "#"}
+                        label="公開認証ページを開く"
+                        disabled={!verificationCode}
+                        reason="確認コードがないため開けません"
+                      />
+                      <AdminLinkButton
+                        href={certificateHref || "#"}
+                        label="デジタル認定証を開く"
+                        disabled={!hasLicense}
+                        reason="ライセンスが未発行のため開けません"
+                      />
+                    </div>
+                  </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                     <Button
@@ -810,52 +1036,18 @@ export default function AdminCertifiedInstructorsPage() {
                     >
                       {saveState === "saving" ? "保存中…" : "保存する"}
                     </Button>
-                    {selected.license ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="min-h-12 w-full sm:w-auto"
-                        onClick={() =>
-                          setShowCertificate((value) => !value)
-                        }
-                      >
-                        {showCertificate
-                          ? "認定証を閉じる"
-                          : "デジタル認定証を確認"}
-                      </Button>
-                    ) : null}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="min-h-12 w-full sm:w-auto"
+                      onClick={closeDetail}
+                      disabled={saveState === "saving"}
+                    >
+                      閉じる
+                    </Button>
                   </div>
                 </form>
               )}
-
-              {selected?.license && showCertificate ? (
-                <div className="mt-6 border-t border-slate-200 pt-6">
-                  <p className="mb-3 text-[12px] text-slate-500">
-                    認定証の氏名は本名「
-                    {formatLegalNameDisplay(selected.legalName)}」を表示します。
-                  </p>
-                  <InstructorLicenseCertificateSheet
-                    legalName={selected.legalName}
-                    license={selected.license}
-                    verificationUrl={
-                      selected.license.verificationCode
-                        ? `/license/verify?code=${encodeURIComponent(selected.license.verificationCode)}`
-                        : "/license/verify"
-                    }
-                  />
-                </div>
-              ) : null}
-            </SectionCard>
-
-            <SectionCard title="近日実装予定" eyebrow="ROADMAP">
-              <ul className="space-y-2 text-[14px] leading-6 text-slate-600">
-                <li>・新規認定講師の登録と認定番号の自動生成</li>
-                <li>・本人アカウントとの安全な紐づけ</li>
-                <li>・ライセンス発行・停止・取消・再有効化・期限延長</li>
-                <li>・継続教育時間の編集</li>
-                <li>・操作履歴・認定証再発行・認定番号再生成</li>
-                <li>・より高度な検索と絞り込み</li>
-              </ul>
             </SectionCard>
           </div>
         </div>

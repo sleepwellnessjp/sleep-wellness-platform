@@ -36,7 +36,7 @@ export const INSTRUCTOR_LICENSE_STATUS_LABELS: Record<
   expired: "期限切れ",
   suspended: "停止中",
   pending: "審査中",
-  withdrawn: "取消",
+  withdrawn: "退会",
 };
 
 /** 公開認証ページの状態表記 */

@@ -1208,13 +1208,32 @@ export async function upsertAdminCertifiedInstructor(
   const renewsAt = input.renewsAt.slice(0, 10);
 
   if (!email) throw new Error("メールアドレスを入力してください");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("メールアドレスの形式が正しくありません");
+  }
   if (!publicName) throw new Error("活動名を入力してください");
+  if (!legalName) throw new Error("本名を入力してください");
   if (!instructorNumber) throw new Error("認定番号を入力してください");
   if (!certifiedAt || !renewsAt) {
     throw new Error("認定日と有効期限を入力してください");
   }
   if (renewsAt < certifiedAt) {
     throw new Error("有効期限は認定日以降の日付を指定してください");
+  }
+
+  const requiredEducationHours = Number(input.requiredEducationHours ?? 0);
+  const completedEducationHours = Number(input.completedEducationHours ?? 0);
+  if (
+    !Number.isFinite(requiredEducationHours) ||
+    requiredEducationHours < 0
+  ) {
+    throw new Error("継続教育の必要時間は0以上で入力してください");
+  }
+  if (
+    !Number.isFinite(completedEducationHours) ||
+    completedEducationHours < 0
+  ) {
+    throw new Error("継続教育の修了時間は0以上で入力してください");
   }
 
   // display_name は既存互換のため更新時は触らない（新規のみ設定）
@@ -1290,8 +1309,9 @@ export async function upsertAdminCertifiedInstructor(
         issuedAt: certifiedAt,
         expiresAt: renewsAt,
         status: licenseStatus,
-        requiredEducationHours: Number(input.requiredEducationHours ?? 0),
-        completedEducationHours: Number(input.completedEducationHours ?? 0),
+        requiredEducationHours,
+        completedEducationHours,
+        renewalStatus: input.renewalStatus,
       });
     } else {
       await upsertAdminInstructorLicense({
@@ -1302,8 +1322,10 @@ export async function upsertAdminCertifiedInstructor(
         issuedAt: certifiedAt,
         expiresAt: renewsAt,
         status: licenseStatus,
-        requiredEducationHours: Number(input.requiredEducationHours ?? 12),
-        completedEducationHours: Number(input.completedEducationHours ?? 0),
+        requiredEducationHours:
+          requiredEducationHours > 0 ? requiredEducationHours : 12,
+        completedEducationHours,
+        renewalStatus: input.renewalStatus,
       });
     }
   }
