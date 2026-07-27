@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
 import InstructorPublicShell from "@/components/instructors/InstructorPublicShell";
 
@@ -205,12 +204,12 @@ export default function CertifiedInstructorProgramPage() {
               >
                 講座内容を見る
               </a>
-              <a
-                href="#contact"
+              <Link
+                href="/contact"
                 className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:border-white/40 hover:bg-white/20 sm:text-base"
               >
                 開催情報を問い合わせる
-              </a>
+              </Link>
             </div>
           </div>
         </section>
@@ -524,12 +523,12 @@ export default function CertifiedInstructorProgramPage() {
               お問い合わせフォームよりご確認ください。
             </p>
             <div className="mt-8 flex flex-col items-center gap-4">
-              <a
-                href="#contact"
+              <Link
+                href="/contact"
                 className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition hover:bg-[#f4f4f4] sm:text-base"
               >
                 認定講座について問い合わせる
-              </a>
+              </Link>
               <Link
                 href="/"
                 className="text-sm font-semibold text-white/70 transition hover:text-white"
@@ -539,8 +538,6 @@ export default function CertifiedInstructorProgramPage() {
             </div>
           </div>
         </section>
-
-        <Contact />
       </main>
       <Footer />
     </InstructorPublicShell>
