@@ -506,26 +506,6 @@ function InstructorEditForm({
           閉じる
         </Button>
       </div>
-
-      <div className="mt-3 flex flex-col gap-3">
-        <Button type="button" className="min-h-12 w-full" disabled={false}>
-          ライセンス発行
-        </Button>
-        <Button type="button" className="min-h-12 w-full" disabled={false}>
-          停止
-        </Button>
-        <Button type="button" className="min-h-12 w-full" disabled={false}>
-          再開
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="min-h-12 w-full"
-          disabled={false}
-        >
-          1年間更新
-        </Button>
-      </div>
     </form>
   );
 }
@@ -533,13 +513,18 @@ function InstructorEditForm({
 function LicenseManagementCard({
   selected,
   verificationCode,
+  busy,
+  onRequestAction,
 }: {
   selected: AdminCertifiedInstructorListItem;
   verificationCode: string;
+  busy: boolean;
+  onRequestAction: (kind: LicenseActionKind) => void;
 }) {
   const license = selected.license;
   const remaining = remainingDaysForItem(selected);
   const isSuspended = Boolean(license && license.status === "suspended");
+  const hasLicense = Boolean(license);
 
   return (
     <SectionCard title="ライセンス管理" eyebrow="LICENSE" className="mt-6">
@@ -573,6 +558,44 @@ function LicenseManagementCard({
           有効期限が切れています。再開前に有効期限を更新してください。
         </p>
       ) : null}
+
+      <div className="mt-5 flex flex-col gap-3">
+        <Button
+          type="button"
+          className="min-h-12 w-full"
+          disabled={busy || hasLicense}
+          onClick={() => onRequestAction("issue")}
+        >
+          ライセンス発行
+        </Button>
+        <Button
+          type="button"
+          className="min-h-12 w-full"
+          disabled={busy || !hasLicense || isSuspended}
+          onClick={() => onRequestAction("suspend")}
+        >
+          停止
+        </Button>
+        <Button
+          type="button"
+          className="min-h-12 w-full"
+          disabled={
+            busy || !hasLicense || !isSuspended || (remaining != null && remaining < 0)
+          }
+          onClick={() => onRequestAction("resume")}
+        >
+          再開
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-12 w-full"
+          disabled={busy || !hasLicense}
+          onClick={() => onRequestAction("renew")}
+        >
+          1年間更新
+        </Button>
+      </div>
     </SectionCard>
   );
 }
@@ -1433,6 +1456,8 @@ export default function AdminCertifiedInstructorsPage() {
                 <LicenseManagementCard
                   selected={selected}
                   verificationCode={verificationCode}
+                  busy={licenseBusy || saveState === "saving"}
+                  onRequestAction={requestLicenseAction}
                 />
               </div>
             </div>
