@@ -6,8 +6,10 @@ import InstructorLicenseCertificateSheet from "@/components/InstructorLicenseCer
 import Button from "@/components/ui/Button";
 import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { GOLD, NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
+import { NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
 import {
+  daysUntil,
+  daysUntilExpiryColor,
   educationProgressPercent,
   formatJaDate,
   formatLegalNameDisplay,
@@ -18,7 +20,6 @@ import {
   resolveDisplayStatus,
   SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
   todayIso,
-  daysUntil,
 } from "@/lib/instructor-license/constants";
 import type {
   AdminCertifiedInstructorListItem,
@@ -48,6 +49,42 @@ function statusLabelForItem(item: AdminCertifiedInstructorListItem): string {
   const status = effectiveStatus(item);
   if (!status) return "未発行";
   return INSTRUCTOR_LICENSE_STATUS_LABELS[status];
+}
+
+function expiresAtForItem(item: AdminCertifiedInstructorListItem): string {
+  return item.license?.expiresAt || item.renewsAt || "";
+}
+
+function certifiedAtForItem(item: AdminCertifiedInstructorListItem): string {
+  return item.license?.issuedAt || item.certifiedAt || "";
+}
+
+function remainingDaysForItem(
+  item: AdminCertifiedInstructorListItem,
+): number | null {
+  const expires = expiresAtForItem(item);
+  if (!expires) return null;
+  return daysUntil(expires);
+}
+
+function formatRemainingDays(days: number | null): string {
+  if (days == null) return "—";
+  if (days >= 0) return `${days} 日`;
+  return `${Math.abs(days)} 日超過`;
+}
+
+function RemainingDaysCell({
+  item,
+}: {
+  item: AdminCertifiedInstructorListItem;
+}) {
+  const days = remainingDaysForItem(item);
+  const color = daysUntilExpiryColor(days) ?? NAVY;
+  return (
+    <span className="font-semibold" style={{ color }}>
+      {formatRemainingDays(days)}
+    </span>
+  );
 }
 
 function EducationBar({
@@ -217,8 +254,15 @@ export default function AdminCertifiedInstructorsPage() {
     setSaveMessage(null);
   }, [selected]);
 
-  const selectInstructor = (id: string) => {
+  const selectInstructor = (id: string, scrollToDetail = false) => {
     setSelectedId(id);
+    if (scrollToDetail) {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("instructor-detail")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   };
 
   const onSave = async (event: FormEvent) => {
@@ -412,9 +456,11 @@ export default function AdminCertifiedInstructorsPage() {
                         <th className="py-2 pr-3 font-semibold">番号</th>
                         <th className="py-2 pr-3 font-semibold">認定日</th>
                         <th className="py-2 pr-3 font-semibold">有効期限</th>
+                        <th className="py-2 pr-3 font-semibold">残り日数</th>
                         <th className="py-2 pr-3 font-semibold">状態</th>
                         <th className="py-2 pr-3 font-semibold">継続教育</th>
-                        <th className="py-2 font-semibold">更新申請</th>
+                        <th className="py-2 pr-3 font-semibold">更新申請</th>
+                        <th className="py-2 font-semibold">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -424,13 +470,12 @@ export default function AdminCertifiedInstructorsPage() {
                         return (
                           <tr
                             key={item.instructorId}
-                            className="cursor-pointer border-b border-slate-100"
+                            className="border-b border-slate-100"
                             style={
                               active
                                 ? { backgroundColor: SURFACE_WARM }
                                 : undefined
                             }
-                            onClick={() => selectInstructor(item.instructorId)}
                           >
                             <td
                               className="py-3 pr-3 font-semibold"
@@ -456,14 +501,13 @@ export default function AdminCertifiedInstructorsPage() {
                                 "—"}
                             </td>
                             <td className="py-3 pr-3">
-                              {formatJaDate(
-                                license?.issuedAt || item.certifiedAt,
-                              )}
+                              {formatJaDate(certifiedAtForItem(item))}
                             </td>
                             <td className="py-3 pr-3">
-                              {formatJaDate(
-                                license?.expiresAt || item.renewsAt,
-                              )}
+                              {formatJaDate(expiresAtForItem(item))}
+                            </td>
+                            <td className="py-3 pr-3">
+                              <RemainingDaysCell item={item} />
                             </td>
                             <td className="py-3 pr-3">
                               {statusLabelForItem(item)}
@@ -478,12 +522,24 @@ export default function AdminCertifiedInstructorsPage() {
                                 "—"
                               )}
                             </td>
-                            <td className="py-3">
+                            <td className="py-3 pr-3">
                               {license
                                 ? INSTRUCTOR_RENEWAL_STATUS_LABELS[
                                     license.renewalStatus
                                   ]
                                 : "—"}
+                            </td>
+                            <td className="py-3">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  selectInstructor(item.instructorId, true)
+                                }
+                              >
+                                詳細
+                              </Button>
                             </td>
                           </tr>
                         );
@@ -499,10 +555,8 @@ export default function AdminCertifiedInstructorsPage() {
                     const active = item.instructorId === selectedId;
                     return (
                       <li key={item.instructorId}>
-                        <button
-                          type="button"
-                          onClick={() => selectInstructor(item.instructorId)}
-                          className="w-full rounded-3xl border px-4 py-4 text-left transition"
+                        <article
+                          className="rounded-3xl border px-4 py-4 transition"
                           style={{
                             borderColor: active
                               ? NAVY
@@ -548,15 +602,15 @@ export default function AdminCertifiedInstructorsPage() {
                             </div>
                             <div>
                               認定日：
-                              {formatJaDate(
-                                license?.issuedAt || item.certifiedAt,
-                              )}
+                              {formatJaDate(certifiedAtForItem(item))}
                             </div>
                             <div>
                               有効期限：
-                              {formatJaDate(
-                                license?.expiresAt || item.renewsAt,
-                              )}
+                              {formatJaDate(expiresAtForItem(item))}
+                            </div>
+                            <div>
+                              残り日数：
+                              <RemainingDaysCell item={item} />
                             </div>
                             <div>
                               更新申請：
@@ -575,13 +629,20 @@ export default function AdminCertifiedInstructorsPage() {
                               />
                             </div>
                           ) : null}
-                          <p
-                            className="mt-3 text-[13px] font-semibold"
-                            style={{ color: GOLD }}
-                          >
-                            編集 →
-                          </p>
-                        </button>
+                          <div className="mt-4">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="min-h-11 w-full"
+                              onClick={() =>
+                                selectInstructor(item.instructorId, true)
+                              }
+                            >
+                              詳細
+                            </Button>
+                          </div>
+                        </article>
                       </li>
                     );
                   })}
@@ -590,14 +651,14 @@ export default function AdminCertifiedInstructorsPage() {
             )}
           </SectionCard>
 
-          <div className="space-y-6">
+          <div id="instructor-detail" className="scroll-mt-24 space-y-6">
             <SectionCard
-              title={selected ? "講師を編集" : "講師編集"}
-              eyebrow="EDIT"
+              title={selected ? "講師詳細・編集" : "講師詳細"}
+              eyebrow="DETAIL"
             >
               {!selected ? (
                 <p className="text-[14px] text-slate-600">
-                  左側（または上）の一覧から講師を選択してください。
+                  一覧の「詳細」から講師を選択してください。
                 </p>
               ) : (
                 <form className="space-y-4" onSubmit={(e) => void onSave(e)}>
@@ -628,6 +689,28 @@ export default function AdminCertifiedInstructorsPage() {
                         {selected.license?.licenseNumber ||
                           selected.instructorNumber ||
                           "—"}
+                      </span>
+                    </div>
+                    <div>
+                      認定日：
+                      <span className="font-semibold text-slate-800">
+                        {formatJaDate(certifiedAtForItem(selected))}
+                      </span>
+                    </div>
+                    <div>
+                      有効期限：
+                      <span className="font-semibold text-slate-800">
+                        {formatJaDate(expiresAtForItem(selected))}
+                      </span>
+                    </div>
+                    <div>
+                      残り日数：
+                      <RemainingDaysCell item={selected} />
+                    </div>
+                    <div>
+                      状態：
+                      <span className="font-semibold text-slate-800">
+                        {statusLabelForItem(selected)}
                       </span>
                     </div>
                     {selected.license ? (
