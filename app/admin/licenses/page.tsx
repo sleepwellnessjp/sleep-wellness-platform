@@ -753,39 +753,82 @@ export default function AdminLicensesPage() {
               ) : null}
 
               <div className="mt-5 flex flex-col gap-3">
-                {(selected.status === "active" ||
-                  selected.status === "expiring") && (
-                  <Button
-                    type="button"
-                    variant="danger"
-                    className="min-h-12 w-full"
-                    disabled={saving}
-                    onClick={() => void runLicenseAction("suspend")}
-                  >
-                    停止
-                  </Button>
-                )}
-                {selected.status === "suspended" ? (
-                  <Button
-                    type="button"
-                    className="min-h-12 w-full"
-                    disabled={saving || daysUntil(selected.expiresAt) < 0}
-                    onClick={() => void runLicenseAction("resume")}
-                  >
-                    再開
-                  </Button>
-                ) : null}
-                {selected.status !== "withdrawn" ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="min-h-12 w-full"
-                    disabled={saving}
-                    onClick={() => void runLicenseAction("renew")}
-                  >
-                    1年間更新
-                  </Button>
-                ) : null}
+                {(() => {
+                  const displayStatus = resolveDisplayStatus(
+                    selected.status,
+                    selected.expiresAt,
+                  );
+                  const isSuspended = selected.status === "suspended";
+                  const isExpired =
+                    !isSuspended &&
+                    (selected.status === "expired" || displayStatus === "expired");
+                  const isActive =
+                    !isSuspended &&
+                    !isExpired &&
+                    selected.status !== "withdrawn" &&
+                    (selected.status === "active" ||
+                      selected.status === "expiring" ||
+                      displayStatus === "active" ||
+                      displayStatus === "expiring");
+
+                  return (
+                    <>
+                      {isActive ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("suspend")}
+                          >
+                            停止する
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("renew")}
+                          >
+                            1年間更新
+                          </Button>
+                        </>
+                      ) : null}
+                      {isSuspended ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="min-h-12 w-full"
+                            disabled={saving || daysUntil(selected.expiresAt) < 0}
+                            onClick={() => void runLicenseAction("resume")}
+                          >
+                            再開する
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-12 w-full"
+                            disabled={saving}
+                            onClick={() => void runLicenseAction("renew")}
+                          >
+                            1年間更新
+                          </Button>
+                        </>
+                      ) : null}
+                      {isExpired ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-12 w-full"
+                          disabled={saving}
+                          onClick={() => void runLicenseAction("renew")}
+                        >
+                          1年間更新
+                        </Button>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             </SectionCard>
           ) : null}
