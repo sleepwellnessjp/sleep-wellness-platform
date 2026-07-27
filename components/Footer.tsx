@@ -2,12 +2,12 @@ import Image from "next/image";
 import Link from "next/link";
 
 const navigation = [
-  { label: "About", href: "#about" },
-  { label: "Services", href: "#services" },
+  { label: "About", href: "/#about" },
+  { label: "Services", href: "/#services" },
   { label: "認定講師", href: "/instructors" },
-  { label: "Partners", href: "#partners" },
-  { label: "Founder", href: "#founder" },
-  { label: "Contact", href: "#contact" },
+  { label: "Partners", href: "/#partners" },
+  { label: "Founder", href: "/#founder" },
+  { label: "Contact", href: "/contact" },
 ];
 
 export default function Footer() {

@@ -160,6 +160,8 @@ export function decidePathAccess(
     path === "/login" ||
     path.startsWith("/auth/") ||
     path === "/forbidden" ||
+    path === "/contact" ||
+    path.startsWith("/contact/") ||
     path === "/invite" ||
     path.startsWith("/invite/") ||
     path === "/demo" ||

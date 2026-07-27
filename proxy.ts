@@ -21,8 +21,10 @@ import {
  * /login・OAuth・認定講師公開ページ。それ以外のページはログイン必須。
  */
 function isPublicPath(pathname: string): boolean {
+  if (pathname === "/") return true;
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/")) return true;
+  if (pathname === "/contact" || pathname.startsWith("/contact/")) return true;
   if (pathname === "/instructors" || pathname.startsWith("/instructors/")) {
     return true;
   }
