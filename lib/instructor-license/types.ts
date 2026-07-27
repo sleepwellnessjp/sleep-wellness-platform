@@ -116,6 +116,7 @@ export type AdminCertifiedInstructorListItem = {
   renewsAt: string;
   instructorStatus: string;
   adminMemo: string;
+  lastRenewedAt: string | null;
   license: InstructorLicenseRecord | null;
 };
 

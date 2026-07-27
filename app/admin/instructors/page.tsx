@@ -7,6 +7,8 @@ import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SURFACE_WARM, TEAL } from "@/components/ui/tokens";
 import {
+  adminLicenseStatusColor,
+  adminLicenseStatusLabel,
   daysUntil,
   daysUntilExpiryColor,
   educationProgressPercent,
@@ -39,6 +41,14 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
+type LicenseActionKind = "issue" | "suspend" | "resume" | "renew";
+
+type ConfirmDialogState = {
+  kind: LicenseActionKind;
+  title: string;
+  message: string;
+} | null;
+
 function accountLinkLabel(userId: string): string {
   return userId.trim() ? "紐づけ済み" : "未紐づけ";
 }
@@ -52,9 +62,28 @@ function effectiveStatus(
 }
 
 function statusLabelForItem(item: AdminCertifiedInstructorListItem): string {
-  const status = effectiveStatus(item);
-  if (!status) return "未発行";
-  return INSTRUCTOR_LICENSE_STATUS_LABELS[status];
+  const license = item.license;
+  if (!license) return adminLicenseStatusLabel(null);
+  return adminLicenseStatusLabel(license.status, license.expiresAt);
+}
+
+function StatusBadge({ item }: { item: AdminCertifiedInstructorListItem }) {
+  const license = item.license;
+  const days = remainingDaysForItem(item);
+  const label = statusLabelForItem(item);
+  const color = adminLicenseStatusColor(
+    license?.status ?? null,
+    license?.expiresAt,
+    days,
+  );
+  return (
+    <span
+      className="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+      style={{ backgroundColor: color }}
+    >
+      {label}
+    </span>
+  );
 }
 
 function expiresAtForItem(item: AdminCertifiedInstructorListItem): string {
@@ -208,6 +237,7 @@ type InstructorEditFormProps = {
   editRenewalStatus: InstructorRenewalStatus;
   setEditRenewalStatus: (value: InstructorRenewalStatus) => void;
   saveState: SaveState;
+  licenseBusy: boolean;
   fieldErrors: string[];
   verificationCode: string;
   verifyHref: string;
@@ -218,6 +248,7 @@ type InstructorEditFormProps = {
   levelLabel: (levelId: string) => string;
   onSave: (event: FormEvent) => void;
   onClose: () => void;
+  onRequestLicenseAction: (kind: LicenseActionKind) => void;
 };
 
 function InstructorEditForm({
@@ -241,6 +272,7 @@ function InstructorEditForm({
   editRenewalStatus,
   setEditRenewalStatus,
   saveState,
+  licenseBusy,
   fieldErrors,
   verificationCode,
   verifyHref,
@@ -251,46 +283,143 @@ function InstructorEditForm({
   levelLabel,
   onSave,
   onClose,
+  onRequestLicenseAction,
 }: InstructorEditFormProps) {
+  const license = selected.license;
+  const storedStatus = license?.status ?? null;
+  const remaining = remainingDaysForItem(selected);
+  const busy = saveState === "saving" || licenseBusy;
+  const canIssue = !license;
+  const canSuspend = Boolean(license && storedStatus === "active");
+  const canResume = Boolean(license && storedStatus === "suspended");
+  const canRenew = Boolean(
+    license &&
+      storedStatus !== "withdrawn" &&
+      storedStatus !== "suspended" &&
+      storedStatus !== "pending",
+  );
+
   return (
     <form className="space-y-5" onSubmit={(event) => void onSave(event)}>
-      <dl className="grid gap-3 sm:grid-cols-2">
-        <ReadonlyRow label="認定資格名">
-          {SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
-        </ReadonlyRow>
-        <ReadonlyRow label="認定番号">
-          <span className="font-mono">
-            {selected.license?.licenseNumber ||
-              selected.instructorNumber ||
-              "—"}
-          </span>
-        </ReadonlyRow>
-        <ReadonlyRow label="確認コード">
-          <span className="break-all font-mono text-[13px]">
-            {verificationCode || "—"}
-          </span>
-        </ReadonlyRow>
-        <ReadonlyRow label="ライセンス状態">
-          {statusLabelForItem(selected)}
-        </ReadonlyRow>
-        <ReadonlyRow label="残り日数">
-          <RemainingDaysCell item={selected} />
-        </ReadonlyRow>
-        <ReadonlyRow label="認証ページURL">
-          {verifyHref ? (
-            <a
-              href={verifyHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="break-all text-[13px] font-semibold text-[#315f68] hover:text-[#8a6a2d]"
+      <section className="space-y-4 rounded-[24px] border border-[#071426]/08 bg-[#fafaf8] px-4 py-5 sm:px-5">
+        <div>
+          <p
+            className="text-[11px] font-semibold tracking-[0.16em]"
+            style={{ color: GOLD }}
+          >
+            LICENSE
+          </p>
+          <h3
+            className="mt-1 text-base font-semibold tracking-[-0.02em]"
+            style={{ color: NAVY }}
+          >
+            ライセンス管理
+          </h3>
+        </div>
+
+        <dl className="grid gap-3 sm:grid-cols-2">
+          <ReadonlyRow label="現在の状態">
+            <StatusBadge item={selected} />
+          </ReadonlyRow>
+          <ReadonlyRow label="認定番号">
+            <span className="font-mono">
+              {license?.licenseNumber || selected.instructorNumber || "—"}
+            </span>
+          </ReadonlyRow>
+          <ReadonlyRow label="確認コード">
+            <span className="break-all font-mono text-[13px]">
+              {verificationCode || "—"}
+            </span>
+          </ReadonlyRow>
+          <ReadonlyRow label="認定日">
+            {formatJaDate(certifiedAtForItem(selected))}
+          </ReadonlyRow>
+          <ReadonlyRow label="有効期限">
+            {formatJaDate(expiresAtForItem(selected))}
+          </ReadonlyRow>
+          <ReadonlyRow label="残り日数">
+            <RemainingDaysCell item={selected} />
+          </ReadonlyRow>
+          <ReadonlyRow label="最終更新日">
+            {formatJaDate(
+              selected.lastRenewedAt || license?.updatedAt?.slice(0, 10),
+            )}
+          </ReadonlyRow>
+          <ReadonlyRow label="更新申請状態">
+            {license
+              ? INSTRUCTOR_RENEWAL_STATUS_LABELS[license.renewalStatus]
+              : "—"}
+          </ReadonlyRow>
+          <ReadonlyRow label="認定資格名">
+            {SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME}
+          </ReadonlyRow>
+          <ReadonlyRow label="認証ページURL">
+            {verifyHref ? (
+              <a
+                href={verifyHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="break-all text-[13px] font-semibold text-[#315f68] hover:text-[#8a6a2d]"
+              >
+                {verifyHref}
+              </a>
+            ) : (
+              "—"
+            )}
+          </ReadonlyRow>
+        </dl>
+
+        {canResume && remaining != null && remaining < 0 ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-6 text-amber-900">
+            有効期限が切れています。再開前に有効期限を更新してください。
+          </p>
+        ) : null}
+
+        <div className="flex flex-col gap-3">
+          {canIssue ? (
+            <Button
+              type="button"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestLicenseAction("issue")}
             >
-              {verifyHref}
-            </a>
-          ) : (
-            "—"
-          )}
-        </ReadonlyRow>
-      </dl>
+              ライセンスを発行
+            </Button>
+          ) : null}
+          {canSuspend ? (
+            <Button
+              type="button"
+              variant="danger"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestLicenseAction("suspend")}
+            >
+              停止する
+            </Button>
+          ) : null}
+          {canResume ? (
+            <Button
+              type="button"
+              className="min-h-12 w-full"
+              disabled={busy || (remaining != null && remaining < 0)}
+              onClick={() => onRequestLicenseAction("resume")}
+            >
+              再開する
+            </Button>
+          ) : null}
+          {canRenew && hasLicense ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-12 w-full"
+              disabled={busy}
+              onClick={() => onRequestLicenseAction("renew")}
+            >
+              1年間更新
+            </Button>
+          ) : null}
+        </div>
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-[13px] font-semibold text-slate-600">
@@ -300,7 +429,7 @@ function InstructorEditForm({
             value={editPublicName}
             onChange={(event) => setEditPublicName(event.target.value)}
             required
-            disabled={saveState === "saving"}
+            disabled={busy}
           />
         </label>
         <label className="block text-[13px] font-semibold text-slate-600">
@@ -310,7 +439,7 @@ function InstructorEditForm({
             value={editLegalName}
             onChange={(event) => setEditLegalName(event.target.value)}
             required
-            disabled={saveState === "saving"}
+            disabled={busy}
           />
         </label>
       </div>
@@ -323,7 +452,7 @@ function InstructorEditForm({
           value={editEmail}
           onChange={(event) => setEditEmail(event.target.value)}
           required
-          disabled={saveState === "saving"}
+          disabled={busy}
           autoComplete="off"
         />
         <p className="mt-2 text-[12px] leading-5 text-slate-500">
@@ -337,7 +466,7 @@ function InstructorEditForm({
           className={selectClass}
           value={editLevelId}
           onChange={(event) => setEditLevelId(event.target.value)}
-          disabled={saveState === "saving"}
+          disabled={busy}
         >
           {levels.length === 0 ? (
             <option value={editLevelId}>{levelLabel(editLevelId)}</option>
@@ -360,7 +489,7 @@ function InstructorEditForm({
             value={editCertifiedAt}
             onChange={(event) => setEditCertifiedAt(event.target.value)}
             required
-            disabled={saveState === "saving"}
+            disabled={busy}
           />
         </label>
         <label className="block text-[13px] font-semibold text-slate-600">
@@ -371,10 +500,13 @@ function InstructorEditForm({
             value={editExpiresAt}
             onChange={(event) => setEditExpiresAt(event.target.value)}
             required
-            disabled={saveState === "saving"}
+            disabled={busy}
           />
         </label>
       </div>
+      <p className="text-[12px] leading-5 text-slate-500">
+        有効期限は認定日以降である必要があります。保存時に講師マスタとライセンスの両方へ同期します。
+      </p>
 
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
         <p
@@ -393,7 +525,7 @@ function InstructorEditForm({
               step={1}
               value={editRequiredHours}
               onChange={(event) => setEditRequiredHours(event.target.value)}
-              disabled={saveState === "saving" || !hasLicense}
+              disabled={busy || !hasLicense}
             />
           </label>
           <label className="block text-[13px] font-semibold text-slate-600">
@@ -405,7 +537,7 @@ function InstructorEditForm({
               step={1}
               value={editCompletedHours}
               onChange={(event) => setEditCompletedHours(event.target.value)}
-              disabled={saveState === "saving" || !hasLicense}
+              disabled={busy || !hasLicense}
             />
           </label>
         </div>
@@ -437,7 +569,7 @@ function InstructorEditForm({
               setEditRenewalStatus(value);
             }
           }}
-          disabled={saveState === "saving" || !hasLicense}
+          disabled={busy || !hasLicense}
         >
           {INSTRUCTOR_RENEWAL_STATUSES.map((status) => (
             <option key={status} value={status}>
@@ -482,7 +614,7 @@ function InstructorEditForm({
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Button
           type="submit"
-          disabled={saveState === "saving"}
+          disabled={busy}
           className="min-h-12 w-full sm:w-auto"
         >
           {saveState === "saving" ? "保存中…" : "保存する"}
@@ -492,7 +624,7 @@ function InstructorEditForm({
           variant="secondary"
           className="min-h-12 w-full sm:w-auto"
           onClick={onClose}
-          disabled={saveState === "saving"}
+          disabled={busy}
         >
           閉じる
         </Button>
@@ -512,6 +644,8 @@ export default function AdminCertifiedInstructorsPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<string[]>([]);
+  const [licenseBusy, setLicenseBusy] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -680,11 +814,128 @@ export default function AdminCertifiedInstructorsPage() {
   };
 
   const closeDetail = () => {
-    if (saveState === "saving") return;
+    if (saveState === "saving" || licenseBusy) return;
     setSelectedId(null);
     setSaveState("idle");
     setSaveMessage(null);
     setFieldErrors([]);
+    setConfirmDialog(null);
+  };
+
+  const requestLicenseAction = (kind: LicenseActionKind) => {
+    if (!selected || licenseBusy || saveState === "saving") return;
+    if (kind === "issue") {
+      setConfirmDialog({
+        kind,
+        title: "ライセンス発行の確認",
+        message:
+          "この講師にSleep Wellness Instructorライセンスを発行しますか？",
+      });
+      return;
+    }
+    if (kind === "suspend") {
+      setConfirmDialog({
+        kind,
+        title: "ライセンス停止の確認",
+        message:
+          "このライセンスを停止しますか？\n停止中は公開認証ページで「無効」と表示されます。",
+      });
+      return;
+    }
+    if (kind === "resume") {
+      setConfirmDialog({
+        kind,
+        title: "ライセンス再開の確認",
+        message: "このライセンスを再開しますか？",
+      });
+      return;
+    }
+    setConfirmDialog({
+      kind: "renew",
+      title: "1年間更新の確認",
+      message: "このライセンスを1年間更新しますか？",
+    });
+  };
+
+  const runLicenseAction = async (kind: LicenseActionKind) => {
+    if (!selected) return;
+    setConfirmDialog(null);
+    setLicenseBusy(true);
+    setSaveMessage(null);
+    setSaveState("idle");
+
+    try {
+      let body: Record<string, unknown>;
+      if (kind === "issue") {
+        body = {
+          action: "issue_license",
+          instructorId: selected.instructorId,
+          levelId: editLevelId || selected.levelId || "instructor",
+          issuedAt: editCertifiedAt,
+          expiresAt: editExpiresAt,
+        };
+      } else if (kind === "suspend") {
+        if (!selected.license?.id) throw new Error("ライセンスがありません");
+        body = {
+          action: "set_license_status",
+          licenseId: selected.license.id,
+          status: "suspended",
+        };
+      } else if (kind === "resume") {
+        if (!selected.license?.id) throw new Error("ライセンスがありません");
+        body = {
+          action: "set_license_status",
+          licenseId: selected.license.id,
+          status: "active",
+        };
+      } else {
+        if (!selected.license?.id) throw new Error("ライセンスがありません");
+        body = {
+          action: "renew_one_year",
+          licenseId: selected.license.id,
+        };
+      }
+
+      const response = await fetch("/api/admin/certified-instructors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (response.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent("/admin/instructors")}`;
+        return;
+      }
+      if (response.status === 403) {
+        window.location.href = "/forbidden";
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(json.error ?? "操作に失敗しました");
+      }
+
+      await load();
+      setSaveState("success");
+      if (kind === "issue") setSaveMessage("ライセンスを発行しました");
+      else if (kind === "suspend") setSaveMessage("ライセンスを停止しました");
+      else if (kind === "resume") setSaveMessage("ライセンスを再開しました");
+      else setSaveMessage("ライセンスを1年間更新しました");
+    } catch (error) {
+      setSaveState("error");
+      const message =
+        error instanceof Error ? error.message : "操作に失敗しました";
+      if (kind === "issue") {
+        setSaveMessage(
+          message.includes("失敗") || message.includes("発行")
+            ? message
+            : "ライセンスの発行に失敗しました",
+        );
+      } else {
+        setSaveMessage(message);
+      }
+    } finally {
+      setLicenseBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -974,7 +1225,7 @@ export default function AdminCertifiedInstructorsPage() {
                               <RemainingDaysCell item={item} />
                             </td>
                             <td className="py-3 pr-3">
-                              {statusLabelForItem(item)}
+                              <StatusBadge item={item} />
                             </td>
                             <td className="py-3 pr-3 min-w-[140px]">
                               {license ? (
@@ -1045,11 +1296,8 @@ export default function AdminCertifiedInstructorsPage() {
                                 本名：{formatLegalNameDisplay(item.legalName)}
                               </p>
                             </div>
-                            <span
-                              className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
-                              style={{ backgroundColor: NAVY }}
-                            >
-                              {statusLabelForItem(item)}
+                            <span className="shrink-0">
+                              <StatusBadge item={item} />
                             </span>
                           </div>
                           <dl className="mt-3 grid grid-cols-1 gap-1.5 text-[12px] text-slate-600">
@@ -1170,6 +1418,7 @@ export default function AdminCertifiedInstructorsPage() {
                   editRenewalStatus={editRenewalStatus}
                   setEditRenewalStatus={setEditRenewalStatus}
                   saveState={saveState}
+                  licenseBusy={licenseBusy}
                   fieldErrors={fieldErrors}
                   verificationCode={verificationCode}
                   verifyHref={verifyHref}
@@ -1180,7 +1429,55 @@ export default function AdminCertifiedInstructorsPage() {
                   levelLabel={levelLabel}
                   onSave={onSave}
                   onClose={closeDetail}
+                  onRequestLicenseAction={requestLicenseAction}
                 />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {confirmDialog ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-end justify-center bg-[#071426]/50 p-0 sm:items-center sm:p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="license-confirm-title"
+            onClick={() => {
+              if (!licenseBusy) setConfirmDialog(null);
+            }}
+          >
+            <div
+              className="w-full max-w-md rounded-t-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_-40px_rgba(7,20,38,0.55)] sm:rounded-[28px] sm:p-6"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3
+                id="license-confirm-title"
+                className="text-lg font-semibold tracking-[-0.03em]"
+                style={{ color: NAVY }}
+              >
+                {confirmDialog.title}
+              </h3>
+              <p className="mt-3 whitespace-pre-line text-[14px] leading-7 text-slate-700">
+                {confirmDialog.message}
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse">
+                <Button
+                  type="button"
+                  className="min-h-12 w-full sm:w-auto"
+                  disabled={licenseBusy}
+                  onClick={() => void runLicenseAction(confirmDialog.kind)}
+                >
+                  {licenseBusy ? "処理中…" : "実行する"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-h-12 w-full sm:w-auto"
+                  disabled={licenseBusy}
+                  onClick={() => setConfirmDialog(null)}
+                >
+                  キャンセル
+                </Button>
               </div>
             </div>
           </div>

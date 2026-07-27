@@ -7,6 +7,9 @@ import SectionCard from "@/components/ui/SectionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { GOLD, NAVY, SURFACE_WARM } from "@/components/ui/tokens";
 import {
+  adminLicenseStatusColor,
+  adminLicenseStatusLabel,
+  daysUntil,
   formatJaDate,
   INSTRUCTOR_LICENSE_STATUSES,
   INSTRUCTOR_LICENSE_STATUS_LABELS,
@@ -207,39 +210,89 @@ export default function AdminLicensesPage() {
       setMessage("認定講師を選択してください");
       return;
     }
-    const level = levels.find((item) => item.id === candidate.levelId);
+    if (
+      !window.confirm(
+        "この講師にSleep Wellness Instructorライセンスを発行しますか？",
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/admin/licenses", {
+      const response = await fetch("/api/admin/certified-instructors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "issue_license",
           instructorId: candidate.id,
-          certificationLevelId: candidate.levelId,
-          certificationName: resolveCertificationName(
-            level?.label ?? SLEEP_WELLNESS_INSTRUCTOR_CERT_NAME,
-          ),
-          licenseNumber: candidate.instructorNumber,
+          levelId: candidate.levelId,
           issuedAt: candidate.certifiedAt || todayIso(),
           expiresAt: candidate.renewsAt || todayIso(),
-          status: "active",
-          requiredEducationHours: level?.ceHoursRequired ?? 0,
-          completedEducationHours: 0,
-          adminNote: "",
         }),
       });
       const json = (await response.json()) as {
         license?: AdminInstructorLicenseListItem;
         error?: string;
       };
-      if (!response.ok) throw new Error(json.error ?? "登録に失敗しました");
-      setMessage("ライセンスを登録しました");
+      if (!response.ok) {
+        throw new Error(json.error ?? "ライセンスの発行に失敗しました");
+      }
+      setMessage("ライセンスを発行しました");
       setNewInstructorId("");
       await load();
       if (json.license?.id) setSelectedId(json.license.id);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "登録に失敗しました");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "ライセンスの発行に失敗しました",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runQuickAction = async (
+    action: "suspend" | "resume" | "renew",
+  ) => {
+    if (!selected) return;
+    const confirmMessage =
+      action === "suspend"
+        ? "このライセンスを停止しますか？\n停止中は公開認証ページで「無効」と表示されます。"
+        : action === "resume"
+          ? "このライセンスを再開しますか？"
+          : "このライセンスを1年間更新しますか？";
+    if (!window.confirm(confirmMessage)) return;
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      const body =
+        action === "renew"
+          ? { action: "renew_one_year", licenseId: selected.id }
+          : {
+              action: "set_license_status",
+              licenseId: selected.id,
+              status: action === "suspend" ? "suspended" : "active",
+            };
+      const response = await fetch("/api/admin/certified-instructors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error ?? "操作に失敗しました");
+      setMessage(
+        action === "suspend"
+          ? "ライセンスを停止しました"
+          : action === "resume"
+            ? "ライセンスを再開しました"
+            : "ライセンスを1年間更新しました",
+      );
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "操作に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -361,8 +414,17 @@ export default function AdminLicensesPage() {
                             本名：{item.legalName || "未登録"}
                           </p>
                         </div>
-                        <span className="text-[12px] text-slate-500">
-                          {INSTRUCTOR_LICENSE_STATUS_LABELS[item.status]}
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                          style={{
+                            backgroundColor: adminLicenseStatusColor(
+                              item.status,
+                              item.expiresAt,
+                              daysUntil(item.expiresAt),
+                            ),
+                          }}
+                        >
+                          {adminLicenseStatusLabel(item.status, item.expiresAt)}
                         </span>
                       </div>
                       <p className="mt-1 text-[12px] text-slate-500">
@@ -577,13 +639,49 @@ export default function AdminLicensesPage() {
                   />
                 </label>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button type="submit" disabled={saving}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button type="submit" disabled={saving} className="min-h-12 w-full sm:w-auto">
                     {saving ? "保存中…" : "保存"}
                   </Button>
+                  {selected.status === "active" ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="min-h-12 w-full sm:w-auto"
+                      disabled={saving}
+                      onClick={() => void runQuickAction("suspend")}
+                    >
+                      停止する
+                    </Button>
+                  ) : null}
+                  {selected.status === "suspended" ? (
+                    <Button
+                      type="button"
+                      className="min-h-12 w-full sm:w-auto"
+                      disabled={
+                        saving ||
+                        daysUntil(selected.expiresAt) < 0
+                      }
+                      onClick={() => void runQuickAction("resume")}
+                    >
+                      再開する
+                    </Button>
+                  ) : null}
+                  {selected.status !== "withdrawn" ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="min-h-12 w-full sm:w-auto"
+                      disabled={saving}
+                      onClick={() => void runQuickAction("renew")}
+                    >
+                      1年間更新
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="secondary"
+                    className="min-h-12 w-full sm:w-auto"
                     disabled={saving || selected.renewalStatus !== "requested"}
                     onClick={() => void decideRenewal("approve_renewal")}
                   >
@@ -592,12 +690,19 @@ export default function AdminLicensesPage() {
                   <Button
                     type="button"
                     variant="secondary"
+                    className="min-h-12 w-full sm:w-auto"
                     disabled={saving || selected.renewalStatus !== "requested"}
                     onClick={() => void decideRenewal("reject_renewal")}
                   >
                     更新申請を却下
                   </Button>
                 </div>
+                {selected.status === "suspended" &&
+                daysUntil(selected.expiresAt) < 0 ? (
+                  <p className="text-[12px] leading-5 text-amber-800">
+                    有効期限が切れています。再開前に有効期限を更新してください。
+                  </p>
+                ) : null}
               </form>
             )}
           </SectionCard>

@@ -265,3 +265,51 @@ export function generateVerificationCode(): string {
   const raw = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
   return `SWIJ-${raw}`;
 }
+
+/** 認定番号（license_number）生成。検証コードと同形式で衝突しにくい。 */
+export function generateLicenseNumber(): string {
+  const raw = crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
+  return `SWIJ-${raw}`;
+}
+
+/**
+ * 管理画面の統一ステータスラベル。
+ * DB が active でも期限超過なら「期限切れ」。expiring は「有効」として扱う。
+ */
+export function adminLicenseStatusLabel(
+  status: InstructorLicenseStatus | null | undefined,
+  expiresAt?: string | null,
+): string {
+  if (!status) return "ライセンス未発行";
+  const resolved =
+    expiresAt && expiresAt.trim()
+      ? resolveDisplayStatus(status, expiresAt)
+      : status;
+  if (resolved === "withdrawn") return "退会";
+  if (resolved === "suspended") return "停止中";
+  if (resolved === "pending") return "審査中";
+  if (resolved === "expired") return "期限切れ";
+  return "有効";
+}
+
+/** 状態バッジの背景色（残り日数は別色で上書き可） */
+export function adminLicenseStatusColor(
+  status: InstructorLicenseStatus | null | undefined,
+  expiresAt?: string | null,
+  remainingDays?: number | null,
+): string {
+  if (!status) return "#94a3b8"; // 未発行: 薄いグレー
+  const resolved =
+    expiresAt && expiresAt.trim()
+      ? resolveDisplayStatus(status, expiresAt)
+      : status;
+  if (resolved === "withdrawn") return "#64748b";
+  if (resolved === "suspended" || resolved === "expired") return EXPIRY_WARN_RED;
+  if (resolved === "pending") return "#64748b";
+  // 有効系: 残り日数で警告色
+  if (remainingDays != null) {
+    if (remainingDays <= 7) return EXPIRY_WARN_RED;
+    if (remainingDays <= 30) return EXPIRY_WARN_ORANGE;
+  }
+  return "#15803d"; // 有効: 緑
+}
