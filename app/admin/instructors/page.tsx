@@ -506,6 +506,26 @@ function InstructorEditForm({
           閉じる
         </Button>
       </div>
+
+      <div className="mt-3 flex flex-col gap-3">
+        <Button type="button" className="min-h-12 w-full" disabled={false}>
+          ライセンス発行
+        </Button>
+        <Button type="button" className="min-h-12 w-full" disabled={false}>
+          停止
+        </Button>
+        <Button type="button" className="min-h-12 w-full" disabled={false}>
+          再開
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-12 w-full"
+          disabled={false}
+        >
+          1年間更新
+        </Button>
+      </div>
     </form>
   );
 }
@@ -513,36 +533,13 @@ function InstructorEditForm({
 function LicenseManagementCard({
   selected,
   verificationCode,
-  busy,
-  onRequestAction,
 }: {
   selected: AdminCertifiedInstructorListItem;
   verificationCode: string;
-  busy: boolean;
-  onRequestAction: (kind: LicenseActionKind) => void;
 }) {
   const license = selected.license;
-  const storedStatus = license?.status ?? null;
-  const displayStatus = effectiveStatus(selected);
   const remaining = remainingDaysForItem(selected);
-
-  const isUnissued = !license;
-  const isSuspended = Boolean(license && storedStatus === "suspended");
-  const isExpired = Boolean(
-    license &&
-      !isSuspended &&
-      (storedStatus === "expired" || displayStatus === "expired"),
-  );
-  const isActive = Boolean(
-    license &&
-      !isSuspended &&
-      !isExpired &&
-      storedStatus !== "withdrawn" &&
-      (storedStatus === "active" ||
-        storedStatus === "expiring" ||
-        displayStatus === "active" ||
-        displayStatus === "expiring"),
-  );
+  const isSuspended = Boolean(license && license.status === "suspended");
 
   return (
     <SectionCard title="ライセンス管理" eyebrow="LICENSE" className="mt-6">
@@ -576,72 +573,6 @@ function LicenseManagementCard({
           有効期限が切れています。再開前に有効期限を更新してください。
         </p>
       ) : null}
-
-      <div className="mt-5 flex flex-col gap-3">
-        {isUnissued ? (
-          <Button
-            type="button"
-            className="min-h-12 w-full"
-            disabled={busy}
-            onClick={() => onRequestAction("issue")}
-          >
-            ライセンス発行
-          </Button>
-        ) : null}
-        {isActive ? (
-          <>
-            <Button
-              type="button"
-              className="min-h-12 w-full"
-              disabled={busy}
-              onClick={() => onRequestAction("suspend")}
-            >
-              停止する
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="min-h-12 w-full"
-              disabled={busy}
-              onClick={() => onRequestAction("renew")}
-            >
-              1年間更新
-            </Button>
-          </>
-        ) : null}
-        {isSuspended ? (
-          <>
-            <Button
-              type="button"
-              className="min-h-12 w-full"
-              disabled={busy || (remaining != null && remaining < 0)}
-              onClick={() => onRequestAction("resume")}
-            >
-              再開する
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="min-h-12 w-full"
-              disabled={busy}
-              onClick={() => onRequestAction("renew")}
-            >
-              1年間更新
-            </Button>
-          </>
-        ) : null}
-        {isExpired ? (
-          <Button
-            type="button"
-            variant="secondary"
-            className="min-h-12 w-full"
-            disabled={busy}
-            onClick={() => onRequestAction("renew")}
-          >
-            1年間更新
-          </Button>
-        ) : null}
-      </div>
     </SectionCard>
   );
 }
@@ -1502,8 +1433,6 @@ export default function AdminCertifiedInstructorsPage() {
                 <LicenseManagementCard
                   selected={selected}
                   verificationCode={verificationCode}
-                  busy={licenseBusy || saveState === "saving"}
-                  onRequestAction={requestLicenseAction}
                 />
               </div>
             </div>
