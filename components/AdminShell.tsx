@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 import AdminSubNav from "@/components/AdminSubNav";
 import OsNav from "@/components/os/OsNav";
-import OsTopBar from "@/components/os/OsTopBar";
+import OsTopBar, { useResolvedOsRole } from "@/components/os/OsTopBar";
 import { GOLD, NAVY, SURFACE } from "@/components/ui/tokens";
+import { homePathForRole } from "@/lib/safe-redirect";
 
 export default function AdminShell({
   eyebrow = "SLEEP WELLNESS INSTITUTE JAPAN",
@@ -19,12 +20,15 @@ export default function AdminShell({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const role = useResolvedOsRole("admin");
+  const homeHref = homePathForRole(role);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: SURFACE }}>
       <header className="sticky top-0 z-40 border-b border-[color:var(--sw-border)] bg-[color:var(--sw-card-bg)]/90 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="sw-shell-pad mx-auto flex max-w-6xl flex-col gap-3.5 px-4 py-3 sm:px-6 sm:py-3.5 md:px-8 md:py-4">
-          <OsTopBar role="admin" homeHref="/admin" />
-          <OsNav role="admin" />
+          <OsTopBar role={role} homeHref={homeHref} />
+          <OsNav role={role} />
         </div>
       </header>
       <main
@@ -58,7 +62,7 @@ export default function AdminShell({
             </div>
           ) : null}
         </header>
-        <AdminSubNav />
+        <AdminSubNav role={role} />
         <div className="mt-6 space-y-5 sm:mt-8 sm:space-y-6 md:space-y-8">
           {children}
         </div>
