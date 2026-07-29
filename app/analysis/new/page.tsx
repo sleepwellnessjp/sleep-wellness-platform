@@ -494,6 +494,31 @@ function NewAnalysisPageInner() {
     };
   }, [previewUrls]);
 
+  /** 遷移・bfcache 復帰・unmount 時に OCR overlay を必ず落とす（Safari 幽霊レイヤー対策） */
+  useEffect(() => {
+    const purgeOverlayDom = () => {
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
+    };
+    const forceCloseOverlay = () => {
+      setOcrOverlayOpen(false);
+      setShowOcrCancelConfirm(false);
+      purgeOverlayDom();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) forceCloseOverlay();
+    };
+    const onPageHide = () => forceCloseOverlay();
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("pagehide", onPageHide);
+      forceCloseOverlay();
+    };
+  }, []);
+
   /** 画像アップロード直後から OCR をバックグラウンド開始（入力中に解析を進める） */
   useEffect(() => {
     if (inputMethod !== "soxai" || files.length === 0) {
@@ -1114,6 +1139,9 @@ function NewAnalysisPageInner() {
         setOcrOverlayOpen(false);
         setIsSubmitting(false);
       });
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
       router.push("/analysis/confirm");
     } catch (err) {
       if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) return;
@@ -1137,6 +1165,9 @@ function NewAnalysisPageInner() {
         setOcrOverlayOpen(false);
         setIsSubmitting(false);
       });
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
     } finally {
       console.log("[overlay]", {
         source: "new",
@@ -1201,6 +1232,9 @@ function NewAnalysisPageInner() {
       setOcrCancelledMenu(false);
       setPendingDraftPayload(null);
     });
+    document
+      .querySelectorAll("[data-soxai-ocr-overlay]")
+      .forEach((node) => node.remove());
     router.push("/analysis/confirm");
   };
 
@@ -1308,6 +1342,9 @@ function NewAnalysisPageInner() {
         setPendingDraftPayload(null);
         setIsSubmitting(false);
       });
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
       router.push("/analysis/confirm");
     } catch (err) {
       if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) return;
