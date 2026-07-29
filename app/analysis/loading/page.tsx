@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import { AnalysisError } from "@/lib/analysis-session";
@@ -25,12 +24,9 @@ type AnalysisFailure = {
  * Score 確定後すぐに結果画面へ遷移し、AI / DB / PDF はバックグラウンド継続。
  */
 export default function AnalysisLoadingPage() {
-  const router = useRouter();
   const [error, setError] = useState<AnalysisFailure | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
     try {
       const { preliminary, images } = bootstrapScoreFirstAnalysis();
       // AI本文・保存・クレジットは結果表示後に非同期
@@ -43,10 +39,10 @@ export default function AnalysisLoadingPage() {
         },
       );
 
-      if (cancelled) return;
-      router.replace("/analysis/result?pending=1");
+      // Soft navigate can be cancelled by React Strict Mode remount in dev.
+      // Hard navigation is intentional for this one-shot handoff page.
+      window.location.replace("/analysis/result?pending=1");
     } catch (err: unknown) {
-      if (cancelled) return;
       console.error("Score-first bootstrap failed:", err);
 
       if (err instanceof AnalysisError) {
@@ -68,11 +64,7 @@ export default function AnalysisLoadingPage() {
         details: err instanceof Error ? err.stack : String(err),
       });
     }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+  }, []);
 
   if (error) {
     return (
