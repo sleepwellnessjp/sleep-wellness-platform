@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   formatOcrElapsed,
   formatOcrEta,
@@ -20,6 +21,13 @@ type SoxaiOcrProgressPanelProps = {
   onBackToUpload: () => void;
 };
 
+/**
+ * Full-screen OCR progress shell.
+ * Portaled to document.body so it is not trapped under PageTransition's
+ * transform (which makes position:fixed relative to the page wrapper).
+ * Avoid backdrop-filter — Safari can leave a ghost dim layer after unmount
+ * / soft navigation (bfcache).
+ */
 export default function SoxaiOcrProgressPanel({
   progress,
   showCancelConfirm,
@@ -31,7 +39,13 @@ export default function SoxaiOcrProgressPanel({
   onResumeIncomplete,
   onBackToUpload,
 }: SoxaiOcrProgressPanelProps) {
+  const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   useEffect(() => {
     if (cancelledMenu) return;
@@ -49,15 +63,26 @@ export default function SoxaiOcrProgressPanel({
   const symbols = total > 0 ? ocrProgressBarSymbols(completed, total) : "□";
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#071426]/72 px-4 backdrop-blur-sm">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      data-soxai-ocr-overlay
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-[#071426]/80 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="soxai-ocr-overlay-title"
+    >
       <div className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-[0_40px_120px_-40px_rgba(7,20,38,0.65)]">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.18),transparent_70%)]" />
         <div className="relative px-6 py-8 sm:px-8 sm:py-10">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
             SOXAI OCR
           </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[#071426]">
+          <h2
+            id="soxai-ocr-overlay-title"
+            className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[#071426]"
+          >
             SOXAI OCR解析中
           </h2>
 
@@ -165,7 +190,7 @@ export default function SoxaiOcrProgressPanel({
       </div>
 
       {showCancelConfirm && !cancelledMenu && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#071426]/45 px-4">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#071426]/50 px-4">
           <div className="w-full max-w-sm rounded-[24px] border border-slate-200 bg-white p-6 shadow-xl">
             <p className="text-[15px] font-semibold leading-7 text-[#071426]">
               OCR解析を中止しますか？完了済みの読み取り結果は保持されます。
@@ -189,6 +214,7 @@ export default function SoxaiOcrProgressPanel({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

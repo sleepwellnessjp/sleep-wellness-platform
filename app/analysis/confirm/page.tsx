@@ -213,6 +213,32 @@ export default function ConfirmExtractionPage() {
   const [reanalyzeAbort, setReanalyzeAbort] =
     useState<AbortController | null>(null);
 
+  /** 遷移・bfcache 復帰・unmount 時に OCR overlay を必ず落とす（Safari 幽霊レイヤー対策） */
+  useEffect(() => {
+    const purgeOverlayDom = () => {
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
+    };
+    const forceCloseOverlay = () => {
+      setOcrOverlayOpen(false);
+      setShowOcrCancelConfirm(false);
+      setOcrCancelledMenu(false);
+      purgeOverlayDom();
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) forceCloseOverlay();
+    };
+    const onPageHide = () => forceCloseOverlay();
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("pagehide", onPageHide);
+      forceCloseOverlay();
+    };
+  }, []);
+
   useEffect(() => {
     const initialDraft = getExtractionDraft();
     if (!initialDraft) {
@@ -459,6 +485,9 @@ export default function ConfirmExtractionPage() {
         });
         setOcrOverlayOpen(false);
       });
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
     } catch (error) {
       console.error("[analysis/confirm] reanalyze failed:", error);
       console.error("[ocr-trace] ⑧ エラー発生箇所", {
@@ -483,6 +512,9 @@ export default function ConfirmExtractionPage() {
         });
         setOcrOverlayOpen(false);
       });
+      document
+        .querySelectorAll("[data-soxai-ocr-overlay]")
+        .forEach((node) => node.remove());
     } finally {
       console.log("[overlay]", {
         source: "confirm",

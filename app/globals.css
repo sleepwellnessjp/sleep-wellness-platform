@@ -113,7 +113,8 @@ html[data-theme="dark"] {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    /* none — translateY(0) でも containing block になり fixed overlay が閉じ込められる */
+    transform: none;
   }
 }
 
