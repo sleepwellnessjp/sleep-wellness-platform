@@ -1,6 +1,7 @@
 /**
  * SOXAI OCR 辞書（ラベル見出し優先）
  * 入眠・起床・皮膚温度・ストレスを最優先で拾う。
+ * 全25メトリクスの表記ゆれ・改行・OCR誤認候補を許容する。
  */
 
 import type { MetricFieldKey } from "@/lib/soxai-metrics";
@@ -12,11 +13,15 @@ export const CRITICAL_LABEL_ALIASES: Record<
 > = {
   bedtime: [
     "入眠した時刻",
+    "入眠した時間",
     "入眠時刻",
     "入眠時間",
     "睡眠開始時刻",
     "睡眠開始時間",
     "睡眠開始",
+    "眠り始め",
+    "眠りはじめ",
+    "スリープ開始",
     "入眠",
     "就寝時刻",
     "就寝時間",
@@ -39,11 +44,15 @@ export const CRITICAL_LABEL_ALIASES: Record<
   ],
   wakeTime: [
     "起床した時刻",
+    "起床した時間",
     "起床時刻",
     "起床時間",
     "睡眠終了時刻",
     "睡眠終了時間",
     "睡眠終了",
+    "起きた時刻",
+    "起きた時間",
+    "目覚め",
     "起床",
     "起き上がった時刻",
     "起き上がった時間",
@@ -66,15 +75,23 @@ export const CRITICAL_LABEL_ALIASES: Record<
     "皮膚温度",
     "皮膚温偏差",
     "皮膚温",
+    "皮虜温",
+    "皮虜温度",
+    "スキンテンプ",
     "体表温度",
     "体表温",
     "体温偏差",
+    "体温差",
     "温度偏差",
     "ベースライン偏差",
     "平均皮膚温度",
     "平均皮膚温",
     "皮膚温度平均",
     "皮膚温平均",
+    "最新の変化",
+    "最新変化",
+    "最新の温度変化",
+    "温度変化",
     "skintemperature",
     "skin temperature",
     "skintemp",
@@ -83,6 +100,8 @@ export const CRITICAL_LABEL_ALIASES: Record<
     "temperature deviation",
     "temp deviation",
     "baseline deviation",
+    "latestdeviation",
+    "latest change",
     "delta温度",
     "温度delta",
   ],
@@ -97,6 +116,8 @@ export const CRITICAL_LABEL_ALIASES: Record<
     "現在のストレス",
     "夜間ストレス",
     "ストレスモニター",
+    "ストレス（平均）",
+    "ストレス(平均)",
     "ストレス",
     "averagestress",
     "average stress",
@@ -112,6 +133,203 @@ export const CRITICAL_LABEL_ALIASES: Record<
     "stress avg",
     "stress",
   ],
+};
+
+/**
+ * 全メトリクスの OCR 候補ラベル（正規化前でも可。match 時に normalize する）。
+ * 表記ゆれ・英語・略称・よくある OCR 誤認を含む。
+ */
+export const METRIC_LABEL_ALIASES: Partial<
+  Record<MetricFieldKey, readonly string[]>
+> = {
+  sleepScore: [
+    "睡眠スコア",
+    "sleepscore",
+    "総合スコア",
+    "昨夜のスコア",
+    "本日の睡眠",
+    "睡眠",
+    "スコア",
+    "score",
+  ],
+  qol: [
+    "qol",
+    "qualityoflife",
+    "現在のqol",
+    "きょうのqol",
+    "今日のqol",
+    "現在のスコア",
+    "クオリティオブライフ",
+  ],
+  yesterdayQol: [
+    "昨日のqol",
+    "昨日のスコア",
+    "きのうのスコア",
+    "きのうのqol",
+    "yesterdayqol",
+    "yesterdayscore",
+    "昨日スコア",
+  ],
+  conditionScore: [
+    "体調",
+    "体調スコア",
+    "コンディションスコア",
+    "コンディション",
+    "conditionscore",
+    "condition",
+  ],
+  sleepDuration: [
+    "睡眠時間",
+    "総睡眠",
+    "totalsleep",
+    "実際の睡眠",
+    "総睡眠時間",
+    "sleepduration",
+    "sleeptime",
+  ],
+  bedtime: CRITICAL_LABEL_ALIASES.bedtime,
+  wakeTime: CRITICAL_LABEL_ALIASES.wakeTime,
+  sleepEfficiency: [
+    "睡眠効率",
+    "sleepefficiency",
+    "efficiency",
+    "効率",
+  ],
+  sleepDebt: ["睡眠負債", "sleepdebt", "負債", "睡眠の負債"],
+  circadianRhythm: [
+    "体内時計",
+    "circadian",
+    "クロノ",
+    "位相",
+    "サーカディアン",
+  ],
+  sleepLatency: [
+    "入眠潜時",
+    "潜時",
+    "latency",
+    "sleeplatency",
+    "入眠までの時間",
+    "入眠にかかった時間",
+  ],
+  awakenings: [
+    "覚醒時間",
+    "中途覚醒",
+    "覚醒の時間",
+    "覚醒",
+    "awake",
+    "awaketime",
+    "中途覚醒時間",
+  ],
+  awakeningRate: [
+    "覚醒率",
+    "awake%",
+    "awakepercent",
+    "覚醒割合",
+    "覚醒%",
+    "覚醒％",
+  ],
+  remSleep: [
+    "レム睡眠時間",
+    "レム時間",
+    "rem時間",
+    "レム睡眠",
+    "レム",
+    "rem",
+    "remsleep",
+  ],
+  remSleepRate: [
+    "レム睡眠率",
+    "レム率",
+    "rem率",
+    "rem%",
+    "rempercent",
+    "レム割合",
+    "レム%",
+    "レム％",
+  ],
+  lightSleep: [
+    "浅い睡眠時間",
+    "浅い時間",
+    "light時間",
+    "浅い睡眠",
+    "浅い",
+    "light",
+    "lightsleep",
+  ],
+  lightSleepRate: [
+    "浅い睡眠率",
+    "light%",
+    "lightpercent",
+    "浅い割合",
+    "浅い%",
+    "浅い％",
+    "浅%",
+  ],
+  deepSleep: [
+    "深い睡眠時間",
+    "深い時間",
+    "deep時間",
+    "深い睡眠",
+    "深い",
+    "deep",
+    "deepsleep",
+  ],
+  deepSleepRate: [
+    "深い睡眠率",
+    "deep%",
+    "deeppercent",
+    "深い割合",
+    "深い%",
+    "深い％",
+    "深%",
+  ],
+  respiratoryRate: [
+    "呼吸速度",
+    "呼吸数",
+    "平均呼吸",
+    "呼吸",
+    "respiratory",
+    "respiration",
+    "brpm",
+    "rpm",
+    "呼吸rpm",
+  ],
+  spo2: [
+    "spo2",
+    "spo₂",
+    "血中酸素",
+    "酸素飽和",
+    "酸素飽和度",
+    "血中酸素濃度",
+    "酸素レベル",
+    "平均酸素",
+    "平均spo",
+    "平均酸素レベル",
+  ],
+  restingHeartRate: [
+    "安静時心拍数",
+    "安静時心拍",
+    "心拍数",
+    "心拍",
+    "hr",
+    "rhr",
+    "restinghr",
+    "restingheartrate",
+    "heartrate",
+    "平均心拍",
+    "bpm",
+  ],
+  hrv: [
+    "hrv",
+    "心拍変動",
+    "rmssd",
+    "sdnn",
+    "heartratevariability",
+    "heart rate variability",
+    "心拍変動平均",
+  ],
+  skinTemperature: CRITICAL_LABEL_ALIASES.skinTemperature,
+  stress: CRITICAL_LABEL_ALIASES.stress,
 };
 
 /** これらを含むラベルは bedtime / wakeTime から除外 */
@@ -131,21 +349,47 @@ export const COMPOUND_BED_WAKE_PATTERNS: Array<{
   {
     key: "bedtime",
     labelRe:
-      /(?:入眠(?:時間|時刻)?|睡眠開始|就寝(?:時間|時刻)?|fell\s*asleep|sleep\s*onset|bed\s*time|onset)\s*[:：]?\s*/i,
+      /(?:入眠(?:した)?(?:時間|時刻)?|睡眠開始|就寝(?:時間|時刻)?|眠り始め|fell\s*asleep|sleep\s*onset|bed\s*time|onset)\s*[:：]?\s*/i,
   },
   {
     key: "wakeTime",
     labelRe:
-      /(?:起床(?:時間|時刻)?|睡眠終了|got\s*up|wake\s*time|wake\s*up|rise)\s*[:：]?\s*/i,
+      /(?:起床(?:した)?(?:時間|時刻)?|睡眠終了|起きた(?:時間|時刻)?|目覚め|got\s*up|wake\s*time|wake\s*up|rise)\s*[:：]?\s*/i,
   },
 ];
 
+/** OCR 誤認・表記ゆれを吸収した正規化 */
 export function normalizeOcrLabel(label: string): string {
   return label
     .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\r\n\t]+/g, " ")
     .trim()
     .toLowerCase()
-    .replace(/[\s　_\-－—–：:（）()【】\[\]「」『』・･./／]/g, "");
+    .replace(/[\s　_\-－—–：:（）()【】\[\]「」『』・･./／％%]/g, "");
+}
+
+/**
+ * 1ラベルから複数の照合候補を生成（改行・空白違い・括弧除去など）。
+ */
+export function expandLabelCandidates(label: string): string[] {
+  const raw = label.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const variants = new Set<string>();
+  const push = (s: string) => {
+    const n = normalizeOcrLabel(s);
+    if (n) variants.add(n);
+  };
+
+  push(raw);
+  push(raw.replace(/[\r\n]+/g, ""));
+  push(raw.replace(/[\r\n]+/g, " "));
+  push(raw.replace(/\s+/g, ""));
+  push(raw.replace(/[（(].*?[）)]/g, ""));
+  push(raw.replace(/[・･]/g, ""));
+  // 「睡眠 時間」「浅い 睡眠 率」など空白入り
+  push(raw.replace(/\s+/g, " ").trim());
+
+  return [...variants];
 }
 
 /**
@@ -155,8 +399,8 @@ export function normalizeOcrLabel(label: string): string {
 export function matchCriticalLabel(
   label: string,
 ): "bedtime" | "wakeTime" | "skinTemperature" | "stress" | null {
-  const normalized = normalizeOcrLabel(label);
-  if (!normalized) return null;
+  const candidates = expandLabelCandidates(label);
+  if (candidates.length === 0) return null;
 
   const keys = [
     "bedtime",
@@ -174,32 +418,36 @@ export function matchCriticalLabel(
     for (const alias of CRITICAL_LABEL_ALIASES[key]) {
       const a = normalizeOcrLabel(alias);
       if (!a) continue;
-      if (normalized === a || normalized.includes(a) || a.includes(normalized)) {
-        // 短すぎる部分一致は誤検出（「温」「時」など）
-        if (normalized !== a) {
-          if (normalized.includes(a) && a.length < 2) continue;
-          if (a.includes(normalized) && normalized.length < 3) continue;
-        }
-        if (key === "bedtime" && BEDTIME_EXCLUDE.test(normalized)) continue;
-        if (key === "wakeTime" && WAKETIME_EXCLUDE.test(normalized)) continue;
-        if (key === "skinTemperature" && SKIN_TEMP_EXCLUDE.test(normalized)) {
-          continue;
-        }
-        // 「開始」単独は弱い（詳細画面の文脈でのみ後段フォールバック）
+      for (const normalized of candidates) {
         if (
-          (key === "bedtime" || key === "wakeTime") &&
-          (normalized === "開始" ||
-            normalized === "終了" ||
-            normalized === "開始時刻" ||
-            normalized === "終了時刻" ||
-            normalized === "開始時間" ||
-            normalized === "終了時間")
+          normalized === a ||
+          normalized.includes(a) ||
+          a.includes(normalized)
         ) {
-          continue;
-        }
-        const len = a.length;
-        if (!best || len > best.len) {
-          best = { key, len };
+          if (normalized !== a) {
+            if (normalized.includes(a) && a.length < 2) continue;
+            if (a.includes(normalized) && normalized.length < 3) continue;
+          }
+          if (key === "bedtime" && BEDTIME_EXCLUDE.test(normalized)) continue;
+          if (key === "wakeTime" && WAKETIME_EXCLUDE.test(normalized)) continue;
+          if (key === "skinTemperature" && SKIN_TEMP_EXCLUDE.test(normalized)) {
+            continue;
+          }
+          if (
+            (key === "bedtime" || key === "wakeTime") &&
+            (normalized === "開始" ||
+              normalized === "終了" ||
+              normalized === "開始時刻" ||
+              normalized === "終了時刻" ||
+              normalized === "開始時間" ||
+              normalized === "終了時間")
+          ) {
+            continue;
+          }
+          const len = a.length;
+          if (!best || len > best.len) {
+            best = { key, len };
+          }
         }
       }
     }
@@ -210,7 +458,9 @@ export function matchCriticalLabel(
 
 export function isWeakContextLabel(label: string): boolean {
   const n = normalizeOcrLabel(label);
-  return /^(平均|現在|偏差|avg|mean|current|delta|値|レベル|level)$/.test(n);
+  return /^(平均|現在|偏差|avg|mean|current|delta|値|レベル|level|最大|最小|max|min|最新の変化|最新変化|変化)$/.test(
+    n,
+  );
 }
 
 /** 弱ラベル（平均など）を皮膚温・ストレスに結びつけてよいか */
@@ -222,14 +472,82 @@ export function weakLabelFitsCritical(
   if (!isWeakContextLabel(label)) return false;
   const joined = siblingLabels.map(normalizeOcrLabel).join("|");
   if (key === "skinTemperature") {
-    return /皮膚|体表|温度|skintemp|temp|偏差|delta/.test(joined);
+    return /皮膚|皮虜|体表|温度|skintemp|temp|偏差|delta|スキン|最新の変化|変化/.test(
+      joined,
+    );
   }
   return /ストレス|stress/.test(joined);
+}
+
+/**
+ * 単位付き数値だけ（ラベルなし/弱ラベル）からキーを推定するためのヒント。
+ */
+export function inferKeyFromUnitValue(
+  value: string,
+  siblingLabels: string[] = [],
+): MetricFieldKey | null {
+  const v = value.normalize("NFKC").trim();
+  const joined = siblingLabels.map(normalizeOcrLabel).join("|");
+
+  if (/bpm|拍\/分|回\/分(?!\s*呼吸)/i.test(v) || (/^\d{2,3}$/.test(v) && /心拍|rhr|heartrate/.test(joined))) {
+    if (/hrv|心拍変動|rmssd/.test(joined)) return "hrv";
+    return "restingHeartRate";
+  }
+  if (/\bms\b|ミリ秒/i.test(v) || (/^\d{1,3}(\.\d+)?$/.test(v) && /hrv|心拍変動|rmssd/.test(joined))) {
+    return "hrv";
+  }
+  if (/\brpm\b|\bbrpm\b|呼吸\/分|回\/分/i.test(v) || (/^\d{1,2}(\.\d+)?$/.test(v) && /呼吸|respir/.test(joined))) {
+    return "respiratoryRate";
+  }
+  if (/℃|°\s*c/i.test(v) || (/^[+-]\s*\d+(\.\d+)?$/.test(v) && /皮膚|皮虜|体表|温度|temp|偏差/.test(joined))) {
+    return "skinTemperature";
+  }
+  if (/%|％/.test(v)) {
+    if (/覚醒|awake/.test(joined)) return "awakeningRate";
+    if (/レム|rem/.test(joined)) return "remSleepRate";
+    if (/浅|light/.test(joined)) return "lightSleepRate";
+    if (/深|deep/.test(joined)) return "deepSleepRate";
+    if (/効率|efficiency/.test(joined)) return "sleepEfficiency";
+    if (/spo|酸素/.test(joined)) return "spo2";
+  }
+  if (/ストレス|stress/.test(joined) && /^\d{1,3}(\.\d+)?$/.test(v)) {
+    return "stress";
+  }
+  return null;
 }
 
 export const CRITICAL_METRIC_KEYS: MetricFieldKey[] = [
   "bedtime",
   "wakeTime",
+  "skinTemperature",
+  "stress",
+];
+
+/** 画面ゲートを緩めて全 readings から埋め直す対象（不足時リカバリ） */
+export const RECOVERABLE_METRIC_KEYS: MetricFieldKey[] = [
+  "sleepScore",
+  "qol",
+  "yesterdayQol",
+  "conditionScore",
+  "sleepDuration",
+  "bedtime",
+  "wakeTime",
+  "sleepEfficiency",
+  "sleepDebt",
+  "circadianRhythm",
+  "sleepLatency",
+  "awakenings",
+  "awakeningRate",
+  "remSleep",
+  "remSleepRate",
+  "lightSleep",
+  "lightSleepRate",
+  "deepSleep",
+  "deepSleepRate",
+  "respiratoryRate",
+  "spo2",
+  "restingHeartRate",
+  "hrv",
   "skinTemperature",
   "stress",
 ];

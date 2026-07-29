@@ -12,6 +12,20 @@ import {
 } from "./platform-service";
 import type { PlatformAccessStatus, PlatformMeResponse } from "./types";
 
+/** localhost（next dev）のみ。Vercel 本番・プレビューでは false。 */
+function isLocalDevAuthBypass(): boolean {
+  return process.env.NODE_ENV === "development";
+}
+
+const LOCAL_DEV_ACCESS: PlatformAccessStatus = {
+  allowed: true,
+  reason: "demo",
+  message: "開発環境: 認証をスキップしています。",
+  remainingCredits: 999,
+  membershipStatus: null,
+  role: "instructor",
+};
+
 export async function fetchPlatformMe(): Promise<PlatformMeResponse | null> {
   if (!isSupabaseConfigured()) {
     return getDemoPlatformMe("instructor");
@@ -26,6 +40,9 @@ export async function checkAnalysisAccess(): Promise<PlatformAccessStatus> {
 
   const profile = await getCurrentProfile();
   if (!profile) {
+    if (isLocalDevAuthBypass()) {
+      return LOCAL_DEV_ACCESS;
+    }
     return {
       allowed: false,
       reason: "unauthenticated",
@@ -48,6 +65,15 @@ export async function recordAnalysisUsage(input: {
 }): Promise<{ ok: boolean; message: string }> {
   if (!isSupabaseConfigured()) {
     return consumeDemoAnalysisCredit(input);
+  }
+  if (isLocalDevAuthBypass()) {
+    const profile = await getCurrentProfile();
+    if (!profile) {
+      return {
+        ok: true,
+        message: "開発環境: クレジット消費をスキップしました。",
+      };
+    }
   }
   return consumeAnalysisCredit(input);
 }

@@ -37,6 +37,13 @@ function isPublicPath(pathname: string): boolean {
   ) {
     return true;
   }
+  // 開発時のみ: 分析UIの表示確認（本番ではログイン必須）
+  if (
+    process.env.NODE_ENV === "development" &&
+    (pathname === "/analysis" || pathname.startsWith("/analysis/"))
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -84,7 +91,13 @@ function needsApiSessionRefresh(pathname: string): boolean {
 }
 
 function needsSessionRefresh(pathname: string): boolean {
-  return requiresAuth(pathname) || needsApiSessionRefresh(pathname);
+  // API は認証が必要なものだけ（OCR/分析 API には触らない）
+  if (isApiPath(pathname)) {
+    return needsApiSessionRefresh(pathname);
+  }
+  // ページは公開パスでも Cookie セッションを更新する
+  // （開発時の /analysis 公開でも、ログイン済みならセッションを維持）
+  return true;
 }
 
 export async function proxy(request: NextRequest) {
@@ -118,7 +131,7 @@ export async function proxy(request: NextRequest) {
       getAll() {
         return request.cookies.getAll();
       },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet, headers) {
         cookiesToSet.forEach(({ name, value }) => {
           request.cookies.set(name, value);
         });
@@ -126,23 +139,29 @@ export async function proxy(request: NextRequest) {
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
+        Object.entries(headers).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
       },
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // createServerClient 直後に getClaims（公式推奨。未ログイン時も AuthSessionMissing を投げない）
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims;
+  const userId = typeof claims?.sub === "string" ? claims.sub : null;
+  const claimsEmail =
+    typeof claims?.email === "string" ? claims.email : undefined;
 
-  if (!user && requiresAuth(pathname)) {
+  if (!userId && requiresAuth(pathname)) {
     return redirectToLogin(request, pathname);
   }
 
-  if (user && requiresAuth(pathname)) {
+  if (userId && requiresAuth(pathname)) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role, email")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     const role =
@@ -154,9 +173,9 @@ export async function proxy(request: NextRequest) {
         ? String((profile as { email?: unknown }).email ?? "")
         : "";
 
-    const access = await evaluateClosedBetaLoginAccess(supabase, user.id, {
+    const access = await evaluateClosedBetaLoginAccess(supabase, userId, {
       role,
-      email: profileEmail || user.email,
+      email: profileEmail || claimsEmail,
     });
     if (!access.allowed) {
       await supabase.auth.signOut();

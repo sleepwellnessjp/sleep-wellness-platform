@@ -15,7 +15,8 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
-import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import { normalizeMetricsForDisplay, formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
 import {
   detectMetricConsistencyWarnings,
   consistencyWarningKeys,
@@ -91,11 +92,17 @@ function looksTime(value: string): boolean {
 export function scoreValueReliability(
   key: MetricFieldKey,
   value: string,
+  sourceLabel = "",
 ): number {
   const v = value.trim();
   if (!v) return -1;
 
   let score = 10;
+  const label = sourceLabel
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s　_\-：:（）()【】\[\]「」『』]/g, "");
 
   if (key === "sleepScore") {
     const n = Number(v.replace(/[^\d.-]/g, ""));
@@ -157,12 +164,23 @@ export function scoreValueReliability(
     if (/^[+-]/.test(v.trim())) score += 6;
     const n = Math.abs(Number(v.replace(/[^\d.-]/g, "")));
     if (Number.isFinite(n) && n <= 5) score += 4;
+    if (/最新の変化|最新変化|皮膚|温度/.test(label)) score += 10;
   }
 
   if (key === "stress") {
     const n = Number(v.replace(/[^\d.-]/g, ""));
     if (Number.isFinite(n) && n >= 0 && n <= 100) score += 6;
     if (/低|中|高|レベル|level/i.test(v)) score += 3;
+  }
+
+  if (key === "qol" || key === "yesterdayQol" || key === "conditionScore") {
+    const n = Number(v.replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(n) && n >= 0 && n <= 100) score += 8;
+    // ステータスバー電池％を QoL に誤マッピングしがち
+    if (/%|％/.test(v)) score -= 20;
+    if (/現在のスコア|現在のqol|きょうの|今日の/.test(label)) score += 18;
+    if (/昨日/.test(label) && key === "qol") score -= 25;
+    if (/^qol$/.test(label) && key === "qol") score += 4;
   }
 
   score += Math.min(v.length, 24) * 0.1;
@@ -230,6 +248,11 @@ function pickBestCandidateForKey(
   return [...candidates].sort((a, b) => {
     const diff = candidateRankForKey(key, b) - candidateRankForKey(key, a);
     if (diff !== 0) return diff;
+    // 画像順に依存しないタイブレーク（同一セットなら順不同で同じ採用値）
+    const screenCmp = a.screenType.localeCompare(b.screenType);
+    if (screenCmp !== 0) return screenCmp;
+    const valueCmp = String(a.value).localeCompare(String(b.value));
+    if (valueCmp !== 0) return valueCmp;
     return a.imageIndex - b.imageIndex;
   })[0];
 }
@@ -503,7 +526,7 @@ export function mergeImageExtractResults(
         value,
         labelScore,
         screenScore,
-        reliability: scoreValueReliability(key, value),
+        reliability: scoreValueReliability(key, value, sourceLabel),
         sourceLabel,
         screenType,
       });
@@ -513,8 +536,34 @@ export function mergeImageExtractResults(
 
     const gated = filterCandidatesForKey(key, candidates);
 
+    // QoL: 昨日のスコアに近い値を優先（端末バッテリー％の誤採用を防ぐ）
+    let gatedForPick = gated;
+    if (key === "qol") {
+      const yesterdayCandidates = valid
+        .filter((r) => isMetricPresent(r.metrics, "yesterdayQol"))
+        .map((r) => Number(metricDisplayValue(r.metrics, "yesterdayQol").replace(/[^\d.-]/g, "")))
+        .filter((n) => Number.isFinite(n));
+      if (yesterdayCandidates.length > 0) {
+        const yRef = yesterdayCandidates[0];
+        gatedForPick = [...gated].sort((a, b) => {
+          const an = Number(a.value.replace(/[^\d.-]/g, ""));
+          const bn = Number(b.value.replace(/[^\d.-]/g, ""));
+          const da = Number.isFinite(an) ? Math.abs(an - yRef) : 999;
+          const db = Number.isFinite(bn) ? Math.abs(bn - yRef) : 999;
+          if (da !== db) return da - db;
+          return candidateRankForKey(key, b) - candidateRankForKey(key, a);
+        });
+        // 昨日から大きく離れた候補は落とす（例: 60付近の QoL に対する 83 バッテリー）
+        const close = gatedForPick.filter((c) => {
+          const n = Number(c.value.replace(/[^\d.-]/g, ""));
+          return Number.isFinite(n) && Math.abs(n - yRef) <= 25;
+        });
+        if (close.length > 0) gatedForPick = close;
+      }
+    }
+
     const byNorm = new Map<string, Candidate[]>();
-    for (const candidate of gated) {
+    for (const candidate of gatedForPick) {
       const norm = normalizeComparable(key, candidate.value);
       const list = byNorm.get(norm) ?? [];
       list.push(candidate);
@@ -572,6 +621,9 @@ export function mergeImageExtractResults(
     normalized.wakeTime = normalizeTimeToHHMM(normalized.wakeTime);
   }
 
+  // ステージ時間の整合: 覚醒+レム+浅い+深い ≈ 全就床/睡眠時間 なら欠落・誤読を補正
+  repairStageDurationsFromSum(normalized);
+
   // 矛盾がある項目は信頼度を下げて確認画面で「要確認」にする
   const consistencyKeys = consistencyWarningKeys(
     detectMetricConsistencyWarnings(normalized),
@@ -587,4 +639,29 @@ export function mergeImageExtractResults(
     conflicts,
     confidence,
   };
+}
+
+function durationMinutesOrNull(value: string): number | null {
+  return parseDurationMinutes(value);
+}
+
+/**
+ * 覚醒・レム・浅い・深い の合計が睡眠時間に合うよう、深い睡眠の欠落のみ補完する。
+ * OCRで取得済みの深い睡眠は上書きしない（SOXAI画面の内訳と睡眠時間は一致しないことが多い）。
+ */
+function repairStageDurationsFromSum(metrics: AnalysisMetrics): void {
+  const rem = durationMinutesOrNull(metrics.remSleep);
+  const light = durationMinutesOrNull(metrics.lightSleep);
+  const deep = durationMinutesOrNull(metrics.deepSleep);
+  const sleep = durationMinutesOrNull(metrics.sleepDuration);
+
+  if (rem == null || light == null || sleep == null) return;
+
+  // 欠落時のみ: レム+浅い+深い ≈ 睡眠時間 から深い睡眠を推定
+  if (deep == null) {
+    const remain = sleep - rem - light;
+    if (remain >= 0 && remain <= 12 * 60) {
+      metrics.deepSleep = formatMinutesAsDuration(remain);
+    }
+  }
 }

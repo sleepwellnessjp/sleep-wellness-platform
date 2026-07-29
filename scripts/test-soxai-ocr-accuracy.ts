@@ -21,6 +21,7 @@ import { valuesAreEquivalent } from "../lib/soxai-value-normalize";
 import { emptyMetrics, type AnalysisMetrics, type MetricFieldKey } from "../lib/soxai-metrics";
 import { enrichMetricsFromGraphs, emptyGraphBundle } from "../lib/soxai-graphs";
 import { normalizeOcrMetrics } from "../lib/soxai-structured-metrics";
+import { setFingerprintFromHashes } from "../lib/soxai-ocr-cache";
 
 type CaseResult = { name: string; pass: boolean; detail?: string };
 
@@ -253,6 +254,9 @@ function metricsFrom(
   const merged = mergeImageExtractResults(setA);
   const expected: Partial<Record<MetricFieldKey, string | number>> = {
     sleepScore: 78,
+    qol: "50",
+    yesterdayQol: "48",
+    conditionScore: "72",
     sleepDuration: "6時間42分",
     bedtime: "23:40",
     wakeTime: "06:45",
@@ -271,6 +275,7 @@ function metricsFrom(
     respiratoryRate: "14.2",
     spo2: "96%",
     restingHeartRate: "58",
+    hrv: "42 ms",
     skinTemperature: "+0.2℃",
     stress: "33",
   };
@@ -293,16 +298,17 @@ function metricsFrom(
           typeof got === "string" &&
           (got === want ||
             valuesAreEquivalent(key, got, want) ||
-            got.includes(String(want).replace(/℃/, "")));
+            got.includes(String(want).replace(/℃/, "")) ||
+            (key === "hrv" && /42/.test(got)));
     if (ok) hit += 1;
     else {
       console.error(`  miss ${key}: got=${JSON.stringify(got)} want=${want}`);
     }
   }
   check(
-    `A merge 正解率 ${hit}/${total}`,
-    hit === total,
-    `${Math.round((hit / total) * 100)}%`,
+    `A merge 正解率 ${hit}/${total}（目標25/25）`,
+    hit === total && total >= 25,
+    `${hit}/${total}`,
   );
 }
 
@@ -427,6 +433,193 @@ function metricsFrom(
     "D: merge 時間=5時間32分",
     merged.metrics.sleepDuration === "5時間32分",
   );
+}
+
+// —— セット E: 表記ゆれ・改行・単位・周辺ラベル推定 ——
+{
+  const spaced = metricsFrom(
+    [
+      { label: "睡眠 時間", value: "6時間10分" },
+      { label: "浅い\n睡眠率", value: "50%" },
+      { label: "深い％", value: "18" },
+      { label: "レム%", value: "20" },
+      { label: "覚醒%", value: "12" },
+    ],
+    { screenType: "sleep_stages" },
+  );
+  // 睡眠時間は stages でも map されるが sleepDuration は stages で優先度低いだけ
+  check(
+    "E: 空白入り睡眠時間",
+    metricsFrom(
+      [{ label: "睡眠 時間", value: "6時間10分" }],
+      { screenType: "sleep_detail" },
+    ).metrics.sleepDuration === "6時間10分",
+  );
+  check("E: 改行ラベル浅い率", spaced.metrics.lightSleepRate === "50%");
+  check("E: 深い％→率", spaced.metrics.deepSleepRate === "18%");
+  check("E: レム%→率", spaced.metrics.remSleepRate === "20%");
+  check("E: 覚醒%→率", spaced.metrics.awakeningRate === "12%");
+
+  const units = metricsFrom(
+    [
+      { label: "安静時心拍数 平均", value: "60 bpm" },
+      { label: "心拍変動 平均", value: "38 ms" },
+      { label: "呼吸速度", value: "15.0 rpm" },
+      { label: "皮膚温度", value: "+0.3℃" },
+      { label: "平均酸素レベル", value: "97％" },
+    ],
+    { screenType: "other" },
+  );
+  check("E: bpm", /60/.test(units.metrics.restingHeartRate));
+  check("E: ms", /38/.test(units.metrics.hrv));
+  check("E: rpm", /15/.test(units.metrics.respiratoryRate));
+  check("E: ℃", units.metrics.skinTemperature.includes("+0.3"));
+  check("E: ％→%", units.metrics.spo2 === "97%");
+
+  const weak = metricsFrom(
+    [
+      { label: "皮膚温度", value: "見出し" },
+      { label: "平均", value: "+0.1" },
+      { label: "ストレスモニター", value: "画面" },
+      { label: "平均", value: "41" },
+    ],
+    { screenType: "other" },
+  );
+  check(
+    "E: 弱ラベル皮膚温",
+    weak.metrics.skinTemperature.includes("+0.1"),
+  );
+  check("E: 弱ラベルストレス", weak.metrics.stress === "41");
+
+  const swapped = normalizeVisibleReadings([
+    { label: "58", value: "bpm" },
+    { label: "42", value: "ms" },
+    { label: "", value: "14.5 rpm" },
+  ]);
+  const fromSwapped = metricsFrom(swapped, { screenType: "other" });
+  check("E: 逆ラベル bpm", /58/.test(fromSwapped.metrics.restingHeartRate));
+  check("E: 逆ラベル ms", /42/.test(fromSwapped.metrics.hrv));
+  check("E: 空ラベル rpm", /14\.5/.test(fromSwapped.metrics.respiratoryRate));
+
+  const graphFilled = enrichMetricsFromGraphs(emptyMetrics(), {
+    ...emptyGraphBundle(),
+    hrv: {
+      id: "hrv",
+      points: [],
+      segments: [],
+      annotations: [{ label: "平均", value: "44 ms" }],
+    },
+    "stage-detail": {
+      id: "stage-detail",
+      points: [],
+      segments: [],
+      annotations: [
+        { label: "レム", value: "21%" },
+        { label: "浅い睡眠時間", value: "3:20" },
+      ],
+    },
+  });
+  check("E: グラフHRV注釈", /44/.test(graphFilled.hrv));
+  check("E: グラフレム率", graphFilled.remSleepRate === "21%");
+  check(
+    "E: グラフ浅い時間",
+    /3時間20分|3:20/.test(graphFilled.lightSleep) ||
+      graphFilled.lightSleep.includes("3"),
+  );
+}
+
+// —— 画像順が前後してもマージ結果が変わらないこと ——
+{
+  const home = metricsFrom(
+    [
+      { label: "QoL", value: "50" },
+      { label: "昨日のスコア", value: "48" },
+      { label: "睡眠", value: "78" },
+      { label: "体調", value: "72" },
+      { label: "心拍数", value: "58" },
+    ],
+    { screenType: "home" },
+  );
+  const detail = metricsFrom(
+    [
+      { label: "睡眠時間", value: "6時間42分" },
+      { label: "入眠時間", value: "23:40" },
+      { label: "起床時間", value: "6:45" },
+      { label: "睡眠効率", value: "87" },
+      { label: "皮膚温度", value: "+0.2℃" },
+      { label: "平均ストレス", value: "33" },
+    ],
+    { screenType: "sleep_detail" },
+  );
+  const base: ImageExtractResult[] = [
+    {
+      imageIndex: 0,
+      metrics: home.metrics,
+      visibleReadingCount: 5,
+      readings: [
+        { label: "QoL", value: "50" },
+        { label: "昨日のスコア", value: "48" },
+        { label: "睡眠", value: "78" },
+        { label: "体調", value: "72" },
+        { label: "心拍数", value: "58" },
+      ],
+      provenance: home.provenance,
+      screenType: "home",
+    },
+    {
+      imageIndex: 1,
+      metrics: detail.metrics,
+      visibleReadingCount: 6,
+      readings: [
+        { label: "睡眠時間", value: "6時間42分" },
+        { label: "入眠時間", value: "23:40" },
+        { label: "起床時間", value: "6:45" },
+        { label: "睡眠効率", value: "87" },
+        { label: "皮膚温度", value: "+0.2℃" },
+        { label: "平均ストレス", value: "33" },
+      ],
+      provenance: detail.provenance,
+      screenType: "sleep_detail",
+    },
+  ];
+  const reversed: ImageExtractResult[] = [
+    { ...base[1]!, imageIndex: 0 },
+    { ...base[0]!, imageIndex: 1 },
+  ];
+  const forward = mergeImageExtractResults(base).metrics;
+  const backward = mergeImageExtractResults(reversed).metrics;
+  const keysToCompare: MetricFieldKey[] = [
+    "sleepScore",
+    "qol",
+    "yesterdayQol",
+    "conditionScore",
+    "sleepDuration",
+    "bedtime",
+    "wakeTime",
+    "sleepEfficiency",
+    "restingHeartRate",
+    "skinTemperature",
+    "stress",
+  ];
+  let orderOk = true;
+  for (const key of keysToCompare) {
+    const a =
+      key === "sleepScore" ? forward.sleepScore : String(forward[key] ?? "");
+    const b =
+      key === "sleepScore" ? backward.sleepScore : String(backward[key] ?? "");
+    if (a !== b) {
+      orderOk = false;
+      console.error(`  order mismatch ${key}: ${JSON.stringify(a)} vs ${JSON.stringify(b)}`);
+    }
+  }
+  check("F: 画像順入替でもマージ値が一致", orderOk);
+}
+
+// —— セット指紋はハッシュ順に依存しない ——
+{
+  const a = setFingerprintFromHashes(["bbb", "aaa", "ccc"]);
+  const b = setFingerprintFromHashes(["ccc", "bbb", "aaa"]);
+  check("F: fingerprint は順序非依存", a === b);
 }
 
 const passed = results.filter((r) => r.pass).length;

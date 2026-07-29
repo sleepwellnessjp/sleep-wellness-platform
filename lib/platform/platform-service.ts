@@ -1,3 +1,4 @@
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Json } from "@/lib/supabase/database.types";
@@ -158,13 +159,15 @@ async function resolveAuthenticatedPlatformContext(): Promise<AuthenticatedPlatf
     error: authError,
   } = await supabase.auth.getUser();
 
+  // Cookie にセッションが無い場合の 400 (AuthSessionMissingError) は未ログインの正常系
   if (authError) {
-    console.error("[platform] resolveAuth: auth.getUser failed", authError);
+    if (!isAuthSessionMissingError(authError)) {
+      console.error("[platform] resolveAuth: auth.getUser failed", authError);
+    }
     return null;
   }
 
   if (!user) {
-    console.error("[platform] resolveAuth: no authenticated user");
     return null;
   }
 
