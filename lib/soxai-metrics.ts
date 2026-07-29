@@ -346,3 +346,17 @@ export function collectedMetricKeys(metrics: AnalysisMetrics): MetricFieldKey[] 
     isMetricPresent(metrics, key),
   );
 }
+
+/** 未取得キー一覧（25項目カバー確認用） */
+export function missingMetricKeys(metrics: AnalysisMetrics): MetricFieldKey[] {
+  return SOXAI_METRIC_FIELDS.map((field) => field.key).filter(
+    (key) => !isMetricPresent(metrics, key),
+  );
+}
+
+/** 未取得項目の日本語ラベル（ログ用） */
+export function missingMetricLabels(metrics: AnalysisMetrics): string[] {
+  return SOXAI_METRIC_FIELDS.filter(
+    (field) => !isMetricPresent(metrics, field.key),
+  ).map((field) => field.label);
+}

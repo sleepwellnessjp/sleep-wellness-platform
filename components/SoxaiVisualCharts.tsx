@@ -678,7 +678,7 @@ export function buildVisualPanels(
           return (
             <div className="mt-2 space-y-1">
               <MiniLineChart points={respGraph!.points} color="#315f68" />
-              {respGraph!.annotations.map((a) => (
+              {respGraph!.annotations?.map((a) => (
                 <p key={a.label} className="text-[10px] text-slate-500">
                   {a.label}: {a.value}
                 </p>

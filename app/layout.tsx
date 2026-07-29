@@ -16,7 +16,11 @@ export const metadata: Metadata = {
   description:
     "睡眠科学・ヨガ・呼吸・瞑想・日本文化・テクノロジーを融合した、日本初のSleep Wellness Platform。",
   applicationName: "Sleep Wellness Platform",
-  manifest: "/manifest.webmanifest",
+  // Safari が電話番号・日付などを自動リンク化すると Hydration mismatch になる
+  other: {
+    "format-detection": "telephone=no, date=no, email=no, address=no",
+    "application-version": APP_VERSION,
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -33,9 +37,6 @@ export const metadata: Metadata = {
     title: "Sleep Wellness Platform",
     statusBarStyle: "black-translucent",
   },
-  other: {
-    "application-version": APP_VERSION,
-  },
 };
 
 export const viewport: Viewport = {
@@ -51,8 +52,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ja" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col overflow-x-hidden bg-[color:var(--sw-surface)] text-[color:var(--foreground)]">
+    <html
+      lang="ja"
+      className={`${geistSans.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <body
+        className="flex min-h-full flex-col overflow-x-hidden bg-[color:var(--sw-surface)] text-[color:var(--foreground)]"
+        suppressHydrationWarning
+      >
         <SkipLink />
         <ToastProvider>
           {children}

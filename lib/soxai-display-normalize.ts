@@ -103,28 +103,36 @@ export function normalizeMetricDisplayValue(
     return formatPercentDisplay(raw);
   }
 
-  if (key === "skinTemperature") {
-    return normalizeSkinTemperatureDisplay(raw);
-  }
-
   if (key === "hrv") {
     const n = parseLeadingNumber(raw);
     if (n == null) return raw;
-    if (/ms/i.test(raw)) return `${Number.isInteger(n) ? n : n} ms`;
-    return String(n);
+    const shown = Number.isInteger(n) ? String(n) : String(n);
+    if (/ms|ミリ秒/i.test(raw)) return `${shown} ms`;
+    return shown;
   }
 
   if (key === "restingHeartRate") {
     const n = parseLeadingNumber(raw);
     if (n == null) return raw;
-    if (/bpm|回/i.test(raw)) return `${Math.round(n)} bpm`;
-    return String(Math.round(n));
+    const rounded = Math.round(n);
+    if (/bpm|拍\/分|回\/分/i.test(raw)) return `${rounded} bpm`;
+    return String(rounded);
   }
 
   if (key === "respiratoryRate") {
     const n = parseLeadingNumber(raw);
     if (n == null) return raw;
-    return String(Math.round(n * 10) / 10);
+    const shown = String(Math.round(n * 10) / 10);
+    if (/rpm|brpm|呼吸\/分|回\/分/i.test(raw)) {
+      if (/brpm/i.test(raw)) return `${shown} brpm`;
+      if (/rpm/i.test(raw)) return `${shown} rpm`;
+      return `${shown} rpm`;
+    }
+    return shown;
+  }
+
+  if (key === "skinTemperature") {
+    return normalizeSkinTemperatureDisplay(raw);
   }
 
   return raw;

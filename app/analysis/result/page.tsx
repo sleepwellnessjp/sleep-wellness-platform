@@ -687,7 +687,10 @@ export default function AnalysisResultPage() {
 
   if (!isClient || loadingSaved) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f7f7f5]">
+      <main
+        id="main-content"
+        className="flex min-h-screen items-center justify-center bg-[#f7f7f5]"
+      >
         <p className="text-base text-slate-400">読み込み中...</p>
       </main>
     );
@@ -695,7 +698,10 @@ export default function AnalysisResultPage() {
 
   if (!result) {
     return (
-      <main className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 py-16 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-20 sm:pb-20">
+      <main
+        id="main-content"
+        className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4 py-16 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-20 sm:pb-20"
+      >
         <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-5 text-center shadow-[0_24px_80px_-48px_rgba(15,23,42,0.18)] sm:max-w-lg sm:p-12">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
@@ -1047,6 +1053,18 @@ function ResultContent({
 
   // OCR→統合→確認で確定した単一ソース（Medical / Visual / PDF 共通）
   const confirmedMetrics = result.metrics;
+  if (!confirmedMetrics) {
+    return (
+      <main
+        id="main-content"
+        className="flex min-h-screen items-center justify-center overflow-x-hidden bg-[#f7f7f5] px-4"
+      >
+        <p className="text-base text-slate-500">
+          分析メトリクスが不足しています。最初からやり直してください。
+        </p>
+      </main>
+    );
+  }
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const recoveryIndex = computeRecoveryIndex({
@@ -1115,7 +1133,10 @@ function ResultContent({
           : "grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-3";
 
   return (
-    <main className="report-print-root min-h-screen overflow-x-hidden bg-[#f7f7f5] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] print:overflow-visible print:bg-white print:pt-0 print:pb-0 sm:py-12 sm:pb-12 md:py-16 md:pb-16">
+    <main
+      id="main-content"
+      className="report-print-root min-h-screen overflow-x-hidden bg-[#f7f7f5] pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] print:overflow-visible print:bg-white print:pt-0 print:pb-0 sm:py-12 sm:pb-12 md:py-16 md:pb-16"
+    >
       <div className="report-sheet mx-auto max-w-[820px] px-4 print:max-w-none print:px-0 sm:px-6">
         <div className="no-print mb-6 space-y-4 sm:mb-8 sm:space-y-5">
           <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4">

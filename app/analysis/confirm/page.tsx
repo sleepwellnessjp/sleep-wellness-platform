@@ -4,21 +4,27 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import AnalysisAccessBanner from "@/components/AnalysisAccessBanner";
 import {
   getExtractionDraft,
+  reanalyzeSoxaiImages,
+  setExtractionDraft,
   setPendingAnalysisRequest,
   type AnalysisMetrics,
   type ExtractionDraft,
   type MetricConflict,
+  type SoxaiExtractSection,
+  type SoxaiOcrImageStatusRecord,
 } from "@/lib/analysis-session";
 import { resetProgressiveAnalysisJobs } from "@/lib/analysis-progressive";
 import {
   buildAnalysisAiInput,
   compactPreviousAnalysisForAi,
   logAnalysisAiInputInDev,
-} from "@/lib/client-profiles";import { getClientById } from "@/lib/repositories/client-repository";
+} from "@/lib/client-profiles";
+import { getClientById } from "@/lib/repositories/client-repository";
 import { graphPanelCount } from "@/lib/soxai-graphs";
 import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
 import {
@@ -26,6 +32,7 @@ import {
   consistencyWarningKeys,
 } from "@/lib/soxai-consistency";
 import {
+  collectedMetricKeys,
   isMetricPresent,
   metricDisplayValue,
   normalizeMetrics,
@@ -33,7 +40,55 @@ import {
   SOXAI_METRIC_FIELDS,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
-import { CRITICAL_OCR_KEYS, isCriticalOcrKey } from "@/lib/soxai-screen";
+import { CRITICAL_OCR_KEYS, isCriticalOcrKey, SCREEN_PRIMARY_METRICS } from "@/lib/soxai-screen";
+import { toSwsMetrics } from "@/lib/sws-standard";
+import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
+import type { OcrProgressSnapshot } from "@/lib/soxai-ocr-runner";
+
+const SECTION_DISPLAY: Array<{
+  id: SoxaiExtractSection;
+  title: string;
+  screens: Array<keyof typeof SCREEN_PRIMARY_METRICS>;
+}> = [
+  { id: "home", title: "Overview", screens: ["home"] },
+  { id: "stress", title: "Stress", screens: ["stress"] },
+  {
+    id: "sleep_overview",
+    title: "Sleep Summary",
+    screens: ["sleep_overview"],
+  },
+  {
+    id: "sleep_detail",
+    title: "Sleep Detail",
+    screens: ["sleep_detail", "bed_wake"],
+  },
+  {
+    id: "sleep_stages",
+    title: "Sleep Stages",
+    screens: ["sleep_stages"],
+  },
+  { id: "circadian", title: "Circadian", screens: ["circadian"] },
+  {
+    id: "heart_hrv",
+    title: "Respiration / HRV",
+    screens: ["respiration", "rhr", "hrv"],
+  },
+  { id: "skin_temp", title: "Skin Temp", screens: ["skin_temp"] },
+];
+
+function sectionMetricKeys(
+  section: SoxaiExtractSection,
+): MetricFieldKey[] {
+  const entry = SECTION_DISPLAY.find((item) => item.id === section);
+  if (!entry) return [];
+  const keys = new Set<MetricFieldKey>();
+  for (const screen of entry.screens) {
+    for (const key of SCREEN_PRIMARY_METRICS[screen]) {
+      keys.add(key);
+    }
+  }
+  return [...keys];
+}
 
 const inputClass =
   "mt-2.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
@@ -99,7 +154,7 @@ function statusBadge(status: FieldStatus) {
       };
     case "no_explicit":
       return {
-        label: "未入力",
+        label: "未取得",
         className:
           "rounded-full bg-[#FFF8EC] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#C48A2D]",
       };
@@ -112,24 +167,89 @@ function statusBadge(status: FieldStatus) {
   }
 }
 
+function imageStatusLabel(status: SoxaiOcrImageStatusRecord["status"]): {
+  label: string;
+  className: string;
+} {
+  switch (status) {
+    case "success":
+      return {
+        label: "成功",
+        className: "bg-[#315f68]/10 text-[#315f68]",
+      };
+    case "failed":
+      return {
+        label: "OCR失敗",
+        className: "bg-[#a33a3a]/10 text-[#a33a3a]",
+      };
+    case "timeout":
+      return {
+        label: "タイムアウト",
+        className: "bg-amber-100 text-amber-800",
+      };
+    case "cancelled":
+      return {
+        label: "中止",
+        className: "bg-slate-100 text-slate-600",
+      };
+  }
+}
+
 export default function ConfirmExtractionPage() {
   const router = useRouter();
-  const initialDraft = useMemo(() => getExtractionDraft(), []);
-  const [draft] = useState<ExtractionDraft | null>(() => initialDraft);
-  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(() =>
-    initialDraft
-      ? normalizeMetrics(initialDraft.extractedMetrics)
-      : null,
-  );
+  // sessionStorage は SSR で読めないため、初回は必ず null で揃えて Hydration mismatch を防ぐ
+  const [draft, setDraft] = useState<ExtractionDraft | null>(null);
+  const [metrics, setMetrics] = useState<AnalysisMetrics | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [ocrOverlayOpen, setOcrOverlayOpen] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState<OcrProgressSnapshot | null>(
+    null,
+  );
+  const [showOcrCancelConfirm, setShowOcrCancelConfirm] = useState(false);
+  const [ocrCancelledMenu, setOcrCancelledMenu] = useState(false);
+  const [reanalyzeAbort, setReanalyzeAbort] =
+    useState<AbortController | null>(null);
 
   useEffect(() => {
+    const initialDraft = getExtractionDraft();
     if (!initialDraft) {
+      console.error("[ocr-trace] confirm: draft null → /analysis/new へ戻す", {
+        at: new Date().toISOString(),
+      });
       router.replace("/analysis/new");
+      return;
     }
-  }, [router, initialDraft]);
+    setDraft(initialDraft);
+    setMetrics(normalizeMetrics(initialDraft.extractedMetrics));
+    const keys = collectedMetricKeys(
+      normalizeMetrics(initialDraft.extractedMetrics),
+    );
+    console.log("[ocr-trace] confirm mount: draft metrics 生JSON", {
+      metricCount: keys.length,
+      imageKeys: initialDraft.imageKeys,
+      metrics: initialDraft.extractedMetrics,
+    });
+    for (const field of SOXAI_METRIC_FIELDS) {
+      const key = field.key;
+      const value = metricDisplayValue(
+        normalizeMetrics(initialDraft.extractedMetrics),
+        key,
+      );
+      const fromImage = (initialDraft.imageKeys ?? []).includes(key);
+      console.log("[ocr-trace] confirm setValue相当", {
+        key,
+        formKey: field.key,
+        keysMatch: key === field.key,
+        fromImage,
+        inputType: field.inputType,
+        value,
+        emptyOnScreen: !value,
+      });
+    }
+  }, [router]);
 
   const imageKeySet = useMemo(
     () => new Set(draft?.imageKeys ?? []),
@@ -144,7 +264,7 @@ export default function ConfirmExtractionPage() {
     return map;
   }, [draft?.conflicts]);
 
-  const confidenceMap = draft?.ocrConfidence ?? {};
+  const confidenceMap = useMemo(() => draft?.ocrConfidence ?? {}, [draft]);
 
   const consistencyWarnings = useMemo(
     () => (metrics ? detectMetricConsistencyWarnings(metrics) : []),
@@ -159,6 +279,23 @@ export default function ConfirmExtractionPage() {
   const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
   const conflictCount = draft?.conflicts?.length ?? 0;
   const graphCount = draft ? graphPanelCount(draft.graphs) : 0;
+  const sectionAcquisition = useMemo(() => {
+    if (!draft || !metrics) return [];
+    const uploaded = new Set(draft.ocrSections ?? []);
+    const presentKeys = new Set(collectedMetricKeys(metrics));
+    return SECTION_DISPLAY.filter(
+      (section) => uploaded.size === 0 || uploaded.has(section.id),
+    ).map((section) => {
+      const keys = sectionMetricKeys(section.id);
+      const acquired = keys.filter((key) => presentKeys.has(key)).length;
+      return {
+        id: section.id,
+        title: section.title,
+        acquired,
+        total: keys.length,
+      };
+    });
+  }, [draft, metrics]);
   const needsReviewCount = useMemo(() => {
     if (!metrics || !draft) return 0;
     let count = 0;
@@ -191,12 +328,186 @@ export default function ConfirmExtractionPage() {
   const backHref = draft?.lifestyle.clientId
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
     : "/analysis/new";
+  const isManualInput = draft?.inputSource === "manual";
 
   const updateField = (key: MetricFieldKey, value: string) => {
     setMetrics((current) => {
       if (!current) return current;
       return setMetricValue(current, key, value);
     });
+  };
+
+  const imageStatuses = draft?.ocrImageStatuses ?? [];
+  const failedImageIndexes = imageStatuses
+    .filter((item) => item.status !== "success")
+    .map((item) => item.index);
+
+  const applyOcrResultToDraft = (
+    current: ExtractionDraft,
+    result: {
+      metrics: AnalysisMetrics;
+      conflicts: MetricConflict[];
+      graphs: NonNullable<ExtractionDraft["graphs"]>;
+      confidence: NonNullable<ExtractionDraft["ocrConfidence"]>;
+      imageStatuses: SoxaiOcrImageStatusRecord[];
+    },
+  ) => {
+    const metricCount = collectedMetricKeys(result.metrics).length;
+    console.info("[ocr-trace] ⑥ フォームへsetValue開始", {
+      metricCount,
+      imageStatusCount: result.imageStatuses.length,
+      at: new Date().toISOString(),
+    });
+    try {
+      const next: ExtractionDraft = {
+        ...current,
+        extractedMetrics: result.metrics,
+        imageKeys: collectedMetricKeys(result.metrics),
+        conflicts: result.conflicts,
+        ocrConfidence: result.confidence,
+        graphs: result.graphs,
+        ocrImageStatuses: result.imageStatuses,
+        swsMetrics: toSwsMetrics(
+          result.metrics,
+          current.inputSource === "manual" ? "manual" : "soxai",
+        ),
+      };
+      setExtractionDraft(next);
+      setDraft(next);
+      setMetrics(normalizeMetrics(result.metrics));
+      console.info("[ocr-trace] ⑦ フォーム反映完了", {
+        metricCount,
+        imageKeys: next.imageKeys.length,
+        at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[ocr-trace] ⑧ エラー発生箇所", {
+        where: "applyOcrResultToDraft",
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  };
+
+  const handleReanalyzeIndexes = async (indexes: number[]) => {
+    if (!draft || indexes.length === 0) return;
+    setAccessError(null);
+    setReanalyzing(true);
+    console.log("[overlay]", {
+      source: "confirm",
+      action: "open",
+      ocrOverlayOpen,
+      isSubmitting,
+      reanalyzing,
+      pathname:
+        typeof window !== "undefined" ? window.location.pathname : undefined,
+    });
+    setOcrOverlayOpen(true);
+    setOcrCancelledMenu(false);
+    setShowOcrCancelConfirm(false);
+    setOcrProgress(null);
+    const controller = new AbortController();
+    setReanalyzeAbort(controller);
+    let retainOcrOverlay = false;
+
+    try {
+      const result = await reanalyzeSoxaiImages({
+        images: draft.images,
+        sections: draft.ocrSections,
+        indexes,
+        seed: {
+          metrics: draft.extractedMetrics,
+          graphs: draft.graphs,
+          confidence: draft.ocrConfidence,
+          conflicts: draft.conflicts,
+          imageStatuses: draft.ocrImageStatuses,
+        },
+        signal: controller.signal,
+        onProgress: setOcrProgress,
+      });
+
+      if (result.cancelled) {
+        applyOcrResultToDraft(draft, {
+          metrics: result.metrics,
+          conflicts: result.conflicts,
+          graphs: result.graphs,
+          confidence: result.confidence,
+          imageStatuses: result.imageStatuses,
+        });
+        retainOcrOverlay = true;
+        setOcrCancelledMenu(true);
+        return;
+      }
+
+      applyOcrResultToDraft(draft, {
+        metrics: result.metrics,
+        conflicts: result.conflicts,
+        graphs: result.graphs,
+        confidence: result.confidence,
+        imageStatuses: result.imageStatuses,
+      });
+      flushSync(() => {
+        console.log("[overlay]", {
+          source: "confirm",
+          action: "close",
+          ocrOverlayOpen,
+          isSubmitting,
+          reanalyzing,
+          pathname:
+            typeof window !== "undefined" ? window.location.pathname : undefined,
+        });
+        setOcrOverlayOpen(false);
+      });
+    } catch (error) {
+      console.error("[analysis/confirm] reanalyze failed:", error);
+      console.error("[ocr-trace] ⑧ エラー発生箇所", {
+        where: "handleReanalyzeIndexes",
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      setAccessError(
+        error instanceof Error
+          ? error.message
+          : "再解析に失敗しました。もう一度お試しください。",
+      );
+      flushSync(() => {
+        console.log("[overlay]", {
+          source: "confirm",
+          action: "close",
+          ocrOverlayOpen,
+          isSubmitting,
+          reanalyzing,
+          pathname:
+            typeof window !== "undefined" ? window.location.pathname : undefined,
+        });
+        setOcrOverlayOpen(false);
+      });
+    } finally {
+      console.log("[overlay]", {
+        source: "confirm",
+        action: "close",
+        ocrOverlayOpen,
+        isSubmitting,
+        reanalyzing,
+        pathname:
+          typeof window !== "undefined" ? window.location.pathname : undefined,
+      });
+      setReanalyzing(false);
+      setReanalyzeAbort(null);
+      if (!retainOcrOverlay) {
+        console.log("[overlay]", {
+          source: "confirm",
+          action: "close",
+          ocrOverlayOpen,
+          isSubmitting,
+          reanalyzing,
+          pathname:
+            typeof window !== "undefined" ? window.location.pathname : undefined,
+        });
+        setOcrOverlayOpen(false);
+      }
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -292,6 +603,8 @@ export default function ConfirmExtractionPage() {
       setPendingAnalysisRequest({
         lifestyle: draft.lifestyle,
         images: draft.images,
+        inputSource: draft.inputSource ?? "soxai",
+        swsMetrics: draft.swsMetrics,
         metrics: confirmed,
         extractedMetrics: draft.extractedMetrics,
         graphs: draft.graphs,
@@ -382,7 +695,13 @@ export default function ConfirmExtractionPage() {
           {field.hint}
         </span>
         <input
-          type={field.inputType === "number" ? "number" : field.inputType}
+          type={
+            field.inputType === "time" && !/^\d{2}:\d{2}$/.test(value)
+              ? "text"
+              : field.inputType === "number"
+                ? "number"
+                : field.inputType
+          }
           inputMode={field.inputType === "number" ? "decimal" : undefined}
           step={field.inputType === "number" ? "1" : undefined}
           value={value}
@@ -396,7 +715,7 @@ export default function ConfirmExtractionPage() {
                   ? inputClass
                   : inputEmptyClass
           }
-          placeholder={present ? field.placeholder : "未入力"}
+          placeholder={present ? field.placeholder : "未取得"}
         />
         {conflict && (
           <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
@@ -415,8 +734,65 @@ export default function ConfirmExtractionPage() {
     (f) => !CRITICAL_OCR_KEYS.includes(f.key),
   );
 
+  console.log("[overlay]", {
+    source: "confirm",
+    action: "render",
+    ocrOverlayOpen,
+    isSubmitting,
+    reanalyzing,
+    pathname:
+      typeof window !== "undefined" ? window.location.pathname : undefined,
+  });
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
+      {ocrOverlayOpen && (
+        <SoxaiOcrProgressPanel
+          progress={ocrProgress}
+          showCancelConfirm={showOcrCancelConfirm}
+          cancelledMenu={ocrCancelledMenu}
+          onRequestCancel={() => setShowOcrCancelConfirm(true)}
+          onContinue={() => setShowOcrCancelConfirm(false)}
+          onConfirmCancel={() => {
+            setShowOcrCancelConfirm(false);
+            reanalyzeAbort?.abort();
+          }}
+          onReviewPartial={() => {
+            console.log("[overlay]", {
+              source: "confirm",
+              action: "close",
+              ocrOverlayOpen,
+              isSubmitting,
+              reanalyzing,
+              pathname:
+                typeof window !== "undefined"
+                  ? window.location.pathname
+                  : undefined,
+            });
+            setOcrOverlayOpen(false);
+            setOcrCancelledMenu(false);
+          }}
+          onResumeIncomplete={() => {
+            void handleReanalyzeIndexes(failedImageIndexes);
+          }}
+          onBackToUpload={() => {
+            reanalyzeAbort?.abort();
+            console.log("[overlay]", {
+              source: "confirm",
+              action: "close",
+              ocrOverlayOpen,
+              isSubmitting,
+              reanalyzing,
+              pathname:
+                typeof window !== "undefined"
+                  ? window.location.pathname
+                  : undefined,
+            });
+            setOcrOverlayOpen(false);
+            router.push(backHref);
+          }}
+        />
+      )}
       <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-8 sm:py-4">
           <Link href="/" className="flex items-center gap-3">
@@ -449,14 +825,15 @@ export default function ConfirmExtractionPage() {
 
         <header className="mx-auto max-w-2xl text-center">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
-            SOXAI EXTRACTION
+            {isManualInput ? "MANUAL INPUT REVIEW" : "SOXAI EXTRACTION"}
           </p>
           <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal">
             抽出結果の確認
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-            OCRは完了済みです。元画像と抽出値を照合し、必要なら修正してから
-            「AI分析を開始する」へ進んでください。
+            {isManualInput
+              ? "手入力値を確認し、必要なら修正してから「AI分析を開始する」へ進んでください。"
+              : "OCRは完了済みです。元画像と抽出値を照合し、必要なら修正してから「AI分析を開始する」へ進んでください。"}
           </p>
         </header>
 
@@ -482,7 +859,7 @@ export default function ConfirmExtractionPage() {
           </div>
           <div className="min-w-0 rounded-2xl border border-[#C48A2D]/25 bg-[#FFF8EC] px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#C48A2D] sm:text-[11px]">
-              未入力
+              未取得
             </p>
             <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#C48A2D] sm:text-2xl">
               {missingCount}
@@ -510,6 +887,37 @@ export default function ConfirmExtractionPage() {
             </p>
           </div>
         </div>
+
+        {sectionAcquisition.length > 0 && (
+          <div className="mx-auto mt-4 max-w-3xl rounded-2xl border border-slate-200/90 bg-white px-4 py-4 sm:px-5">
+            <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">
+              SECTION 取得状況
+            </p>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {sectionAcquisition.map((section) => (
+                <li
+                  key={section.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-[#fafaf8] px-3 py-2.5 text-[13px]"
+                >
+                  <span className="font-semibold text-[#071426]">
+                    {section.title}
+                  </span>
+                  <span
+                    className={
+                      section.acquired >= section.total
+                        ? "font-semibold text-[#315f68]"
+                        : section.acquired === 0
+                          ? "font-semibold text-[#C48A2D]"
+                          : "font-semibold text-[#071426]"
+                    }
+                  >
+                    {section.acquired}/{section.total}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {consistencyWarnings.length > 0 && (
           <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
@@ -566,6 +974,59 @@ export default function ConfirmExtractionPage() {
                     抽出値と並べて確認できます（{images.length}枚）
                   </p>
                 </div>
+                {imageStatuses.length > 0 && (
+                  <div className="space-y-2 border-b border-slate-100 px-4 py-4 sm:px-6">
+                    {imageStatuses.map((item) => {
+                      const badge = imageStatusLabel(item.status);
+                      const canRetry = item.status !== "success";
+                      return (
+                        <div
+                          key={item.index}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-[#fafaf8] px-3 py-2.5"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setActiveImageIndex(item.index)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <span className="block truncate text-[13px] font-semibold text-[#071426]">
+                              {item.label}
+                            </span>
+                            <span
+                              className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                            >
+                              {badge.label}
+                            </span>
+                          </button>
+                          {canRetry && (
+                            <button
+                              type="button"
+                              disabled={reanalyzing}
+                              onClick={() =>
+                                void handleReanalyzeIndexes([item.index])
+                              }
+                              className="shrink-0 rounded-full border border-[#315f68]/25 px-3 py-1.5 text-[12px] font-semibold text-[#315f68] transition hover:bg-[#315f68]/08 disabled:opacity-50"
+                            >
+                              再解析
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {failedImageIndexes.length > 1 && (
+                      <button
+                        type="button"
+                        disabled={reanalyzing}
+                        onClick={() =>
+                          void handleReanalyzeIndexes(failedImageIndexes)
+                        }
+                        className="mt-1 w-full rounded-full border border-[#315f68]/25 bg-white px-3 py-2.5 text-[13px] font-semibold text-[#315f68] transition hover:bg-[#f3f7f8] disabled:opacity-50"
+                      >
+                        未完了の画像をまとめて再解析
+                      </button>
+                    )}
+                  </div>
+                )}
                 <div className="px-4 py-4 sm:px-6 sm:py-5">
                   {images.length > 0 ? (
                     <>
@@ -600,7 +1061,9 @@ export default function ConfirmExtractionPage() {
                       )}
                     </>
                   ) : (
-                    <p className="text-sm text-slate-500">画像がありません</p>
+                    <p className="text-sm text-slate-500">
+                      {isManualInput ? "手入力モードでは画像表示はありません" : "画像がありません"}
+                    </p>
                   )}
                 </div>
               </section>

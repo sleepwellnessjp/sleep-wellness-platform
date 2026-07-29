@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { tokensFromUsage } from "@/lib/openai-usage";
 import {
   isImageDataUrl,
   metricsJsonSchema,
@@ -610,6 +611,8 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 | instructorCounseling | 認定講師のみ | 良好な点／改善が必要な点／考えられる要因／質問候補 | クライアント向け行動指示・原因の断定 |
 | melatoninYogaPlan | クライアント＋講師 | Phase・呼吸・入浴・朝 | 一般ヨガ論・医療指示 |
 同じ内容を別フィールドへコピーしない。方向性が似ていても文言と粒度を分ける。
+同一レポート内で同じ指摘・同じ数値解説・同じ行動提案を繰り返さない。
+summary / karteSummary / improvements / todaysRecommendations / recommendationsUntilNext は内容が重ならないよう役割を守り、言い回しを変えるだけでは不十分（役割自体を分ける）。
 
 ==============================
 生活習慣との連動ガイド
@@ -796,7 +799,15 @@ function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
     ["ストレス（測定）", metrics.stress || missing],
   ];
 
-  return rows.map(([label, value]) => `${label}: ${value}`).join("\n");
+  const present = rows.filter(([, v]) => v !== missing);
+  const absent = rows.filter(([, v]) => v === missing);
+  const table = rows.map(([label, value]) => `${label}: ${value}`).join("\n");
+  return `${table}
+
+【取得済み ${present.length}/25】${present.map(([l]) => l).join(" / ") || "なし"}
+【未確認 ${absent.length}/25】${absent.map(([l]) => l).join(" / ") || "なし"}
+※文章中の数値は上記表と一字一句一致させること。表に無い数値の創作・言い換え禁止。
+※取得済みはすべて総合評価に反映すること（HRV・睡眠スコア・睡眠時間・睡眠ステージ・ストレス・呼吸数・皮膚温・安静時心拍など）。単一指標だけで結論しない。`;
 }
 
 /** 確認済みメトリクスを分析結果に強制反映（モデルが上書きしても戻す） */
@@ -919,6 +930,7 @@ function formatLifestyle(lifestyle: LifestyleData): string {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   if (!process.env.OPENAI_API_KEY?.trim()) {
     return NextResponse.json(
       {
@@ -962,7 +974,10 @@ export async function POST(request: Request) {
   }
 
   const lifestyle = validated.lifestyle;
-  const images = validated.images.map(normalizeImageDataUrl);
+  // 確認済みメトリクスがある場合は画像を破棄（分析時の再OCRを防止）
+  const images = validated.metrics
+    ? []
+    : validated.images.map(normalizeImageDataUrl);
   const confirmedMetrics = validated.metrics;
   const seedScore = validated.seedScore;
   const seedCategoryScores = validated.seedCategoryScores;
@@ -1077,21 +1092,10 @@ scoreComment と categoryScoreRationales は、上記の確定点数のみを用
           content: [
             {
               type: "input_text",
-              text: `以下の4ソースを統合し、Sleep Wellness Institute Japan 認定講師が
-カウンセリングに使える専門レポートを作成してください。
+              text: `Sleep Wellness Institute Japan 専門レポートを作成してください。
+システム指示の構成・禁止事項・役割分担を厳守。以下はデータのみ（指示の再掲は不要）。
 
-必須の思考順: 必須データを横断的に読む → 【最優先】データ根拠つきの良かった点を先に特定（最低2つ） → 複数指標を関連づけて「最重要課題・判断根拠・今回もっとも改善効果が高い行動」を整理 → プロフィールとの関連 → スコア解説＋4軸根拠（確定点数のみ） → 今日やる3つ（領域横断・完全個別化） → AI宿題（優先順位付き4〜6） → 次回比較ポイント → メラトニンヨガ™連携 → 前回・初回比較解説 → 講師へのカウンセリング提案（ヒアリング／次回比較／生活習慣／改善見込み／観察）。
-改善点だけのレポートは絶対禁止。必ず最初に良かった点を書く。
-単一データだけで判断しない。定型文（例:「飲酒を減らしましょう」）は禁止。一般論禁止。
-必ず「なぜその判断か」「どのデータが根拠か」「データ同士の関連」を文章で説明する。
-医療診断表現は禁止。「可能性があります」「考えられます」「参考として」「改善が期待できます」を用いる。
-文章は専門的・高級感・安心感・前向きに。
-Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜず、同じ文言をコピーしない。
-表示点数と説明文の点数は必ず一致させる。
-
-優先順位: SOXAI実測 > 当日生活習慣 > 固定プロフィール > 前回分析 > 気象 > 一般参考基準。
-固定プロフィールに無い項目は推測しない。前回が無い場合は前回比較に触れない。
-前回の recommendationsUntilNext（AI宿題）がある場合は、checked（達成）/未達と達成率を可能性として参照し、今回の宿題に活かす。数値として上書きしない。
+必須: 取得済みメトリクスを横断して総合評価（HRV・睡眠スコア・睡眠時間・睡眠ステージ・ストレス・呼吸・皮膚温・安静時心拍など）。単一指標断定禁止。数値は表と一致。未確認は推測禁止。フィールド間の同文言コピー・繰り返し禁止。改善点だけのレポート禁止（良かった点を先に）。
 
 ${metricsBlock}
 
@@ -1103,61 +1107,9 @@ ${fixedProfileBlock}
 
 ${previousBlock}
 
-【必ずこの順で空欄なく生成】
-① goodPoints＝データ根拠つきの良かった点（必ず2〜4件。数値を含め「なぜ良いか」を書く。省略・空・1件以下は禁止）
-  例: 「深い睡眠が1時間15分確保されています」（深睡眠・REM時間だけで回復良好とは断定しない）
-② improvements＝改善が期待できるポイント（重要度順・最大5件。{stars:5|4|3, text, whyNow}。goodPoints の後に書く）
-  stars は内部ソート用。text に★やラベルは付けず、「何を整えるか」を書く。
-  whyNow に「なぜ今それを優先するか」だけを書く（text の言い換え禁止）。
-③ summary＝総合評価（120〜220文字）。必ず最初にデータ根拠つきの良かった点から書き始める。
-③-b karteSummary＝Sleep Wellness Insight（診断記録のみ。行動リスト禁止）。
-  必須構成（改行区切り）:
-  ■今回最も重要な課題
-  （1つに絞った課題・根拠数値を短く）
-  ■判断の根拠
-  （睡眠効率・覚醒時間・HRV・深睡眠・生活習慣・飲酒・体内時計など、該当データを「関連」で説明する。一般論禁止）
-  ■今回もっとも改善効果が高い行動
-  （最も改善効果が高い具体行動1つと、どのデータ関連からそう言えるか。箇条書き禁止）
-  見出し込み 260〜500文字。
-  前回あり: 課題→根拠→行動。初回: 「前回より」比較は禁止。
-  summary の言い換え禁止。認定講師がそのまま説明できる品質で書く。
-④ profileRelation＝プロフィールとの関連（短段落・根拠つき）
-⑤ scoreComment＝睡眠ウェルネススコアの解説（短段落）。確定 score / categoryScores の点数のみ使用
-⑤-b categoryScoreRationales＝身体・心・生活・環境それぞれ「なぜこの点数か」1〜2行（確定点数を必ず含める・空欄禁止）
-⑥ todaysRecommendations＝今日やる3つ（必ずちょうど3件。睡眠データ／体内時計／ストレス／飲酒／運動／生活習慣から選ぶ。固定文・毎回同じテンプレ禁止）
-⑦ nextComparisonPoints＝次回比較ポイント（2〜4件。次回見るべき観点の短文）
-⑧ recommendationsUntilNext＝AI宿題（必ず4〜6件。先頭ほど優先。今日／今週／継続を配分。毎回自動生成。今日やる3つと同じ文言禁止）
-⑨ instructorCounseling＝AIから講師への提案（goodPoints／needsImprovement／possibleFactors／questionCandidates。原因断定・改善提案の混同禁止）
-⑩ melatoninYogaPlan＝メラトニンヨガ™連携（recommendedPhase／breathing／bathing／morningAction）
-⑪ comparisonNarrative＝前回比較 vsPrevious・初回比較 vsFirst（初回は両方空文字 ""）
+【生成順】①goodPoints(2〜4) → ②improvements → ③summary → ③-b karteSummary(課題/根拠/行動) → ④profileRelation → ⑤scoreComment → ⑤-b categoryScoreRationales → ⑥todaysRecommendations(ちょうど3) → ⑦nextComparisonPoints → ⑧recommendationsUntilNext(4〜6) → ⑨instructorCounseling → ⑩melatoninYogaPlan → ⑪comparisonNarrative
 
-【絶対禁止】
-- 改善点だけのレポート（良かった点を書かない／後回しにする／summary を改善点だけで始める）
-- goodPoints が空・1件以下・数値根拠なし・改善点の言い換えになっていること
-- improvements の text が定型文のみ／whyNow が空・text の言い換えであること
-- karteSummary が空・見出し3構成（今回最も重要な課題／判断の根拠／今回もっとも改善効果が高い行動）でないこと
-- karteSummary に一般論・行動リスト・宿題・講師ヒアリング文を書くこと
-- 前回があるのに karteSummary で変化に触れないこと／初回なのに「前回より」と書くこと
-- todaysRecommendations が 3件以外であること（必ずちょうど3件）
-- todaysRecommendations に長文・抽象論・定型文・毎回同じテンプレ・入力と無関係な内容を書くこと
-- recommendationsUntilNext が 4〜6件以外であること
-- recommendationsUntilNext に観察観点だけの文言・今日やる3つと同じ文言・毎回同じ宿題を書くこと
-- instructorCounseling が未記入／クライアント向け行動指示になっていること
-- categoryScoreRationales の空欄・定型文のみ・確定点数と異なる点数
-- melatoninYogaPlan の空欄
-- Insight・今日やる3つ・AI宿題・講師提案の間で同じ文言をコピーすること
-- 単一指標だけで状態を断定すること
-- HRV・SpO₂だけで状態を断定しない
-- 未測定・基準不明の項目を推測で埋めない
-- 医療診断・治療・病名表現を使わない
-- 単日だけで結論しない。「可能性があります」「考えられます」を使う
-- 年齢・性別の一般基準比較は参考値のみ。病名断定禁止
-- 年齢または性別が未入力なら「年齢・性別を考慮していない参考分析」と明記
-- 画像の再OCR・再読取（確認済みメトリクスがある場合）
-- 先行確定された Sleep Wellness Score / categoryScores の書き換え
-- 表示点数と説明文の点数不一致（例: 身体74点なのに説明で68点）
-
-【クライアント基本情報＋生活習慣フォーム（当日入力を含む。固定プロフィールと区別）】
+【クライアント基本情報＋生活習慣フォーム】
 ${formatLifestyle(lifestyle)}`,
             },
             ...(confirmedMetrics
@@ -1165,7 +1117,7 @@ ${formatLifestyle(lifestyle)}`,
               : images.map((imageUrl) => ({
                   type: "input_image" as const,
                   image_url: imageUrl,
-                  detail: "high" as const,
+                  detail: "low" as const,
                 }))),
           ],
         },
@@ -1179,6 +1131,20 @@ ${formatLifestyle(lifestyle)}`,
         },
       },
     });
+
+    const analyzeTokens = tokensFromUsage(response.usage);
+    const durationMs = Date.now() - startedAt;
+    const usage = {
+      purpose: "analyze" as const,
+      model: "gpt-4o",
+      apiCalls: 1,
+      inputTokens: analyzeTokens.inputTokens,
+      outputTokens: analyzeTokens.outputTokens,
+      durationMs,
+      imageCount: confirmedMetrics ? 0 : images.length,
+      note: confirmedMetrics ? "metrics-json-only" : "with-images-fallback",
+    };
+    console.info("[api/analyze] usage", usage);
 
     const outputText = response.output_text?.trim();
     if (!outputText) {
@@ -1251,7 +1217,11 @@ ${formatLifestyle(lifestyle)}`,
       // activity log is best-effort
     }
 
-    return NextResponse.json(analysis);
+    return NextResponse.json(
+      analysis && typeof analysis === "object"
+        ? { ...(analysis as object), usage }
+        : { result: analysis, usage },
+    );
   } catch (error) {
     console.error("OpenAI analysis failed:", error);
     const details = openaiErrorMessage(error);

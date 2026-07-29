@@ -1,6 +1,7 @@
 import {
   collectedMetricKeys,
   emptyMetrics,
+  metricDisplayValue,
   normalizeMetrics,
   SOXAI_METRIC_FIELDS,
   type AnalysisMetrics,
@@ -26,11 +27,27 @@ import type {
   ClientProfileSections,
 } from "@/lib/client-profiles/types";
 import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
+import type { SwsMetricEntry } from "@/lib/sws-standard";
 import {
   improvementTexts,
   normalizeImprovements,
   type ImprovementItem,
 } from "@/lib/improvement-priority";
+import {
+  runSoxaiOcr,
+  type OcrProgressSnapshot,
+  type SoxaiExtractSection as RunnerSoxaiExtractSection,
+  type SoxaiOcrImageStatusRecord,
+  type SoxaiOcrRunResult,
+} from "@/lib/soxai-ocr-runner";
+import {
+  hashImageDataUrls,
+  isSoxaiOcrDebugMode,
+  setFingerprintFromHashes,
+  getCachedOcrSet,
+  setCachedOcrSet,
+} from "@/lib/soxai-ocr-cache";
+import { recordOpenAiUsage } from "@/lib/openai-usage";
 
 export type { AnalysisMetrics };
 export type { SoxaiGraphBundle };
@@ -110,6 +127,8 @@ type LifestyleData = {
 export type AnalysisRequest = {
   lifestyle: LifestyleData;
   images: string[];
+  inputSource?: "soxai" | "manual";
+  swsMetrics?: SwsMetricEntry[];
   /** 確認画面で確定したメトリクス（画像優先＋不足分の手入力） */
   metrics?: AnalysisMetrics;
   /** OCR生データ（確認前）。保存用 */
@@ -153,6 +172,7 @@ export type MetricConflict = {
 export type ExtractionDraft = {
   lifestyle: LifestyleData;
   images: string[];
+  inputSource?: "soxai" | "manual";
   extractedMetrics: AnalysisMetrics;
   /** 画像から取得できたキー */
   imageKeys: MetricFieldKey[];
@@ -162,10 +182,16 @@ export type ExtractionDraft = {
   ocrConfidence?: MetricConfidenceMap;
   /** OCRで抽出したグラフ（Visual / PDF 共通） */
   graphs: SoxaiGraphBundle;
+  /** 画像単位の OCR 成否（成功 / 失敗 / タイムアウト / 中止） */
+  ocrImageStatuses?: SoxaiOcrImageStatusRecord[];
+  /** アップロード時の section 対応 */
+  ocrSections?: SoxaiExtractSection[];
   /** 選択クライアントの固定プロフィール（あれば） */
   fixedProfile?: ClientProfileSections;
   /** 当日情報（将来用。今回は通常未設定） */
   dayContext?: AnalysisDayContext;
+  /** Sleep Wellness Standard 形式（分析入力の共通契約） */
+  swsMetrics?: SwsMetricEntry[];
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -442,25 +468,65 @@ export type ExtractSoxaiResult = {
   confidence: MetricConfidenceMap;
 };
 
-export type BackgroundOcrStatus = "idle" | "running" | "ready" | "error";
+export type SoxaiMetricSource = {
+  section: string;
+  imageIndex: number;
+};
+
+export type OcrVerifyRow = {
+  key: MetricFieldKey;
+  label: string;
+  value: string;
+  section: string;
+  success: boolean;
+  missing: boolean;
+  abnormal: boolean;
+  missingReason:
+    | "OCR未検出"
+    | "section違い"
+    | "マッピング漏れ"
+    | "正規化漏れ"
+    | "マージ漏れ"
+    | "";
+};
+
+export type OcrVerifyResult = {
+  rows: OcrVerifyRow[];
+  metrics: AnalysisMetrics;
+  imageCount: number;
+  visibleCount: number;
+  acquiredCount: number;
+};
+
+export type BackgroundOcrStatus = "idle" | "running" | "ready" | "error" | "cancelled";
+export type SoxaiExtractSection = RunnerSoxaiExtractSection;
+export type { SoxaiOcrImageStatusRecord, OcrProgressSnapshot };
 
 /** 画像アップロード直後に先行実行する OCR ジョブ（入力中の待ち時間短縮用） */
 type BackgroundOcrJob = {
   fingerprint: string;
-  promise: Promise<ExtractSoxaiResult>;
-  status: "running" | "ready" | "error";
+  promise: Promise<SoxaiOcrRunResult>;
+  status: "running" | "ready" | "error" | "cancelled";
   error?: unknown;
+  abortController: AbortController;
+  progress: OcrProgressSnapshot | null;
+  /** 画面遷移後に完了しても自動遷移しないための世代 */
+  generation: number;
+  listeners: Set<(progress: OcrProgressSnapshot) => void>;
 };
 
 let pendingRequest: AnalysisRequest | null = null;
 let extractionDraft: ExtractionDraft | null = null;
 let inFlightAnalysis: Promise<AnalysisResult> | null = null;
 let backgroundOcrJob: BackgroundOcrJob | null = null;
+let backgroundOcrGeneration = 0;
 
-/** 同一画像セットの OCR 結果キャッシュ（再解析防止） */
-const ocrResultCache = new Map<string, ExtractSoxaiResult>();
-const OCR_CACHE_STORAGE_KEY = "swij-soxai-ocr-cache-v1";
+/** 同一画像セットの OCR 結果キャッシュ（再解析防止）— SHA-256 セットキャッシュへ委譲 */
+const ocrResultCache = new Map<string, SoxaiOcrRunResult>();
+const OCR_CACHE_STORAGE_KEY = "swij-soxai-ocr-cache-v5";
 const OCR_CACHE_MAX_ENTRIES = 8;
+/** キャッシュ採用の最低取得数（25項目中95%以上） */
+const MIN_CACHED_METRIC_COUNT = 24;
 
 type AnalysisSessionListener = (result: AnalysisResult) => void;
 const analysisSessionListeners = new Set<AnalysisSessionListener>();
@@ -484,7 +550,7 @@ function notifyAnalysisSessionListeners(result: AnalysisResult) {
   }
 }
 
-function readOcrCacheFromStorage(fingerprint: string): ExtractSoxaiResult | null {
+function readOcrCacheFromStorage(fingerprint: string): SoxaiOcrRunResult | null {
   if (typeof sessionStorage === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(OCR_CACHE_STORAGE_KEY);
@@ -496,6 +562,7 @@ function readOcrCacheFromStorage(fingerprint: string): ExtractSoxaiResult | null
         conflicts?: unknown;
         graphs?: unknown;
         confidence?: unknown;
+        imageStatuses?: unknown;
       }
     >;
     const entry = parsed[fingerprint];
@@ -505,6 +572,9 @@ function readOcrCacheFromStorage(fingerprint: string): ExtractSoxaiResult | null
       conflicts: normalizeExtractConflicts(entry.conflicts),
       graphs: normalizeGraphBundle(entry.graphs),
       confidence: normalizeConfidenceMap(entry.confidence),
+      imageStatuses: normalizeImageStatuses(entry.imageStatuses),
+      cancelled: false,
+      elapsedMs: 0,
     };
   } catch {
     return null;
@@ -513,7 +583,7 @@ function readOcrCacheFromStorage(fingerprint: string): ExtractSoxaiResult | null
 
 function writeOcrCacheToStorage(
   fingerprint: string,
-  result: ExtractSoxaiResult,
+  result: SoxaiOcrRunResult | ExtractSoxaiResult,
 ) {
   if (typeof sessionStorage === "undefined") return;
   try {
@@ -527,6 +597,7 @@ function writeOcrCacheToStorage(
       conflicts: result.conflicts,
       graphs: result.graphs,
       confidence: result.confidence,
+      imageStatuses: "imageStatuses" in result ? result.imageStatuses : undefined,
     };
     const keys = Object.keys(parsed);
     if (keys.length > OCR_CACHE_MAX_ENTRIES) {
@@ -540,27 +611,129 @@ function writeOcrCacheToStorage(
   }
 }
 
-export function getCachedSoxaiExtraction(
+function isAcceptableCachedExtraction(
+  result: SoxaiOcrRunResult,
+  imageCount: number,
+): boolean {
+  if (result.cancelled) return false;
+  const metricCount = collectedMetricKeys(result.metrics).length;
+  if (metricCount < MIN_CACHED_METRIC_COUNT) return false;
+  if (
+    result.imageStatuses.length > 0 &&
+    result.imageStatuses.length !== imageCount
+  ) {
+    return false;
+  }
+  if (
+    result.imageStatuses.length > 0 &&
+    result.imageStatuses.some((status) => status.status !== "success")
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function getCachedSoxaiExtraction(
   images: string[],
-): ExtractSoxaiResult | null {
+): Promise<SoxaiOcrRunResult | null> {
   if (!Array.isArray(images) || images.length === 0) return null;
-  const fingerprint = soxaiImagesFingerprint(images);
+  const fingerprint = await soxaiImagesFingerprint(images);
   const memory = ocrResultCache.get(fingerprint);
-  if (memory) return memory;
+  if (memory) {
+    return isAcceptableCachedExtraction(memory, images.length) ? memory : null;
+  }
+  const fromSet = getCachedOcrSet(fingerprint);
+  if (fromSet) {
+    const result: SoxaiOcrRunResult = {
+      metrics: fromSet.metrics,
+      conflicts: fromSet.conflicts,
+      graphs: fromSet.graphs,
+      confidence: fromSet.confidence,
+      imageStatuses: fromSet.imageStatuses.map((status) => ({
+        index: status.index,
+        section: (status.section || "") as SoxaiExtractSection | "",
+        label: status.label,
+        status: status.status,
+        error: status.error,
+        durationMs: status.durationMs,
+      })),
+      cancelled: false,
+      elapsedMs: 0,
+      fromCache: true,
+      imageHashes: fromSet.imageHashes,
+    };
+    if (!isAcceptableCachedExtraction(result, images.length)) return null;
+    ocrResultCache.set(fingerprint, result);
+    return result;
+  }
   const stored = readOcrCacheFromStorage(fingerprint);
   if (stored) {
+    if (!isAcceptableCachedExtraction(stored, images.length)) return null;
     ocrResultCache.set(fingerprint, stored);
     return stored;
   }
   return null;
 }
 
-function rememberSoxaiExtraction(
+async function rememberSoxaiExtraction(
   fingerprint: string,
-  result: ExtractSoxaiResult,
+  result: SoxaiOcrRunResult,
+  imageHashes?: string[],
 ) {
+  // 中止結果はキャッシュしない（再開できるように）
+  if (result.cancelled) return;
   ocrResultCache.set(fingerprint, result);
   writeOcrCacheToStorage(fingerprint, result);
+  if (imageHashes && imageHashes.length > 0) {
+    setCachedOcrSet({
+      fingerprint,
+      imageHashes,
+      metrics: result.metrics,
+      conflicts: result.conflicts,
+      graphs: result.graphs,
+      confidence: result.confidence,
+      imageStatuses: result.imageStatuses,
+      cachedAt: Date.now(),
+    });
+  }
+}
+
+function normalizeImageStatuses(raw: unknown): SoxaiOcrImageStatusRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): SoxaiOcrImageStatusRecord | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const index =
+        typeof record.index === "number" && Number.isFinite(record.index)
+          ? Math.floor(record.index)
+          : -1;
+      if (index < 0) return null;
+      const status = record.status;
+      if (
+        status !== "success" &&
+        status !== "failed" &&
+        status !== "timeout" &&
+        status !== "cancelled"
+      ) {
+        return null;
+      }
+      return {
+        index,
+        section:
+          typeof record.section === "string"
+            ? (record.section as SoxaiExtractSection | "")
+            : "",
+        label: typeof record.label === "string" ? record.label : `画像${index + 1}`,
+        status,
+        error: typeof record.error === "string" ? record.error : undefined,
+        durationMs:
+          typeof record.durationMs === "number" && Number.isFinite(record.durationMs)
+            ? record.durationMs
+            : undefined,
+      };
+    })
+    .filter((item): item is SoxaiOcrImageStatusRecord => item !== null);
 }
 
 function asString(value: unknown): string {
@@ -840,7 +1013,7 @@ function normalizeInstructorCounseling(
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const record = raw as Record<string, unknown>;
 
-  let goodPoints = normalizeStringList(record.goodPoints, 5);
+  const goodPoints = normalizeStringList(record.goodPoints, 5);
   let needsImprovement = normalizeStringList(record.needsImprovement, 5);
   let possibleFactors = normalizeStringList(record.possibleFactors, 4);
   let questionCandidates = normalizeStringList(record.questionCandidates, 4);
@@ -1028,12 +1201,12 @@ export function parseInstructorSuggestionsToCounseling(
   };
 }
 
-function createNextActionGoalId(): string {
-  try {
-    return `goal-${crypto.randomUUID()}`;
-  } catch {
-    return `goal-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+function createNextActionGoalId(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
   }
+  return `goal-${hash.toString(36)}`;
 }
 
 function trimActionGoalText(text: string): string {
@@ -1055,7 +1228,7 @@ export function normalizeRecommendationsUntilNext(
       const text = trimActionGoalText(entry);
       if (!text) continue;
       items.push({
-        id: createNextActionGoalId(),
+        id: createNextActionGoalId(`${items.length}:${text}`),
         text,
         checked: false,
       });
@@ -1070,7 +1243,7 @@ export function normalizeRecommendationsUntilNext(
       const id =
         typeof record.id === "string" && record.id.trim()
           ? record.id.trim()
-          : createNextActionGoalId();
+          : createNextActionGoalId(`${items.length}:${text}`);
       items.push({
         id,
         text,
@@ -1504,7 +1677,17 @@ function persistExtractionDraft(draft: ExtractionDraft | null) {
     delete (rest as { images?: string[] }).images;
     sessionStorage.setItem(EXTRACTION_DRAFT_KEY, JSON.stringify(rest));
     storeImages(draft.images);
-  } catch {
+    console.info("[ocr-trace] persistExtractionDraft ok", {
+      metricCount: collectedMetricKeys(draft.extractedMetrics).length,
+      imageKeys: draft.imageKeys?.length ?? 0,
+    });
+  } catch (error) {
+    console.error("[ocr-trace] ⑧ persistExtractionDraft failed", {
+      message: error instanceof Error ? error.message : String(error),
+      metricCount: draft
+        ? collectedMetricKeys(draft.extractedMetrics).length
+        : 0,
+    });
     try {
       sessionStorage.removeItem(EXTRACTION_DRAFT_KEY);
     } catch {
@@ -1542,6 +1725,14 @@ function readExtractionDraftFromStorage(): ExtractionDraft | null {
         ? { ...parsed.ocrConfidence }
         : undefined,
       graphs: normalizeGraphBundle(parsed.graphs),
+      ocrImageStatuses: normalizeImageStatuses(
+        (parsed as { ocrImageStatuses?: unknown }).ocrImageStatuses,
+      ),
+      ocrSections: Array.isArray(
+        (parsed as { ocrSections?: unknown }).ocrSections,
+      )
+        ? ((parsed as { ocrSections: SoxaiExtractSection[] }).ocrSections)
+        : undefined,
       fixedProfile: parsed.fixedProfile,
       dayContext: parsed.dayContext,
     };
@@ -1613,8 +1804,14 @@ export function setExtractionDraft(draft: ExtractionDraft) {
       ? { ...draft.ocrConfidence }
       : undefined,
     graphs: normalizeGraphBundle(draft.graphs),
+    ocrImageStatuses: draft.ocrImageStatuses
+      ? [...draft.ocrImageStatuses]
+      : undefined,
+    ocrSections: draft.ocrSections ? [...draft.ocrSections] : undefined,
     fixedProfile: draft.fixedProfile,
     dayContext: draft.dayContext,
+    inputSource: draft.inputSource ?? "soxai",
+    swsMetrics: draft.swsMetrics ? [...draft.swsMetrics] : undefined,
   };
   persistExtractionDraft(extractionDraft);
 }
@@ -1649,6 +1846,8 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     seedScore: request.seedScore,
     seedScoreBreakdown: request.seedScoreBreakdown,
     seedCategoryScores: request.seedCategoryScores,
+    inputSource: request.inputSource ?? "soxai",
+    swsMetrics: request.swsMetrics ? [...request.swsMetrics] : undefined,
   };
   inFlightAnalysis = null;
   persistPendingRequest(pendingRequest);
@@ -1726,7 +1925,176 @@ export async function extractSoxaiMetrics(
 
 export async function extractSoxaiMetricsDetailed(
   images: string[],
-): Promise<ExtractSoxaiResult> {
+  sections?: SoxaiExtractSection[],
+  options?: {
+    signal?: AbortSignal;
+    onProgress?: (snapshot: OcrProgressSnapshot) => void;
+    onlyIndexes?: number[];
+    seed?: SoxaiOcrRunResult["imageStatuses"] extends infer _
+      ? {
+          metrics?: AnalysisMetrics;
+          graphs?: SoxaiGraphBundle;
+          confidence?: MetricConfidenceMap;
+          conflicts?: MetricConflict[];
+          imageStatuses?: SoxaiOcrImageStatusRecord[];
+        }
+      : never;
+  },
+): Promise<SoxaiOcrRunResult> {
+  if (!Array.isArray(images) || images.length === 0) {
+    throw new AnalysisError("睡眠データ画像が不足しています。", {
+      errorType: "Validation Error",
+    });
+  }
+
+  try {
+    return await runSoxaiOcr({
+      images,
+      sections,
+      signal: options?.signal,
+      onProgress: options?.onProgress,
+      onlyIndexes: options?.onlyIndexes,
+      seed: options?.seed,
+    });
+  } catch (error) {
+    if (
+      (error instanceof DOMException && error.name === "AbortError") ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      throw new AnalysisError("OCR解析を中止しました。", {
+        errorType: "Fetch Error",
+      });
+    }
+    if (error instanceof AnalysisError) throw error;
+    throw new AnalysisError(
+      error instanceof Error
+        ? error.message
+        : "画像の自動解析に失敗しました。",
+      { errorType: "OpenAI Error" },
+    );
+  }
+}
+
+function normalizeMetricSourceMap(
+  raw: unknown,
+): Partial<Record<MetricFieldKey, SoxaiMetricSource>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const validKeys = new Set(SOXAI_METRIC_FIELDS.map((field) => field.key));
+  const out: Partial<Record<MetricFieldKey, SoxaiMetricSource>> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!validKeys.has(key as MetricFieldKey)) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const record = value as { section?: unknown; imageIndex?: unknown };
+    const section =
+      typeof record.section === "string" ? record.section.trim() : "";
+    const imageIndex =
+      typeof record.imageIndex === "number" &&
+      Number.isFinite(record.imageIndex) &&
+      record.imageIndex >= 0
+        ? Math.floor(record.imageIndex)
+        : -1;
+    if (!section || imageIndex < 0) continue;
+    out[key as MetricFieldKey] = { section, imageIndex };
+  }
+  return out;
+}
+
+type VerifyMetricDiagnostic = {
+  presentInAnyImage?: unknown;
+  presentInMergedRaw?: unknown;
+  presentBeforeDisplayNormalize?: unknown;
+  hasStrongLabel?: unknown;
+  strongLabelScreens?: unknown;
+  expectedScreens?: unknown;
+  sectionMismatch?: unknown;
+};
+
+function normalizeVerifyDiagnostics(
+  raw: unknown,
+): Partial<Record<MetricFieldKey, VerifyMetricDiagnostic>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const validKeys = new Set(SOXAI_METRIC_FIELDS.map((field) => field.key));
+  const out: Partial<Record<MetricFieldKey, VerifyMetricDiagnostic>> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!validKeys.has(key as MetricFieldKey)) continue;
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    out[key as MetricFieldKey] = value as VerifyMetricDiagnostic;
+  }
+  return out;
+}
+
+function boolish(value: unknown): boolean {
+  return value === true;
+}
+
+function detectMissingReason(
+  diagnostic: VerifyMetricDiagnostic | undefined,
+): OcrVerifyRow["missingReason"] {
+  if (!diagnostic) return "OCR未検出";
+
+  const presentInAnyImage = boolish(diagnostic.presentInAnyImage);
+  const presentInMergedRaw = boolish(diagnostic.presentInMergedRaw);
+  const presentBeforeDisplayNormalize = boolish(
+    diagnostic.presentBeforeDisplayNormalize,
+  );
+  const hasStrongLabel = boolish(diagnostic.hasStrongLabel);
+  const sectionMismatch = boolish(diagnostic.sectionMismatch);
+
+  if (presentInAnyImage && !presentInMergedRaw) return "マージ漏れ";
+  if (presentInMergedRaw && !presentBeforeDisplayNormalize) {
+    return "正規化漏れ";
+  }
+  if (sectionMismatch) return "section違い";
+  if (hasStrongLabel && !presentInAnyImage) return "マッピング漏れ";
+  if (hasStrongLabel && presentInAnyImage && !presentBeforeDisplayNormalize) {
+    return "正規化漏れ";
+  }
+  return "OCR未検出";
+}
+
+function isOcrAbnormalValue(key: MetricFieldKey, value: string): boolean {
+  const text = value.trim();
+  if (!text) return false;
+  const num = Number(text.replace(/[^\d.-]/g, ""));
+
+  switch (key) {
+    case "sleepScore":
+    case "qol":
+    case "yesterdayQol":
+    case "conditionScore":
+    case "stress":
+      return !Number.isFinite(num) || num < 0 || num > 100;
+    case "sleepEfficiency":
+    case "awakeningRate":
+    case "remSleepRate":
+    case "lightSleepRate":
+    case "deepSleepRate":
+    case "spo2":
+      return !/%|％/.test(text) || !Number.isFinite(num) || num < 0 || num > 100;
+    case "bedtime":
+    case "wakeTime":
+      return !/^\d{2}:\d{2}$/.test(text);
+    case "restingHeartRate":
+      return !Number.isFinite(num) || num < 30 || num > 140;
+    case "hrv":
+      return !Number.isFinite(num) || num < 5 || num > 250;
+    case "respiratoryRate":
+      return !Number.isFinite(num) || num < 5 || num > 35;
+    case "skinTemperature":
+      return (
+        !/[℃°]/.test(text) &&
+        !/^[+-]\d+(\.\d+)?$/.test(text) &&
+        !Number.isFinite(num)
+      );
+    default:
+      return false;
+  }
+}
+
+export async function extractSoxaiOcrVerifyData(
+  images: string[],
+  sections?: SoxaiExtractSection[],
+): Promise<OcrVerifyResult> {
   if (!Array.isArray(images) || images.length === 0) {
     throw new AnalysisError("睡眠データ画像が不足しています。", {
       errorType: "Validation Error",
@@ -1738,10 +2106,9 @@ export async function extractSoxaiMetricsDetailed(
     response = await fetch("/api/extract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ images }),
+      body: JSON.stringify({ images, sections }),
     });
   } catch (fetchError) {
-    console.error("Extract fetch failed:", fetchError);
     throw new AnalysisError(
       "画像の送信に失敗しました。ネットワークエラーが発生しました。",
       {
@@ -1758,20 +2125,12 @@ export async function extractSoxaiMetricsDetailed(
   try {
     data = await response.json();
   } catch (parseError) {
-    console.error("Extract response JSON parse failed:", parseError, {
+    throw new AnalysisError("画像解析結果のJSON解析に失敗しました。", {
       status: response.status,
+      errorType: "JSON Parse Error",
+      details:
+        parseError instanceof Error ? parseError.message : String(parseError),
     });
-    throw new AnalysisError(
-      "画像解析結果のJSON解析に失敗しました。",
-      {
-        status: response.status,
-        errorType: "JSON Parse Error",
-        details:
-          parseError instanceof Error
-            ? parseError.message
-            : String(parseError),
-      },
-    );
   }
 
   if (!response.ok) {
@@ -1783,117 +2142,94 @@ export async function extractSoxaiMetricsDetailed(
             details?: unknown;
           })
         : {};
-
     const message =
       typeof errorPayload.error === "string"
         ? errorPayload.error
         : "画像の自動解析に失敗しました。";
-    const errorType =
-      typeof errorPayload.errorType === "string"
-        ? errorPayload.errorType
-        : "OpenAI Error";
-    const details =
-      typeof errorPayload.details === "string"
-        ? errorPayload.details
-        : undefined;
-
-    console.error("Extract API error:", {
-      status: response.status,
-      errorType,
-      message,
-      details,
-    });
-
     throw new AnalysisError(message, {
       status: response.status,
-      errorType,
-      details,
+      errorType:
+        typeof errorPayload.errorType === "string"
+          ? errorPayload.errorType
+          : "OpenAI Error",
+      details:
+        typeof errorPayload.details === "string"
+          ? errorPayload.details
+          : undefined,
     });
   }
 
   const metricsRaw =
     data && typeof data === "object" && "metrics" in data
       ? (data as { metrics: Partial<AnalysisMetrics> }).metrics
-      : (data as Partial<AnalysisMetrics>);
-
-  if (!metricsRaw || typeof metricsRaw !== "object") {
-    console.error("Extract API returned invalid metrics payload:", data);
-    throw new AnalysisError(
-      "画像解析結果の形式が不正です。もう一度お試しください。",
-      { errorType: "JSON Parse Error", status: response.status },
-    );
-  }
-
-  const visibleReadings = normalizeVisibleReadings(
-    data && typeof data === "object" && "visibleReadings" in data
-      ? (data as { visibleReadings: unknown }).visibleReadings
-      : [],
-  );
-
-  // visibleReadings がある場合は必ず再マッピングして metrics に反映
-  const normalized = mergeMetricsFromVisibleReadings(
-    metricsRaw,
-    visibleReadings,
-  );
-  const conflicts = normalizeExtractConflicts(
-    data && typeof data === "object" && "conflicts" in data
-      ? (data as { conflicts: unknown }).conflicts
+      : undefined;
+  const metrics = normalizeMetricsForDisplay(normalizeMetrics(metricsRaw));
+  const metricSources = normalizeMetricSourceMap(
+    data && typeof data === "object" && "metricSources" in data
+      ? (data as { metricSources: unknown }).metricSources
       : undefined,
   );
-
-  const graphs = normalizeGraphBundle(
-    data && typeof data === "object" && "graphs" in data
-      ? (data as { graphs: unknown }).graphs
-      : emptyGraphBundle(),
-  );
-
-  const confidence = normalizeConfidenceMap(
-    data && typeof data === "object" && "confidence" in data
-      ? (data as { confidence: unknown }).confidence
+  const verifyDiagnostics = normalizeVerifyDiagnostics(
+    data && typeof data === "object" && "verifyDiagnostics" in data
+      ? (data as { verifyDiagnostics: unknown }).verifyDiagnostics
       : undefined,
   );
+  const imageCount =
+    data && typeof data === "object" && "imageCount" in data
+      ? Number((data as { imageCount: unknown }).imageCount) || images.length
+      : images.length;
+  const visibleCount =
+    data && typeof data === "object" && "visibleCount" in data
+      ? Number((data as { visibleCount: unknown }).visibleCount) || 0
+      : 0;
 
-  // 表記ゆれ統一（API側でも行うがクライアント再マップ後にも適用）
-  const displayNormalized = normalizeMetricsForDisplay(normalized);
-  const consistencyKeys = consistencyWarningKeys(
-    detectMetricConsistencyWarnings(displayNormalized),
-  );
-  const adjustedConfidence = { ...confidence };
-  for (const key of consistencyKeys) {
-    if (adjustedConfidence[key] != null) {
-      adjustedConfidence[key] = Math.min(
-        adjustedConfidence[key]!,
-        OCR_LOW_CONFIDENCE_THRESHOLD - 0.01,
-      );
-    }
-  }
-
-  return {
-    metrics: displayNormalized,
-    conflicts,
-    graphs,
-    confidence: adjustedConfidence,
-  };
+  const rows: OcrVerifyRow[] = SOXAI_METRIC_FIELDS.map((field) => {
+    const value = metricDisplayValue(metrics, field.key).trim();
+    const success = Boolean(value);
+    const missing = !success;
+    return {
+      key: field.key,
+      label: field.label,
+      value,
+      section: metricSources[field.key]?.section ?? "-",
+      success,
+      missing,
+      abnormal: success ? isOcrAbnormalValue(field.key, value) : false,
+      missingReason: missing
+        ? detectMissingReason(verifyDiagnostics[field.key])
+        : "",
+    };
+  });
+  const acquiredCount = rows.filter((row) => row.success).length;
+  return { rows, metrics, imageCount, visibleCount, acquiredCount };
 }
 
-/** data URL 配列の指紋。同一画像セットの OCR 重複実行を防ぐ */
-export function soxaiImagesFingerprint(images: string[]): string {
-  return images
-    .map((image) => {
-      const head = image.slice(0, 48);
-      const tail = image.slice(-24);
-      return `${image.length}:${head}:${tail}`;
-    })
-    .join("|");
+/** data URL 配列の SHA-256 指紋。同一画像セットの OCR 重複実行を防ぐ */
+export async function soxaiImagesFingerprint(images: string[]): Promise<string> {
+  const hashes = await hashImageDataUrls(images);
+  return setFingerprintFromHashes(hashes);
+}
+
+function soxaiSectionsFingerprint(sections?: SoxaiExtractSection[]): string {
+  if (!sections || sections.length === 0) return "";
+  return sections.join(",");
+}
+
+export function isAnalysisOcrDebugMode(): boolean {
+  return isSoxaiOcrDebugMode();
 }
 
 /**
  * SOXAI 画像アップロード直後に OCR をバックグラウンド開始する。
  * 同じ指紋のキャッシュ／ジョブがあれば再利用し、再解析しない。
  */
-export function startBackgroundSoxaiExtraction(
+export async function startBackgroundSoxaiExtraction(
   images: string[],
-): Promise<ExtractSoxaiResult> {
+  sections?: SoxaiExtractSection[],
+  options?: {
+    onProgress?: (snapshot: OcrProgressSnapshot) => void;
+  },
+): Promise<SoxaiOcrRunResult> {
   if (!Array.isArray(images) || images.length === 0) {
     return Promise.reject(
       new AnalysisError("睡眠データ画像が不足しています。", {
@@ -1902,16 +2238,55 @@ export function startBackgroundSoxaiExtraction(
     );
   }
 
-  const fingerprint = soxaiImagesFingerprint(images);
+  const strongFp = await soxaiImagesFingerprint(images);
+  const fingerprint = `${strongFp}::${soxaiSectionsFingerprint(sections)}`;
 
-  const cached = getCachedSoxaiExtraction(images);
+  const cached = await getCachedSoxaiExtraction(images);
   if (cached) {
+    const readyProgress: OcrProgressSnapshot = {
+      phase: "done",
+      message: `${images.length} / ${images.length}枚 完了`,
+      total: images.length,
+      completed: images.length,
+      activeLabels: [],
+      startedAt: Date.now(),
+      estimatedRemainingMs: 0,
+      cancelled: false,
+      images: images.map((_, index) => ({
+        index,
+        section: sections?.[index] ?? "",
+        label: sections?.[index] ?? `画像${index + 1}`,
+        status: "success",
+        startedAt: null,
+        endedAt: null,
+      })),
+    };
+    const abortController = new AbortController();
+    const promise = Promise.resolve({
+      ...cached,
+      imageStatuses:
+        (cached as SoxaiOcrRunResult).imageStatuses ??
+        images.map((_, index) => ({
+          index,
+          section: (sections?.[index] ?? "") as SoxaiExtractSection | "",
+          label: String(index + 1),
+          status: "success" as const,
+        })),
+      cancelled: false,
+      elapsedMs: 0,
+      fromCache: true,
+    } satisfies SoxaiOcrRunResult);
     backgroundOcrJob = {
       fingerprint,
-      promise: Promise.resolve(cached),
+      promise,
       status: "ready",
+      abortController,
+      progress: readyProgress,
+      generation: backgroundOcrGeneration,
+      listeners: new Set(),
     };
-    return Promise.resolve(cached);
+    options?.onProgress?.(readyProgress);
+    return promise;
   }
 
   if (
@@ -1919,20 +2294,57 @@ export function startBackgroundSoxaiExtraction(
     backgroundOcrJob.fingerprint === fingerprint &&
     backgroundOcrJob.status !== "error"
   ) {
+    if (options?.onProgress) {
+      backgroundOcrJob.listeners.add(options.onProgress);
+      if (backgroundOcrJob.progress) {
+        options.onProgress(backgroundOcrJob.progress);
+      }
+    }
     return backgroundOcrJob.promise;
   }
 
-  const promise = extractSoxaiMetricsDetailed(images)
-    .then((result) => {
-      rememberSoxaiExtraction(fingerprint, result);
+  // 旧ジョブがあれば中止（新しい画像セット）
+  if (backgroundOcrJob && backgroundOcrJob.status === "running") {
+    backgroundOcrJob.abortController.abort();
+  }
+
+  const abortController = new AbortController();
+  const generation = ++backgroundOcrGeneration;
+  const listeners = new Set<(progress: OcrProgressSnapshot) => void>();
+  if (options?.onProgress) listeners.add(options.onProgress);
+
+  const notify = (progress: OcrProgressSnapshot) => {
+    if (backgroundOcrJob?.fingerprint === fingerprint) {
+      backgroundOcrJob.progress = progress;
+    }
+    for (const listener of listeners) {
+      try {
+        listener(progress);
+      } catch (error) {
+        console.error("[ocr] progress listener failed:", error);
+      }
+    }
+  };
+
+  const promise = extractSoxaiMetricsDetailed(images, sections, {
+    signal: abortController.signal,
+    onProgress: notify,
+  })
+    .then(async (result) => {
+      await rememberSoxaiExtraction(
+        strongFp,
+        result,
+        result.imageHashes,
+      );
       if (backgroundOcrJob?.fingerprint === fingerprint) {
-        backgroundOcrJob.status = "ready";
+        backgroundOcrJob.status = result.cancelled ? "cancelled" : "ready";
       }
       return result;
     })
     .catch((error) => {
       if (backgroundOcrJob?.fingerprint === fingerprint) {
-        backgroundOcrJob.status = "error";
+        backgroundOcrJob.status =
+          abortController.signal.aborted ? "cancelled" : "error";
         backgroundOcrJob.error = error;
       }
       throw error;
@@ -1942,25 +2354,41 @@ export function startBackgroundSoxaiExtraction(
     fingerprint,
     promise,
     status: "running",
+    abortController,
+    progress: null,
+    generation,
+    listeners,
   };
 
   return promise;
 }
 
 /** 現在のバックグラウンド OCR 状態（UI 表示用） */
-export function getBackgroundSoxaiExtractionStatus(
-  images?: string[],
-): BackgroundOcrStatus {
+export function getBackgroundSoxaiExtractionStatus(): BackgroundOcrStatus {
   if (!backgroundOcrJob) return "idle";
-  if (
-    images &&
-    soxaiImagesFingerprint(images) !== backgroundOcrJob.fingerprint
-  ) {
-    return "idle";
-  }
   if (backgroundOcrJob.status === "ready") return "ready";
   if (backgroundOcrJob.status === "error") return "error";
+  if (backgroundOcrJob.status === "cancelled") return "cancelled";
   return "running";
+}
+
+export function getBackgroundSoxaiExtractionProgress(): OcrProgressSnapshot | null {
+  return backgroundOcrJob?.progress ?? null;
+}
+
+export function subscribeBackgroundSoxaiExtractionProgress(
+  listener: (progress: OcrProgressSnapshot) => void,
+): () => void {
+  if (!backgroundOcrJob) return () => {};
+  backgroundOcrJob.listeners.add(listener);
+  if (backgroundOcrJob.progress) listener(backgroundOcrJob.progress);
+  return () => {
+    backgroundOcrJob?.listeners.delete(listener);
+  };
+}
+
+export function getBackgroundSoxaiGeneration(): number {
+  return backgroundOcrJob?.generation ?? backgroundOcrGeneration;
 }
 
 /**
@@ -1969,23 +2397,91 @@ export function getBackgroundSoxaiExtractionStatus(
  */
 export async function resolveSoxaiExtraction(
   images: string[],
-): Promise<ExtractSoxaiResult> {
-  const cached = getCachedSoxaiExtraction(images);
-  if (cached) return cached;
+  sections?: SoxaiExtractSection[],
+  options?: {
+    onProgress?: (snapshot: OcrProgressSnapshot) => void;
+    signal?: AbortSignal;
+  },
+): Promise<SoxaiOcrRunResult> {
+  const cached = await getCachedSoxaiExtraction(images);
+  if (cached && !(cached as SoxaiOcrRunResult).cancelled) {
+    const result: SoxaiOcrRunResult = {
+      ...cached,
+      imageStatuses:
+        (cached as SoxaiOcrRunResult).imageStatuses ??
+        images.map((_, index) => ({
+          index,
+          section: (sections?.[index] ?? "") as SoxaiExtractSection | "",
+          label: String(index + 1),
+          status: "success" as const,
+        })),
+      cancelled: false,
+      elapsedMs: 0,
+      fromCache: true,
+    };
+    return result;
+  }
 
-  const fingerprint = soxaiImagesFingerprint(images);
+  const strongFp = await soxaiImagesFingerprint(images);
+  const fingerprint = `${strongFp}::${soxaiSectionsFingerprint(sections)}`;
   if (
     backgroundOcrJob &&
     backgroundOcrJob.fingerprint === fingerprint &&
-    backgroundOcrJob.status !== "error"
+    backgroundOcrJob.status !== "error" &&
+    backgroundOcrJob.status !== "cancelled"
   ) {
+    if (options?.onProgress) {
+      backgroundOcrJob.listeners.add(options.onProgress);
+      if (backgroundOcrJob.progress) {
+        options.onProgress(backgroundOcrJob.progress);
+      }
+    }
+    if (options?.signal) {
+      const onAbort = () => backgroundOcrJob?.abortController.abort();
+      if (options.signal.aborted) onAbort();
+      else options.signal.addEventListener("abort", onAbort, { once: true });
+    }
     return backgroundOcrJob.promise;
   }
-  return startBackgroundSoxaiExtraction(images);
+  return startBackgroundSoxaiExtraction(images, sections, {
+    onProgress: options?.onProgress,
+  });
+}
+
+export function cancelBackgroundSoxaiExtraction(): void {
+  if (!backgroundOcrJob) return;
+  backgroundOcrJob.abortController.abort();
+  backgroundOcrJob.status = "cancelled";
 }
 
 export function clearBackgroundSoxaiExtraction() {
+  if (backgroundOcrJob?.status === "running") {
+    backgroundOcrJob.abortController.abort();
+  }
   backgroundOcrJob = null;
+}
+
+/** 確認画面から失敗画像のみ再解析 */
+export async function reanalyzeSoxaiImages(params: {
+  images: string[];
+  sections?: SoxaiExtractSection[];
+  indexes: number[];
+  seed: {
+    metrics: AnalysisMetrics;
+    graphs: SoxaiGraphBundle;
+    confidence?: MetricConfidenceMap;
+    conflicts?: MetricConflict[];
+    imageStatuses?: SoxaiOcrImageStatusRecord[];
+  };
+  signal?: AbortSignal;
+  onProgress?: (snapshot: OcrProgressSnapshot) => void;
+}): Promise<SoxaiOcrRunResult> {
+  return extractSoxaiMetricsDetailed(params.images, params.sections, {
+    signal: params.signal,
+    onProgress: params.onProgress,
+    onlyIndexes: params.indexes,
+    seed: params.seed,
+  });
 }
 
 function normalizeConfidenceMap(raw: unknown): MetricConfidenceMap {
@@ -2093,10 +2589,10 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
   }
 
   inFlightAnalysis = (async () => {
-    // 確認済みメトリクスがある場合は画像を送らず OCR 再実行を完全回避
+    // OCR と分析を分離: 確認済みメトリクスがある場合は画像を絶対に送らない
     const analyzePayload = {
       lifestyle: payload.lifestyle,
-      images: payload.metrics ? [] : payload.images,
+      images: payload.metrics ? ([] as string[]) : payload.images,
       metrics: payload.metrics,
       extractedMetrics: payload.extractedMetrics,
       graphs: payload.graphs,
@@ -2104,6 +2600,8 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       fixedProfile: payload.fixedProfile,
       dayContext: payload.dayContext,
       aiInput: payload.aiInput,
+      inputSource: payload.inputSource,
+      swsMetrics: payload.swsMetrics,
       seedScore: payload.seedScore,
       seedScoreBreakdown: payload.seedScoreBreakdown,
       seedCategoryScores: payload.seedCategoryScores,
@@ -2185,21 +2683,47 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       });
     }
 
-    const raw = data as AnalysisResult;
-    const result = normalizeAnalysisResult(raw, {
-      clientId: payload.lifestyle.clientId,
-      clientName: payload.lifestyle.clientName,
-      measurementDate: payload.lifestyle.measurementDate,
-      age: payload.lifestyle.age,
-      gender: payload.lifestyle.gender,
-      heightCm: payload.lifestyle.heightCm,
-      weightKg: payload.lifestyle.weightKg,
-      medications: payload.lifestyle.medications,
-      drinkingHabit: payload.lifestyle.drinkingHabit,
-      exerciseHabit: payload.lifestyle.exerciseHabit,
-      snoringNasal: payload.lifestyle.snoringNasal,
-      medicalHistory: payload.lifestyle.medicalHistory,
-    });
+    const raw = data as AnalysisResult & {
+      usage?: {
+        purpose?: string;
+        model?: string;
+        apiCalls?: number;
+        inputTokens?: number;
+        outputTokens?: number;
+        durationMs?: number;
+        imageCount?: number;
+        note?: string;
+      };
+    };
+    if (raw.usage && typeof raw.usage === "object") {
+      recordOpenAiUsage({
+        purpose: "analyze",
+        model: raw.usage.model ?? "gpt-4o",
+        apiCalls: raw.usage.apiCalls ?? 1,
+        inputTokens: raw.usage.inputTokens ?? 0,
+        outputTokens: raw.usage.outputTokens ?? 0,
+        durationMs: raw.usage.durationMs,
+        imageCount: raw.usage.imageCount,
+        note: raw.usage.note,
+      });
+    }
+    const result = normalizeAnalysisResult(
+      raw,
+      {
+        clientId: payload.lifestyle.clientId,
+        clientName: payload.lifestyle.clientName,
+        measurementDate: payload.lifestyle.measurementDate,
+        age: payload.lifestyle.age,
+        gender: payload.lifestyle.gender,
+        heightCm: payload.lifestyle.heightCm,
+        weightKg: payload.lifestyle.weightKg,
+        medications: payload.lifestyle.medications,
+        drinkingHabit: payload.lifestyle.drinkingHabit,
+        exerciseHabit: payload.lifestyle.exerciseHabit,
+        snoringNasal: payload.lifestyle.snoringNasal,
+        medicalHistory: payload.lifestyle.medicalHistory,
+      },
+    );
 
     // OCR→確認で確定した confirmedMetrics / graphs を単一の数値根拠として強制採用
     if (payload.metrics) {

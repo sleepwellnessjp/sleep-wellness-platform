@@ -8,8 +8,12 @@ import {
 import {
   BEDTIME_EXCLUDE,
   COMPOUND_BED_WAKE_PATTERNS,
+  expandLabelCandidates,
+  inferKeyFromUnitValue,
+  isWeakContextLabel,
   matchCriticalLabel,
   normalizeOcrLabel,
+  RECOVERABLE_METRIC_KEYS,
   weakLabelFitsCritical,
   WAKETIME_EXCLUDE,
 } from "@/lib/soxai-ocr-dictionary";
@@ -50,10 +54,17 @@ function normalizeLabel(label: string): string {
 function normalizeValue(value: string): string {
   return value
     .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\r\n\t]+/g, " ")
     .trim()
     .replace(/\s+/g, " ")
     .replace(/％/g, "%")
-    .replace(/：/g, ":");
+    .replace(/：/g, ":")
+    .replace(/°\s*[cｃ]/gi, "℃")
+    .replace(/\bBPM\b/g, "bpm")
+    .replace(/\bRPM\b/g, "rpm")
+    .replace(/\bBRPM\b/g, "brpm")
+    .replace(/\bMS\b/g, "ms");
 }
 
 function looksPercent(value: string): boolean {
@@ -70,6 +81,19 @@ function looksDuration(value: string): boolean {
     return mins != null && mins >= 0 && mins <= 16 * 60;
   }
   return false;
+}
+
+function looksBpm(value: string): boolean {
+  return /bpm|拍\/分/i.test(value) || /^\s*\d{2,3}(\.\d+)?\s*$/.test(value.trim());
+}
+
+function looksHrvMs(value: string): boolean {
+  return /\bms\b|ミリ秒/i.test(value) || /^\s*\d{1,3}(\.\d+)?\s*$/.test(value.trim());
+}
+
+function looksRespiratory(value: string): boolean {
+  return /\brpm\b|\bbrpm\b|呼吸\/分|回\/分/i.test(value) ||
+    /^\s*\d{1,2}(\.\d+)?\s*$/.test(value.trim());
 }
 
 /** HH:mm / 23時40分 / 午後11:40 などを時刻と判定 */
@@ -136,6 +160,18 @@ export function valueShapeFitsKey(key: MetricFieldKey, value: string): boolean {
     case "skinTemperature":
       return looksSkinTemperature(v);
 
+    case "restingHeartRate":
+      return looksBpm(v);
+
+    case "hrv":
+      return looksHrvMs(v);
+
+    case "respiratoryRate":
+      return looksRespiratory(v);
+
+    case "stress":
+      return /^\s*\d{1,3}(\.\d+)?/.test(v);
+
     default:
       return true;
   }
@@ -198,13 +234,15 @@ const MAPPING_RULES: MappingRule[] = [
     key: "qol",
     test: (l) =>
       /^qol$/.test(l) ||
-      /qualityoflife|現在のqol|きょうのqol|今日のqol|現在のスコア/.test(l),
+      /qualityoflife|現在のqol|きょうのqol|今日のqol|現在のスコア|クオリティオブライフ/.test(
+        l,
+      ),
     valueHint: "score",
   },
   {
     key: "yesterdayQol",
     test: (l) =>
-      /昨日のqol|昨日のスコア|きのうのスコア|きのうのqol|yesterdayqol|yesterdayscore/.test(
+      /昨日のqol|昨日のスコア|昨日スコア|きのうのスコア|きのうのqol|yesterdayqol|yesterdayscore/.test(
         l,
       ),
     valueHint: "score",
@@ -221,21 +259,26 @@ const MAPPING_RULES: MappingRule[] = [
   {
     key: "restingHeartRate",
     test: (l) =>
-      /安静時心拍|心拍数|^心拍$|^hr$|^rhr$|restinghr|restingheartrate|heartrate|平均心拍/.test(
+      (/安静時心拍|心拍数|^心拍$|^hr$|^rhr$|restinghr|restingheartrate|heartrate|平均心拍|^bpm$/.test(
         l,
-      ) && !/変動|hrv/.test(l),
+      ) &&
+        !/変動|hrv|rmssd|sdnn/.test(l)),
   },
   {
     key: "hrv",
     test: (l) =>
-      (/^hrv$|心拍変動|rmssd|sdnn|heart rate variability/.test(l) &&
+      (/^hrv$|心拍変動|rmssd|sdnn|heartratevariability|heart rate variability/.test(
+        l,
+      ) &&
         !/最小|最大|min|max/.test(l)) ||
       (/心拍変動|hrv/.test(l) && /平均|avg|mean/.test(l)),
   },
   // —— ステージ詳細（睡眠時間より先に判定）——
   {
     key: "awakeningRate",
-    test: (l) => /覚醒率|awake%|awakepercent|覚醒割合/.test(l),
+    test: (l) =>
+      /覚醒率|awake%|awakepercent|覚醒割合|覚醒%|覚醒％|^覚醒$/.test(l) &&
+      !/時間|中途/.test(l),
     valueHint: "percent",
   },
   {
@@ -247,45 +290,52 @@ const MAPPING_RULES: MappingRule[] = [
   },
   {
     key: "remSleepRate",
-    test: (l) => /レム睡眠率|レム率|rem率|rem%|rempercent|レム割合/.test(l),
+    test: (l) =>
+      /レム睡眠率|レム率|rem率|rem%|rempercent|レム割合|レム%|レム％/.test(l),
     valueHint: "percent",
   },
   {
     key: "remSleep",
     test: (l) =>
       /レム睡眠時間|レム時間|rem時間|レム睡眠|^レム$|^rem$|remsleep/.test(l) &&
-      !/率|%|percent|割合/.test(l),
+      !/率|percent|割合/.test(l),
     valueHint: "duration",
   },
   {
     key: "lightSleepRate",
-    test: (l) => /浅い睡眠率|light%|lightpercent|浅い割合/.test(l),
+    test: (l) =>
+      /浅い睡眠率|light%|lightpercent|浅い割合|浅い%|浅い％|浅%|^浅い$/.test(l),
     valueHint: "percent",
   },
   {
     key: "lightSleep",
     test: (l) =>
-      /浅い睡眠時間|浅い時間|light時間|浅い睡眠|^light$|lightsleep/.test(l) &&
-      !/率|%|percent|割合/.test(l),
+      /浅い睡眠時間|浅い時間|light時間|浅い睡眠|^浅い$|^light$|lightsleep/.test(
+        l,
+      ) && !/率|percent|割合/.test(l),
     valueHint: "duration",
   },
   {
     key: "deepSleepRate",
-    test: (l) => /深い睡眠率|deep%|deeppercent|深い割合/.test(l),
+    test: (l) =>
+      /深い睡眠率|deep%|deeppercent|深い割合|深い%|深い％|深%|^深い$/.test(l),
     valueHint: "percent",
   },
   {
     key: "deepSleep",
     test: (l) =>
-      /深い睡眠時間|深い時間|deep時間|深い睡眠|^deep$|deepsleep/.test(l) &&
-      !/率|%|percent|割合/.test(l),
+      /深い睡眠時間|深い時間|deep時間|深い睡眠|^深い$|^deep$|deepsleep/.test(
+        l,
+      ) && !/率|percent|割合/.test(l),
     valueHint: "duration",
   },
   // —— 総睡眠（レム/浅い/深い を除外）——
   {
     key: "sleepDuration",
     test: (l) =>
-      (/睡眠時間|総睡眠|totalsleep|実際の睡眠|^睡眠$/.test(l) ||
+      (/睡眠時間|総睡眠|totalsleep|実際の睡眠|総睡眠時間|^睡眠$|sleeptime|sleepduration/.test(
+        l,
+      ) ||
         (/sleep/.test(l) && /duration|total/.test(l))) &&
       !/レム|rem|浅い|light|深い|deep|負債|効率|スコア|潜時|全就床|就床/.test(l),
     valueHint: "duration",
@@ -302,7 +352,7 @@ const MAPPING_RULES: MappingRule[] = [
     key: "bedtime",
     test: (l) =>
       matchCriticalLabel(l) === "bedtime" ||
-      ((/入眠時間|入眠時刻|入眠した時刻|睡眠開始時刻|睡眠開始時間|睡眠開始|fellasleep|sleeponset|sleepstart|asleepat|^入眠$|^就寝$|就寝時刻|就寝時間/.test(
+      ((/入眠時間|入眠時刻|入眠した時刻|入眠した時間|睡眠開始時刻|睡眠開始時間|睡眠開始|眠り始め|fellasleep|sleeponset|sleepstart|asleepat|^入眠$|^就寝$|就寝時刻|就寝時間/.test(
         l,
       ) ||
         (/bedtime|sleeponset|sleepstart|asleep/.test(l) &&
@@ -314,7 +364,7 @@ const MAPPING_RULES: MappingRule[] = [
     key: "wakeTime",
     test: (l) =>
       matchCriticalLabel(l) === "wakeTime" ||
-      ((/起床時間|起床時刻|起床した時刻|^起床$|睡眠終了|睡眠終了時刻|睡眠終了時間|gotup|waketime|wakeuptime|^rise$/.test(
+      ((/起床時間|起床時刻|起床した時刻|起床した時間|起きた時刻|起きた時間|目覚め|^起床$|睡眠終了|睡眠終了時刻|睡眠終了時間|gotup|waketime|wakeuptime|^rise$/.test(
         l,
       ) ||
         (/^wake$|wakeup|waketime/.test(l) && !WAKETIME_EXCLUDE.test(l))) &&
@@ -323,7 +373,7 @@ const MAPPING_RULES: MappingRule[] = [
   },
   {
     key: "sleepEfficiency",
-    test: (l) => /睡眠効率|sleepefficiency|efficiency/.test(l),
+    test: (l) => /睡眠効率|sleepefficiency|efficiency|^効率$/.test(l),
     valueHint: "percent",
   },
   {
@@ -333,23 +383,28 @@ const MAPPING_RULES: MappingRule[] = [
   },
   {
     key: "circadianRhythm",
-    test: (l) => /体内時計|circadian|クロノ|位相/.test(l),
+    test: (l) => /体内時計|circadian|クロノ|位相|サーカディアン/.test(l),
   },
   {
     key: "respiratoryRate",
-    test: (l) => /呼吸速度|呼吸数|respiratory|respiration|平均呼吸/.test(l),
+    test: (l) =>
+      /呼吸速度|呼吸数|respiratory|respiration|平均呼吸|^呼吸$|^brpm$|^rpm$|呼吸rpm/.test(
+        l,
+      ),
   },
   {
     key: "spo2",
     test: (l) =>
-      /spo2|spo₂|血中酸素|酸素飽和|酸素レベル|平均酸素|平均spo/.test(l),
+      /spo2|spo₂|血中酸素|酸素飽和|酸素飽和度|血中酸素濃度|酸素レベル|平均酸素|平均spo|平均酸素レベル/.test(
+        l,
+      ),
     valueHint: "percent",
   },
   {
     key: "skinTemperature",
     test: (l) =>
       matchCriticalLabel(l) === "skinTemperature" ||
-      (/皮膚温度|皮膚温|体表温|体表温度|skintemperature|skintemp|体温偏差|皮膚温度偏差|温度偏差|delta温度|温度delta|ベースライン偏差|baseline偏差|平均皮膚温/.test(
+      (/皮膚温度|皮膚温|皮虜温|皮虜温度|スキンテンプ|体表温|体表温度|skintemperature|skintemp|体温偏差|体温差|皮膚温度偏差|温度偏差|delta温度|温度delta|ベースライン偏差|baseline偏差|平均皮膚温/.test(
         l,
       ) &&
         !/環境|室温|気温|天候/.test(l)),
@@ -359,17 +414,27 @@ const MAPPING_RULES: MappingRule[] = [
     key: "stress",
     test: (l) =>
       matchCriticalLabel(l) === "stress" ||
-      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア|ストレス値|ストレス度|ストレス平均|平均ストレス|現在のストレス|夜間ストレス|ストレスモニター|stresslevel|stressscore|stressindex|stressavg|averagestress|averagestress|stressaverage/.test(
+      /^ストレス$|^stress$|ストレスレベル|ストレス指数|ストレススコア|ストレス値|ストレス度|ストレス平均|平均ストレス|現在のストレス|夜間ストレス|ストレスモニター|ストレス平均|stresslevel|stressscore|stressindex|stressavg|averagestress|stressaverage/.test(
         l,
       ),
   },
 ];
 
-function matchKey(label: string, value: string): MetricFieldKey | null {
-  const normalized = normalizeLabel(label);
+function labelMatchesRule(
+  rule: MappingRule,
+  label: string,
+): boolean {
+  const candidates = expandLabelCandidates(label);
+  return candidates.some((normalized) => rule.test(normalized));
+}
 
+function matchKey(
+  label: string,
+  value: string,
+  siblingLabels: string[] = [],
+): MetricFieldKey | null {
   for (const rule of MAPPING_RULES) {
-    if (!rule.test(normalized)) continue;
+    if (!labelMatchesRule(rule, label)) continue;
 
     if (rule.valueHint === "score" && !looksScore(value)) {
       if (rule.key === "sleepScore" && looksDuration(value)) {
@@ -439,6 +504,36 @@ function matchKey(label: string, value: string): MetricFieldKey | null {
     }
 
     return rule.key;
+  }
+
+  // 弱ラベル / 単位付き数値のみ → 周辺ラベルから推定
+  if (!normalizeLabel(label) || isWeakContextLabel(label)) {
+    const inferred = inferKeyFromUnitValue(value, siblingLabels);
+    if (inferred && valueShapeFitsKey(inferred, value)) {
+      return inferred;
+    }
+  }
+
+  // ラベルが単位っぽい（bpm / ms / rpm / ℃）で値が数値の場合も推定
+  const unitAsLabel = inferKeyFromUnitValue(label, siblingLabels);
+  if (unitAsLabel && /^\s*[+-]?\d+(\.\d+)?/.test(value)) {
+    const combined = `${value} ${label}`;
+    if (valueShapeFitsKey(unitAsLabel, combined)) {
+      return unitAsLabel;
+    }
+  }
+
+  const fromValueUnit = inferKeyFromUnitValue(value, [
+    ...siblingLabels,
+    label,
+  ]);
+  if (
+    fromValueUnit &&
+    valueShapeFitsKey(fromValueUnit, value) &&
+    (isWeakContextLabel(label) ||
+      /平均|現在|偏差|avg|mean|値/.test(normalizeLabel(label)))
+  ) {
+    return fromValueUnit;
   }
 
   return null;
@@ -901,15 +996,18 @@ export function mapVisibleReadingsToMetricsDetailed(
   const mappedLabels: string[] = [];
   const skippedLabels: string[] = [];
   const screenType = options?.screenType;
+  const siblingLabelsForMap = readings.map((r) => r.label?.trim() ?? "").filter(Boolean);
 
   for (const reading of readings) {
     const label = reading.label?.trim() ?? "";
     const value = normalizeValue(reading.value ?? "");
-    if (!label || !value) continue;
+    if (!value) continue;
+    // 数値のみ（ラベル空）も周辺ラベルから推定するため通す
+    if (!label && !/^\s*[+-]?\d/.test(value) && !looksTime(value)) continue;
 
-    const key = matchKey(label, value);
+    const key = matchKey(label, value, siblingLabelsForMap);
     if (!key) {
-      skippedLabels.push(label);
+      skippedLabels.push(label || `(value:${value})`);
       continue;
     }
 
@@ -1069,6 +1167,100 @@ export function recoverCriticalMetricsFromReadings(
     }
   }
 
+  // 画面ゲートなしの ungated パス（誤判定でブロックされた critical を救済）
+  if (
+    !next.bedtime.trim() ||
+    !next.wakeTime.trim() ||
+    !String(next.skinTemperature).trim() ||
+    !String(next.stress).trim()
+  ) {
+    const ungated = mapVisibleReadingsToMetricsDetailed(readings, {
+      screenType: "other",
+    });
+    if (!next.bedtime.trim() && ungated.metrics.bedtime.trim()) {
+      next.bedtime = ungated.metrics.bedtime;
+    }
+    if (!next.wakeTime.trim() && ungated.metrics.wakeTime.trim()) {
+      next.wakeTime = ungated.metrics.wakeTime;
+    }
+    if (
+      !String(next.skinTemperature).trim() &&
+      ungated.metrics.skinTemperature.trim()
+    ) {
+      next.skinTemperature = ungated.metrics.skinTemperature;
+    }
+    if (!String(next.stress).trim() && ungated.metrics.stress.trim()) {
+      next.stress = ungated.metrics.stress;
+    }
+  }
+
+  // 全 readings を1 blob として複合抽出
+  if (!next.bedtime.trim() || !next.wakeTime.trim()) {
+    const blob = readings
+      .map((r) => `${r.label ?? ""} ${r.value ?? ""}`)
+      .join(" / ");
+    const compound = extractCriticalFromCompoundText("睡眠", blob);
+    if (!next.bedtime.trim() && compound.bedtime) next.bedtime = compound.bedtime;
+    if (!next.wakeTime.trim() && compound.wakeTime) {
+      next.wakeTime = compound.wakeTime;
+    }
+  }
+
+  return normalizeMetrics(next);
+}
+
+/**
+ * 不足している全メトリクスを、画面ゲートを緩めた再マッピングで埋める。
+ * 既存値は上書きしない。
+ */
+export function recoverMissingMetricsFromReadings(
+  current: AnalysisMetrics,
+  readings: VisibleReading[],
+): AnalysisMetrics {
+  if (readings.length === 0) return current;
+
+  const next = { ...current };
+  const screens: Array<SoxaiScreenType | undefined> = [
+    "other",
+    "home",
+    "sleep_detail",
+    "sleep_stages",
+    "bed_wake",
+    "skin_temp",
+    "stress",
+    "hrv",
+    "rhr",
+    "respiration",
+    undefined,
+  ];
+
+  for (const screenType of screens) {
+    const mapped = mapVisibleReadingsToMetricsDetailed(readings, {
+      screenType,
+    });
+    for (const key of RECOVERABLE_METRIC_KEYS) {
+      if (isMetricPresent(next, key)) continue;
+      if (!isMetricPresent(mapped.metrics, key)) continue;
+      if (key === "sleepScore") {
+        next.sleepScore = mapped.metrics.sleepScore;
+      } else {
+        next[key] = mapped.metrics[key];
+      }
+    }
+  }
+
+  // 複合入眠・起床
+  if (!next.bedtime.trim() || !next.wakeTime.trim()) {
+    const blob = readings
+      .map((r) => `${r.label ?? ""} ${r.value ?? ""}`)
+      .join(" / ");
+    const compound = extractCriticalFromCompoundText("睡眠", blob);
+    if (!next.bedtime.trim() && compound.bedtime) next.bedtime = compound.bedtime;
+    if (!next.wakeTime.trim() && compound.wakeTime) {
+      next.wakeTime = compound.wakeTime;
+    }
+  }
+
   return normalizeMetrics(next);
 }
 
@@ -1125,17 +1317,57 @@ export function normalizeVisibleReadings(raw: unknown): VisibleReading[] {
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
-    const label = String(
+    let label = String(
       record.label ?? record.name ?? record.key ?? "",
-    ).trim();
-    const valueRaw = record.value ?? record.val ?? record.number;
-    const value =
+    )
+      .normalize("NFKC")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/[\r\n\t]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+    let valueRaw = record.value ?? record.val ?? record.number;
+    let value =
       valueRaw == null
         ? ""
         : typeof valueRaw === "number"
           ? String(valueRaw)
-          : String(valueRaw).trim();
-    if (!label || !value) continue;
+          : String(valueRaw)
+              .normalize("NFKC")
+              .replace(/[\r\n\t]+/g, " ")
+              .trim()
+              .replace(/\s+/g, " ");
+
+    // ラベルと値が逆（label="58", value="bpm" / label="42", value="ms"）
+    if (
+      label &&
+      value &&
+      /^\d+(\.\d+)?$/.test(label) &&
+      /^(bpm|ms|rpm|brpm|℃|%|％)$/i.test(value)
+    ) {
+      value = `${label} ${value}`;
+      label = value.toLowerCase().includes("bpm")
+        ? "心拍数"
+        : value.toLowerCase().includes("ms")
+          ? "HRV"
+          : /rpm|brpm/i.test(value)
+            ? "呼吸速度"
+            : /℃/.test(value)
+              ? "皮膚温度"
+              : "平均";
+    }
+
+    // 数値のみ（ラベル無し）も保持し、後段で周辺ラベルから推定
+    if (!value) continue;
+    if (!label) {
+      if (/bpm/i.test(value)) label = "心拍数";
+      else if (/\bms\b/i.test(value)) label = "HRV";
+      else if (/rpm|brpm/i.test(value)) label = "呼吸速度";
+      else if (/℃|°\s*c/i.test(value) || /^[+-]\s*\d+(\.\d+)?$/.test(value))
+        label = "皮膚温度";
+      else if (/%|％/.test(value)) label = "平均";
+      else if (/^\d+(\.\d+)?$/.test(value)) label = "平均";
+      else continue;
+    }
 
     const dedupe = `${normalizeLabel(label)}::${value}`;
     if (seen.has(dedupe)) continue;

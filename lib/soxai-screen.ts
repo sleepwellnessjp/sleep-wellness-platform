@@ -62,7 +62,7 @@ export const SCREEN_PRIMARY_METRICS: Record<
     "conditionScore",
     "restingHeartRate",
   ],
-  sleep_overview: ["sleepScore", "sleepDuration"],
+  sleep_overview: ["sleepScore", "sleepDuration", "restingHeartRate"],
   sleep_detail: [
     "sleepDuration",
     "bedtime",
@@ -85,12 +85,12 @@ export const SCREEN_PRIMARY_METRICS: Record<
     "deepSleepRate",
     "spo2",
   ],
-  circadian: ["circadianRhythm"],
+  circadian: ["circadianRhythm", "bedtime", "wakeTime"],
   stress: ["stress"],
   skin_temp: ["skinTemperature"],
   respiration: ["respiratoryRate", "spo2"],
   rhr: ["restingHeartRate"],
-  hrv: ["hrv"],
+  hrv: ["hrv", "restingHeartRate"],
   other: [],
 };
 
@@ -149,8 +149,8 @@ export const METRIC_SCREEN_PRIORITY: Partial<
   skinTemperature: ["skin_temp", "sleep_detail"],
   stress: ["stress", "sleep_detail"],
   sleepLatency: ["sleep_detail", "bed_wake"],
-  // ホームに睡眠時間があれば最優先。無い場合は詳細・概要へフォールバック
-  sleepDuration: ["home", "sleep_detail", "sleep_overview"],
+  // 詳細・ステージの「睡眠時間」を優先（概要の 7:04=仮眠込み 等を避ける）
+  sleepDuration: ["sleep_detail", "sleep_stages", "sleep_overview", "home"],
   sleepEfficiency: ["sleep_detail"],
   sleepDebt: ["sleep_detail"],
   circadianRhythm: ["circadian", "sleep_detail"],
@@ -375,15 +375,16 @@ export function screenCriticalLabels(screen: SoxaiScreenType): string {
     case "sleep_stages":
       return "覚醒・レム・浅い・深い（時間と%は別） / SpO₂";
     case "home":
-      return "QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数";
+    case "sleep_overview":
+      return "睡眠スコア / 睡眠時間 / 安静時心拍数";
     case "rhr":
       return "安静時心拍数（平均を優先。最小・最大は別）";
     case "hrv":
-      return "HRV / 心拍変動（平均）";
+      return "安静時心拍数 / 平均心拍数 / HRV（心拍変動・平均・ms）";
     case "respiration":
-      return "呼吸速度 / 平均酸素レベル（SpO₂）";
+      return "呼吸速度 / 平均酸素レベル（SpO₂） / 睡眠時呼吸";
     case "circadian":
-      return "体内時計 / 位相";
+      return "体内時計 / 入眠時間 / 起床時間 / 位相";
     default:
       return "入眠時間 / 起床時間 / 皮膚温度 / ストレス";
   }

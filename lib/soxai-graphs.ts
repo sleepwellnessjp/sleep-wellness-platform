@@ -269,10 +269,14 @@ export function enrichMetricsFromGraphs(
         : String(next[key] ?? "").trim();
     if (current) return;
 
-    // 明示ラベル一致のみ（先頭注釈へのフォールバックは推測になるため禁止）
-    const match = panel.annotations.find((a) =>
-      preferLabels.test(a.label.normalize("NFKC")),
-    );
+    // 明示ラベル一致（単位付き注釈・改行ラベルも許容）
+    const match = panel.annotations.find((a) => {
+      const label = a.label
+        .normalize("NFKC")
+        .replace(/[\r\n\t]+/g, " ")
+        .trim();
+      return preferLabels.test(label);
+    });
     if (match?.value.trim()) {
       if (key === "sleepScore") {
         const n = parseNumber(match.value);
@@ -283,17 +287,57 @@ export function enrichMetricsFromGraphs(
     }
   };
 
-  applyAnnotation("rhr", "restingHeartRate", /平均|avg|mean/i);
-  applyAnnotation("hrv", "hrv", /平均|avg|mean/i);
-  applyAnnotation("stress", "stress", /平均|avg|mean|現在|ストレス/i);
-  applyAnnotation("respiration", "respiratoryRate", /呼吸|respiratory|平均/i);
-  applyAnnotation("respiration", "spo2", /spo|酸素/i);
+  applyAnnotation("rhr", "restingHeartRate", /平均|avg|mean|心拍|rhr|bpm/i);
+  applyAnnotation("hrv", "hrv", /平均|avg|mean|hrv|心拍変動|rmssd|ms/i);
+  applyAnnotation(
+    "stress",
+    "stress",
+    /平均|avg|mean|現在|ストレス|stress|レベル/i,
+  );
+  applyAnnotation(
+    "respiration",
+    "respiratoryRate",
+    /呼吸|respiratory|平均|rpm|brpm/i,
+  );
+  applyAnnotation("respiration", "spo2", /spo|酸素|飽和/i);
   applyAnnotation(
     "skin-temp",
     "skinTemperature",
-    /平均|avg|mean|皮膚|体表|偏差|温度|delta|現在/i,
+    /平均|avg|mean|皮膚|皮虜|体表|偏差|温度|delta|現在|℃|temp/i,
   );
-  applyAnnotation("circadian", "circadianRhythm", /位相|体内|circadian/i);
+  applyAnnotation(
+    "circadian",
+    "circadianRhythm",
+    /位相|体内|circadian|クロノ/i,
+  );
+
+  // stage-detail / stages の注釈から時間・割合を補完
+  for (const panelId of ["stage-detail", "stages"] as GraphPanelId[]) {
+    const panel = bundle[panelId];
+    if (!panel?.annotations.length) continue;
+    for (const ann of panel.annotations) {
+      const label = ann.label.normalize("NFKC").replace(/[\r\n\t]+/g, " ");
+      const value = ann.value.normalize("NFKC").trim();
+      if (!value) continue;
+      const isPct = /%|％/.test(value);
+      const fill = (key: keyof AnalysisMetrics) => {
+        if (!String(next[key] ?? "").trim()) {
+          (next as Record<string, unknown>)[key] = value;
+        }
+      };
+      if (/覚醒/.test(label) && !/起床/.test(label)) {
+        fill(isPct ? "awakeningRate" : "awakenings");
+      } else if (/レム|rem/i.test(label)) {
+        fill(isPct ? "remSleepRate" : "remSleep");
+      } else if (/浅|light/i.test(label)) {
+        fill(isPct ? "lightSleepRate" : "lightSleep");
+      } else if (/深|deep/i.test(label)) {
+        fill(isPct ? "deepSleepRate" : "deepSleep");
+      } else if (/spo|酸素/i.test(label)) {
+        fill("spo2");
+      }
+    }
+  }
 
   // 皮膚温度パネル: 明示ラベル付きの ±値のみ（最初の数値注釈への推測補完はしない）
   if (!String(next.skinTemperature ?? "").trim()) {
@@ -303,13 +347,34 @@ export function enrichMetricsFromGraphs(
         const label = a.label.normalize("NFKC");
         const value = a.value.normalize("NFKC").trim();
         return (
-          /皮膚|体表|温度|偏差|平均|現在|avg|delta|temp/i.test(label) &&
+          /皮膚|皮虜|体表|温度|偏差|平均|現在|avg|delta|temp|℃/i.test(label) &&
           /^[+-]?\s*\d+(\.\d+)?/.test(value)
         );
       });
       if (labeled?.value.trim()) {
         next.skinTemperature = labeled.value.trim();
       }
+    }
+  }
+
+  // RHR / HRV: 平均注釈が無く points に平均相当が無い場合でも、
+  // 「平均 XX bpm/ms」形式の annotation value を拾う
+  if (!String(next.restingHeartRate ?? "").trim()) {
+    const panel = bundle.rhr;
+    const hit = panel?.annotations.find((a) =>
+      /bpm|\d{2,3}/i.test(a.value.normalize("NFKC")),
+    );
+    if (hit?.value.trim() && /平均|avg|mean|心拍/i.test(hit.label)) {
+      next.restingHeartRate = hit.value.trim();
+    }
+  }
+  if (!String(next.hrv ?? "").trim()) {
+    const panel = bundle.hrv;
+    const hit = panel?.annotations.find((a) =>
+      /\bms\b|\d{1,3}/i.test(a.value.normalize("NFKC")),
+    );
+    if (hit?.value.trim() && /平均|avg|mean|hrv|心拍変動/i.test(hit.label)) {
+      next.hrv = hit.value.trim();
     }
   }
 

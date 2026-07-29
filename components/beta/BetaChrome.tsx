@@ -37,7 +37,7 @@ export default function BetaChrome() {
           className="text-[11px] font-semibold tabular-nums tracking-[-0.01em]"
           style={{ color: NAVY }}
         >
-          v{APP_VERSION_LABEL}
+          {`v${APP_VERSION_LABEL}`}
         </span>
       </div>
 

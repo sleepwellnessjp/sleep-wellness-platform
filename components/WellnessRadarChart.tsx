@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import {
   WELLNESS_CATEGORY_LABELS,
   type WellnessCategoryKey,
@@ -53,6 +54,7 @@ export default function WellnessRadarChart({
   scores: WellnessCategoryScores;
   size?: number;
 }) {
+  const fillId = useId().replace(/:/g, "");
   const values = CATEGORY_ORDER.map((key) => scores[key]);
   const cx = size / 2;
   const cy = size / 2;
@@ -69,7 +71,7 @@ export default function WellnessRadarChart({
         aria-label="睡眠ウェルネススコア カテゴリーレーダー"
       >
         <defs>
-          <linearGradient id="wellnessRadarFill" x1="0" y1="0" x2="1" y2="1">
+          <linearGradient id={fillId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor={TEAL} stopOpacity="0.28" />
             <stop offset="100%" stopColor={GOLD} stopOpacity="0.18" />
           </linearGradient>
@@ -109,7 +111,7 @@ export default function WellnessRadarChart({
 
         <polygon
           points={polygonPoints(cx, cy, radius, values, 100)}
-          fill="url(#wellnessRadarFill)"
+          fill={`url(#${fillId})`}
           stroke={TEAL}
           strokeWidth={2}
           strokeLinejoin="round"
