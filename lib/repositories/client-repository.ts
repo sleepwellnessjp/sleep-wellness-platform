@@ -174,6 +174,98 @@ function parseNumeric(value: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function metricText(value: unknown): string {
+  return value == null ? "" : String(value).trim();
+}
+
+/**
+ * confirmed_metrics 用の sleepDuration / hrv 採用ルール。
+ * - sleepDuration: 「睡眠時間」相当のみ（就床・ベッド滞在・ステージ合計・extracted 誤値は不採用）
+ * - hrv: 「平均HRV」「心拍変動平均」相当のみ（最大HRV・安静時心拍は不採用）
+ */
+function adoptConfirmedSleepDuration(value: unknown): string {
+  const raw = metricText(value);
+  if (!raw) return "";
+  // 就床・ベッド滞在・ステージ合計などをラベル付きで誤保存していないか
+  if (
+    /就床|ベッド|滞在|ステージ合計|睡眠時間合計|必要睡眠|目標睡眠|推奨睡眠|全就床/i.test(
+      raw,
+    )
+  ) {
+    return "";
+  }
+  return raw;
+}
+
+function adoptConfirmedHrv(
+  value: unknown,
+  _restingHeartRate: unknown,
+): string {
+  const raw = metricText(value);
+  if (!raw) return "";
+  // 最大HRV / HRV Max は不採用
+  if (/(最大|max)/i.test(raw) && !/(平均|avg|mean)/i.test(raw)) {
+    return "";
+  }
+  if (/hrv\s*max|max\s*hrv/i.test(raw)) return "";
+  // 安静時心拍数（bpm）の取り違えは不採用
+  if (/bpm|拍\/分|回\/分|安静時/i.test(raw)) return "";
+  return raw;
+}
+
+/**
+ * 保存・再表示用 confirmed_metrics を組み立てる。
+ * sleepDuration / hrv は confirmed 系ソースのみ（OCR extracted フォールバック禁止）。
+ */
+function buildConfirmedMetrics(args: {
+  confirmedMetrics?: Partial<AnalysisMetrics> | null;
+  ocrConfirmed?: AnalysisMetrics | null;
+  ocrExtracted?: AnalysisMetrics | null;
+  /** 保存時: 確認画面の確定 metrics を直接渡す */
+  direct?: AnalysisMetrics | null;
+}): AnalysisMetrics {
+  if (args.direct) {
+    const base = normalizeMetrics(args.direct);
+    return {
+      ...base,
+      sleepDuration: adoptConfirmedSleepDuration(base.sleepDuration),
+      hrv: adoptConfirmedHrv(base.hrv, base.restingHeartRate),
+    };
+  }
+
+  const confirmedRow = args.confirmedMetrics
+    ? normalizeMetrics(args.confirmedMetrics)
+    : null;
+  const ocrConfirmed = args.ocrConfirmed
+    ? normalizeMetrics(args.ocrConfirmed)
+    : null;
+  const ocrExtracted = args.ocrExtracted
+    ? normalizeMetrics(args.ocrExtracted)
+    : normalizeMetrics(undefined);
+
+  const base = normalizeMetrics(
+    confirmedRow ?? ocrConfirmed ?? ocrExtracted,
+  );
+
+  // ① sleepDuration: confirmed_metrics / ocr.confirmed のみ（extracted は使わない）
+  const sleepDuration =
+    adoptConfirmedSleepDuration(confirmedRow?.sleepDuration) ||
+    adoptConfirmedSleepDuration(ocrConfirmed?.sleepDuration) ||
+    "";
+
+  // ② hrv: confirmed_metrics / ocr.confirmed のみ（extracted は使わない）
+  const hrv =
+    adoptConfirmedHrv(confirmedRow?.hrv, confirmedRow?.restingHeartRate) ||
+    adoptConfirmedHrv(ocrConfirmed?.hrv, ocrConfirmed?.restingHeartRate) ||
+    "";
+
+  return {
+    ...base,
+    sleepDuration,
+    hrv,
+  };
+}
+
 function parseOcrPayload(ocrData: unknown): {
   extracted: AnalysisMetrics;
   confirmed: AnalysisMetrics | null;
@@ -202,9 +294,11 @@ function parseOcrPayload(ocrData: unknown): {
 
 function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
   const ocr = parseOcrPayload(row.ocr_data);
-  const metrics = normalizeMetrics(
-    row.confirmed_metrics ?? ocr.confirmed ?? ocr.extracted,
-  );
+  const metrics = buildConfirmedMetrics({
+    confirmedMetrics: row.confirmed_metrics,
+    ocrConfirmed: ocr.confirmed,
+    ocrExtracted: ocr.extracted,
+  });
   const resultRaw = row.ai_result;
   const graphs = resultRaw?.graphs;
   const structured = parseStructuredFromStorage(
@@ -215,7 +309,11 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
   const result = resultRaw
     ? normalizeAnalysisResult({
         ...resultRaw,
-        metrics: normalizeMetrics(resultRaw.metrics ?? metrics),
+        metrics: {
+          ...normalizeMetrics(resultRaw.metrics ?? metrics),
+          sleepDuration: metrics.sleepDuration,
+          hrv: metrics.hrv,
+        },
         extractedMetrics: resultRaw.extractedMetrics ?? ocr.extracted,
         analysisId: row.id,
         clientId: row.client_id,
@@ -1333,7 +1431,9 @@ export async function saveAnalysisToRepository(
       rememberLastSavedAnalysisRef(existingRef);
 
       // analyses は保存済みでも sleep_analyses が欠ける場合があるため補完する
-      const metrics = normalizeMetrics(result.metrics);
+      const metrics = buildConfirmedMetrics({
+        direct: normalizeMetrics(result.metrics),
+      });
       const sleepScore =
         typeof metrics.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
           ? metrics.sleepScore
@@ -1360,10 +1460,12 @@ export async function saveAnalysisToRepository(
   const extractedMetrics = normalizeMetrics(
     result.extractedMetrics ?? result.metrics,
   );
-  const structured = buildStructuredMetrics(metrics, result.graphs);
+  const confirmedMetrics = buildConfirmedMetrics({ direct: metrics });
+  const structured = buildStructuredMetrics(confirmedMetrics, result.graphs);
   const sleepScore =
-    typeof metrics.sleepScore === "number" && Number.isFinite(metrics.sleepScore)
-      ? metrics.sleepScore
+    typeof confirmedMetrics.sleepScore === "number" &&
+    Number.isFinite(confirmedMetrics.sleepScore)
+      ? confirmedMetrics.sleepScore
       : null;
 
   let clientId: string | null = null;
@@ -1564,14 +1666,14 @@ export async function saveAnalysisToRepository(
     analyzed_at: new Date(`${analysisDate}T12:00:00`).toISOString(),
     analysis_date: analysisDate,
     sleep_score: sleepScore,
-    sleep_duration: parseNumeric(metrics.sleepDuration),
-    sleep_efficiency: parseNumeric(metrics.sleepEfficiency),
-    deep_sleep: parseNumeric(metrics.deepSleep),
-    awakenings: parseNumeric(metrics.awakenings),
-    sleep_latency: parseNumeric(metrics.sleepLatency),
-    spo2: parseNumeric(metrics.spo2),
-    hrv: parseNumeric(metrics.hrv),
-    resting_heart_rate: parseNumeric(metrics.restingHeartRate),
+    sleep_duration: parseNumeric(confirmedMetrics.sleepDuration),
+    sleep_efficiency: parseNumeric(confirmedMetrics.sleepEfficiency),
+    deep_sleep: parseNumeric(confirmedMetrics.deepSleep),
+    awakenings: parseNumeric(confirmedMetrics.awakenings),
+    sleep_latency: parseNumeric(confirmedMetrics.sleepLatency),
+    spo2: parseNumeric(confirmedMetrics.spo2),
+    hrv: parseNumeric(confirmedMetrics.hrv),
+    resting_heart_rate: parseNumeric(confirmedMetrics.restingHeartRate),
     sleep_onset_time: structured.sleepOnsetTime || null,
     wake_time: structured.wakeTime || null,
     skin_temperature_value: structured.skinTemperatureValue || null,
@@ -1584,11 +1686,11 @@ export async function saveAnalysisToRepository(
     ocr_confidence: ocrConfidence,
     ocr_data: {
       extracted: extractedMetrics,
-      confirmed: metrics,
+      confirmed: confirmedMetrics,
       structured,
       analysisDate,
     },
-    confirmed_metrics: metrics,
+    confirmed_metrics: confirmedMetrics,
     report_payload: reportPayload,
     ai_result: aiResultPayload,
     credits_consumed: 0,
@@ -1613,7 +1715,7 @@ export async function saveAnalysisToRepository(
     analysisId: savedRef.analysisId,
     analysisDate,
     result,
-    metrics,
+    metrics: confirmedMetrics,
     sleepScore,
   });
   return savedRef;

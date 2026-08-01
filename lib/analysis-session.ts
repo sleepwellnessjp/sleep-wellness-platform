@@ -16,7 +16,10 @@ import {
   normalizeVisibleReadings,
 } from "@/lib/soxai-reading-map";
 import type { MetricConfidenceMap } from "@/lib/soxai-merge";
-import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
+import {
+  applyNonRemFromStageOcr,
+  OCR_LOW_CONFIDENCE_THRESHOLD,
+} from "@/lib/soxai-merge";
 import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
 import {
   detectMetricConsistencyWarnings,
@@ -46,6 +49,7 @@ import {
   setFingerprintFromHashes,
   getCachedOcrSet,
   setCachedOcrSet,
+  clearSoxaiOcrCaches,
 } from "@/lib/soxai-ocr-cache";
 import { recordOpenAiUsage } from "@/lib/openai-usage";
 
@@ -120,7 +124,8 @@ type LifestyleData = {
   dinnerContent: string;
   work: string;
   condition: string;
-  nasalCongestion: string;
+  /** 旧データ互換。入力画面からは送らない（残っていても無視可） */
+  nasalCongestion?: string;
   notes: string;
 };
 
@@ -1794,9 +1799,15 @@ function readPendingRequestFromStorage(): AnalysisRequest | null {
 }
 
 export function setExtractionDraft(draft: ExtractionDraft) {
-  const extractedMetrics = normalizeMetrics(draft.extractedMetrics);
+  // 確認画面の初期値は OCR 最終 metrics を表示正規化して保存（キー名・空文字判定を揃える）
+  // 前回 draft とのマージはしない（新しい API レスポンスで完全置換）
+  const extractedMetrics = normalizeMetricsForDisplay(
+    normalizeMetrics(draft.extractedMetrics),
+  );
+  applyNonRemFromStageOcr(extractedMetrics);
   extractionDraft = {
-    ...draft,
+    lifestyle: draft.lifestyle,
+    images: Array.isArray(draft.images) ? [...draft.images] : [],
     extractedMetrics,
     imageKeys: collectedMetricKeys(extractedMetrics),
     conflicts: draft.conflicts ? [...draft.conflicts] : [],
@@ -1825,6 +1836,47 @@ export function getExtractionDraft(): ExtractionDraft | null {
 export function clearExtractionDraft() {
   extractionDraft = null;
   persistExtractionDraft(null);
+}
+
+/**
+ * 新規分析開始時専用。ページ更新では呼ばない。
+ * 古い draft / pending / 前回結果 / OCR 一時キャッシュを破棄し、
+ * 新しい API レスポンスだけが確認・結果画面に載るようにする。
+ */
+export function beginNewSoxaiAnalysisSession(options?: {
+  /** true のとき実行中バックグラウンド OCR は維持（同一アップロードの提出時） */
+  keepBackgroundOcr?: boolean;
+  /** false のとき OCR local/memory キャッシュは残す（同一画像セットの提出再利用） */
+  clearOcrCaches?: boolean;
+}): void {
+  const keepBackgroundOcr = options?.keepBackgroundOcr === true;
+  const shouldClearOcrCaches = options?.clearOcrCaches !== false;
+
+  clearExtractionDraft();
+  clearPendingAnalysisRequest();
+  inFlightAnalysis = null;
+
+  if (!keepBackgroundOcr) {
+    clearBackgroundSoxaiExtraction();
+  }
+
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(RESULT_KEY);
+      sessionStorage.removeItem(GRAPHS_KEY);
+      sessionStorage.removeItem(IMAGES_KEY);
+      if (shouldClearOcrCaches) {
+        sessionStorage.removeItem(OCR_CACHE_STORAGE_KEY);
+      }
+    } catch {
+      // private mode
+    }
+  }
+
+  if (shouldClearOcrCaches) {
+    ocrResultCache.clear();
+    clearSoxaiOcrCaches();
+  }
 }
 
 export function setPendingAnalysisRequest(request: AnalysisRequest) {
@@ -2067,6 +2119,7 @@ function isOcrAbnormalValue(key: MetricFieldKey, value: string): boolean {
     case "sleepEfficiency":
     case "awakeningRate":
     case "remSleepRate":
+    case "nonRemSleepRate":
     case "lightSleepRate":
     case "deepSleepRate":
     case "spo2":
@@ -2077,6 +2130,7 @@ function isOcrAbnormalValue(key: MetricFieldKey, value: string): boolean {
     case "restingHeartRate":
       return !Number.isFinite(num) || num < 30 || num > 140;
     case "hrv":
+    case "hrvMax":
       return !Number.isFinite(num) || num < 5 || num > 250;
     case "respiratoryRate":
       return !Number.isFinite(num) || num < 5 || num > 35;

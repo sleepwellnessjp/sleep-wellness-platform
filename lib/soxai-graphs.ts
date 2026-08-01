@@ -287,8 +287,12 @@ export function enrichMetricsFromGraphs(
     }
   };
 
-  applyAnnotation("rhr", "restingHeartRate", /平均|avg|mean|心拍|rhr|bpm/i);
-  applyAnnotation("hrv", "hrv", /平均|avg|mean|hrv|心拍変動|rmssd|ms/i);
+  applyAnnotation("rhr", "restingHeartRate", /平均|avg|mean/i);
+  applyAnnotation("rhr", "restingHeartRateMin", /最小|min/i);
+  applyAnnotation("rhr", "restingHeartRateMax", /最大|max/i);
+  applyAnnotation("hrv", "hrv", /平均|avg|mean|^(hrv|心拍変動|rmssd)$/i);
+  applyAnnotation("hrv", "hrvMax", /最大|max/i);
+  applyAnnotation("hrv", "hrvMin", /最小|min/i);
   applyAnnotation(
     "stress",
     "stress",
@@ -373,8 +377,34 @@ export function enrichMetricsFromGraphs(
     const hit = panel?.annotations.find((a) =>
       /\bms\b|\d{1,3}/i.test(a.value.normalize("NFKC")),
     );
-    if (hit?.value.trim() && /平均|avg|mean|hrv|心拍変動/i.test(hit.label)) {
+    if (hit?.value.trim() && /平均|avg|mean|hrv|心拍変動/i.test(hit.label) && !/最大|max/i.test(hit.label)) {
       next.hrv = hit.value.trim();
+    }
+  }
+  if (!String(next.hrvMax ?? "").trim()) {
+    const panel = bundle.hrv;
+    const hit = panel?.annotations.find((a) => {
+      const label = a.label.normalize("NFKC");
+      return (
+        /\bms\b|\d{1,3}/i.test(a.value.normalize("NFKC")) &&
+        /最大|max/i.test(label)
+      );
+    });
+    if (hit?.value.trim()) {
+      next.hrvMax = hit.value.trim();
+    }
+  }
+  if (!String(next.hrvMin ?? "").trim()) {
+    const panel = bundle.hrv;
+    const hit = panel?.annotations.find((a) => {
+      const label = a.label.normalize("NFKC");
+      return (
+        /\bms\b|\d{1,3}/i.test(a.value.normalize("NFKC")) &&
+        /最小|min/i.test(label)
+      );
+    });
+    if (hit?.value.trim()) {
+      next.hrvMin = hit.value.trim();
     }
   }
 
@@ -490,7 +520,7 @@ const STAGE_COLORS: Record<SleepStageSegment["stage"], string> = {
   deep: "#315f68",
 };
 
-/** REM / ノンレム対比用（ノンレム = 浅い + 深い） */
+/** REM / ノンレム対比用（ノンレムは metrics。浅い+深い合算結果を含む） */
 export const REM_NREM_COLORS = {
   rem: "#0f6b5c",
   nonRem: "#315f68",
@@ -549,28 +579,35 @@ function buildStagePart(
 }
 
 /**
- * REM / ノンレム（浅い+深い）と内訳を算出。
- * 割合は明示%を優先し、なければ時間から再計算する。
+ * REM / ノンレムと内訳を算出。
+ * ノンレムは metrics.nonRemSleep / nonRemSleepRate を使う
+ *（明示 OCR、または merge で浅い+深いから格納済み）。
+ * 万一ノンレムが空で浅い・深いがある場合のみ表示用に合算する。
+ * 浅い・深いは分析用に保持する。
  */
 export function computeSleepStageSummary(
   metrics: AnalysisMetrics,
 ): SleepStageSummary {
   const remM = parseDurationMinutes(metrics.remSleep);
+  let nonRemM = parseDurationMinutes(metrics.nonRemSleep);
   const lightM = parseDurationMinutes(metrics.lightSleep);
   const deepM = parseDurationMinutes(metrics.deepSleep);
   const remP = parsePercent(metrics.remSleepRate);
+  let nonRemP = parsePercent(metrics.nonRemSleepRate);
   const lightP = parsePercent(metrics.lightSleepRate);
   const deepP = parsePercent(metrics.deepSleepRate);
 
-  const nonRemM =
-    lightM != null || deepM != null
-      ? (lightM ?? 0) + (deepM ?? 0)
-      : null;
-  const nonRemPFromRates =
-    lightP != null || deepP != null ? (lightP ?? 0) + (deepP ?? 0) : null;
+  // 欠損時は深い睡眠をノンレムとして扱う（浅い+深いの合算はしない）
+  if (nonRemM == null && deepM != null) {
+    nonRemM = deepM;
+  }
+  if (nonRemP == null && deepP != null) {
+    nonRemP = deepP;
+  }
 
+  // OCR 取得値を優先。欠損時は上で深い睡眠へフォールバック済み
   let remPct = remP;
-  let nonRemPct = nonRemPFromRates;
+  let nonRemPct = nonRemP;
   if (remPct == null && nonRemPct == null && remM != null && nonRemM != null) {
     const sum = remM + nonRemM;
     if (sum > 0) {
@@ -579,28 +616,12 @@ export function computeSleepStageSummary(
     }
   } else if (remPct == null && nonRemPct != null) {
     remPct = Math.max(0, 100 - nonRemPct);
-  } else if (nonRemPct == null && remPct != null) {
-    nonRemPct = Math.max(0, 100 - remPct);
-  }
-
-  let lightPct = lightP;
-  let deepPct = deepP;
-  if (
-    (lightPct == null || deepPct == null) &&
-    lightM != null &&
-    deepM != null &&
-    lightM + deepM > 0 &&
-    nonRemPct != null
-  ) {
-    const shareLight = lightM / (lightM + deepM);
-    if (lightPct == null) lightPct = nonRemPct * shareLight;
-    if (deepPct == null) deepPct = nonRemPct * (1 - shareLight);
   }
 
   const rem = buildStagePart(remM, remPct);
   const nonRem = buildStagePart(nonRemM, nonRemPct);
-  const light = buildStagePart(lightM, lightPct);
-  const deep = buildStagePart(deepM, deepPct);
+  const light = buildStagePart(lightM, lightP);
+  const deep = buildStagePart(deepM, deepP);
 
   const hasData =
     rem.combined !== "未測定" ||
@@ -634,9 +655,9 @@ export function computeSleepStageSummary(
   if (nremMinSum > 0) {
     lightOfNonRem = lightMin / nremMinSum;
     deepOfNonRem = deepMin / nremMinSum;
-  } else if (lightPct != null || deepPct != null) {
-    const lp = lightPct ?? 0;
-    const dp = deepPct ?? 0;
+  } else if (lightP != null || deepP != null) {
+    const lp = lightP ?? 0;
+    const dp = deepP ?? 0;
     const ps = lp + dp;
     if (ps > 0) {
       lightOfNonRem = lp / ps;

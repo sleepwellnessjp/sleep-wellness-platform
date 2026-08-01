@@ -36,38 +36,47 @@ export function detectMetricConsistencyWarnings(
   const deepMin = parseDurationMinutes(metrics.deepSleep);
   const awakeMin = parseDurationMinutes(metrics.awakenings);
 
-  const stageMins = [remMin, lightMin, deepMin, awakeMin].filter(
+  // SOXAIの「睡眠時間」はレム+浅い+深い（覚醒を含まない）。
+  // 覚醒を足して比較すると、正しい読み取りでも系統的に要確認になる。
+  const sleepStageMins = [remMin, lightMin, deepMin].filter(
     (n): n is number => n != null,
   );
-  if (stageMins.length >= 3) {
-    const stageSum =
-      (remMin ?? 0) + (lightMin ?? 0) + (deepMin ?? 0) + (awakeMin ?? 0);
+  if (sleepStageMins.length >= 3) {
+    const sleepStageSum = (remMin ?? 0) + (lightMin ?? 0) + (deepMin ?? 0);
     if (sleepMin != null && sleepMin > 0) {
-      const diff = Math.abs(stageSum - sleepMin);
-      // 睡眠時間とステージ合計が大きくずれる（15分超、かつ相対10%超）
+      const diff = Math.abs(sleepStageSum - sleepMin);
+      // 睡眠時間と（覚醒を除く）ステージ合計が大きくずれる（15分超、かつ相対10%超）
       if (diff > 15 && diff / sleepMin > 0.1) {
         warnings.push({
-          keys: [
-            "sleepDuration",
-            "remSleep",
-            "lightSleep",
-            "deepSleep",
-            "awakenings",
-          ],
-          message: `ステージ時間の合計（約${Math.round(stageSum)}分）と睡眠時間（約${Math.round(sleepMin)}分）に大きな差があります。画像を照合してください。`,
+          keys: ["sleepDuration", "remSleep", "lightSleep", "deepSleep"],
+          message: `睡眠ステージ時間の合計（約${Math.round(sleepStageSum)}分＝レム+浅い+深い）と睡眠時間（約${Math.round(sleepMin)}分）に大きな差があります。画像を照合してください。`,
           severity: "warning",
         });
       }
-    } else if (stageSum > 0) {
+    } else if (sleepStageSum > 0) {
       // 総睡眠が無い場合でもステージ同士の異常（合計が極端）は情報のみ
-      if (stageSum > 16 * 60) {
+      if (sleepStageSum > 16 * 60) {
         warnings.push({
-          keys: ["remSleep", "lightSleep", "deepSleep", "awakenings"],
+          keys: ["remSleep", "lightSleep", "deepSleep"],
           message:
             "ステージ時間の合計が異常に長いです。時間と割合の取り違えがないか確認してください。",
           severity: "warning",
         });
       }
+    }
+  }
+
+  // 覚醒を含む合計は就床スパン異常の検知用（睡眠時間との直接比較はしない）
+  if (awakeMin != null && sleepStageMins.length >= 3) {
+    const withAwake =
+      (remMin ?? 0) + (lightMin ?? 0) + (deepMin ?? 0) + awakeMin;
+    if (withAwake > 18 * 60) {
+      warnings.push({
+        keys: ["remSleep", "lightSleep", "deepSleep", "awakenings"],
+        message:
+          "覚醒を含むステージ時間の合計が異常に長いです。時間と割合の取り違えがないか確認してください。",
+        severity: "warning",
+      });
     }
   }
 
@@ -177,6 +186,18 @@ export function detectMetricConsistencyWarnings(
       warnings.push({
         keys: ["spo2"],
         message: `平均SpO₂「${metrics.spo2}」が通常範囲外です。要確認。`,
+        severity: "warning",
+      });
+    }
+  }
+
+  // 睡眠時の安静時心拍として高すぎる値は、最大心拍などの誤読が多い
+  if (isMetricPresent(metrics, "restingHeartRate")) {
+    const n = Number(String(metrics.restingHeartRate).replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(n) && (n < 30 || n > 100)) {
+      warnings.push({
+        keys: ["restingHeartRate"],
+        message: `安静時心拍数「${metrics.restingHeartRate}」が通常範囲外です。要確認。`,
         severity: "warning",
       });
     }

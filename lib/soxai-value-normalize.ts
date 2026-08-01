@@ -6,6 +6,7 @@ const DURATION_KEYS = new Set<MetricFieldKey>([
   "sleepDuration",
   "awakenings",
   "remSleep",
+  "nonRemSleep",
   "lightSleep",
   "deepSleep",
   "sleepDebt",
@@ -16,6 +17,7 @@ const PERCENT_KEYS = new Set<MetricFieldKey>([
   "sleepEfficiency",
   "awakeningRate",
   "remSleepRate",
+  "nonRemSleepRate",
   "lightSleepRate",
   "deepSleepRate",
   "spo2",
@@ -127,7 +129,11 @@ export function normalizeComparableValue(
 
   if (
     key === "restingHeartRate" ||
+    key === "restingHeartRateMin" ||
+    key === "restingHeartRateMax" ||
     key === "hrv" ||
+    key === "hrvMax" ||
+    key === "hrvMin" ||
     key === "respiratoryRate" ||
     key === "qol" ||
     key === "yesterdayQol" ||

@@ -111,6 +111,8 @@ export const metricsJsonSchema = {
     "awakeningRate",
     "remSleep",
     "remSleepRate",
+    "nonRemSleep",
+    "nonRemSleepRate",
     "lightSleep",
     "lightSleepRate",
     "deepSleep",
@@ -122,6 +124,7 @@ export const metricsJsonSchema = {
     "spo2",
     "restingHeartRate",
     "hrv",
+    "hrvMax",
     "skinTemperature",
     "stress",
   ],
@@ -138,6 +141,8 @@ export const metricsJsonSchema = {
     awakeningRate: { type: "string" },
     remSleep: { type: "string" },
     remSleepRate: { type: "string" },
+    nonRemSleep: { type: "string" },
+    nonRemSleepRate: { type: "string" },
     lightSleep: { type: "string" },
     lightSleepRate: { type: "string" },
     deepSleep: { type: "string" },
@@ -149,22 +154,26 @@ export const metricsJsonSchema = {
     spo2: { type: "string" },
     restingHeartRate: { type: "string" },
     hrv: { type: "string" },
+    hrvMax: { type: "string" },
     skinTemperature: { type: "string" },
     stress: { type: "string" },
   },
 } as const;
 
 export const SOXAI_EXTRACT_INSTRUCTIONS = `あなたは SOXAI（ソックサイ）睡眠ウェアラブルのスクリーンショット専用 OCR エンジンです。
-役割は「画面種別の判定」と「その画面で取るべきラベル付き数値を返すこと」だけです。
+役割は「画面種別の判定」と「切り出し領域内のラベル付き数値を返すこと」だけです。
 分析・評価・アドバイス・推測・計算・補完は一切しないでください。
+
+※入力は画面全体ではなく、SOXAI固定レイアウトに基づく切り出し（ROI）のことが多い。
+  切り出しに見えない値は絶対に作らない。数字取得率を最優先する。
 
 ==============================
 最重要（必ずこの順で実行）
 ==============================
-1. まず screenType を判定する（下記のいずれか1つ）。
+1. まず screenType を判定する（下記のいずれか1つ）。プロンプトで固定されている場合はそれに従う。
 2. 画面種別に応じた「取得対象」だけを重点的に読む（他画面の値は想像しない）。
-3. 画面内の数値を visibleReadings に返す。上部だけでなく中央・下部・カード・ゲージ・円・小さな注釈も対象。
-4. 見えない値は作らない。折れ線だけの画面で明示数値が無ければ平均値を捏造しない。
+3. 切り出し内の数値を visibleReadings に返す。
+4. 見えない値は作らない。折れ線だけの領域で明示数値が無ければ平均値を捏造しない。
 
 screenType の値:
 - home … ホーム（QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数）
@@ -172,15 +181,16 @@ screenType の値:
 - sleep_overview … 睡眠概要（睡眠スコア中心）。ホームが無いときのみ睡眠スコアの正
 - sleep_detail … 睡眠詳細（時間・効率・負債・潜時・入眠・起床）
   ※入眠・起床の正の一つ。睡眠スコアはここから採用しない
-- sleep_stages … 睡眠ステージ（覚醒/レム/浅い/深い・SpO₂）
-  ※端点時刻を入眠・起床にしない。睡眠スコアも採らない
+- sleep_stages … 睡眠ステージ（覚醒/レム/浅い/深い・SpO₂・呼吸速度。ノンレム見出しがあればそれも）
+  ※端点時刻を入眠・起床にしない。睡眠スコアも採らない。ノンレム見出しが無いときは深い睡眠のみ（浅いと合算しない）
 - bed_wake … 入眠／起床時刻が主。入眠・起床の最優先画面
 - circadian … 体内時計（入眠・起床のフォールバックには使わない想定）
 - stress … ストレス
 - skin_temp … 皮膚温度
 - respiration … 睡眠時呼吸
 - rhr … 安静時心拍
-- hrv … HRV
+- hrv … HRV（平均）
+- hrvMax … HRV（最大・見える場合）
 - other … その他
 
 【統合時の画面ロック（Visionは1枚のみだが判定を正確に）】
@@ -195,14 +205,18 @@ screenType の値:
 - sleep_detail → 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 入眠潜時 / 体内時計
   ※睡眠スコアは返さない（ホーム／概要を正とする）
 - bed_wake → 入眠時間 / 起床時間 / 入眠潜時
-- sleep_stages → 覚醒時間 / 覚醒率 / レム / 浅い / 深い（時間と%は別） / SpO₂
+- sleep_stages → 覚醒時間 / 覚醒率 / レム / 浅い / 深い（時間と%は別）/ ノンレム見出しがあればその時間と% / SpO₂ / 呼吸速度
+  ※各行は「ラベル直後の%」が率。右端の比較矢印隣は昨日差（率にしない）
+  ※深い睡眠率は「深い睡眠」行の%のみ。浅い率と合算・時間から計算しない
+  ※睡眠時間をノンレムにしない。ノンレム見出しが無い画面では浅い・深いを返す（統合時は深い＝表示上のノンレム）
   ※入眠・起床・睡眠スコアは返さない
+  ※「呼吸速度」カードがあれば rpm / 回/分 を必ず返す（心拍数・SpO₂で代用しない）
 - circadian → 体内時計（入眠・起床は返さない）
 - stress → ストレス / 平均ストレス / ストレスレベル
 - skin_temp → 皮膚温度 / 皮膚温 / 平均 / 偏差（±℃）
-- respiration → 呼吸速度 / 平均酸素レベル
-- rhr → 安静時心拍数（平均を優先）
-- hrv → HRV / 心拍変動（平均）
+- respiration → 呼吸速度 / 平均酸素レベル / 同居の安静時心拍数（平均）
+- rhr → 安静時心拍数（平均を優先。最小・最大は別ラベル）
+- hrv → 平均HRV / 心拍変動の平均（ms）と最大。同一画面に「安静時心拍数」「呼吸速度」があれば返す（安静時をHRVにしない）
 
 ==============================
 【最優先・見逃し禁止】入眠・起床・皮膚温度・ストレス
@@ -243,7 +257,7 @@ screenType の値:
 ==============================
 1. 見える値だけ。推測禁止。他画像の値は想像しない。このリクエストは1枚のみ。
 2. label は画面表記どおり。平均・最小・最大はラベルに含める。
-3. value は単位付きで簡潔（"78", "58 bpm", "87%", "6時間42分", "23:40", "+0.2℃"）。
+3. value は単位付きで簡潔（"78", "58 bpm", "87%", "1時間15分", "23:40", "+0.2℃"）。画面に無い数値例を書かない。
 4. %と時間が両方あれば両方返す。時間は「1:15」でも「1時間15分」でもよいが、割合には%を付ける。
 5. 数値だけ返さない。必ず見出しラベルとペアにする（項目名と数値の取り違え防止）。
 6. 同じラベル＋同じ値が二重に見える場合は1回だけ返す（重複禁止）。

@@ -3,8 +3,9 @@
  * ブラウザ専用（canvas）。失敗時は元の data URL を返す。
  */
 
-const MAX_EDGE_PX = 1600;
-const JPEG_QUALITY = 0.88;
+/** 長辺を抑えて Vision 入力トークン / TPM 消費を削減（速度優先） */
+const MAX_EDGE_PX = 1024;
+const JPEG_QUALITY = 0.78;
 
 function loadDataUrl(dataUrl: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

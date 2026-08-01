@@ -11,10 +11,23 @@ import {
   parsePercent,
   REM_NREM_COLORS,
   STAGE_COLORS,
-  type SleepStageSummary,
 } from "@/lib/soxai-graphs";
+import {
+  evaluateMetric,
+  formatHrvRange,
+  metricGuideline,
+} from "@/lib/report-metric-guide";
 
 const NAVY = "#071426";
+
+function evaluationText(
+  key: Parameters<typeof evaluateMetric>[0],
+  metrics: AnalysisMetrics,
+): string | undefined {
+  const ev = evaluateMetric(key, metrics);
+  if (!ev) return undefined;
+  return `${ev.starsLabel}　${ev.label}`;
+}
 
 function SimpleMeterBar({
   label,
@@ -109,95 +122,173 @@ function MiniLineChart({
   );
 }
 
-function RemNonRemDonut({
-  summary,
-  size = 88,
+function SleepStageStatCard({
+  label,
+  value,
+  color,
+  featured,
 }: {
-  summary: SleepStageSummary;
-  size?: number;
+  label: string;
+  value: string;
+  color: string;
+  featured: boolean;
 }) {
-  const stroke = Math.max(8, Math.round(size * 0.12));
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const remLen = summary.remShare * c;
-  const nremLen = summary.nonRemShare * c;
-  const cx = size / 2;
-  const cy = size / 2;
-
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="shrink-0"
-      aria-hidden
+    <div
+      className={
+        featured
+          ? "min-w-0 rounded-lg border border-[#071426]/08 bg-white/70 px-3 py-2.5"
+          : "min-w-0 rounded-md border border-[#071426]/06 bg-white/60 px-2.5 py-2"
+      }
     >
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="none"
-        stroke="rgba(7,20,38,0.06)"
-        strokeWidth={stroke}
-      />
-      {summary.hasData && summary.nonRemShare > 0 ? (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke={REM_NREM_COLORS.nonRem}
-          strokeWidth={stroke}
-          strokeDasharray={`${nremLen} ${c - nremLen}`}
-          strokeDashoffset={0}
-          transform={`rotate(-90 ${cx} ${cy})`}
-          strokeLinecap="butt"
-        />
-      ) : null}
-      {summary.hasData && summary.remShare > 0 ? (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke={REM_NREM_COLORS.rem}
-          strokeWidth={stroke}
-          strokeDasharray={`${remLen} ${c - remLen}`}
-          strokeDashoffset={-nremLen}
-          transform={`rotate(-90 ${cx} ${cy})`}
-          strokeLinecap="butt"
-        />
-      ) : null}
-      <text
-        x={cx}
-        y={cy - 4}
-        textAnchor="middle"
-        style={{
-          fill: NAVY,
-          fontSize: size * 0.13,
-          fontWeight: 600,
-          letterSpacing: "-0.02em",
-        }}
+      <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 sm:text-[11px]">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+        {label}
+      </p>
+      <p
+        className={`mt-1 font-semibold tracking-[-0.02em] ${
+          featured ? "text-[13px] sm:text-[14px]" : "text-[12px] sm:text-[13px]"
+        }`}
+        style={{ color: NAVY }}
       >
-        REM
-      </text>
-      <text
-        x={cx}
-        y={cy + size * 0.14}
-        textAnchor="middle"
-        style={{
-          fill: REM_NREM_COLORS.rem,
-          fontSize: size * 0.145,
-          fontWeight: 600,
-        }}
-      >
-        {summary.rem.percentText || "—"}
-      </text>
-    </svg>
+        {value || "未測定"}
+      </p>
+    </div>
   );
 }
 
-/** REM / ノンレムを主軸に、浅い・深いを内訳表示 */
+type SleepStagePrintRow = {
+  label: string;
+  value: string;
+  color: string;
+};
+
+/**
+ * PDF印刷専用の睡眠ステージ（2列×3段・横長カード）。
+ * 画面用 SleepStagesOverview とは DOM を分離し、印刷時のみ表示する。
+ */
+export function SleepStagesPrintBlock({
+  metrics,
+}: {
+  metrics: AnalysisMetrics;
+}) {
+  const summary = computeSleepStageSummary(metrics);
+  const cells: SleepStagePrintRow[] = [
+    {
+      label: "覚醒時間",
+      value: displayValue(metrics.awakenings),
+      color: "#8a6a2d",
+    },
+    {
+      label: "覚醒率",
+      value: displayValue(metrics.awakeningRate),
+      color: "#8a6a2d",
+    },
+    {
+      label: "レム睡眠",
+      value: summary.rem.durationText || displayValue(metrics.remSleep),
+      color: REM_NREM_COLORS.rem,
+    },
+    {
+      label: "レム睡眠率",
+      value: summary.rem.percentText || displayValue(metrics.remSleepRate),
+      color: REM_NREM_COLORS.rem,
+    },
+    {
+      // 確認画面と同じ: SOXAI「深い睡眠」をノンレムとして表示（浅い+深いの合算は使わない）
+      label: "ノンレム睡眠",
+      value: displayValue(metrics.deepSleep),
+      color: REM_NREM_COLORS.nonRem,
+    },
+    {
+      label: "ノンレム睡眠率",
+      value: displayValue(metrics.deepSleepRate),
+      color: REM_NREM_COLORS.nonRem,
+    },
+  ];
+
+  return (
+    <div
+      className="report-sleep-stages-print"
+      data-print-sleep-stages="1"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gap: "8px",
+        width: "100%",
+        minWidth: 0,
+        height: "auto",
+        overflow: "visible",
+      }}
+    >
+      {cells.map((cell) => (
+        <div
+          key={cell.label}
+          className="report-sleep-stages-print-card"
+          style={{
+            display: "block",
+            width: "100%",
+            minWidth: 0,
+            height: "auto",
+            whiteSpace: "normal",
+            wordBreak: "keep-all",
+            overflowWrap: "normal",
+            writingMode: "horizontal-tb",
+            boxSizing: "border-box",
+            border: "1px solid rgba(7,20,38,0.1)",
+            borderRadius: "6px",
+            background: "rgba(255,255,255,0.85)",
+            padding: "8px 10px",
+          }}
+        >
+          <p
+            style={{
+              display: "block",
+              margin: 0,
+              fontSize: "9px",
+              fontWeight: 600,
+              color: "#64748b",
+              whiteSpace: "normal",
+              wordBreak: "keep-all",
+              writingMode: "horizontal-tb",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                width: "6px",
+                height: "6px",
+                borderRadius: "999px",
+                backgroundColor: cell.color,
+                marginRight: "6px",
+                verticalAlign: "middle",
+              }}
+            />
+            {cell.label}
+          </p>
+          <p
+            style={{
+              display: "block",
+              margin: "4px 0 0",
+              fontSize: "13px",
+              fontWeight: 600,
+              letterSpacing: "-0.02em",
+              color: NAVY,
+              whiteSpace: "normal",
+              wordBreak: "keep-all",
+              overflowWrap: "normal",
+              writingMode: "horizontal-tb",
+            }}
+          >
+            {cell.value || "未測定"}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 覚醒 / レム / ノンレム（2列×3段）。ノンレムは SOXAI 深い睡眠をそのまま表示 */
 export function SleepStagesOverview({
   metrics,
   graph,
@@ -208,152 +299,63 @@ export function SleepStagesOverview({
   variant?: "compact" | "featured";
 }) {
   const summary = computeSleepStageSummary(metrics);
+  const awakeDuration = displayValue(metrics.awakenings);
+  const awakeRate = displayValue(metrics.awakeningRate);
+  const remDuration = summary.rem.durationText || displayValue(metrics.remSleep);
+  const remRate = summary.rem.percentText || displayValue(metrics.remSleepRate);
+  // 確認画面と同じ元データ: deepSleep / deepSleepRate（合算ノンレムは使わない）
+  const nonRemDuration = displayValue(metrics.deepSleep);
+  const nonRemRate = displayValue(metrics.deepSleepRate);
   const segments = graph?.segments ?? [];
   const isFeatured = variant === "featured";
 
   return (
-    <div className={isFeatured ? "mt-1" : "mt-2"}>
-      <div
-        className={
-          isFeatured
-            ? "flex flex-col gap-4 min-[480px]:flex-row min-[480px]:items-center"
-            : "space-y-2.5"
-        }
-      >
-        <div
-          className={
-            isFeatured
-              ? "flex items-center gap-4"
-              : "flex items-center gap-3"
-          }
-        >
-          <RemNonRemDonut
-            summary={summary}
-            size={isFeatured ? 112 : 72}
-          />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="flex min-w-0 items-baseline justify-between gap-2">
-              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 sm:text-[12px]">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: REM_NREM_COLORS.rem }}
-                />
-                REM睡眠
-              </p>
-              <p
-                className={`shrink-0 text-right font-semibold tracking-[-0.02em] ${
-                  isFeatured ? "text-[13px] sm:text-[14px]" : "text-[11px] sm:text-[12px]"
-                }`}
-                style={{ color: NAVY }}
-              >
-                {summary.rem.combined}
-              </p>
-            </div>
-            <div className="flex min-w-0 items-baseline justify-between gap-2">
-              <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 sm:text-[12px]">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: REM_NREM_COLORS.nonRem }}
-                />
-                ノンレム睡眠
-              </p>
-              <p
-                className={`shrink-0 text-right font-semibold tracking-[-0.02em] ${
-                  isFeatured ? "text-[13px] sm:text-[14px]" : "text-[11px] sm:text-[12px]"
-                }`}
-                style={{ color: NAVY }}
-              >
-                {summary.nonRem.combined}
-              </p>
-            </div>
-            <div
-              className={`w-full overflow-hidden rounded-full ${isFeatured ? "h-2.5" : "h-2"}`}
-              style={{ background: "rgba(7,20,38,0.06)" }}
-              aria-hidden
-            >
-              <div className="flex h-full w-full">
-                <div
-                  style={{
-                    width: `${summary.remShare * 100}%`,
-                    backgroundColor: REM_NREM_COLORS.rem,
-                  }}
-                />
-                <div
-                  style={{
-                    width: `${summary.nonRemShare * 100}%`,
-                    backgroundColor: REM_NREM_COLORS.nonRem,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={
-            isFeatured
-              ? "min-w-0 flex-1 rounded-xl border border-[#071426]/08 bg-[#fafaf8] px-3.5 py-3"
-              : "rounded-lg border border-[#071426]/06 bg-white/60 px-2.5 py-2"
-          }
-        >
-          <p className="text-[9px] font-semibold tracking-[0.14em] text-slate-400">
-            ノンレム内訳
-          </p>
-          <div className="mt-2 space-y-1.5">
-            <div className="flex min-w-0 items-baseline justify-between gap-2">
-              <p className="inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: REM_NREM_COLORS.light }}
-                />
-                浅い睡眠
-              </p>
-              <p
-                className="shrink-0 text-[10px] font-semibold sm:text-[11px]"
-                style={{ color: NAVY }}
-              >
-                {summary.light.combined}
-              </p>
-            </div>
-            <div className="flex min-w-0 items-baseline justify-between gap-2">
-              <p className="inline-flex items-center gap-1.5 text-[10px] font-medium text-slate-500 sm:text-[11px]">
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: REM_NREM_COLORS.deep }}
-                />
-                深い睡眠
-              </p>
-              <p
-                className="shrink-0 text-[10px] font-semibold sm:text-[11px]"
-                style={{ color: NAVY }}
-              >
-                {summary.deep.combined}
-              </p>
-            </div>
-            <div
-              className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full"
-              style={{ background: "rgba(7,20,38,0.06)" }}
-              aria-hidden
-            >
-              <div
-                style={{
-                  width: `${summary.lightOfNonRem * 100}%`,
-                  backgroundColor: REM_NREM_COLORS.light,
-                }}
-              />
-              <div
-                style={{
-                  width: `${summary.deepOfNonRem * 100}%`,
-                  backgroundColor: REM_NREM_COLORS.deep,
-                }}
-              />
-            </div>
-          </div>
-        </div>
+    <div
+      className={`screen-sleep-stages ${isFeatured ? "mt-1" : "mt-1.5"}`}
+    >
+      <div className="report-stage-grid grid grid-cols-2 gap-1.5 sm:gap-2">
+        <SleepStageStatCard
+          label="覚醒時間"
+          value={awakeDuration}
+          color="#8a6a2d"
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="覚醒率"
+          value={awakeRate}
+          color="#8a6a2d"
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="レム睡眠"
+          value={remDuration}
+          color={REM_NREM_COLORS.rem}
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="レム睡眠率"
+          value={remRate}
+          color={REM_NREM_COLORS.rem}
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="ノンレム睡眠"
+          value={nonRemDuration}
+          color={REM_NREM_COLORS.nonRem}
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="ノンレム睡眠率"
+          value={nonRemRate}
+          color={REM_NREM_COLORS.nonRem}
+          featured={isFeatured}
+        />
       </div>
 
       {segments.length > 0 ? (
-        <div className={isFeatured ? "mt-3" : "mt-2.5"}>
+        <div
+          className={`report-hypnogram ${isFeatured ? "mt-2.5" : "mt-2"}`}
+        >
           <p className="text-[9px] font-semibold tracking-[0.14em] text-slate-400">
             ハイプノグラム
           </p>
@@ -390,8 +392,9 @@ function HypnogramChart({
   graph?: GraphPanelData;
   metrics: AnalysisMetrics;
 }) {
+  /* PDF詳細は compact で縦長・重なりを防ぐ（ページ1に featured 済み） */
   return (
-    <SleepStagesOverview metrics={metrics} graph={graph} variant="featured" />
+    <SleepStagesOverview metrics={metrics} graph={graph} variant="compact" />
   );
 }
 
@@ -574,7 +577,14 @@ export type VisualPanel = {
   title: string;
   subtitle: string;
   graph?: React.ReactNode;
-  values?: Array<{ label: string; value: string }>;
+  values?: Array<{
+    label: string;
+    value: string;
+    /** 評価（★＋文言）。無い項目は省略 */
+    evaluation?: string;
+  }>;
+  /** カード下の一般的な目安 */
+  guide?: string;
   /** OCRグラフ由来か */
   fromOcrGraph?: boolean;
 };
@@ -600,7 +610,7 @@ export function buildVisualPanels(
           (g.stages?.points?.length ?? 0) > 0,
       ),
       graph: <HypnogramChart graph={g.stages} metrics={m} />,
-      // グラフ内に REM / ノンレム / 内訳を表示するため values は省略
+      guide: metricGuideline("stages"),
     },
     {
       id: "stage-detail",
@@ -636,13 +646,37 @@ export function buildVisualPanels(
         );
       })(),
       values: [
-        { label: "睡眠時間", value: displayValue(m.sleepDuration) },
-        { label: "睡眠効率", value: displayValue(m.sleepEfficiency) },
-        { label: "覚醒時間", value: displayValue(m.awakenings) },
-        { label: "覚醒率", value: displayValue(m.awakeningRate) },
-        { label: "入眠潜時", value: displayValue(m.sleepLatency) },
-        { label: "睡眠負債", value: displayValue(m.sleepDebt) },
+        {
+          label: "睡眠時間",
+          value: displayValue(m.sleepDuration),
+          evaluation: evaluationText("sleepDuration", m),
+        },
+        {
+          label: "睡眠効率",
+          value: displayValue(m.sleepEfficiency),
+          evaluation: evaluationText("sleepEfficiency", m),
+        },
+        {
+          label: "覚醒時間",
+          value: displayValue(m.awakenings),
+        },
+        {
+          label: "覚醒率",
+          value: displayValue(m.awakeningRate),
+          evaluation: evaluationText("awakeningRate", m),
+        },
+        {
+          label: "入眠潜時",
+          value: displayValue(m.sleepLatency),
+          evaluation: evaluationText("sleepLatency", m),
+        },
+        {
+          label: "睡眠負債",
+          value: displayValue(m.sleepDebt),
+          evaluation: evaluationText("sleepDebt", m),
+        },
       ],
+      guide: metricGuideline("stage-detail"),
     },
     {
       id: "stress",
@@ -650,7 +684,14 @@ export function buildVisualPanels(
       subtitle: "STRESS MONITOR",
       fromOcrGraph: Boolean((g.stress?.points?.length ?? 0) > 0),
       graph: <StressGauge stressText={m.stress} graph={g.stress} />,
-      values: [{ label: "ストレス（測定）", value: displayValue(m.stress) }],
+      values: [
+        {
+          label: "ストレス（測定）",
+          value: displayValue(m.stress),
+          evaluation: evaluationText("stress", m),
+        },
+      ],
+      guide: metricGuideline("stress"),
     },
     {
       id: "circadian",
@@ -666,6 +707,7 @@ export function buildVisualPanels(
         />
       ),
       values: [{ label: "位相", value: displayValue(m.circadianRhythm) }],
+      guide: metricGuideline("circadian"),
     },
     {
       id: "respiration",
@@ -706,49 +748,158 @@ export function buildVisualPanels(
         );
       })(),
       values: [
-        { label: "呼吸速度", value: displayValue(m.respiratoryRate) },
-        { label: "平均SpO₂", value: displayValue(m.spo2) },
+        {
+          label: "呼吸速度",
+          value: displayValue(m.respiratoryRate),
+          evaluation: evaluationText("respiratoryRate", m),
+        },
+        {
+          label: "平均SpO₂",
+          value: displayValue(m.spo2),
+          evaluation: evaluationText("spo2", m),
+        },
       ],
+      guide: metricGuideline("respiration"),
     },
     {
       id: "rhr",
       title: "安静時心拍数",
       subtitle: "RESTING HR",
       fromOcrGraph: Boolean((g.rhr?.points?.length ?? 0) > 0),
-      graph: (
-        <VitalsChart
-          graph={g.rhr}
-          fallbackLabel="RHR"
-          fallbackValue={m.restingHeartRate}
-          color="#0f6b5c"
-          ratio01={(() => {
-            const rhr = parseLeadingNumber(m.restingHeartRate);
-            return rhr == null ? null : clamp((rhr - 40) / 50, 0, 1);
-          })()}
-        />
-      ),
+      graph: (() => {
+        const rhrGraph = g.rhr;
+        const avgText = displayValue(m.restingHeartRate);
+        const minText = displayValue(m.restingHeartRateMin);
+        const maxText = displayValue(m.restingHeartRateMax);
+        const avgN = parseLeadingNumber(m.restingHeartRate);
+        if ((rhrGraph?.points?.length ?? 0) >= 2) {
+          return (
+            <div className="mt-2">
+              <MiniLineChart points={rhrGraph!.points} color="#0f6b5c" />
+              <div className="mt-1 space-y-0.5">
+                <p className="text-[10px] text-slate-500">平均心拍: {avgText}</p>
+                <p className="text-[10px] text-slate-500">最小心拍: {minText}</p>
+                <p className="text-[10px] text-slate-500">最大心拍: {maxText}</p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="mt-2 space-y-1">
+            <SimpleMeterBar
+              label="平均心拍"
+              valueText={avgText}
+              ratio01={avgN == null ? null : clamp((avgN - 40) / 50, 0, 1)}
+              color="#0f6b5c"
+            />
+            <SimpleMeterBar
+              label="最小心拍"
+              valueText={minText}
+              ratio01={null}
+              color="#315f68"
+            />
+            <SimpleMeterBar
+              label="最大心拍"
+              valueText={maxText}
+              ratio01={null}
+              color="#8a6a2d"
+            />
+          </div>
+        );
+      })(),
       values: [
-        { label: "安静時心拍数", value: displayValue(m.restingHeartRate) },
+        {
+          label: "平均心拍",
+          value: displayValue(m.restingHeartRate),
+          evaluation: evaluationText("restingHeartRate", m),
+        },
+        {
+          label: "最小心拍",
+          value: displayValue(m.restingHeartRateMin),
+          evaluation: evaluationText("restingHeartRateMin", m),
+        },
+        {
+          label: "最大心拍",
+          value: displayValue(m.restingHeartRateMax),
+          evaluation: evaluationText("restingHeartRateMax", m),
+        },
       ],
+      guide: metricGuideline("rhr"),
     },
     {
       id: "hrv",
       title: "HRV",
       subtitle: "HRV",
       fromOcrGraph: Boolean((g.hrv?.points?.length ?? 0) > 0),
-      graph: (
-        <VitalsChart
-          graph={g.hrv}
-          fallbackLabel="HRV"
-          fallbackValue={m.hrv}
-          color="#8a6a2d"
-          ratio01={(() => {
-            const hrv = parseLeadingNumber(m.hrv);
-            return hrv == null ? null : clamp((hrv - 10) / 90, 0, 1);
-          })()}
-        />
-      ),
-      values: [{ label: "HRV", value: displayValue(m.hrv) }],
+      graph: (() => {
+        const hrvGraph = g.hrv;
+        const avgText = displayValue(m.hrv);
+        const minText = displayValue(m.hrvMin);
+        const maxText = displayValue(m.hrvMax);
+        const rangeText = formatHrvRange(m) || "未測定";
+        const avgN = parseLeadingNumber(m.hrv);
+        const maxN = parseLeadingNumber(m.hrvMax);
+        if ((hrvGraph?.points?.length ?? 0) >= 2) {
+          return (
+            <div className="mt-2">
+              <MiniLineChart points={hrvGraph!.points} color="#8a6a2d" />
+              <div className="mt-1 space-y-0.5">
+                <p className="text-[10px] text-slate-500">平均HRV: {avgText}</p>
+                <p className="text-[10px] text-slate-500">最小: {minText}</p>
+                <p className="text-[10px] text-slate-500">最大: {maxText}</p>
+                <p className="text-[10px] text-slate-500">
+                  HRVレンジ: {rangeText}
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="mt-2 space-y-1">
+            <SimpleMeterBar
+              label="平均HRV"
+              valueText={avgText}
+              ratio01={avgN == null ? null : clamp((avgN - 10) / 90, 0, 1)}
+              color="#8a6a2d"
+            />
+            <SimpleMeterBar
+              label="最小HRV"
+              valueText={minText}
+              ratio01={null}
+              color="#315f68"
+            />
+            <SimpleMeterBar
+              label="最大HRV"
+              valueText={maxText}
+              ratio01={maxN == null ? null : clamp((maxN - 10) / 90, 0, 1)}
+              color="#b89242"
+            />
+          </div>
+        );
+      })(),
+      values: [
+        {
+          label: "平均HRV",
+          value: displayValue(m.hrv),
+          evaluation: evaluationText("hrv", m),
+        },
+        {
+          label: "最小HRV",
+          value: displayValue(m.hrvMin),
+          evaluation: evaluationText("hrvMin", m),
+        },
+        {
+          label: "最大HRV",
+          value: displayValue(m.hrvMax),
+          evaluation: evaluationText("hrvMax", m),
+        },
+        {
+          label: "HRVレンジ",
+          value: formatHrvRange(m) || "未測定",
+          evaluation: evaluationText("hrvRange", m),
+        },
+      ],
+      guide: metricGuideline("hrv"),
     },
     {
       id: "skin-temp",
@@ -768,14 +919,19 @@ export function buildVisualPanels(
         />
       ),
       values: [
-        { label: "皮膚温度", value: displayValue(m.skinTemperature) },
+        {
+          label: "皮膚温度",
+          value: displayValue(m.skinTemperature),
+          evaluation: evaluationText("skinTemperature", m),
+        },
       ],
+      guide: metricGuideline("skin-temp"),
     },
   ];
 }
 
 /** Medical Report 用：確認済みメトリクス一覧（単一ソース）
- * 睡眠ステージ（REM / ノンレム / 浅い / 深い）は SleepStagesOverview で別表示
+ * 睡眠ステージ（覚醒 / レム / ノンレム）は SleepStagesOverview で別表示
  */
 export const MEDICAL_METRIC_ROWS: Array<{
   label: string;
@@ -789,12 +945,14 @@ export const MEDICAL_METRIC_ROWS: Array<{
   { label: "睡眠負債", key: "sleepDebt" },
   { label: "入眠潜時", key: "sleepLatency" },
   { label: "体内時計", key: "circadianRhythm" },
-  { label: "覚醒時間", key: "awakenings" },
-  { label: "覚醒率", key: "awakeningRate" },
   { label: "呼吸速度", key: "respiratoryRate" },
   { label: "平均SpO₂", key: "spo2" },
-  { label: "安静時心拍数", key: "restingHeartRate" },
-  { label: "HRV", key: "hrv" },
+  { label: "平均心拍", key: "restingHeartRate" },
+  { label: "最小心拍", key: "restingHeartRateMin" },
+  { label: "最大心拍", key: "restingHeartRateMax" },
+  { label: "平均HRV", key: "hrv" },
+  { label: "最小HRV", key: "hrvMin" },
+  { label: "最大HRV", key: "hrvMax" },
   { label: "皮膚温度", key: "skinTemperature" },
   { label: "ストレス", key: "stress" },
 ];

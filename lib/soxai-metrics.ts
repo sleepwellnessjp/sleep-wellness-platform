@@ -14,6 +14,10 @@ export type AnalysisMetrics = {
   awakeningRate: string;
   remSleep: string;
   remSleepRate: string;
+  /** SOXAI深い睡眠（表示上はノンレム。浅いとの合算はしない） */
+  nonRemSleep: string;
+  /** SOXAI深い睡眠率（表示上はノンレム率） */
+  nonRemSleepRate: string;
   lightSleep: string;
   lightSleepRate: string;
   deepSleep: string;
@@ -24,7 +28,15 @@ export type AnalysisMetrics = {
   respiratoryRate: string;
   spo2: string;
   restingHeartRate: string;
+  /** SOXAI 安静時心拍数の最小（分析用・画面非表示） */
+  restingHeartRateMin: string;
+  /** SOXAI 安静時心拍数の最大（分析用・画面非表示） */
+  restingHeartRateMax: string;
   hrv: string;
+  /** SOXAI 心拍変動の最大値（平均は hrv） */
+  hrvMax: string;
+  /** SOXAI 心拍変動の最小値（分析用・画面非表示） */
+  hrvMin: string;
   skinTemperature: string;
   stress: string;
 };
@@ -37,6 +49,8 @@ export type MetricFieldDef = {
   hint: string;
   inputType: "text" | "number" | "time";
   placeholder: string;
+  /** true のとき確認画面などのフォームに出さない（分析用データとして保持） */
+  hideFromUi?: boolean;
 };
 
 /** SOXAI画像から抽出・確認する全項目（表示順） */
@@ -134,45 +148,63 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   },
   {
     key: "remSleep",
-    label: "REM睡眠",
+    label: "レム睡眠",
     hint: "レム / REM",
     inputType: "text",
-    placeholder: "例：1時間28分",
+    placeholder: "例：1時間31分",
   },
   {
     key: "remSleepRate",
     label: "レム睡眠率",
     hint: "REM %",
     inputType: "text",
-    placeholder: "例：22%",
+    placeholder: "例：21%",
+  },
+  {
+    key: "nonRemSleep",
+    label: "ノンレム睡眠",
+    hint: "合算値（分析用・画面非表示）",
+    inputType: "text",
+    placeholder: "例：4時間56分",
+    hideFromUi: true,
+  },
+  {
+    key: "nonRemSleepRate",
+    label: "ノンレム睡眠率",
+    hint: "合算値（分析用・画面非表示）",
+    inputType: "text",
+    placeholder: "例：69%",
+    hideFromUi: true,
   },
   {
     key: "lightSleep",
     label: "浅い睡眠",
-    hint: "Light",
+    hint: "Light（分析用・画面非表示）",
     inputType: "text",
     placeholder: "例：3時間10分",
+    hideFromUi: true,
   },
   {
     key: "lightSleepRate",
     label: "浅い睡眠率",
-    hint: "Light %",
+    hint: "Light %（分析用・画面非表示）",
     inputType: "text",
     placeholder: "例：55%",
+    hideFromUi: true,
   },
   {
     key: "deepSleep",
-    label: "深い睡眠",
-    hint: "Deep",
+    label: "ノンレム睡眠",
+    hint: "SOXAI深い睡眠を表示上ノンレムとして扱う",
     inputType: "text",
-    placeholder: "例：1時間05分",
+    placeholder: "例：1時間49分",
   },
   {
     key: "deepSleepRate",
-    label: "深い睡眠率",
-    hint: "Deep %",
+    label: "ノンレム睡眠率",
+    hint: "SOXAI深い睡眠率を表示上ノンレム率として扱う",
     inputType: "text",
-    placeholder: "例：18%",
+    placeholder: "例：25%",
   },
   {
     key: "respiratoryRate",
@@ -191,16 +223,47 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   {
     key: "restingHeartRate",
     label: "安静時心拍数",
-    hint: "RHR / Resting HR",
+    hint: "RHR / Resting HR（平均）",
     inputType: "text",
     placeholder: "例：58 bpm",
   },
   {
-    key: "hrv",
-    label: "HRV",
-    hint: "心拍変動 / RMSSD",
+    key: "restingHeartRateMin",
+    label: "安静時心拍数（最小）",
+    hint: "分析用・画面非表示",
     inputType: "text",
-    placeholder: "例：42 ms",
+    placeholder: "例：52 bpm",
+    hideFromUi: true,
+  },
+  {
+    key: "restingHeartRateMax",
+    label: "安静時心拍数（最大）",
+    hint: "分析用・画面非表示",
+    inputType: "text",
+    placeholder: "例：74 bpm",
+    hideFromUi: true,
+  },
+  {
+    key: "hrv",
+    label: "平均HRV",
+    hint: "心拍変動の平均 / RMSSD",
+    inputType: "text",
+    placeholder: "例：56 ms",
+  },
+  {
+    key: "hrvMax",
+    label: "最大HRV",
+    hint: "心拍変動の最大",
+    inputType: "text",
+    placeholder: "例：91 ms",
+  },
+  {
+    key: "hrvMin",
+    label: "最小HRV",
+    hint: "分析用・画面非表示",
+    inputType: "text",
+    placeholder: "例：28 ms",
+    hideFromUi: true,
   },
   {
     key: "skinTemperature",
@@ -232,6 +295,8 @@ export function emptyMetrics(): AnalysisMetrics {
     awakeningRate: "",
     remSleep: "",
     remSleepRate: "",
+    nonRemSleep: "",
+    nonRemSleepRate: "",
     lightSleep: "",
     lightSleepRate: "",
     deepSleep: "",
@@ -242,7 +307,11 @@ export function emptyMetrics(): AnalysisMetrics {
     respiratoryRate: "",
     spo2: "",
     restingHeartRate: "",
+    restingHeartRateMin: "",
+    restingHeartRateMax: "",
     hrv: "",
+    hrvMax: "",
+    hrvMin: "",
     skinTemperature: "",
     stress: "",
   };
@@ -254,16 +323,38 @@ function asString(value: unknown): string {
   return "";
 }
 
-/** API / OCR 応答を正規化（legacy heartRate → restingHeartRate、文字列 sleepScore も許容） */
+/** API / OCR 応答を正規化（legacy / 別名キーを正式キーへ明示マップ） */
 export function normalizeMetrics(
   metrics: Partial<AnalysisMetrics> | undefined,
 ): AnalysisMetrics {
-  const legacy = metrics as
-    | (Partial<AnalysisMetrics> & { heartRate?: unknown })
+  const raw = metrics as
+    | (Partial<AnalysisMetrics> & {
+        heartRate?: unknown;
+        restingHr?: unknown;
+        rhr?: unknown;
+        restingHR?: unknown;
+        breathingRate?: unknown;
+        respiration?: unknown;
+        respiratory?: unknown;
+        respirationRate?: unknown;
+      })
     | undefined;
+
+  // 安静時心拍: restingHeartRate へ統一（空で上書きしない）
+  // heartRate はホーム「最新」等と混同するため使わない
   const restingHeartRate =
     asString(metrics?.restingHeartRate).trim() ||
-    asString(legacy?.heartRate).trim();
+    asString(raw?.restingHr).trim() ||
+    asString(raw?.rhr).trim() ||
+    asString(raw?.restingHR).trim();
+
+  // 呼吸速度: respiratoryRate へ統一（空で上書きしない）
+  // ※ respiration 単独は画面ステータス語（平常など）のことがあるので使わない
+  const respiratoryRate =
+    asString(metrics?.respiratoryRate).trim() ||
+    asString(raw?.breathingRate).trim() ||
+    asString(raw?.respirationRate).trim() ||
+    asString(raw?.respiratory).trim();
 
   let sleepScore: number | null = null;
   const rawScore = metrics?.sleepScore as unknown;
@@ -287,6 +378,8 @@ export function normalizeMetrics(
     awakeningRate: asString(metrics?.awakeningRate),
     remSleep: asString(metrics?.remSleep),
     remSleepRate: asString(metrics?.remSleepRate),
+    nonRemSleep: asString(metrics?.nonRemSleep),
+    nonRemSleepRate: asString(metrics?.nonRemSleepRate),
     lightSleep: asString(metrics?.lightSleep),
     lightSleepRate: asString(metrics?.lightSleepRate),
     deepSleep: asString(metrics?.deepSleep),
@@ -294,10 +387,14 @@ export function normalizeMetrics(
     sleepDebt: asString(metrics?.sleepDebt),
     sleepLatency: asString(metrics?.sleepLatency),
     circadianRhythm: asString(metrics?.circadianRhythm),
-    respiratoryRate: asString(metrics?.respiratoryRate),
+    respiratoryRate,
     spo2: asString(metrics?.spo2),
     restingHeartRate,
+    restingHeartRateMin: asString(metrics?.restingHeartRateMin),
+    restingHeartRateMax: asString(metrics?.restingHeartRateMax),
     hrv: asString(metrics?.hrv),
+    hrvMax: asString(metrics?.hrvMax),
+    hrvMin: asString(metrics?.hrvMin),
     skinTemperature: asString(metrics?.skinTemperature),
     stress: asString(metrics?.stress),
   };
@@ -340,7 +437,11 @@ export function setMetricValue(
   return { ...metrics, [key]: value };
 }
 
-/** 画像から取得できたキー一覧 */
+/** 確認画面などに表示する項目（合算ノンレム・浅いは除外。深い＝表示上のノンレム） */
+export const SOXAI_UI_METRIC_FIELDS: MetricFieldDef[] =
+  SOXAI_METRIC_FIELDS.filter((field) => !field.hideFromUi);
+
+/** 取得済みキー一覧 */
 export function collectedMetricKeys(metrics: AnalysisMetrics): MetricFieldKey[] {
   return SOXAI_METRIC_FIELDS.map((field) => field.key).filter((key) =>
     isMetricPresent(metrics, key),

@@ -13,7 +13,9 @@ import {
 } from "@/lib/openai-usage";
 import { hashImageDataUrl } from "@/lib/soxai-ocr-cache";
 import {
+  applyNonRemFromStageOcr,
   mergeImageExtractResults,
+  OCR_LOW_CONFIDENCE_THRESHOLD,
   type ImageExtractResult,
 } from "@/lib/soxai-merge";
 import {
@@ -42,7 +44,15 @@ import {
 import { CRITICAL_METRIC_KEYS } from "@/lib/soxai-ocr-dictionary";
 import { normalizeOcrMetrics } from "@/lib/soxai-structured-metrics";
 import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
-import { detectMetricConsistencyWarnings } from "@/lib/soxai-consistency";
+import { detectMetricConsistencyWarnings, consistencyWarningKeys } from "@/lib/soxai-consistency";
+import {
+  diagnoseNeedsReview,
+  logNeedsReviewDiagnosis,
+} from "@/lib/soxai-field-status";
+import { logMissingAccuracyMetrics } from "@/lib/soxai-missing-log";
+import { cropClassifyRoi, cropScreenRois } from "@/lib/soxai-roi-crop";
+import { classifyScreenPrompt, roiOcrPrompt } from "@/lib/soxai-roi-ocr";
+import { getRoisForScreen } from "@/lib/soxai-roi-map";
 import {
   inferScreenTypeFromReadings,
   normalizeScreenType,
@@ -53,28 +63,32 @@ import {
 } from "@/lib/soxai-screen";
 
 export const runtime = "nodejs";
-/** 取得率優先: 9枚×リトライ・429待機を完走できるよう余裕を確保 */
-export const maxDuration = 800;
+/** 速度優先: 低detail初回 + 少ない再OCRで 2〜3 分以内を狙う */
+export const maxDuration = 300;
 
 const isDev = process.env.NODE_ENV === "development";
 const MAX_IMAGES = 10;
-/** 取得率優先: UIスクショの細字は high detail が必要 */
 const OCR_MODEL = "gpt-4o-mini" as const;
-const OCR_IMAGE_DETAIL = "high" as const;
+/**
+ * high detail は 1 枚あたり ~48k input tokens で TPM(200k) をすぐ食い潰す。
+ * 初回は low（~85 tokens）で通し、不足時だけ high で再スキャンする。
+ */
+const OCR_DETAIL_FAST = "low" as const;
+const OCR_DETAIL_ACCURATE = "high" as const;
 /** 画像1リクエストあたりの Vision 呼び出し上限（秒） */
-const OPENAI_TIMEOUT_MS = 90_000;
+const OPENAI_TIMEOUT_MS = 45_000;
 /** 単枚OCR（リトライ込み）のハード上限 */
-const IMAGE_HARD_TIMEOUT_MS = 120_000;
-/** サーバー側の並列OCR数（429抑制と壁時計のバランス） */
-const SERVER_OCR_CONCURRENCY = 3;
+const IMAGE_HARD_TIMEOUT_MS = 55_000;
+/** low-detail 化で TPM 余裕が出るため並列を上げる */
+const SERVER_OCR_CONCURRENCY = 5;
 /** バッチ再OCR（home / critical）の並列数 */
-const RECOVERY_OCR_CONCURRENCY = 2;
-/** 429 / 一時障害のリトライ回数（過多だと429連鎖・時間増） */
-const VISION_TRANSIENT_RETRIES = 3;
+const RECOVERY_OCR_CONCURRENCY = 3;
+/** 429 連鎖を避けるため一時障害リトライは1回まで */
+const VISION_TRANSIENT_RETRIES = 1;
 /** critical 再OCRの候補画像上限（優先画面から） */
-const CRITICAL_REOCR_MAX_IMAGES = 3;
+const CRITICAL_REOCR_MAX_IMAGES = 2;
 /** サーバー温インスタンス内の画像ハッシュキャッシュ（不完全結果は採用しない） */
-const SERVER_OCR_CACHE_VERSION = "v11";
+const SERVER_OCR_CACHE_VERSION = "v14";
 const serverOcrCache = new Map<
   string,
   {
@@ -84,15 +98,6 @@ const serverOcrCache = new Map<
   }
 >();
 const SERVER_CACHE_MAX = 64;
-const GRAPH_SCREEN_TYPES = new Set<SoxaiScreenType>([
-  "stress",
-  "sleep_stages",
-  "circadian",
-  "respiration",
-  "rhr",
-  "hrv",
-  "skin_temp",
-]);
 
 function serverCacheKey(hash: string): string {
   return `${SERVER_OCR_CACHE_VERSION}:${hash}`;
@@ -100,6 +105,91 @@ function serverCacheKey(hash: string): string {
 
 /** OCR 原因特定用の固定ラベル付きトレースログ */
 const OCR_TRACE = "[ocr-trace]" as const;
+const FOCUS_METRIC_KEYS: MetricFieldKey[] = [
+  "sleepEfficiency",
+  "sleepDebt",
+  "circadianRhythm",
+  "sleepLatency",
+  "respiratoryRate",
+  "spo2",
+  "restingHeartRate",
+  "hrv",
+  "hrvMax",
+  "hrvMin",
+  "awakenings",
+  "awakeningRate",
+  "remSleep",
+  "remSleepRate",
+  "lightSleep",
+  "lightSleepRate",
+  "deepSleep",
+  "deepSleepRate",
+  "skinTemperature",
+];
+
+function focusMetricLabelRegex(key: MetricFieldKey): RegExp {
+  switch (key) {
+    case "sleepEfficiency":
+      return /睡眠効率|効率|sleepefficiency|efficiency/i;
+    case "sleepDebt":
+      return /睡眠負債|睡眠不足|負債|sleepdebt|debt/i;
+    case "circadianRhythm":
+      return /体内時計|circadian|クロノ|位相|サーカディアン/i;
+    case "sleepLatency":
+      return /入眠潜時|入眠潜伏|潜時|latency|寝つき/i;
+    case "respiratoryRate":
+      return /呼吸速度|呼吸数|呼吸レート|respiratory|respiration|rpm|brpm/i;
+    case "spo2":
+      return /spo2|spo₂|sp02|酸素飽和|血中酸素|酸素レベル|平均酸素|状態レベル/i;
+    case "restingHeartRate":
+      return /安静時心拍|resting\s*hr|^rhr$|平均/i;
+    case "hrv":
+      return /平均hrv|hrv平均|心拍変動|rmssd/i;
+    case "hrvMax":
+      return /最大hrv|hrvmax|最大|心拍変動/i;
+    case "hrvMin":
+      return /最小hrv|hrvmin|最小|心拍変動/i;
+    case "awakenings":
+    case "awakeningRate":
+      return /覚醒|awake/i;
+    case "remSleep":
+    case "remSleepRate":
+      return /レム|rem/i;
+    case "lightSleep":
+    case "lightSleepRate":
+      return /浅い|light/i;
+    case "deepSleep":
+    case "deepSleepRate":
+      return /深い|deep/i;
+    case "skinTemperature":
+      return /皮膚|皮虜|skintemp|温度|最新の変化/i;
+    default:
+      return /.^/;
+  }
+}
+
+function collectFocusCandidates(
+  readings: VisibleReading[],
+  key: MetricFieldKey,
+): Array<{ label: string; value: string }> {
+  const byLabel = focusMetricLabelRegex(key);
+  const matched: Array<{ label: string; value: string }> = [];
+  for (const reading of readings) {
+    const label = (reading.label ?? "").trim();
+    const value = (reading.value ?? "").trim();
+    if (!value) continue;
+    const text = `${label} ${value}`;
+    const unitHint =
+      key === "respiratoryRate"
+        ? /\brpm\b|\bbrpm\b|呼吸\/分|回\/分/i.test(text)
+        : key === "spo2"
+          ? /%|％/.test(text) && /酸素|spo/i.test(text)
+          : false;
+    if (!byLabel.test(text) && !unitHint) continue;
+    matched.push({ label, value });
+  }
+  return matched.slice(0, 8);
+}
 
 function visionErrorStatus(error: unknown): number | null {
   if (error && typeof error === "object" && "status" in error) {
@@ -170,6 +260,8 @@ function log429Event(params: {
 type VisionCallContext = {
   imageIndex: number;
   purpose: string;
+  /** low=速度優先（初回） / high=精度優先（不足時再スキャン） */
+  detail?: "low" | "high";
 };
 
 function isAcceptableServerCache(entry: {
@@ -178,13 +270,7 @@ function isAcceptableServerCache(entry: {
   graphReadings: ReturnType<typeof normalizeGraphReadings>;
 }): boolean {
   if (entry.readings.length < 2) return false;
-  // グラフ画面なのに graphReadings 空 → 低品質残骸。再OCRする
-  if (
-    GRAPH_SCREEN_TYPES.has(entry.screenType) &&
-    entry.graphReadings.length === 0
-  ) {
-    return false;
-  }
+  // グラフは速度優先で任意扱い（無くてもキャッシュ可）
   // ホームで昨日QoL/体調が取れない薄い結果は再OCR
   if (entry.screenType === "home") {
     const mapped = mapVisibleReadingsToMetricsDetailed(entry.readings, {
@@ -540,13 +626,13 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 【画面 → 取得項目】
 - home: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数（睡眠スコアの正）
 - sleep_overview: 睡眠スコア / 睡眠時間（ホームが無いときの睡眠スコア正）
-- sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 効率 / 負債 / 潜時
+- sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計
   ※sleep_detail から睡眠スコアは返さない。入眠・起床の正
-- sleep_stages: 覚醒・レム・浅い・深い（時間と%）/ SpO₂ ※端点時刻を入眠・起床にしない。睡眠スコアも返さない
+- sleep_stages: 覚醒・レム・浅い・深い（各行は「ラベル直後の%」が率、右の時間が時間。右端比較矢印は昨日差で率にしない）。深い睡眠率は「深い睡眠」行の%のみ。浅い率と合算しない / SpO₂（「--」は省略） ※端点時刻を入眠・起床にしない
 - circadian: 体内時計のみ（入眠・起床は返さない）
 - skin_temp: 皮膚温度 / 皮膚温 / 平均 / 偏差（+0.2℃ や単位なし +0.2 も）
 - stress: ストレス / 平均ストレス / ストレスレベル
-- rhr / hrv / respiration: 各画面の平均・代表値
+- rhr / hrv / respiration: 各画面の平均・代表値。hrv 画面でも「安静時心拍数」「呼吸速度」が見えれば必ず取る（分類で落とさない）
 
 【最優先・見逃し禁止】
 - 入眠時間 ≠ 入眠潜時 ≠ 就床（見出し: 入眠/入眠時間/睡眠開始/就寝/Bedtime）
@@ -580,12 +666,65 @@ function criticalOnlyScreenPrompt(
   screenType: SoxaiScreenType,
 ): string {
   const focus = screenCriticalLabels(screenType);
+  const missingDisplay = missing
+    .map((key) => SOXAI_METRIC_FIELDS.find((field) => field.key === key)?.label ?? key)
+    .join(", ");
+
+  const stagesExtra =
+    screenType === "sleep_stages"
+      ? `
+【sleep_stages 専用 — 深い睡眠率の位置関係】
+各ステージ行は左から: ラベル → その直後の% → バー → 時間 → 右端の比較値（昨日差）。
+- 「深い睡眠」行の「深い睡眠率」は、ラベル「深い睡眠」の直後にある % のみ（桁を正確に読む。近い別数字にしない）
+- label は必ず「深い睡眠率」と「深い睡眠」（時間）を別エントリで返す
+- 時間（H:MM）も必ず取る。率だけ返して時間を省略しない
+- 右端の比較矢印（↑↓）の隣の時間・%は昨日差。深い睡眠率にしない
+- 浅い睡眠率・レム率・覚醒率を深い睡眠率にしない。合算・逆算・推測で % を作らない
+- 例形式: { label: "深い睡眠率", value: "NN%" } と { label: "深い睡眠", value: "H:MM" }（画面の実値）
+- 画面下部に「呼吸速度」「平均酸素レベル」があれば取る
+- SpO₂ が「--」等なら省略`
+      : "";
+
+  const respirationExtra =
+    screenType === "respiration" || screenType === "rhr" || screenType === "hrv"
+      ? `
+【respiration / rhr / hrv 同居スクショ】
+画面分類が hrv でも、見える指標はラベルごとに取る（1画像1指標に限定しない）。
+- 「呼吸速度」ラベル直後の数値 → 呼吸速度（rpm / 回/分）
+- 「安静時心拍数」見出しのカード（必ず2エントリ）:
+  - 小さめの「平均 NN」→ { label: "安静時心拍数平均", value: "NN" }（単位 bpm。ms 禁止）
+  - 大きめの「最小 NN bpm」→ { label: "安静時心拍数最小", value: "NN bpm" }
+  - 「平均」を省略して最小だけを安静時心拍数にしない
+  - 「最大」が見えれば { label: "安静時心拍数最大", value: "NN bpm" }
+- 「心拍変動」カード:
+  - 「平均HRV」→ { label: "平均HRV", value: "NN ms" }（必ず ms）
+  - 「最大」→ { label: "最大HRV", value: "NN" }
+  - 「最小」が見えれば { label: "最小HRV", value: "NN" }
+- 平均酸素レベル / SpO₂（「平均状態レベル」誤読に注意。酸素の %）があれば取る
+- 画面に無い数値は書かない`
+      : "";
+
+  const sleepDetailExtra =
+    screenType === "sleep_detail" || screenType === "circadian"
+      ? `
+【sleep_detail / circadian 専用】
+- 睡眠時間: 見出し「睡眠時間」の値だけ（例: { label: "睡眠時間", value: "5:10" } または "5時間10分"）
+- 「全就床時間」「ベッド滞在時間」「必要睡眠時間」「目標達成率」は睡眠時間にしない
+- 就床〜起床差や睡眠ステージ合計から計算しない。別画面の同名候補で上書きしない
+- 睡眠効率（%）: 見出し「睡眠効率」「Efficiency」（例: { label: "睡眠効率", value: "87%" }）
+- 睡眠負債（時間/分）: 見出し「睡眠負債」「Sleep Debt」（例: { label: "睡眠負債", value: "-1時間20分" }）
+- 入眠潜時（分）: 見出し「入眠潜時」の主値のみ（例: { label: "入眠潜時", value: "0:30" } または "30分"）。下段の比較値（例: 7:10）や全就床時間を潜時にしない。2時間超は潜時ではない
+- 入眠時間 / 起床時間: HH:mm（例: 02:10 / 07:57）。潜時の 0:30 を入眠時間にしない
+- 体内時計（位相差・遅れ/進み）: 見出し「体内時計」「Circadian」（例: { label: "体内時計", value: "-0:46" }）
+- 上記はラベルと値を必ずペアで返す。値が「--」等で読めない場合のみ省略`
+      : "";
+
   return `この画像は screenType「${screenType}」の候補です。
 画像全体ではなく、この画面の見出しと数値だけを再OCRしてください。
 
-不足している重点項目: ${missing.join(", ")}
+不足している重点項目: ${missingDisplay}
 この画面で探す見出し: ${focus}
-
+${stagesExtra}${respirationExtra}${sleepDetailExtra}
 ルール:
 - ラベル（見出し）と値を必ずペアで visibleReadings に入れる
 - 入眠≠入眠潜時≠就床 / 起床≠覚醒時間
@@ -604,10 +743,10 @@ function screenSpecificRetryPrompt(screenType: SoxaiScreenType): string {
 次を必ずラベル+値のペアで visibleReadings に入れてください（見落とし禁止）:
 1. QoL / 現在のスコア（中央の大きな円）
 2. 昨日のスコア（QoLの横や上の小さい数値。例: 60）
-3. 睡眠（カード行のスコア。例: 67）
+3. 睡眠（カード行のスコア。例: 67）。QoL円・昨日・体調と取り違えない
 4. 体調（カード行のスコア。例: 78）
 5. 運動（カード行にあれば）
-6. 心拍数 / 最新（ダッシュボード。例: 80）
+※「心拍数/最新」は安静時心拍ではないので restingHeartRate にしない
 推測禁止。見える値のみ。一次項目: ${keys.join(", ")}`;
   }
   return `screenType「${screenType}」の一次項目が不足しています。
@@ -623,8 +762,8 @@ function homeMissingPrompt(missing: string[]): string {
 - yesterdayQol → 見出し「昨日のスコア」「昨日のQoL」（例 60）
 - conditionScore → 見出し「体調」「体調スコア」（例 78）
 - qol → 「QoL」「現在のスコア」
-- sleepScore → 行の「睡眠」スコア（QoLと取り違えない）
-- restingHeartRate → 「心拍数」「最新」
+- sleepScore → 行の「睡眠」スコア（QoL・昨日のスコア・体調と取り違えない）
+- restingHeartRate → ホームでは採らない。「安静時心拍数」ラベルのみ（「心拍数/最新」は不可）
 必ずラベル+値。捏造禁止。`;
 }
 
@@ -635,44 +774,10 @@ function sparseRetryPrompt(count: number): string {
 ラベルと値のペアを visibleReadings に、グラフの形状を graphReadings に入れてください。
 ホームなら QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数 は特に必須です。
 詳細なら 睡眠時間・効率・負債・潜時・体内時計・入眠・起床 を必須です。
-ステージなら hypnogram segments（REM/浅い/深い/覚醒）と SpO₂ を必須です。
+ステージなら hypnogram segments（REM/浅い/深い/覚醒）と SpO₂、各ステージの時間と率（%）の両方を必須です。
 バイタルなら 折れ線 points + 平均/最小/最大 annotations を必須です。
 すでに読めたものも再掲し、見落としを追加してください。
 推測は禁止。見える値のみ。`;
-}
-
-function graphRetryPrompt(): string {
-  return `この画像には睡眠グラフ（折れ線・hypnogram・タイムライン）が含まれています。
-visibleReadings に加え、graphReadings を必ず返してください。
-
-- 睡眠ステージ → panel: "stages", segments に awake/rem/light/deep の帯
-- ストレス → panel: "stress", points に夜間推移（8点以上）
-- 体内時計 → panel: "circadian", points に位相曲線
-- 呼吸 → panel: "respiration", points に呼吸速度/SpO₂（series で区別）
-- 安静時心拍 → panel: "rhr", points + annotations（平均/最小/最大）
-- HRV → panel: "hrv", points + annotations
-- 皮膚温度 → panel: "skin-temp", points
-
-目盛りに沿った x（時刻）と y（数値）を読み取り、推測で補完しない。`;
-}
-
-function looksLikeGraphScreen(
-  readings: VisibleReading[],
-  screenType?: SoxaiScreenType,
-): boolean {
-  if (screenType && GRAPH_SCREEN_TYPES.has(screenType)) return true;
-  const joined = readings
-    .map((r) => r.label)
-    .join("|")
-    .toLowerCase();
-  return (
-    /睡眠ステージ|レム睡眠|浅い睡眠|深い睡眠|ストレス|体内時計|呼吸|心拍変動|hrv|皮膚温|hypnogram|ステージ/.test(
-      joined,
-    ) ||
-    readings.some((r) =>
-      /平均|最小|最大|avg|min|max/.test(r.label.toLowerCase()),
-    )
-  );
 }
 
 function detectMetricSources(
@@ -930,41 +1035,45 @@ export async function POST(request: Request) {
       callNo: number;
     }> => {
       const callNo = ++visionCallSeq;
+      const detail = ctx.detail ?? OCR_DETAIL_FAST;
       console.info(`${OCR_TRACE} ② OpenAIへリクエスト送信直前`, {
         callNo,
         imageIndex: ctx.imageIndex,
         purpose: ctx.purpose,
         successfulApiCallsSoFar: apiCalls,
         model: OCR_MODEL,
-        detail: OCR_IMAGE_DETAIL,
+        detail,
       });
 
       try {
-        const response = await client.responses.create({
-          model: OCR_MODEL,
-          instructions: SOXAI_EXTRACT_INSTRUCTIONS,
-          input: [
-            {
-              role: "user",
-              content: [
-                { type: "input_text", text: userText },
-                {
-                  type: "input_image" as const,
-                  image_url: imageUrl,
-                  detail: OCR_IMAGE_DETAIL,
-                },
-              ],
-            },
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              name: "soxai_visible_readings",
-              strict: true,
-              schema: extractSchema,
+        const response = await client.responses.create(
+          {
+            model: OCR_MODEL,
+            instructions: SOXAI_EXTRACT_INSTRUCTIONS,
+            input: [
+              {
+                role: "user",
+                content: [
+                  { type: "input_text", text: userText },
+                  {
+                    type: "input_image" as const,
+                    image_url: imageUrl,
+                    detail,
+                  },
+                ],
+              },
+            ],
+            text: {
+              format: {
+                type: "json_schema",
+                name: "soxai_visible_readings",
+                strict: true,
+                schema: extractSchema,
+              },
             },
           },
-        });
+          { signal: request.signal },
+        );
         trackUsage(response.usage);
 
         console.info(`${OCR_TRACE} ③ OpenAIレスポンス受信`, {
@@ -999,10 +1108,47 @@ export async function POST(request: Request) {
               : [],
         );
         const graphReadings = normalizeGraphReadings(record.graphReadings);
-        const screenType =
+        const visionScreen =
           normalizeScreenType(record.screenType) !== "other"
             ? normalizeScreenType(record.screenType)
-            : inferScreenTypeFromReadings(readings);
+            : "other";
+        const inferredScreen = inferScreenTypeFromReadings(readings);
+        // Vision の誤分類をラベル推定で補正（HRV↔呼吸/安静時の同居スクショ）
+        let screenType = visionScreen;
+        if (
+          (visionScreen === "other" ||
+            visionScreen === "home" ||
+            visionScreen === "stress" ||
+            visionScreen === "sleep_overview" ||
+            visionScreen === "hrv") &&
+          (inferredScreen === "respiration" ||
+            inferredScreen === "rhr" ||
+            inferredScreen === "sleep_stages" ||
+            (inferredScreen === "hrv" && visionScreen !== "hrv"))
+        ) {
+          screenType = inferredScreen;
+        } else if (
+          visionScreen === "home" &&
+          (inferredScreen === "sleep_overview" ||
+            inferredScreen === "sleep_detail")
+        ) {
+          screenType = inferredScreen;
+        } else if (visionScreen === "other") {
+          screenType = inferredScreen;
+        }
+        // 分類が hrv のままでも、安静時/呼吸ラベルがあれば抽出対象として respiration 扱い
+        if (
+          screenType === "hrv" &&
+          readings.some((r) =>
+            /安静時心拍|呼吸速度/.test((r.label ?? "").normalize("NFKC")),
+          )
+        ) {
+          screenType = readings.some((r) =>
+            /安静時心拍/.test((r.label ?? "").normalize("NFKC")),
+          )
+            ? "rhr"
+            : "respiration";
+        }
 
         const mapped = mapVisibleReadingsToMetricsDetailed(readings, {
           screenType,
@@ -1082,9 +1228,9 @@ export async function POST(request: Request) {
           if (!willRetry) {
             throw error;
           }
-          // 指数バックオフ + 小さなジッターで 429 同時再試行を分散
-          const base = Math.min(12_000, 1_000 * 2 ** attempt);
-          const waitMs = base + Math.floor(Math.random() * 400);
+          // 指数バックオフ（短め）+ ジッターで 429 同時再試行を分散
+          const base = Math.min(4_000, 400 * 2 ** attempt);
+          const waitMs = base + Math.floor(Math.random() * 250);
           console.warn("[api/extract] transient Vision error, retrying", {
             imageIndex: ctx.imageIndex,
             purpose: ctx.purpose,
@@ -1178,23 +1324,138 @@ export async function POST(request: Request) {
             : images.length;
 
         const firstStarted = Date.now();
-        const first = await runVisionOnImage(
-          imageUrl,
-          fixedScreenType
-            ? fixedSectionPrompt(displayIndex, displayTotal, fixedScreenType)
-            : singleImagePrompt(displayIndex, displayTotal),
-          { imageIndex, purpose: "firstPass" },
-        );
+
+        // —— SOXAI 専用 ROI OCR ——
+        // 1) 画面種別判定（固定セクション or ヘッダー切り出し）
+        // 2) 画面専用 ROI を切り出して領域だけ Vision OCR
+        if (fixedScreenType) {
+          screenType = fixedScreenType;
+        } else {
+          try {
+            const classifyCrop = await cropClassifyRoi(imageUrl);
+            const classifyTarget = classifyCrop?.dataUrl ?? imageUrl;
+            const classified = await runVisionOnImage(
+              classifyTarget,
+              classifyScreenPrompt(),
+              {
+                imageIndex,
+                purpose: "firstPass",
+                detail: OCR_DETAIL_FAST,
+              },
+            );
+            screenType =
+              classified.screenType !== "other"
+                ? classified.screenType
+                : inferScreenTypeFromReadings(classified.readings);
+            console.info("[soxai-roi] classified", {
+              imageIndex,
+              screenType,
+              usedHeaderCrop: Boolean(classifyCrop),
+            });
+          } catch (classifyError) {
+            console.warn("[soxai-roi] classify failed, fallback other", {
+              imageIndex,
+              message:
+                classifyError instanceof Error
+                  ? classifyError.message
+                  : String(classifyError),
+            });
+            screenType = "other";
+          }
+        }
+
+        // 2) 画面専用 ROI を切り出して OCR（数字取得率優先・detail high）
+        const roiDefs = getRoisForScreen(screenType);
+        let roiReadings: VisibleReading[] = [];
+        try {
+          const crops = await cropScreenRois(imageUrl, screenType);
+          console.info("[soxai-roi] cropped", {
+            imageIndex,
+            screenType,
+            roiCount: crops.length,
+            roiIds: crops.map((c) => c.roi.id),
+          });
+
+          const roiResults = await Promise.all(
+            crops.map(async (crop) => {
+              try {
+                const result = await runVisionOnImage(
+                  crop.dataUrl,
+                  roiOcrPrompt({
+                    screenType,
+                    roi: crop.roi,
+                    imageIndex: displayIndex,
+                    total: displayTotal,
+                  }),
+                  {
+                    imageIndex,
+                    purpose: "firstPass",
+                    detail: OCR_DETAIL_ACCURATE,
+                  },
+                );
+                return {
+                  roiId: crop.roi.id,
+                  readings: result.readings,
+                  graphReadings: result.graphReadings,
+                };
+              } catch (roiError) {
+                console.warn("[soxai-roi] ROI OCR failed", {
+                  imageIndex,
+                  roiId: crop.roi.id,
+                  message:
+                    roiError instanceof Error
+                      ? roiError.message
+                      : String(roiError),
+                });
+                return {
+                  roiId: crop.roi.id,
+                  readings: [] as VisibleReading[],
+                  graphReadings: [] as ReturnType<typeof normalizeGraphReadings>,
+                };
+              }
+            }),
+          );
+
+          for (const row of roiResults) {
+            for (const reading of row.readings) {
+              const dedupe = `${reading.label}::${reading.value}`;
+              if (
+                !roiReadings.some((r) => `${r.label}::${r.value}` === dedupe)
+              ) {
+                roiReadings.push(reading);
+              }
+            }
+            if (row.graphReadings.length > graphReadings.length) {
+              graphReadings = row.graphReadings.map((g) => ({
+                ...g,
+                sourceImageIndex: imageIndex,
+              }));
+            }
+          }
+        } catch (cropError) {
+          console.warn("[soxai-roi] cropScreenRois failed", {
+            imageIndex,
+            screenType,
+            message:
+              cropError instanceof Error
+                ? cropError.message
+                : String(cropError),
+          });
+        }
+
+        readings = roiReadings;
         timing.markImagePhase(imageIndex, "firstPass", Date.now() - firstStarted, {
-          screenType: fixedScreenType ?? first.screenType,
-          readings: first.readings.length,
+          screenType,
+          mode: "roi",
+          roiDefs: roiDefs.length,
+          readings: readings.length,
         });
-        readings = first.readings;
-        screenType = fixedScreenType ?? first.screenType;
-        graphReadings = first.graphReadings.map((g) => ({
-          ...g,
-          sourceImageIndex: imageIndex,
-        }));
+        console.info("[soxai-roi] firstPass done", {
+          imageIndex,
+          screenType,
+          readings: readings.length,
+          labels: readings.map((r) => r.label).slice(0, 20),
+        });
 
         // 取得率優先: 読み取り不足・重点項目不足・グラフ不足は再スキャン
         if (!skipRetries) {
@@ -1203,10 +1464,10 @@ export async function POST(request: Request) {
           });
           const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
 
-          // 読み取りがほぼ空のときだけ全面再スキャン（件数だけで無駄打ちしない）
+          // ROI が空のときだけ全面再スキャン（フォールバック）
           const needsRetry = readings.length === 0 || mappedKeyCount === 0;
           if (needsRetry) {
-            console.warn("[api/extract] sparse readings on image, retrying", {
+            console.warn("[api/extract] sparse ROI readings, full-image fallback", {
               imageIndex,
               count: readings.length,
               mappedKeyCount,
@@ -1216,14 +1477,24 @@ export async function POST(request: Request) {
               const sparseStarted = Date.now();
               const retry = await runVisionOnImage(
                 imageUrl,
-                sparseRetryPrompt(readings.length),
-                { imageIndex, purpose: "sparseRetry" },
+                fixedScreenType
+                  ? fixedSectionPrompt(
+                      displayIndex,
+                      displayTotal,
+                      fixedScreenType,
+                    )
+                  : sparseRetryPrompt(readings.length),
+                {
+                  imageIndex,
+                  purpose: "sparseRetry",
+                  detail: OCR_DETAIL_ACCURATE,
+                },
               );
               timing.markImagePhase(
                 imageIndex,
                 "sparseRetry",
                 Date.now() - sparseStarted,
-                { readings: retry.readings.length },
+                { readings: retry.readings.length, mode: "full-fallback" },
               );
               if (
                 retry.readings.length > readings.length ||
@@ -1264,7 +1535,7 @@ export async function POST(request: Request) {
             }
           }
 
-          // 画面種別の一次項目が欠けている場合は画面専用再スキャン
+          // 画面種別の一次項目のうち、重点項目が欠けている場合は ROI 再OCR → だめなら全面
           let afterSparse = mapVisibleReadingsToMetricsDetailed(readings, {
             screenType,
           });
@@ -1272,60 +1543,69 @@ export async function POST(request: Request) {
             screenType,
             afterSparse.metrics,
           );
+          const missingCriticalPrimary = missingPrimary.filter((key) =>
+            (
+              CRITICAL_METRIC_KEYS as readonly string[]
+            ).includes(key) ||
+            (FOCUS_METRIC_KEYS as readonly string[]).includes(key) ||
+            key === "sleepScore" ||
+            key === "qol" ||
+            key === "yesterdayQol" ||
+            key === "conditionScore",
+          );
           if (
-            missingPrimary.length > 0 &&
+            missingCriticalPrimary.length > 0 &&
             screenType !== "other" &&
             SCREEN_PRIMARY_METRICS[screenType].length > 0
           ) {
             try {
               const screenStarted = Date.now();
-              const screenRetry = await runVisionOnImage(
-                imageUrl,
-                screenSpecificRetryPrompt(screenType),
-                { imageIndex, purpose: "screenRetry" },
+              // 欠けているキーを含む ROI だけ再OCR
+              const retryCrops = await cropScreenRois(imageUrl, screenType);
+              const neededCrops = retryCrops.filter((c) =>
+                c.roi.focusKeys.some((k) =>
+                  missingCriticalPrimary.includes(k),
+                ),
               );
+              const targets =
+                neededCrops.length > 0 ? neededCrops : retryCrops.slice(0, 2);
+              for (const crop of targets) {
+                const screenRetry = await runVisionOnImage(
+                  crop.dataUrl,
+                  roiOcrPrompt({
+                    screenType,
+                    roi: crop.roi,
+                    imageIndex: displayIndex,
+                    total: displayTotal,
+                  }),
+                  {
+                    imageIndex,
+                    purpose: "screenRetry",
+                    detail: OCR_DETAIL_ACCURATE,
+                  },
+                );
+                for (const reading of screenRetry.readings) {
+                  const dedupe = `${reading.label}::${reading.value}`;
+                  if (
+                    !readings.some((r) => `${r.label}::${r.value}` === dedupe)
+                  ) {
+                    readings.push(reading);
+                  }
+                }
+              }
               timing.markImagePhase(
                 imageIndex,
                 "screenRetry",
                 Date.now() - screenStarted,
-                { missingPrimary, readings: screenRetry.readings.length },
-              );
-              const mergedReadings = [...readings];
-              for (const reading of screenRetry.readings) {
-                const dedupe = `${reading.label}::${reading.value}`;
-                if (
-                  !mergedReadings.some(
-                    (r) => `${r.label}::${r.value}` === dedupe,
-                  )
-                ) {
-                  mergedReadings.push(reading);
-                }
-              }
-              const remapped = mapVisibleReadingsToMetricsDetailed(
-                mergedReadings,
                 {
-                  screenType:
-                    fixedScreenType ??
-                    (screenRetry.screenType || screenType),
+                  missingPrimary: missingCriticalPrimary,
+                  readings: readings.length,
+                  mode: "roi-retry",
                 },
               );
-              if (
-                collectedMetricKeys(remapped.metrics).length >
-                  collectedMetricKeys(afterSparse.metrics).length ||
-                screenRetry.readings.length > readings.length
-              ) {
-                readings = mergedReadings;
-                if (!fixedScreenType && screenRetry.screenType !== "other") {
-                  screenType = screenRetry.screenType;
-                }
-                afterSparse = remapped;
-              }
-              if (screenRetry.graphReadings.length > graphReadings.length) {
-                graphReadings = screenRetry.graphReadings.map((g) => ({
-                  ...g,
-                  sourceImageIndex: imageIndex,
-                }));
-              }
+              afterSparse = mapVisibleReadingsToMetricsDetailed(readings, {
+                screenType,
+              });
             } catch (screenError) {
               if (isRateLimitError(screenError)) {
                 log429Event({
@@ -1340,70 +1620,18 @@ export async function POST(request: Request) {
               logOcrTraceError("ocrOneImage.screenRetry", screenError, {
                 imageIndex,
                 screenType,
-                missingPrimary,
+                missingPrimary: missingCriticalPrimary,
               });
               console.warn(
-                "[api/extract] screen-specific retry failed",
-                { imageIndex, screenType, missingPrimary },
+                "[api/extract] screen retry failed",
+                { imageIndex, screenType },
                 screenError,
               );
             }
           }
 
-          // 4重点項目の欠けはバッチ criticalReOcr に委ねる（枚別で叩くと API 過多・429増）
-          // ここではスキップして壁時計と呼び出し回数を抑える
-
-          // グラフ画面なのに graphReadings が空 → グラフ専用再スキャン
-          if (
-            graphReadings.length === 0 &&
-            looksLikeGraphScreen(readings, screenType)
-          ) {
-            try {
-              const graphStarted = Date.now();
-              const graphRetry = await runVisionOnImage(
-                imageUrl,
-                graphRetryPrompt(),
-                { imageIndex, purpose: "graphRetry" },
-              );
-              timing.markImagePhase(
-                imageIndex,
-                "graphRetry",
-                Date.now() - graphStarted,
-                { graphPanels: graphRetry.graphReadings.length },
-              );
-              if (graphRetry.graphReadings.length > 0) {
-                graphReadings = graphRetry.graphReadings.map((g) => ({
-                  ...g,
-                  sourceImageIndex: imageIndex,
-                }));
-              }
-              if (graphRetry.readings.length > readings.length) {
-                readings = graphRetry.readings;
-              }
-              if (!fixedScreenType && graphRetry.screenType !== "other") {
-                screenType = graphRetry.screenType;
-              }
-            } catch (graphError) {
-              if (isRateLimitError(graphError)) {
-                log429Event({
-                  imageIndex,
-                  callNo: visionCallSeq,
-                  purpose: "graphRetry",
-                  attempt: 1,
-                  action: "継続（次処理へ）",
-                  error: graphError,
-                });
-              }
-              logOcrTraceError("ocrOneImage.graphRetry", graphError, {
-                imageIndex,
-              });
-              console.warn(
-                "[api/extract] graph retry failed",
-                { imageIndex },
-                graphError,
-              );
-            }
-          }
+          // グラフ専用再スキャンは壁時計の主因のため既定スキップ。
+          // （グラフは enrichMetricsFromGraphs で任意補完。数値OCRを優先）
         }
       } catch (error) {
         const message = visionErrorMessage(error);
@@ -1632,7 +1860,7 @@ export async function POST(request: Request) {
         count: transientFailed.length,
         indexes: transientFailed.map((item) => item.index),
       });
-      await sleep(3_000);
+      await sleep(1_000);
       await runPool(transientFailed, SERVER_OCR_CONCURRENCY, async (item) => {
         if (request.signal.aborted) return;
         const result = await ocrOneImageWithTimeout(
@@ -1673,6 +1901,18 @@ export async function POST(request: Request) {
     timing.begin("mergeRecover");
     const failedCount = perImage.filter((item) => item.error).length;
     let allReadings = perImage.flatMap((item) => item.readings);
+    const focusOcrCandidates = Object.fromEntries(
+      FOCUS_METRIC_KEYS.map((key) => [key, collectFocusCandidates(allReadings, key)]),
+    ) as Record<MetricFieldKey, Array<{ label: string; value: string }>>;
+    console.info(`${OCR_TRACE} focus ① OCR取得結果`, {
+      stage: "ocr-readings",
+      focus: Object.fromEntries(
+        FOCUS_METRIC_KEYS.map((key) => [
+          key,
+          focusOcrCandidates[key].map((item) => `${item.label} => ${item.value}`),
+        ]),
+      ),
+    });
     const extractResults: ImageExtractResult[] = perImage.map((item) => ({
       imageIndex: item.imageIndex,
       metrics: item.metrics,
@@ -1708,8 +1948,11 @@ export async function POST(request: Request) {
       graphBundle,
     );
 
-    // —— 重点4項目の不足を、全画像 readings からラベル再マッピングで補完 ——
-    const missingAfterMerge = CRITICAL_METRIC_KEYS.filter(
+    // —— 重点項目（従来critical + 精度改善6項目）の不足を、全画像readingsから補完 ——
+    const criticalAndFocusKeys = Array.from(
+      new Set<MetricFieldKey>([...CRITICAL_METRIC_KEYS, ...FOCUS_METRIC_KEYS]),
+    );
+    const missingAfterMerge = criticalAndFocusKeys.filter(
       (key) => !isMetricPresent(metrics, key),
     );
     if (missingAfterMerge.length > 0) {
@@ -1780,7 +2023,11 @@ export async function POST(request: Request) {
           const retry = await runVisionOnImage(
             images[imageIndex]!,
             homeMissingPrompt([...homeMissingKeys]),
-            { imageIndex, purpose: "homeReOcr" },
+            {
+              imageIndex,
+              purpose: "homeReOcr",
+              detail: OCR_DETAIL_ACCURATE,
+            },
           );
           homeRetries.push({
             imageIndex,
@@ -1858,9 +2105,70 @@ export async function POST(request: Request) {
     });
 
     // —— それでも重点項目が空なら、対象画像だけ再OCR（候補上限＋並列 Vision）——
-    const stillMissing = CRITICAL_METRIC_KEYS.filter(
+    const stillMissing = criticalAndFocusKeys.filter(
       (key) => !isMetricPresent(metrics, key),
     );
+    if (stillMissing.length > 0) {
+      const LABEL_MAP: Partial<Record<MetricFieldKey, string>> = {
+        sleepEfficiency: "睡眠効率",
+        sleepDebt: "睡眠負債",
+        circadianRhythm: "体内時計",
+        sleepLatency: "入眠潜時",
+        awakeningRate: "覚醒率",
+        remSleepRate: "レム睡眠率",
+        nonRemSleepRate: "ノンレム睡眠率",
+        lightSleepRate: "浅い睡眠率",
+        deepSleepRate: "深い睡眠率",
+        spo2: "平均SpO₂",
+        respiratoryRate: "呼吸速度",
+        bedtime: "入眠時間",
+        wakeTime: "起床時間",
+        skinTemperature: "皮膚温度",
+        stress: "ストレス",
+      };
+      const stagesMissing = stillMissing.filter((k) =>
+        ["awakeningRate","remSleepRate","lightSleepRate","deepSleepRate","spo2"].includes(k),
+      );
+      const respirationMissing = stillMissing.filter((k) =>
+        ["respiratoryRate","spo2"].includes(k),
+      );
+      if (stagesMissing.length > 0) {
+        console.info("[api/extract] 未取得 Sleep Detail/Sleep Stages 項目", {
+          items: stagesMissing.map((k) => LABEL_MAP[k] ?? k),
+          stagesImages: perImage
+            .filter((p) => p.screenType === "sleep_stages")
+            .map((p) => p.imageIndex),
+        });
+      }
+      if (respirationMissing.length > 0) {
+        const respirationImages = perImage
+          .filter((p) => p.screenType === "respiration")
+          .map((p) => p.imageIndex);
+        console.info("[api/extract] 未取得 Respiration/HRV 項目", {
+          items: respirationMissing.map((k) => LABEL_MAP[k] ?? k),
+          respirationImages,
+          note: respirationImages.length === 0 ? "respiration画面が存在しない" : undefined,
+        });
+      }
+      const graphBundle2 = graphBundle;
+      const allGraphKeys = ["stress","stages","respiration","rhr","hrv","circadian","skin-temp","stage-detail"] as const;
+      const missingGraphs = allGraphKeys.filter((gk) => {
+        const g = graphBundle2[gk as keyof typeof graphBundle2];
+        if (!g) return true;
+        if (Array.isArray(g)) return g.length === 0;
+        if (typeof g === "object") {
+          const pts = (g as { points?: unknown[] }).points;
+          return !pts || pts.length === 0;
+        }
+        return !g;
+      });
+      if (missingGraphs.length > 0) {
+        console.info("[api/extract] 未取得グラフ一覧（グラフ解析）", {
+          missingGraphs,
+          acquiredGraphs: allGraphKeys.filter((gk) => !missingGraphs.includes(gk as never)),
+        });
+      }
+    }
     const coverageBeforeCritical = collectedMetricKeys(metrics).length;
     timing.begin("criticalReOcr", {
       missing: stillMissing,
@@ -1878,6 +2186,21 @@ export async function POST(request: Request) {
         wakeTime: ["bed_wake", "sleep_detail", "circadian", "other"],
         skinTemperature: ["skin_temp", "other", "sleep_detail"],
         stress: ["stress", "other", "sleep_detail"],
+        // sleep_stages 画面で取り逃しやすい率（%）項目
+        awakeningRate: ["sleep_stages", "other"],
+        remSleepRate: ["sleep_stages", "other"],
+        nonRemSleepRate: ["sleep_stages", "other"],
+        lightSleepRate: ["sleep_stages", "other"],
+        deepSleepRate: ["sleep_stages", "other"],
+        // SpO₂ は respiration 優先、なければ sleep_stages
+        spo2: ["respiration", "sleep_stages", "other"],
+        // 睡眠詳細由来の不足項目
+        sleepEfficiency: ["sleep_detail", "circadian", "other"],
+        sleepDebt: ["sleep_detail", "circadian", "other"],
+        sleepLatency: ["sleep_detail", "bed_wake", "other"],
+        circadianRhythm: ["circadian", "sleep_detail", "other"],
+        respiratoryRate: ["respiration", "rhr", "hrv", "other"],
+        restingHeartRate: ["rhr", "respiration", "hrv", "other"],
       };
 
       const scoredCandidates: Array<{ index: number; score: number }> = [];
@@ -1939,11 +2262,45 @@ export async function POST(request: Request) {
         const retryScreen = fixedScreenType ?? targetScreen;
 
         try {
-          const retry = await runVisionOnImage(
-            images[imageIndex],
-            criticalOnlyScreenPrompt(remaining, retryScreen),
-            { imageIndex, purpose: "criticalReOcr" },
+          // critical 再OCRも ROI 切り出し優先（数字取得率）
+          const crops = await cropScreenRois(images[imageIndex], retryScreen);
+          const needed = crops.filter((c) =>
+            c.roi.focusKeys.some((k) => remaining.includes(k)),
           );
+          const targets = needed.length > 0 ? needed : crops.slice(0, 2);
+          const mergedRetryReadings: VisibleReading[] = [];
+          let lastScreen = retryScreen;
+          for (const crop of targets) {
+            const part = await runVisionOnImage(
+              crop.dataUrl,
+              roiOcrPrompt({
+                screenType: retryScreen,
+                roi: crop.roi,
+                imageIndex,
+                total: images.length,
+              }),
+              {
+                imageIndex,
+                purpose: "criticalReOcr",
+                detail: OCR_DETAIL_ACCURATE,
+              },
+            );
+            lastScreen = part.screenType || lastScreen;
+            for (const reading of part.readings) {
+              const dedupe = `${reading.label}::${reading.value}`;
+              if (
+                !mergedRetryReadings.some(
+                  (r) => `${r.label}::${r.value}` === dedupe,
+                )
+              ) {
+                mergedRetryReadings.push(reading);
+              }
+            }
+          }
+          const retry = {
+            screenType: lastScreen,
+            readings: mergedRetryReadings,
+          };
           criticalRetries.push({
             imageIndex,
             targetScreen,
@@ -1980,7 +2337,7 @@ export async function POST(request: Request) {
       for (const row of criticalRetries.sort(
         (a, b) => a.imageIndex - b.imageIndex,
       )) {
-        const remaining = CRITICAL_METRIC_KEYS.filter(
+        const remaining = criticalAndFocusKeys.filter(
           (key) => !isMetricPresent(metrics, key),
         );
         if (remaining.length === 0) break;
@@ -2057,21 +2414,93 @@ export async function POST(request: Request) {
       ),
     });
 
+    // 再OCR後もノンレムを確定（浅い・深い OCR から。睡眠時間の誤マッピングは破棄）
+    applyNonRemFromStageOcr(metrics);
+
     timing.begin("normalize");
     const metricsBeforeDisplayNormalize = metrics;
+    console.info(`${OCR_TRACE} focus ② マッピング後（表示正規化前）`, {
+      stage: "mapped-before-display-normalize",
+      focus: Object.fromEntries(
+        FOCUS_METRIC_KEYS.map((key) => [key, metricDisplayValue(metricsBeforeDisplayNormalize, key)]),
+      ),
+    });
     const verifyDiagnostics = buildVerifyDiagnostics({
       perImage,
       mergedRaw,
       beforeDisplayNormalize: metricsBeforeDisplayNormalize,
     });
     metrics = normalizeMetricsForDisplay(metricsBeforeDisplayNormalize);
+    const focusLoss = Object.fromEntries(
+      FOCUS_METRIC_KEYS.map((key) => {
+        const hasOcrCandidate = focusOcrCandidates[key].length > 0;
+        const hasNormalized = isMetricPresent(metricsBeforeDisplayNormalize, key);
+        const hasFinal = isMetricPresent(metrics, key);
+        const lostAt = !hasOcrCandidate
+          ? "① OCR取得結果で未検出"
+          : !hasNormalized
+            ? "② マッピング後で未格納"
+            : !hasFinal
+              ? "③ 表示正規化で消失"
+              : "none";
+        return [
+          key,
+          {
+            hasOcrCandidate,
+            hasNormalized,
+            hasFinal,
+            lostAt,
+            finalValue: metricDisplayValue(metrics, key),
+          },
+        ];
+      }),
+    ) as Record<
+      MetricFieldKey,
+      {
+        hasOcrCandidate: boolean;
+        hasNormalized: boolean;
+        hasFinal: boolean;
+        lostAt: string;
+        finalValue: string;
+      }
+    >;
+    console.info(`${OCR_TRACE} focus ③ 最終metricsへ格納`, {
+      stage: "final-metrics",
+      focus: Object.fromEntries(
+        FOCUS_METRIC_KEYS.map((key) => [key, metricDisplayValue(metrics, key)]),
+      ),
+      loss: Object.fromEntries(FOCUS_METRIC_KEYS.map((key) => [key, focusLoss[key]])),
+    });
     const metricSources = detectMetricSources(metrics, perImage);
+
+    // 最終 metrics で整合性を再評価し、矛盾キーだけ信頼度を下げて要確認にする
+    const consistencyWarnings = detectMetricConsistencyWarnings(metrics);
+    for (const key of consistencyWarningKeys(consistencyWarnings)) {
+      if (confidence[key] != null) {
+        confidence[key] = Math.min(
+          confidence[key]!,
+          OCR_LOW_CONFIDENCE_THRESHOLD - 0.01,
+        );
+      }
+    }
 
     const keys = collectedMetricKeys(metrics);
     const missingKeys = missingMetricKeys(metrics);
     const missingLabels = missingMetricLabels(metrics);
     const graphPanels = graphPanelCount(graphBundle);
     timing.end({ collected: keys.length, missing: missingKeys });
+
+    const needsReviewDiagnosis = diagnoseNeedsReview({
+      metrics,
+      imageKeys: keys,
+      conflicts,
+      confidence,
+      consistencyWarnings,
+    });
+    logNeedsReviewDiagnosis(
+      "[api/extract] needs-review diagnosis",
+      needsReviewDiagnosis,
+    );
 
     const timingSnapshot = timing.snapshot();
     console.info("[api/extract] timing", {
@@ -2100,6 +2529,10 @@ export async function POST(request: Request) {
       missingLabels,
       apiCalls,
       totalMs: timingSnapshot.totalMs,
+    });
+    logMissingAccuracyMetrics("[api/extract]", {
+      metrics,
+      readings: allReadings,
     });
     console.log("[api/extract] response metrics JSON", metrics);
 
@@ -2184,7 +2617,7 @@ export async function POST(request: Request) {
       visibleReadings: allReadings,
       conflicts,
       confidence,
-      consistencyWarnings: detectMetricConsistencyWarnings(metrics),
+      consistencyWarnings,
       metricSources,
       collectedCount: keys.length,
       graphPanelCount: graphPanels,

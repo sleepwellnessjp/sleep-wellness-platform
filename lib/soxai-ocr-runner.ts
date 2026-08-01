@@ -10,6 +10,7 @@ import {
 } from "@/lib/soxai-graphs";
 import {
   OCR_LOW_CONFIDENCE_THRESHOLD,
+  applyNonRemFromStageOcr,
   type MergedMetricConflict,
   type MetricConfidenceMap,
 } from "@/lib/soxai-merge";
@@ -43,9 +44,10 @@ import {
   consistencyWarningKeys,
 } from "@/lib/soxai-consistency";
 import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import { logMissingAccuracyMetrics } from "@/lib/soxai-missing-log";
 
-export const OCR_IMAGE_TIMEOUT_MS = 540_000;
-export const OCR_OVERALL_BUDGET_MS = 600_000;
+export const OCR_IMAGE_TIMEOUT_MS = 180_000;
+export const OCR_OVERALL_BUDGET_MS = 240_000;
 export const OCR_CONCURRENCY = 2;
 /** キャッシュ採用の最低取得率（25項目中） */
 const MIN_CACHE_METRIC_COUNT = 24;
@@ -325,7 +327,9 @@ async function callExtractApi(params: {
   timeoutMs: number;
   signal: AbortSignal;
 }): Promise<{
-  merged: ExtractSoxaiResult | null;
+  merged: (ExtractSoxaiResult & {
+    visibleReadings?: Array<{ label: string; value: string }>;
+  }) | null;
   perImage: Array<{
     imageIndex: number;
     screenType: SoxaiScreenType;
@@ -533,11 +537,13 @@ async function callExtractApi(params: {
       data && typeof data === "object" && "metrics" in data
         ? (data as { metrics: Partial<AnalysisMetrics> }).metrics
         : undefined;
-    const metrics = normalizeMetricsForDisplay(
-      normalizeMetrics(
-        mergeMetricsFromVisibleReadings(metricsRaw ?? emptyMetrics(), visibleReadings),
-      ),
+    console.log("before merge", metricsRaw);
+    const mergedMetrics = mergeMetricsFromVisibleReadings(
+      metricsRaw ?? emptyMetrics(),
+      visibleReadings,
     );
+    console.log("after merge", mergedMetrics);
+    const metrics = normalizeMetricsForDisplay(normalizeMetrics(mergedMetrics));
 
     const formKeys = SOXAI_METRIC_FIELDS.map((field) => field.key);
     const presentKeys = collectedMetricKeys(metrics);
@@ -604,6 +610,7 @@ async function callExtractApi(params: {
         conflicts,
         graphs,
         confidence: applyConsistencyToConfidence(metrics, confidence),
+        visibleReadings,
       },
       perImage,
       usage,
@@ -639,8 +646,11 @@ function resultFromCacheSet(
   hashes: string[],
   elapsedMs: number,
 ): SoxaiOcrRunResult {
+  // 古いキャッシュにノンレムが無い場合でも深い睡眠から復元（浅いと合算しない）
+  const metrics = normalizeMetrics(cached.metrics);
+  applyNonRemFromStageOcr(metrics);
   return {
-    metrics: cached.metrics,
+    metrics,
     conflicts: cached.conflicts,
     graphs: cached.graphs,
     confidence: cached.confidence,
@@ -727,7 +737,9 @@ export async function runSoxaiOcr(
     else signal.addEventListener("abort", onOuterAbort, { once: true });
   }
 
+  const prepStarted = Date.now();
   const preparedAll = await prepareImagesForOcr(images);
+  const prepMs = Date.now() - prepStarted;
   if (controller.signal.aborted) {
     if (signal) signal.removeEventListener("abort", onOuterAbort);
     return {
@@ -747,7 +759,14 @@ export async function runSoxaiOcr(
     };
   }
 
+  const hashStarted = Date.now();
   const allHashes = await hashImageDataUrls(preparedAll);
+  const hashMs = Date.now() - hashStarted;
+  console.info("[soxai-ocr-runner] client prep timing", {
+    imageCount: images.length,
+    prepMs,
+    hashMs,
+  });
   const setFp = setFingerprintFromHashes(allHashes);
 
   // セットキャッシュ（高取得率の完了結果のみ再利用）
@@ -802,6 +821,7 @@ export async function runSoxaiOcr(
     graphs: seed?.graphs ?? emptyGraphBundle(),
     confidence: seed?.confidence ?? {},
   };
+  let lastVisibleReadings: Array<{ label: string; value: string }> = [];
   const usageEntries: OpenAiUsageSummary["entries"] = [];
 
   if (remainingBudget <= 1_000) {
@@ -849,7 +869,12 @@ export async function runSoxaiOcr(
 
       if (apiResult.merged) {
         gotMergedResult = true;
-        if (seed?.metrics && onlyIndexes && onlyIndexes.length > 0) {
+        const reanalyzeAll =
+          Boolean(seed?.metrics) &&
+          Boolean(onlyIndexes) &&
+          onlyIndexes!.length > 0 &&
+          onlyIndexes!.length >= images.length;
+        if (seed?.metrics && onlyIndexes && onlyIndexes.length > 0 && !reanalyzeAll) {
           merged = {
             metrics: mergePreferExisting(seed.metrics, apiResult.merged.metrics),
             graphs: mergeGraphsPreferExisting(
@@ -866,7 +891,16 @@ export async function runSoxaiOcr(
                 : (seed.conflicts ?? []),
           };
         } else {
-          merged = apiResult.merged;
+          // 全画像再解析時は seed の古い値で上書きしない（API最終値＝確認画面）
+          merged = {
+            metrics: apiResult.merged.metrics,
+            conflicts: apiResult.merged.conflicts,
+            graphs: apiResult.merged.graphs,
+            confidence: apiResult.merged.confidence,
+          };
+        }
+        if (apiResult.merged.visibleReadings) {
+          lastVisibleReadings = apiResult.merged.visibleReadings;
         }
 
         for (let i = 0; i < targetIndexes.length; i += 1) {
@@ -1053,6 +1087,11 @@ export async function runSoxaiOcr(
       labels: missingLabels,
     });
   }
+
+  logMissingAccuracyMetrics("[soxai-ocr]", {
+    metrics: merged.metrics,
+    readings: lastVisibleReadings,
+  });
 
   return {
     ...merged,

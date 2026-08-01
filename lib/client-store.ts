@@ -298,6 +298,8 @@ function buildSeedClients(): StoredClient[] {
       awakeningRate: "9%",
       remSleep: "1時間22分",
       remSleepRate: "20%",
+      nonRemSleep: "4時間48分",
+      nonRemSleepRate: "71%",
       lightSleep: "3時間40分",
       lightSleepRate: "54%",
       deepSleep: "1時間08分",

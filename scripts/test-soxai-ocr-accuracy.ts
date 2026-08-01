@@ -112,10 +112,12 @@ function metricsFrom(
     [
       { label: "覚醒", value: "8%" },
       { label: "レム睡眠", value: "22%" },
+      { label: "ノンレム睡眠", value: "70%" },
       { label: "浅い睡眠", value: "55%" },
       { label: "深い睡眠", value: "15%" },
       { label: "覚醒時間", value: "28分" },
       { label: "レム睡眠時間", value: "1:15" },
+      { label: "ノンレム睡眠時間", value: "4:45" },
       { label: "浅い睡眠時間", value: "3:40" },
       { label: "深い睡眠時間", value: "1:05" },
       { label: "平均酸素レベル", value: "96%" },
@@ -158,6 +160,11 @@ function metricsFrom(
   );
   check("A: REM率=22%", stages.metrics.remSleepRate === "22%");
   check(
+    "A: ノンレム時間",
+    stages.metrics.nonRemSleep === "4時間45分",
+  );
+  check("A: ノンレム率=70%", stages.metrics.nonRemSleepRate === "70%");
+  check(
     "A: 浅い時間",
     stages.metrics.lightSleep === "3時間40分",
   );
@@ -170,7 +177,7 @@ function metricsFrom(
   check("A: SpO2=96%", stages.metrics.spo2 === "96%");
   check(
     "A: 呼吸速度",
-    vitals.metrics.respiratoryRate === "14.2",
+    /14\.2/.test(vitals.metrics.respiratoryRate),
   );
   check("A: RHR=58", vitals.metrics.restingHeartRate === "58");
   check("A: HRV", /42/.test(vitals.metrics.hrv));
@@ -220,14 +227,16 @@ function metricsFrom(
     {
       imageIndex: 2,
       metrics: stages.metrics,
-      visibleReadingCount: 9,
+      visibleReadingCount: 11,
       readings: [
         { label: "覚醒", value: "8%" },
         { label: "レム睡眠", value: "22%" },
+        { label: "ノンレム睡眠", value: "70%" },
         { label: "浅い睡眠", value: "55%" },
         { label: "深い睡眠", value: "15%" },
         { label: "覚醒時間", value: "28分" },
         { label: "レム睡眠時間", value: "1:15" },
+        { label: "ノンレム睡眠時間", value: "4:45" },
         { label: "浅い睡眠時間", value: "3:40" },
         { label: "深い睡眠時間", value: "1:05" },
         { label: "平均酸素レベル", value: "96%" },
@@ -268,6 +277,8 @@ function metricsFrom(
     awakeningRate: "8%",
     remSleep: "1時間15分",
     remSleepRate: "22%",
+    nonRemSleep: "1時間5分",
+    nonRemSleepRate: "15%",
     lightSleep: "3時間40分",
     lightSleepRate: "55%",
     deepSleep: "1時間5分",
@@ -395,6 +406,41 @@ function metricsFrom(
   );
 }
 
+// —— セット C2: SOXAIでは睡眠時間=レム+浅い+深い（覚醒除外）——
+{
+  const ok: AnalysisMetrics = {
+    ...emptyMetrics(),
+    sleepDuration: "6時間27分",
+    remSleep: "1時間31分",
+    lightSleep: "3時間7分",
+    deepSleep: "1時間49分",
+    awakenings: "30分",
+    remSleepRate: "21%",
+    lightSleepRate: "44%",
+    deepSleepRate: "25%",
+    awakeningRate: "10%",
+    restingHeartRate: "58",
+  };
+  const warnings = detectMetricConsistencyWarnings(ok);
+  check(
+    "C2: 覚醒を含む差だけではステージ矛盾にしない",
+    !warnings.some((w) => w.message.includes("ステージ時間")),
+  );
+}
+
+// —— セット C3: 安静時心拍の範囲外 ——
+{
+  const highRhr: AnalysisMetrics = {
+    ...emptyMetrics(),
+    restingHeartRate: "108",
+  };
+  const warnings = detectMetricConsistencyWarnings(highRhr);
+  check(
+    "C3: 安静時心拍108を要確認",
+    warnings.some((w) => w.keys.includes("restingHeartRate")),
+  );
+}
+
 // —— セット D: ホーム睡眠スコア vs 詳細時間 ——
 {
   const home = metricsFrom(
@@ -402,7 +448,7 @@ function metricsFrom(
     { screenType: "home" },
   );
   const detail = metricsFrom(
-    [{ label: "睡眠", value: "5時間32分" }],
+    [{ label: "睡眠時間", value: "5時間32分" }],
     { screenType: "sleep_detail" },
   );
   check("D: ホーム睡眠→スコア", home.metrics.sleepScore === 71);
@@ -423,7 +469,7 @@ function metricsFrom(
       imageIndex: 1,
       metrics: detail.metrics,
       visibleReadingCount: 1,
-      readings: [{ label: "睡眠", value: "5時間32分" }],
+      readings: [{ label: "睡眠時間", value: "5時間32分" }],
       provenance: detail.provenance,
       screenType: "sleep_detail",
     },
@@ -496,7 +542,22 @@ function metricsFrom(
     { label: "42", value: "ms" },
     { label: "", value: "14.5 rpm" },
   ]);
-  const fromSwapped = metricsFrom(swapped, { screenType: "other" });
+  const fromSwappedBare = metricsFrom(swapped, { screenType: "other" });
+  // 単独の「心拍数」+bpm は安静時とみなさない
+  check(
+    "E: 逆ラベル bpm alone not RHR",
+    !/58/.test(fromSwappedBare.metrics.restingHeartRate),
+  );
+  const fromSwapped = metricsFrom(
+    [
+      { label: "安静時心拍数", value: "58 bpm" },
+      { label: "平均HRV", value: "42 ms" },
+      ...swapped.filter(
+        (r) => !/bpm/i.test(r.value) && !/^(ms|ミリ秒)$/i.test(r.value),
+      ),
+    ],
+    { screenType: "other" },
+  );
   check("E: 逆ラベル bpm", /58/.test(fromSwapped.metrics.restingHeartRate));
   check("E: 逆ラベル ms", /42/.test(fromSwapped.metrics.hrv));
   check("E: 空ラベル rpm", /14\.5/.test(fromSwapped.metrics.respiratoryRate));
@@ -620,6 +681,221 @@ function metricsFrom(
   const a = setFingerprintFromHashes(["bbb", "aaa", "ccc"]);
   const b = setFingerprintFromHashes(["ccc", "bbb", "aaa"]);
   check("F: fingerprint は順序非依存", a === b);
+}
+
+// —— セット G: 2026.7.31 既知誤読パターン（ステージ取り違え / RHR最小 / HRV最大）——
+{
+  console.log("\n—— Set G: known OCR error patterns (2026.7.31) ——");
+  const stages = metricsFrom(
+    [
+      { label: "覚醒", value: "11%" },
+      { label: "覚醒", value: "0:37" },
+      { label: "レム睡眠", value: "18%" },
+      { label: "レム睡眠", value: "1:03" },
+      { label: "浅い睡眠", value: "47%" },
+      { label: "浅い睡眠", value: "2:44" },
+      { label: "浅い睡眠", value: "3:07" }, // 前日比較
+      { label: "深い睡眠", value: "24%" },
+      { label: "深い睡眠", value: "1:23" },
+      { label: "深い", value: "0:37" }, // 誤割当候補
+      { label: "深い", value: "47%" }, // 誤割当候補
+      { label: "睡眠時間", value: "5:10" },
+    ],
+    { screenType: "sleep_stages" },
+  );
+  check("G: 覚醒時間", /0:37|37分/.test(stages.metrics.awakenings));
+  check("G: 覚醒率", stages.metrics.awakeningRate === "11%");
+  check("G: レム時間", /1:03|1時間3分|1時間03分/.test(stages.metrics.remSleep));
+  check("G: レム率", stages.metrics.remSleepRate === "18%");
+  check(
+    "G: 浅い時間≠前日比較",
+    /2:44|2時間44分/.test(stages.metrics.lightSleep) &&
+      !/3:07|3時間7分|3時間07分|3時間13分/.test(stages.metrics.lightSleep),
+  );
+  check("G: 浅い率", stages.metrics.lightSleepRate === "47%");
+  check(
+    "G: 深い時間≠覚醒",
+    /1:23|1時間23分/.test(stages.metrics.deepSleep) &&
+      !/37分|0:37/.test(stages.metrics.deepSleep),
+  );
+  check(
+    "G: 深い率≠浅い率",
+    stages.metrics.deepSleepRate === "24%" &&
+      stages.metrics.deepSleepRate !== stages.metrics.lightSleepRate,
+  );
+
+  const vitals = metricsFrom(
+    [
+      { label: "平均酸素レベル", value: "94%" },
+      { label: "呼吸速度", value: "12.6 rpm" },
+      { label: "安静時心拍数", value: "52 bpm" },
+      { label: "最小", value: "52 bpm" },
+      { label: "平均", value: "63" },
+    ],
+    { screenType: "respiration" },
+  );
+  check("G: SpO2", vitals.metrics.spo2 === "94%");
+  check("G: 呼吸速度", /12\.6/.test(vitals.metrics.respiratoryRate));
+  check(
+    "G: RHR平均≠最小",
+    /63/.test(vitals.metrics.restingHeartRate) &&
+      !/^52/.test(vitals.metrics.restingHeartRate.trim()),
+  );
+  check("G: RHR最小", /52/.test(vitals.metrics.restingHeartRateMin));
+
+  const hrvCard = metricsFrom(
+    [
+      { label: "心拍変動", value: "56 ms" },
+      { label: "平均", value: "56 ms" },
+      { label: "最大", value: "101" },
+      { label: "最小", value: "28" },
+    ],
+    { screenType: "hrv" },
+  );
+  check("G: 平均HRV", /56/.test(hrvCard.metrics.hrv));
+  check("G: 最大HRV", /101/.test(hrvCard.metrics.hrvMax));
+  check("G: 最小HRV", /28/.test(hrvCard.metrics.hrvMin));
+
+  const hrvCompound = metricsFrom(
+    [
+      { label: "心拍変動", value: "平均 56 ms" },
+      { label: "心拍変動", value: "最大 101" },
+    ],
+    { screenType: "hrv" },
+  );
+  check("G: 複合値 平均HRV", /56/.test(hrvCompound.metrics.hrv));
+  check("G: 複合値 最大HRV", /101/.test(hrvCompound.metrics.hrvMax));
+
+  const hrvMislabel = metricsFrom(
+    [
+      { label: "心拍数", value: "56 ms" },
+      { label: "最大", value: "101" },
+    ],
+    { screenType: "hrv" },
+  );
+  check("G: 誤ラベル心拍数+ms→平均HRV", /56/.test(hrvMislabel.metrics.hrv));
+  check("G: 誤ラベルカードの最大HRV", /101/.test(hrvMislabel.metrics.hrvMax));
+
+  const skin = metricsFrom(
+    [
+      { label: "皮膚温度", value: "見出し" },
+      { label: "最新の変化", value: "-0.9℃" },
+    ],
+    { screenType: "skin_temp" },
+  );
+  check("G: 皮膚温", /-0\.9/.test(skin.metrics.skinTemperature));
+}
+
+// —— セット H: 2026.7.31 実OCR誤割当（潜時比較値・RHR最小を平均にしない・SpO₂誤ラベル）——
+{
+  console.log("\n—— Set H: real OCR mis-map guards ——");
+  const detail = metricsFrom(
+    [
+      { label: "入眠潜時", value: "7:10" }, // 比較値の誤読
+      { label: "入眠潜時", value: "30分" },
+      { label: "入眠時間", value: "0:30" }, // 潜時の誤ラベル
+      { label: "起床時間", value: "7:57" },
+      { label: "睡眠効率", value: "89%" },
+    ],
+    { screenType: "sleep_detail" },
+  );
+  check(
+    "H: 潜時は30分（7:10比較値を採らない）",
+    /30分|0:30/.test(detail.metrics.sleepLatency) &&
+      !/7時間|7:10/.test(detail.metrics.sleepLatency),
+  );
+  check(
+    "H: 入眠に潜時0:30を採らない",
+    !detail.metrics.bedtime ||
+      (!/00:30|0:30/.test(detail.metrics.bedtime) &&
+        detail.metrics.bedtime.trim() === ""),
+  );
+  check("H: 睡眠効率=89%", detail.metrics.sleepEfficiency === "89%");
+
+  const rhrOnlyMin = metricsFrom(
+    [{ label: "安静時心拍数", value: "52 bpm" }],
+    { screenType: "rhr" },
+  );
+  check(
+    "H: 平均行なしのとき最小を平均にしない",
+    !/52/.test(rhrOnlyMin.metrics.restingHeartRate || "") ||
+      !String(rhrOnlyMin.metrics.restingHeartRate).trim(),
+  );
+  check(
+    "H: 平均行なしでも最小は保持",
+    /52/.test(rhrOnlyMin.metrics.restingHeartRateMin),
+  );
+
+  const rhrWithAvg = metricsFrom(
+    [
+      { label: "安静時心拍数", value: "52 bpm" },
+      { label: "平均", value: "63" },
+      { label: "最小", value: "52 bpm" },
+    ],
+    { screenType: "respiration" },
+  );
+  check(
+    "H: RHR平均=63",
+    /63/.test(rhrWithAvg.metrics.restingHeartRate) &&
+      !/^52/.test(rhrWithAvg.metrics.restingHeartRate.trim()),
+  );
+
+  const spo2Typo = metricsFrom(
+    [
+      { label: "平均状態レベル", value: "94%" },
+      { label: "呼吸速度", value: "12.6 rpm" },
+    ],
+    { screenType: "respiration" },
+  );
+  check("H: SpO2 誤ラベル状態→94%", spo2Typo.metrics.spo2 === "94%");
+  check("H: 呼吸速度", /12\.6/.test(spo2Typo.metrics.respiratoryRate));
+
+  const hrvMaxNotRhrMax = mergeImageExtractResults([
+    {
+      imageIndex: 0,
+      metrics: {
+        ...emptyMetrics(),
+        restingHeartRate: "63 bpm",
+        restingHeartRateMin: "52 bpm",
+      },
+      visibleReadingCount: 2,
+      readings: [
+        { label: "安静時心拍数平均", value: "63" },
+        { label: "安静時心拍数最小", value: "52 bpm" },
+      ],
+      provenance: {
+        restingHeartRate: "安静時心拍数平均",
+        restingHeartRateMin: "安静時心拍数最小",
+      },
+      screenType: "respiration",
+    },
+    {
+      imageIndex: 1,
+      metrics: {
+        ...emptyMetrics(),
+        hrv: "56 ms",
+        hrvMax: "101 ms",
+        restingHeartRateMax: "101",
+      },
+      visibleReadingCount: 2,
+      readings: [
+        { label: "心拍変動", value: "平均 56 ms" },
+        { label: "最大", value: "101" },
+      ],
+      provenance: {
+        hrv: "心拍変動",
+        hrvMax: "最大",
+        restingHeartRateMax: "最大",
+      },
+      screenType: "hrv",
+    },
+  ]);
+  check(
+    "H: HRV最大をRHR最大にしない",
+    !String(hrvMaxNotRhrMax.metrics.restingHeartRateMax).trim() ||
+      !/101/.test(hrvMaxNotRhrMax.metrics.restingHeartRateMax),
+  );
+  check("H: HRV最大は維持", /101/.test(hrvMaxNotRhrMax.metrics.hrvMax));
 }
 
 const passed = results.filter((r) => r.pass).length;

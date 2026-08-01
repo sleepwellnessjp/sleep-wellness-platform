@@ -67,7 +67,7 @@ export default function About() {
           <div className="relative overflow-hidden rounded-[32px] bg-[#071426] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.35)]">
             <div className="relative aspect-[16/11] lg:aspect-[4/3]">
               <Image
-                src="/melatonin-yoga.jpg"
+                src="/yogafest2.jpg"
                 alt="Sleep Wellness Institute Japanの活動風景"
                 fill
                 className="object-cover object-center"

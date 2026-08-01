@@ -17,6 +17,7 @@ import AnalysisFlow from "@/components/AnalysisFlow";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
 import {
   AnalysisError,
+  beginNewSoxaiAnalysisSession,
   cancelBackgroundSoxaiExtraction,
   clearBackgroundSoxaiExtraction,
   formatExtractErrorMessage,
@@ -31,6 +32,7 @@ import {
   getExtractionDraft,
   setExtractionDraft,
 } from "@/lib/analysis-session";
+import { resetProgressiveAnalysisJobs } from "@/lib/analysis-progressive";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import type { SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import type { MetricConfidenceMap } from "@/lib/soxai-merge";
@@ -88,11 +90,127 @@ const textareaClass =
 
 const caffeineTypeOptions = [
   { value: "coffee", label: "コーヒー" },
-  { value: "green_tea", label: "緑茶" },
   { value: "black_tea", label: "紅茶" },
+  { value: "green_tea", label: "緑茶" },
+  { value: "oolong_tea", label: "ウーロン茶" },
   { value: "energy_drink", label: "エナジードリンク" },
+  { value: "cola", label: "コーラ" },
+  { value: "chocolate", label: "チョコレート" },
   { value: "other", label: "その他" },
 ] as const;
+
+const YES_NO_OPTIONS = [
+  { value: "yes", label: "はい" },
+  { value: "none", label: "いいえ" },
+] as const;
+
+const ALCOHOL_DONE_OPTIONS = [
+  { value: "none", label: "飲まない" },
+  { value: "yes", label: "飲んだ" },
+] as const;
+
+const CAFFEINE_DONE_OPTIONS = [
+  { value: "none", label: "摂取なし" },
+  { value: "yes", label: "摂取した" },
+] as const;
+
+const STRESS_LEVEL_OPTIONS = [
+  { value: "とても低い", label: "とても低い" },
+  { value: "低い", label: "低い" },
+  { value: "普通", label: "普通" },
+  { value: "高い", label: "高い" },
+  { value: "とても高い", label: "とても高い" },
+] as const;
+
+const BATHING_OPTIONS = [
+  { value: "bath", label: "湯船に入った" },
+  { value: "shower", label: "シャワーのみ" },
+  { value: "none", label: "入浴していない" },
+] as const;
+
+const BATHING_DURATION_OPTIONS = [
+  { value: "", label: "選択してください" },
+  { value: "under5", label: "5分未満" },
+  { value: "5", label: "5分" },
+  { value: "10", label: "10分" },
+  { value: "15", label: "15分" },
+  { value: "20", label: "20分" },
+  { value: "30", label: "30分" },
+  { value: "45", label: "45分" },
+  { value: "60plus", label: "60分以上" },
+] as const;
+
+const BATHING_TEMPERATURE_OPTIONS = [
+  { value: "", label: "選択してください" },
+  { value: "35under", label: "35℃以下" },
+  { value: "36", label: "36℃" },
+  { value: "37", label: "37℃" },
+  { value: "38", label: "38℃" },
+  { value: "39", label: "39℃" },
+  { value: "40", label: "40℃" },
+  { value: "41", label: "41℃" },
+  { value: "42", label: "42℃" },
+  { value: "43plus", label: "43℃以上" },
+  { value: "unknown", label: "不明" },
+] as const;
+
+const WEEKDAY_OPTIONS = [
+  { value: "月", label: "月" },
+  { value: "火", label: "火" },
+  { value: "水", label: "水" },
+  { value: "木", label: "木" },
+  { value: "金", label: "金" },
+  { value: "土", label: "土" },
+  { value: "日", label: "日" },
+] as const;
+
+const COUNT_OPTIONS = [
+  { value: "0", label: "0回" },
+  { value: "1", label: "1回" },
+  { value: "2", label: "2回" },
+  { value: "3plus", label: "3回以上" },
+] as const;
+
+/** 0〜12時間・30分刻み（value は分） */
+const DURATION_MINUTE_OPTIONS: { value: string; label: string }[] = (() => {
+  const options: { value: string; label: string }[] = [
+    { value: "", label: "選択してください" },
+    { value: "0", label: "0分" },
+  ];
+  for (let minutes = 30; minutes <= 12 * 60; minutes += 30) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    const label =
+      hours === 0
+        ? `${rest}分`
+        : rest === 0
+          ? `${hours}時間`
+          : `${hours}時間${rest}分`;
+    options.push({ value: String(minutes), label });
+  }
+  return options;
+})();
+
+/** 時刻選択：00:00〜23:30・30分刻み */
+const HALF_HOUR_TIME_OPTIONS: { value: string; label: string }[] = (() => {
+  const options: { value: string; label: string }[] = [
+    { value: "", label: "選択してください" },
+  ];
+  for (let hour = 0; hour < 24; hour += 1) {
+    for (const minute of [0, 30]) {
+      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      options.push({ value, label: value });
+    }
+  }
+  return options;
+})();
+
+/** 食事時間：未選択・食べていない付き */
+const HALF_HOUR_CLOCK_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "選択してください" },
+  { value: "none", label: "食べていない" },
+  ...HALF_HOUR_TIME_OPTIONS.filter((option) => option.value !== ""),
+];
 
 type OtherExerciseEntry = {
   id: string;
@@ -100,6 +218,22 @@ type OtherExerciseEntry = {
   duration: string;
   time: string;
   notes: string;
+};
+
+/** ヨガ・ピラティスの1回分（運動欄と同じ考え方：開始時刻・実施時間・補足） */
+type PracticeSessionEntry = {
+  id: string;
+  duration: string;
+  time: string;
+  notes: string;
+};
+
+type CaffeineEntry = {
+  id: string;
+  type: string;
+  typeOther: string;
+  time: string;
+  amount: string;
 };
 
 type InputMethod = "soxai" | "manual" | "oura" | "garmin" | "apple";
@@ -157,8 +291,7 @@ const SOXAI_UPLOAD_SLOTS: SoxaiUploadSlot[] = [
     items: [
       "覚醒時間と割合",
       "REM睡眠時間と割合",
-      "浅い睡眠時間と割合",
-      "深い睡眠時間と割合",
+      "ノンレム睡眠時間と割合",
       "睡眠ステージグラフ",
     ],
   },
@@ -212,20 +345,116 @@ function createOtherExerciseEntry(): OtherExerciseEntry {
   };
 }
 
-function composePracticeSummary(practice: {
-  done: string;
-  duration: string;
-  time: string;
-  notes: string;
-}): string {
-  if (practice.done === "none") return "なし";
-  if (practice.done !== "yes") return "";
+function createPracticeSessionEntry(): PracticeSessionEntry {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    duration: "",
+    time: "",
+    notes: "",
+  };
+}
 
-  const parts: string[] = ["実施"];
-  if (practice.duration) parts.push(`${practice.duration}分`);
-  if (practice.time) parts.push(`時刻:${practice.time}`);
-  if (practice.notes) parts.push(`補足:${practice.notes}`);
-  return parts.join(" / ");
+function createCaffeineEntry(): CaffeineEntry {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: "",
+    typeOther: "",
+    time: "",
+    amount: "",
+  };
+}
+
+function caffeineTypeLabel(entry: CaffeineEntry): string {
+  if (entry.type === "other") {
+    return entry.typeOther.trim() || "その他";
+  }
+  return (
+    caffeineTypeOptions.find((option) => option.value === entry.type)?.label ??
+    entry.type
+  );
+}
+
+function composePracticeSessionsSummary(
+  done: string,
+  entries: PracticeSessionEntry[],
+): string {
+  if (done === "none") return "なし";
+  if (done !== "yes") return "";
+  const lines = entries
+    .map((entry, index) => {
+      const parts = [
+        entries.length > 1 ? `${index + 1}回目` : "実施",
+        entry.duration ? `${entry.duration}分` : "",
+        entry.time ? `開始:${entry.time}` : "",
+        entry.notes ? `補足:${entry.notes}` : "",
+      ].filter(Boolean);
+      return parts.join(" / ");
+    })
+    .filter((line) => line && line !== "実施");
+  if (lines.length === 0) return "実施";
+  return lines.join("；");
+}
+
+function composeCaffeineSessionsSummary(
+  done: string,
+  entries: CaffeineEntry[],
+): string {
+  if (done === "none") return "なし";
+  if (done !== "yes") return "";
+
+  const lines = entries
+    .map((entry, index) => {
+      const typeLabel = caffeineTypeLabel(entry);
+      const parts = [
+        entries.length > 1 ? `${index + 1}回目` : "あり",
+        typeLabel ? `種類:${typeLabel}` : "",
+        entry.amount ? `量:${entry.amount}` : "",
+        entry.time ? `時刻:${entry.time}` : "",
+      ].filter(Boolean);
+      return parts.join(" / ");
+    })
+    .filter((line) => line && line !== "あり");
+
+  if (lines.length === 0) return "あり";
+  return lines.join("；");
+}
+
+function composeBathingSummary(bathing: {
+  method: string;
+  time: string;
+  duration: string;
+  temperature: string;
+}): string {
+  if (bathing.method === "none") return "入浴していない";
+  if (!bathing.method) return "";
+
+  if (bathing.method === "shower") {
+    const parts = ["シャワーのみ"];
+    if (bathing.time) parts.push(`時刻:${bathing.time}`);
+    return parts.join(" / ");
+  }
+
+  if (bathing.method === "bath") {
+    const durationLabel =
+      BATHING_DURATION_OPTIONS.find(
+        (option) => option.value === bathing.duration,
+      )?.label ?? bathing.duration;
+    const temperatureLabel =
+      BATHING_TEMPERATURE_OPTIONS.find(
+        (option) => option.value === bathing.temperature,
+      )?.label ?? bathing.temperature;
+    const parts = ["湯船に入った"];
+    if (bathing.time) parts.push(`時刻:${bathing.time}`);
+    if (durationLabel && bathing.duration) {
+      parts.push(`入浴時間:${durationLabel}`);
+    }
+    if (temperatureLabel && bathing.temperature) {
+      parts.push(`温度:${temperatureLabel}`);
+    }
+    return parts.join(" / ");
+  }
+
+  return bathing.method;
 }
 
 function composeOtherExerciseSummary(entries: OtherExerciseEntry[]): string {
@@ -242,28 +471,6 @@ function composeOtherExerciseSummary(entries: OtherExerciseEntry[]): string {
     .filter(Boolean);
 
   return lines.join("；");
-}
-
-function composeCaffeineSummary(caffeine: {
-  done: string;
-  type: string;
-  amount: string;
-  time: string;
-  notes: string;
-}): string {
-  if (caffeine.done === "none") return "なし";
-  if (caffeine.done !== "yes") return "";
-
-  const typeLabel =
-    caffeineTypeOptions.find((option) => option.value === caffeine.type)
-      ?.label ?? caffeine.type;
-
-  const parts: string[] = ["あり"];
-  if (typeLabel) parts.push(`種類:${typeLabel}`);
-  if (caffeine.amount) parts.push(`量:${caffeine.amount}`);
-  if (caffeine.time) parts.push(`時刻:${caffeine.time}`);
-  if (caffeine.notes) parts.push(`補足:${caffeine.notes}`);
-  return parts.join(" / ");
 }
 
 function composeMealsSummary(meals: {
@@ -285,12 +492,14 @@ function composeMealsSummary(meals: {
     time: string,
     content: string,
   ) => {
-    if (eaten === "none") {
+    if (eaten === "none" || time === "none") {
       lines.push(`${label}: 食べていない`);
       return;
     }
     if (eaten === "yes") {
-      const detail = [time, content].filter(Boolean).join(" / ");
+      const detail = [time && time !== "none" ? time : "", content]
+        .filter(Boolean)
+        .join(" / ");
       lines.push(detail ? `${label}: 食べた / ${detail}` : `${label}: 食べた`);
       return;
     }
@@ -315,6 +524,7 @@ function composeAlcoholSummary(alcohol: {
   drank: string;
   type: string;
   amount: string;
+  abv: string;
   endTime: string;
   notes: string;
 }): string {
@@ -324,6 +534,7 @@ function composeAlcoholSummary(alcohol: {
   const parts: string[] = ["あり"];
   if (alcohol.type) parts.push(`種類:${alcohol.type}`);
   if (alcohol.amount) parts.push(`量:${alcohol.amount}`);
+  if (alcohol.abv) parts.push(`度数:${alcohol.abv}`);
   if (alcohol.endTime) parts.push(`終了時刻:${alcohol.endTime}`);
   if (alcohol.notes) parts.push(`補足:${alcohol.notes}`);
   return parts.join(" / ");
@@ -438,13 +649,25 @@ function NewAnalysisPageInner() {
   const [yogaDone, setYogaDone] = useState("");
   const [pilatesDone, setPilatesDone] = useState("");
   const [otherExerciseDone, setOtherExerciseDone] = useState("");
+  const [yogaSessions, setYogaSessions] = useState<PracticeSessionEntry[]>([
+    createPracticeSessionEntry(),
+  ]);
+  const [pilatesSessions, setPilatesSessions] = useState<PracticeSessionEntry[]>([
+    createPracticeSessionEntry(),
+  ]);
   const [otherExercises, setOtherExercises] = useState<OtherExerciseEntry[]>([
     createOtherExerciseEntry(),
   ]);
   const [caffeineDone, setCaffeineDone] = useState("");
+  const [caffeineEntries, setCaffeineEntries] = useState<CaffeineEntry[]>([
+    createCaffeineEntry(),
+  ]);
+  const [bathing, setBathing] = useState("");
+  const [stressLevel, setStressLevel] = useState("");
   const [breakfastEaten, setBreakfastEaten] = useState("");
   const [lunchEaten, setLunchEaten] = useState("");
   const [dinnerEaten, setDinnerEaten] = useState("");
+  const [weekdays, setWeekdays] = useState<string[]>([]);
   const [touchedUpload, setTouchedUpload] = useState(false);
   const [clientId, setClientId] = useState(queryClientId);
   const [clientName, setClientName] = useState("");
@@ -535,6 +758,10 @@ function NewAnalysisPageInner() {
 
     (async () => {
       try {
+        // 新規アップロード開始: 古い draft / pending / OCR キャッシュを破棄（ページ更新では files が空のため呼ばれない）
+        beginNewSoxaiAnalysisSession();
+        resetProgressiveAnalysisJobs();
+
         setOcrStatus("running");
         const images = await Promise.all(files.map(fileToDataUrl));
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
@@ -646,7 +873,8 @@ function NewAnalysisPageInner() {
   };
 
   const clearAllFiles = () => {
-    clearBackgroundSoxaiExtraction();
+    beginNewSoxaiAnalysisSession();
+    resetProgressiveAnalysisJobs();
     setOcrImageCache(null);
     setOcrStatus("idle");
     setSlotFiles({});
@@ -691,6 +919,81 @@ function NewAnalysisPageInner() {
     setOtherExercises((current) => {
       if (current.length <= 1) {
         return [createOtherExerciseEntry()];
+      }
+      return current.filter((entry) => entry.id !== id);
+    });
+  };
+
+  const updateYogaSession = (
+    id: string,
+    field: keyof Omit<PracticeSessionEntry, "id">,
+    value: string,
+  ) => {
+    setYogaSessions((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, [field]: value } : entry,
+      ),
+    );
+  };
+
+  const addYogaSession = () => {
+    setYogaSessions((current) => [...current, createPracticeSessionEntry()]);
+  };
+
+  const removeYogaSession = (id: string) => {
+    setYogaSessions((current) => {
+      if (current.length <= 1) {
+        return [createPracticeSessionEntry()];
+      }
+      return current.filter((entry) => entry.id !== id);
+    });
+  };
+
+  const updatePilatesSession = (
+    id: string,
+    field: keyof Omit<PracticeSessionEntry, "id">,
+    value: string,
+  ) => {
+    setPilatesSessions((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, [field]: value } : entry,
+      ),
+    );
+  };
+
+  const addPilatesSession = () => {
+    setPilatesSessions((current) => [...current, createPracticeSessionEntry()]);
+  };
+
+  const removePilatesSession = (id: string) => {
+    setPilatesSessions((current) => {
+      if (current.length <= 1) {
+        return [createPracticeSessionEntry()];
+      }
+      return current.filter((entry) => entry.id !== id);
+    });
+  };
+
+  const updateCaffeineEntry = (
+    id: string,
+    field: keyof Omit<CaffeineEntry, "id">,
+    value: string,
+  ) => {
+    setCaffeineEntries((current) =>
+      current.map((entry) =>
+        entry.id === id ? { ...entry, [field]: value } : entry,
+      ),
+    );
+  };
+
+  const addCaffeineEntry = () => {
+    setCaffeineEntries((current) => [...current, createCaffeineEntry()]);
+  };
+
+  const removeCaffeineEntry = (id: string) => {
+    setCaffeineEntries((current) => {
+      if (current.length <= 1) {
+        return [createCaffeineEntry()];
       }
       return current.filter((entry) => entry.id !== id);
     });
@@ -766,14 +1069,44 @@ function NewAnalysisPageInner() {
       }
 
       const yogaDoneValue = String(formData.get("yogaDone") ?? "");
-      const yogaDuration = String(formData.get("yogaDuration") ?? "");
-      const yogaTime = String(formData.get("yogaTime") ?? "");
-      const yogaNotes = String(formData.get("yogaNotes") ?? "");
+      const primaryYoga = yogaSessions[0];
+      const yogaDuration = primaryYoga?.duration ?? "";
+      const yogaTime = primaryYoga?.time ?? "";
+      const yogaNotes =
+        yogaDoneValue === "yes"
+          ? yogaSessions
+              .map((entry, index) => {
+                const parts = [
+                  yogaSessions.length > 1 ? `${index + 1}回目` : "",
+                  entry.duration ? `${entry.duration}分` : "",
+                  entry.time ? `開始:${entry.time}` : "",
+                  entry.notes ? `補足:${entry.notes}` : "",
+                ].filter(Boolean);
+                return parts.join(" / ");
+              })
+              .filter(Boolean)
+              .join("；")
+          : (primaryYoga?.notes ?? "");
 
       const pilatesDoneValue = String(formData.get("pilatesDone") ?? "");
-      const pilatesDuration = String(formData.get("pilatesDuration") ?? "");
-      const pilatesTime = String(formData.get("pilatesTime") ?? "");
-      const pilatesNotes = String(formData.get("pilatesNotes") ?? "");
+      const primaryPilates = pilatesSessions[0];
+      const pilatesDuration = primaryPilates?.duration ?? "";
+      const pilatesTime = primaryPilates?.time ?? "";
+      const pilatesNotes =
+        pilatesDoneValue === "yes"
+          ? pilatesSessions
+              .map((entry, index) => {
+                const parts = [
+                  pilatesSessions.length > 1 ? `${index + 1}回目` : "",
+                  entry.duration ? `${entry.duration}分` : "",
+                  entry.time ? `開始:${entry.time}` : "",
+                  entry.notes ? `補足:${entry.notes}` : "",
+                ].filter(Boolean);
+                return parts.join(" / ");
+              })
+              .filter(Boolean)
+              .join("；")
+          : (primaryPilates?.notes ?? "");
 
       const otherExerciseDoneValue = String(
         formData.get("otherExerciseDone") ?? "",
@@ -800,33 +1133,90 @@ function NewAnalysisPageInner() {
           : (primaryOther?.notes ?? "");
 
       const caffeineDoneValue = String(formData.get("caffeineDone") ?? "");
-      const caffeineType = String(formData.get("caffeineType") ?? "");
-      const caffeineAmount = String(formData.get("caffeineAmount") ?? "");
-      const caffeineTime = String(formData.get("caffeineTime") ?? "");
-      const caffeineNotes = String(formData.get("caffeineNotes") ?? "");
+      const primaryCaffeine = caffeineEntries[0];
+      const caffeineType =
+        caffeineDoneValue === "yes"
+          ? caffeineEntries
+              .map((entry) => caffeineTypeLabel(entry))
+              .filter(Boolean)
+              .join("、")
+          : "";
+      const caffeineAmount =
+        caffeineDoneValue === "yes"
+          ? caffeineEntries
+              .map((entry) => entry.amount)
+              .filter(Boolean)
+              .join("、")
+          : "";
+      const caffeineTime =
+        caffeineDoneValue === "yes"
+          ? caffeineEntries
+              .map((entry) => entry.time)
+              .filter(Boolean)
+              .join("、")
+          : "";
+      const caffeineNotes =
+        caffeineDoneValue === "yes" && caffeineEntries.length > 1
+          ? composeCaffeineSessionsSummary("yes", caffeineEntries)
+          : primaryCaffeine?.type === "other"
+            ? primaryCaffeine.typeOther
+            : "";
 
-      const breakfastEatenValue = String(formData.get("breakfastEaten") ?? "");
+      const bathingMethod = String(formData.get("bathing") ?? "");
+      const bathingTime =
+        bathingMethod === "bath" || bathingMethod === "shower"
+          ? String(formData.get("bathingTime") ?? "")
+          : "";
+      const bathingDuration =
+        bathingMethod === "bath"
+          ? String(formData.get("bathingDuration") ?? "")
+          : "";
+      const bathingTemperature =
+        bathingMethod === "bath"
+          ? String(formData.get("bathingTemperature") ?? "")
+          : "";
+      const bathingSummary = composeBathingSummary({
+        method: bathingMethod,
+        time: bathingTime,
+        duration: bathingDuration,
+        temperature: bathingTemperature,
+      });
+
+      const breakfastTimeRaw = String(formData.get("breakfastTime") ?? "");
+      const breakfastEatenValue =
+        formData.get("breakfastEaten") === "yes" &&
+        breakfastTimeRaw !== "none"
+          ? "yes"
+          : "none";
       const breakfastTime =
-        breakfastEatenValue === "yes"
-          ? String(formData.get("breakfastTime") ?? "")
+        breakfastEatenValue === "yes" && breakfastTimeRaw !== "none"
+          ? breakfastTimeRaw
           : "";
       const breakfastContent =
         breakfastEatenValue === "yes"
           ? String(formData.get("breakfastContent") ?? "")
           : "";
-      const lunchEatenValue = String(formData.get("lunchEaten") ?? "");
+      const lunchTimeRaw = String(formData.get("lunchTime") ?? "");
+      const lunchEatenValue =
+        formData.get("lunchEaten") === "yes" && lunchTimeRaw !== "none"
+          ? "yes"
+          : "none";
       const lunchTime =
-        lunchEatenValue === "yes"
-          ? String(formData.get("lunchTime") ?? "")
+        lunchEatenValue === "yes" && lunchTimeRaw !== "none"
+          ? lunchTimeRaw
           : "";
       const lunchContent =
         lunchEatenValue === "yes"
           ? String(formData.get("lunchContent") ?? "")
           : "";
-      const dinnerEatenValue = String(formData.get("dinnerEaten") ?? "");
+      const dinnerTimeRaw = String(formData.get("dinnerTime") ?? "");
+      const dinnerEatenValue =
+        formData.get("dinnerEaten") === "yes" && dinnerTimeRaw !== "none"
+          ? "yes"
+          : "none";
       const dinnerTime =
-        dinnerEatenValue === "yes"
-          ? String(formData.get("dinnerTime") ?? "")
+        dinnerEatenValue === "yes" && dinnerTimeRaw !== "none"
+          ? dinnerTimeRaw
           : "";
       const dinnerContent =
         dinnerEatenValue === "yes"
@@ -834,30 +1224,46 @@ function NewAnalysisPageInner() {
           : "";
 
       const alcoholDrankValue = String(formData.get("alcoholDrank") ?? "");
-      const alcoholType = String(formData.get("alcoholType") ?? "");
-      const alcoholAmount = String(formData.get("alcoholAmount") ?? "");
-      const alcoholEndTime = String(formData.get("alcoholEndTime") ?? "");
-      const alcoholNotes = String(formData.get("alcoholNotes") ?? "");
+      const alcoholType =
+        alcoholDrankValue === "yes"
+          ? String(formData.get("alcoholType") ?? "")
+          : "";
+      const alcoholAmount =
+        alcoholDrankValue === "yes"
+          ? String(formData.get("alcoholAmount") ?? "")
+          : "";
+      const alcoholAbv =
+        alcoholDrankValue === "yes"
+          ? String(formData.get("alcoholAbv") ?? "")
+          : "";
+      const alcoholEndTime =
+        alcoholDrankValue === "yes"
+          ? String(formData.get("alcoholEndTime") ?? "")
+          : "";
+      const alcoholNotes =
+        alcoholDrankValue === "yes"
+          ? String(formData.get("alcoholNotes") ?? "")
+          : "";
+      const weekdays = formData.getAll("weekdays").map(String).filter(Boolean);
+      const wakeCount = String(formData.get("wakeCount") ?? "");
+      const napDuration = String(formData.get("napDuration") ?? "");
+      const smartphoneDuration = String(formData.get("smartphoneDuration") ?? "");
+      const sleepDurationLifestyle = String(
+        formData.get("sleepDurationLifestyle") ?? "",
+      );
 
-      const yogaSummary = composePracticeSummary({
-        done: yogaDoneValue,
-        duration: yogaDuration,
-        time: yogaTime,
-        notes: yogaNotes,
-      });
-      const pilatesSummary = composePracticeSummary({
-        done: pilatesDoneValue,
-        duration: pilatesDuration,
-        time: pilatesTime,
-        notes: pilatesNotes,
-      });
-      const caffeineSummary = composeCaffeineSummary({
-        done: caffeineDoneValue,
-        type: caffeineType,
-        amount: caffeineAmount,
-        time: caffeineTime,
-        notes: caffeineNotes,
-      });
+      const yogaSummary = composePracticeSessionsSummary(
+        yogaDoneValue,
+        yogaSessions,
+      );
+      const pilatesSummary = composePracticeSessionsSummary(
+        pilatesDoneValue,
+        pilatesSessions,
+      );
+      const caffeineSummary = composeCaffeineSessionsSummary(
+        caffeineDoneValue,
+        caffeineEntries,
+      );
 
       const lifestyle = {
         clientId: clientId || undefined,
@@ -890,11 +1296,12 @@ function NewAnalysisPageInner() {
         otherExerciseDuration,
         otherExerciseTime,
         otherExerciseNotes,
-        bathing: String(formData.get("bathing") ?? ""),
+        bathing: bathingSummary,
         alcohol: composeAlcoholSummary({
           drank: alcoholDrankValue,
           type: alcoholType,
           amount: alcoholAmount,
+          abv: alcoholAbv,
           endTime: alcoholEndTime,
           notes: alcoholNotes,
         }),
@@ -910,6 +1317,11 @@ function NewAnalysisPageInner() {
         caffeineTime,
         caffeineNotes,
         stress: String(formData.get("stress") ?? ""),
+        weekdays: weekdays.join("、"),
+        wakeCount,
+        napDuration,
+        smartphoneDuration,
+        sleepDurationLifestyle,
         meals: composeMealsSummary({
           breakfastEaten: breakfastEatenValue,
           breakfastTime,
@@ -932,7 +1344,6 @@ function NewAnalysisPageInner() {
         dinnerContent,
         work: String(formData.get("work") ?? ""),
         condition: String(formData.get("condition") ?? ""),
-        nasalCongestion: String(formData.get("nasalCongestion") ?? ""),
         notes: String(formData.get("notes") ?? ""),
       };
 
@@ -953,6 +1364,8 @@ function NewAnalysisPageInner() {
       }
 
       if (inputMethod !== "soxai") {
+        beginNewSoxaiAnalysisSession({ clearOcrCaches: false });
+        resetProgressiveAnalysisJobs();
         setExtractionDraft({
           lifestyle,
           images: [],
@@ -984,6 +1397,13 @@ function NewAnalysisPageInner() {
       setOcrProgress(null);
       const abortController = new AbortController();
       ocrAbortRef.current = abortController;
+
+      // 提出直前: 古い draft/pending/結果だけ破棄。同一画像の background OCR とキャッシュは維持
+      beginNewSoxaiAnalysisSession({
+        keepBackgroundOcr: true,
+        clearOcrCaches: false,
+      });
+      resetProgressiveAnalysisJobs();
 
       const extraction = await resolveSoxaiExtraction(images, sections, {
         signal: abortController.signal,
@@ -1776,7 +2196,7 @@ function NewAnalysisPageInner() {
 
               <FormGroup
                 title="任意"
-                description="日常の習慣・既往。当日の飲酒・運動・鼻づまりとは別に扱います"
+                description="日常の習慣・既往。当日の飲酒・運動とは別に扱います"
               >
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="服薬" optional>
@@ -2033,110 +2453,305 @@ function NewAnalysisPageInner() {
               </FormGroup>
 
               <FormGroup
-                title="ヨガ"
-                description="実施時間と時刻・時間帯が分かると睡眠との関係を見やすくなります"
+                title="睡眠・生活リズム（任意）"
+                description="分かる範囲で選択してください。SOXAI画像から取れる項目は確認画面で優先されます"
               >
-                <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
-                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                    <Field label="実施したか" optional>
-                      <select
-                        name="yogaDone"
-                        className={inputClass}
-                        value={yogaDone}
-                        onChange={(event) => setYogaDone(event.target.value)}
-                      >
-                        <option value="">選択してください</option>
-                        <option value="none">していない</option>
-                        <option value="yes">実施した</option>
-                      </select>
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                  <Field label="睡眠時間" optional>
+                    <select
+                      name="sleepDurationLifestyle"
+                      className={inputClass}
+                      defaultValue=""
+                    >
+                      {DURATION_MINUTE_OPTIONS.map((option) => (
+                        <option key={`sleep-${option.value}`} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="昼寝時間" optional>
+                    <select name="napDuration" className={inputClass} defaultValue="">
+                      {DURATION_MINUTE_OPTIONS.map((option) => (
+                        <option key={`nap-${option.value}`} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="スマホ利用時間" optional>
+                    <select
+                      name="smartphoneDuration"
+                      className={inputClass}
+                      defaultValue=""
+                    >
+                      {DURATION_MINUTE_OPTIONS.map((option) => (
+                        <option
+                          key={`phone-${option.value}`}
+                          value={option.value}
+                        >
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="夜間の目覚め回数" optional>
+                    <select name="wakeCount" className={inputClass} defaultValue="">
+                      <option value="">選択してください</option>
+                      {COUNT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="運動・活動した曜日" optional>
+                      <div className="mt-2.5 flex flex-wrap gap-2.5">
+                        {WEEKDAY_OPTIONS.map((day) => {
+                          const checked = weekdays.includes(day.value);
+                          return (
+                            <label
+                              key={day.value}
+                              className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-[14px] transition sm:text-sm ${
+                                checked
+                                  ? "border-[#315f68] bg-white text-[#071426] ring-4 ring-[#315f68]/10"
+                                  : "border-slate-200 bg-[#fafaf8] text-[#071426]"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                name="weekdays"
+                                value={day.value}
+                                checked={checked}
+                                onChange={(event) => {
+                                  setWeekdays((prev) =>
+                                    event.target.checked
+                                      ? [...prev, day.value]
+                                      : prev.filter((item) => item !== day.value),
+                                  );
+                                }}
+                                className="h-4 w-4 accent-[#315f68]"
+                              />
+                              {day.label}
+                            </label>
+                          );
+                        })}
+                      </div>
                     </Field>
-                    {yogaDone === "yes" && (
-                      <>
-                        <Field label="実施時間（分）" optional>
-                          <input
-                            name="yogaDuration"
-                            type="number"
-                            min={1}
-                            inputMode="numeric"
-                            className={inputClass}
-                            placeholder="例：30"
-                          />
-                        </Field>
-                        <Field label="実施した時刻または時間帯" optional>
-                          <input
-                            name="yogaTime"
-                            type="text"
-                            className={inputClass}
-                            placeholder="例：7:30〜8:00 / 朝"
-                          />
-                        </Field>
-                        <div className="sm:col-span-2">
-                          <Field label="補足" optional>
-                            <textarea
-                              name="yogaNotes"
-                              rows={2}
-                              className={textareaClass}
-                              placeholder="例：穏やかな呼吸中心、就寝前のストレッチなど"
-                            />
-                          </Field>
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
               </FormGroup>
 
               <FormGroup
-                title="ピラティス"
-                description="実施時間と時刻・時間帯を区別して入力できます"
+                title="ヨガ"
+                description="実施時間と開始時刻が分かると睡眠との関係を見やすくなります。1日に複数回ある場合は追加できます"
               >
-                <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
-                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                    <Field label="実施したか" optional>
-                      <select
-                        name="pilatesDone"
-                        className={inputClass}
-                        value={pilatesDone}
-                        onChange={(event) => setPilatesDone(event.target.value)}
-                      >
-                        <option value="">選択してください</option>
-                        <option value="none">していない</option>
-                        <option value="yes">実施した</option>
-                      </select>
-                    </Field>
-                    {pilatesDone === "yes" && (
-                      <>
-                        <Field label="実施時間（分）" optional>
-                          <input
-                            name="pilatesDuration"
-                            type="number"
-                            min={1}
-                            inputMode="numeric"
-                            className={inputClass}
-                            placeholder="例：55"
-                          />
-                        </Field>
-                        <Field label="実施した時刻または時間帯" optional>
-                          <input
-                            name="pilatesTime"
-                            type="text"
-                            className={inputClass}
-                            placeholder="例：13:05〜14:00 / 日中"
-                          />
-                        </Field>
-                        <div className="sm:col-span-2">
-                          <Field label="補足" optional>
-                            <textarea
-                              name="pilatesNotes"
-                              rows={2}
-                              className={textareaClass}
-                              placeholder="例：マシンピラティス、強度など"
-                            />
-                          </Field>
+                <div className="space-y-4">
+                  <Field label="実施したか" optional>
+                    <RadioOptions
+                      name="yogaDone"
+                      value={yogaDone}
+                      onChange={setYogaDone}
+                      options={YES_NO_OPTIONS}
+                    />
+                  </Field>
+
+                  {yogaDone === "yes" && (
+                    <>
+                      {yogaSessions.map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                              ヨガ {index + 1}
+                            </p>
+                            {yogaSessions.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeYogaSession(entry.id)}
+                                className="inline-flex min-h-11 items-center px-1 text-[13px] font-medium text-slate-400 transition active:text-rose-600 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-400"
+                              >
+                                削除
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                            <Field label="実施時間" optional>
+                              <select
+                                className={inputClass}
+                                value={entry.duration}
+                                onChange={(event) =>
+                                  updateYogaSession(
+                                    entry.id,
+                                    "duration",
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                {DURATION_MINUTE_OPTIONS.map((option) => (
+                                  <option
+                                    key={`${entry.id}-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="開始時刻または時間帯" optional>
+                              <input
+                                type="text"
+                                value={entry.time}
+                                onChange={(event) =>
+                                  updateYogaSession(
+                                    entry.id,
+                                    "time",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                                placeholder="例：7:30〜8:00 / 朝"
+                              />
+                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label="補足" optional>
+                                <input
+                                  type="text"
+                                  value={entry.notes}
+                                  onChange={(event) =>
+                                    updateYogaSession(
+                                      entry.id,
+                                      "notes",
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                  placeholder="例：穏やかな呼吸中心、就寝前のストレッチなど"
+                                />
+                              </Field>
+                            </div>
+                          </div>
                         </div>
-                      </>
-                    )}
-                  </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addYogaSession}
+                        className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-semibold text-[#071426] transition active:bg-slate-50 sm:min-h-11 sm:w-auto sm:text-sm sm:hover:bg-slate-50 sm:active:bg-transparent"
+                      >
+                        ＋ ヨガを追加
+                      </button>
+                    </>
+                  )}
+                </div>
+              </FormGroup>
+
+              <FormGroup
+                title="ピラティス"
+                description="実施時間と開始時刻を区別して入力できます。1日に複数回ある場合は追加できます"
+              >
+                <div className="space-y-4">
+                  <Field label="実施したか" optional>
+                    <RadioOptions
+                      name="pilatesDone"
+                      value={pilatesDone}
+                      onChange={setPilatesDone}
+                      options={YES_NO_OPTIONS}
+                    />
+                  </Field>
+
+                  {pilatesDone === "yes" && (
+                    <>
+                      {pilatesSessions.map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
+                        >
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                              ピラティス {index + 1}
+                            </p>
+                            {pilatesSessions.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removePilatesSession(entry.id)}
+                                className="inline-flex min-h-11 items-center px-1 text-[13px] font-medium text-slate-400 transition active:text-rose-600 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-400"
+                              >
+                                削除
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                            <Field label="実施時間" optional>
+                              <select
+                                className={inputClass}
+                                value={entry.duration}
+                                onChange={(event) =>
+                                  updatePilatesSession(
+                                    entry.id,
+                                    "duration",
+                                    event.target.value,
+                                  )
+                                }
+                              >
+                                {DURATION_MINUTE_OPTIONS.map((option) => (
+                                  <option
+                                    key={`${entry.id}-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="開始時刻または時間帯" optional>
+                              <input
+                                type="text"
+                                value={entry.time}
+                                onChange={(event) =>
+                                  updatePilatesSession(
+                                    entry.id,
+                                    "time",
+                                    event.target.value,
+                                  )
+                                }
+                                className={inputClass}
+                                placeholder="例：13:05〜14:00 / 日中"
+                              />
+                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label="補足" optional>
+                                <input
+                                  type="text"
+                                  value={entry.notes}
+                                  onChange={(event) =>
+                                    updatePilatesSession(
+                                      entry.id,
+                                      "notes",
+                                      event.target.value,
+                                    )
+                                  }
+                                  className={inputClass}
+                                  placeholder="例：マシンピラティス、強度など"
+                                />
+                              </Field>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addPilatesSession}
+                        className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-semibold text-[#071426] transition active:bg-slate-50 sm:min-h-11 sm:w-auto sm:text-sm sm:hover:bg-slate-50 sm:active:bg-transparent"
+                      >
+                        ＋ ピラティスを追加
+                      </button>
+                    </>
+                  )}
                 </div>
               </FormGroup>
 
@@ -2146,18 +2761,12 @@ function NewAnalysisPageInner() {
               >
                 <div className="space-y-4">
                   <Field label="運動したか" optional>
-                    <select
+                    <RadioOptions
                       name="otherExerciseDone"
-                      className={inputClass}
                       value={otherExerciseDone}
-                      onChange={(event) =>
-                        setOtherExerciseDone(event.target.value)
-                      }
-                    >
-                      <option value="">選択してください</option>
-                      <option value="none">していない</option>
-                      <option value="yes">した</option>
-                    </select>
+                      onChange={setOtherExerciseDone}
+                      options={YES_NO_OPTIONS}
+                    />
                   </Field>
 
                   {otherExerciseDone === "yes" && (
@@ -2197,11 +2806,9 @@ function NewAnalysisPageInner() {
                                 placeholder="例：ウォーキング"
                               />
                             </Field>
-                            <Field label="実施時間（分）" optional>
-                              <input
-                                type="number"
-                                min={1}
-                                inputMode="numeric"
+                            <Field label="実施時間" optional>
+                              <select
+                                className={inputClass}
                                 value={entry.duration}
                                 onChange={(event) =>
                                   updateOtherExercise(
@@ -2210,9 +2817,16 @@ function NewAnalysisPageInner() {
                                     event.target.value,
                                   )
                                 }
-                                className={inputClass}
-                                placeholder="例：40"
-                              />
+                              >
+                                {DURATION_MINUTE_OPTIONS.map((option) => (
+                                  <option
+                                    key={`${entry.id}-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
                             </Field>
                             <Field label="実施した時刻または時間帯" optional>
                               <input
@@ -2264,78 +2878,198 @@ function NewAnalysisPageInner() {
                 title="入浴・カフェイン"
                 description="入浴とカフェイン摂取の詳細"
               >
-                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                  <Field label="入浴" optional>
-                    <select name="bathing" className={inputClass} defaultValue="">
-                      <option value="">選択してください</option>
-                      <option value="none">なし</option>
-                      <option value="shower">シャワー</option>
-                      <option value="bath">湯船</option>
-                    </select>
-                  </Field>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
-                  <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
-                    カフェイン
-                  </p>
-                  <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                    <Field label="摂取したか" optional>
-                      <select
-                        name="caffeineDone"
-                        className={inputClass}
-                        value={caffeineDone}
-                        onChange={(event) =>
-                          setCaffeineDone(event.target.value)
-                        }
-                      >
-                        <option value="">選択してください</option>
-                        <option value="none">していない</option>
-                        <option value="yes">摂取した</option>
-                      </select>
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5">
+                    <Field label="入浴" optional>
+                      <RadioOptions
+                        name="bathing"
+                        value={bathing}
+                        onChange={setBathing}
+                        options={BATHING_OPTIONS}
+                      />
                     </Field>
-                    {caffeineDone === "yes" && (
-                      <>
-                        <Field label="種類" optional>
+                    {(bathing === "bath" || bathing === "shower") && (
+                      <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                        <Field label="入浴した時刻" optional>
                           <select
-                            name="caffeineType"
+                            name="bathingTime"
                             className={inputClass}
                             defaultValue=""
                           >
-                            <option value="">選択してください</option>
-                            {caffeineTypeOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
+                            {HALF_HOUR_TIME_OPTIONS.map((option) => (
+                              <option
+                                key={`bathing-time-${option.value}`}
+                                value={option.value}
+                              >
                                 {option.label}
                               </option>
                             ))}
                           </select>
                         </Field>
-                        <Field label="量" optional>
-                          <input
-                            name="caffeineAmount"
-                            type="text"
-                            className={inputClass}
-                            placeholder="例：コーヒー2杯 / 緑茶500ml"
-                          />
-                        </Field>
-                        <Field label="飲んだ時刻" optional>
-                          <input
-                            name="caffeineTime"
-                            type="text"
-                            className={inputClass}
-                            placeholder="例：15:30 / 午後"
-                          />
-                        </Field>
-                        <div className="sm:col-span-2">
-                          <Field label="補足" optional>
-                            <textarea
-                              name="caffeineNotes"
-                              rows={2}
-                              className={textareaClass}
-                              placeholder="例：午後に追加で緑茶1杯、など複数回の場合"
-                            />
-                          </Field>
-                        </div>
+                        {bathing === "bath" && (
+                          <>
+                            <Field label="入浴時間" optional>
+                              <select
+                                name="bathingDuration"
+                                className={inputClass}
+                                defaultValue=""
+                              >
+                                {BATHING_DURATION_OPTIONS.map((option) => (
+                                  <option
+                                    key={`bathing-duration-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="お湯の温度" optional>
+                              <select
+                                name="bathingTemperature"
+                                className={inputClass}
+                                defaultValue=""
+                              >
+                                {BATHING_TEMPERATURE_OPTIONS.map((option) => (
+                                  <option
+                                    key={`bathing-temp-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <Field label="カフェイン" optional>
+                      <RadioOptions
+                        name="caffeineDone"
+                        value={caffeineDone}
+                        onChange={setCaffeineDone}
+                        options={CAFFEINE_DONE_OPTIONS}
+                      />
+                    </Field>
+
+                    {caffeineDone === "yes" && (
+                      <>
+                        {caffeineEntries.map((entry, index) => (
+                          <div
+                            key={entry.id}
+                            className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
+                          >
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                              <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                                カフェイン {index + 1}
+                              </p>
+                              {caffeineEntries.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeCaffeineEntry(entry.id)}
+                                  className="inline-flex min-h-11 items-center px-1 text-[13px] font-medium text-slate-400 transition active:text-rose-600 sm:min-h-0 sm:hover:text-rose-600 sm:active:text-slate-400"
+                                >
+                                  削除
+                                </button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                              <Field label="種類" optional>
+                                <select
+                                  className={inputClass}
+                                  value={entry.type}
+                                  onChange={(event) =>
+                                    updateCaffeineEntry(
+                                      entry.id,
+                                      "type",
+                                      event.target.value,
+                                    )
+                                  }
+                                >
+                                  <option value="">選択してください</option>
+                                  {caffeineTypeOptions.map((option) => (
+                                    <option
+                                      key={`${entry.id}-${option.value}`}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label="摂取時刻" optional>
+                                <select
+                                  className={inputClass}
+                                  value={entry.time}
+                                  onChange={(event) =>
+                                    updateCaffeineEntry(
+                                      entry.id,
+                                      "time",
+                                      event.target.value,
+                                    )
+                                  }
+                                >
+                                  {HALF_HOUR_TIME_OPTIONS.map((option) => (
+                                    <option
+                                      key={`${entry.id}-time-${option.value}`}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              {entry.type === "other" && (
+                                <div className="sm:col-span-2">
+                                  <Field label="その他の種類" optional>
+                                    <input
+                                      type="text"
+                                      value={entry.typeOther}
+                                      onChange={(event) =>
+                                        updateCaffeineEntry(
+                                          entry.id,
+                                          "typeOther",
+                                          event.target.value,
+                                        )
+                                      }
+                                      className={inputClass}
+                                      placeholder="例：抹茶ラテ"
+                                    />
+                                  </Field>
+                                </div>
+                              )}
+                              <div className="sm:col-span-2">
+                                <Field label="量" optional>
+                                  <input
+                                    type="text"
+                                    value={entry.amount}
+                                    onChange={(event) =>
+                                      updateCaffeineEntry(
+                                        entry.id,
+                                        "amount",
+                                        event.target.value,
+                                      )
+                                    }
+                                    className={inputClass}
+                                    placeholder="例：1杯 / 200ml / 缶1本 / チョコレート50g"
+                                  />
+                                </Field>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={addCaffeineEntry}
+                          className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-slate-200 bg-white px-5 text-[15px] font-semibold text-[#071426] transition active:bg-slate-50 sm:min-h-11 sm:w-auto sm:text-sm sm:hover:bg-slate-50 sm:active:bg-transparent"
+                        >
+                          ＋ カフェインを追加
+                        </button>
                       </>
                     )}
                   </div>
@@ -2344,7 +3078,7 @@ function NewAnalysisPageInner() {
 
               <FormGroup
                 title="食事"
-                description="食べた／食べていないを選び、食べた場合のみ時間と内容を入力"
+                description="食べた食事にチェックを入れ、必要なら時間と内容を入力"
               >
                 <div className="space-y-4">
                   {(
@@ -2391,44 +3125,55 @@ function NewAnalysisPageInner() {
                         key={label}
                         className="rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-4 sm:px-5"
                       >
-                        <p className="text-[15px] font-semibold text-[#071426] sm:text-sm">
-                          {label}
-                        </p>
-                        <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                          <Field label={`${label}を食べたか`} optional>
-                            <select
-                              name={eatenName}
-                              className={inputClass}
-                              value={eatenValue}
-                              onChange={(event) => setEaten(event.target.value)}
-                            >
-                              <option value="">選択してください</option>
-                              <option value="yes">食べた</option>
-                              <option value="none">食べていない</option>
-                            </select>
-                          </Field>
-                          {eatenValue === "yes" && (
-                            <>
-                              <Field label={`${label}時間`} optional>
+                        <label
+                          className={`inline-flex min-h-11 cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 text-[15px] transition sm:text-sm ${
+                            eatenValue === "yes"
+                              ? "border-[#315f68] bg-white text-[#071426] ring-4 ring-[#315f68]/10"
+                              : "border-slate-200 bg-white text-[#071426]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            name={eatenName}
+                            value="yes"
+                            checked={eatenValue === "yes"}
+                            onChange={(event) =>
+                              setEaten(event.target.checked ? "yes" : "none")
+                            }
+                            className="h-4 w-4 accent-[#315f68]"
+                          />
+                          {label}を食べた
+                        </label>
+                        {eatenValue === "yes" && (
+                          <div className="mt-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
+                            <Field label={`${label}時間`} optional>
+                              <select
+                                name={timeName}
+                                className={inputClass}
+                                defaultValue=""
+                              >
+                                {HALF_HOUR_CLOCK_OPTIONS.map((option) => (
+                                  <option
+                                    key={`${timeName}-${option.value}`}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label={`${label}内容`} optional>
                                 <input
-                                  name={timeName}
-                                  type="time"
+                                  name={contentName}
+                                  type="text"
                                   className={inputClass}
+                                  placeholder={placeholder}
                                 />
                               </Field>
-                              <div className="sm:col-span-2">
-                                <Field label={`${label}内容`} optional>
-                                  <input
-                                    name={contentName}
-                                    type="text"
-                                    className={inputClass}
-                                    placeholder={placeholder}
-                                  />
-                                </Field>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ),
                   )}
@@ -2437,39 +3182,51 @@ function NewAnalysisPageInner() {
 
               <FormGroup
                 title="飲酒"
-                description="有無に加えて、種類・量・終了時刻があると精度が上がります"
+                description="飲んだ場合は種類・量・度数を自由に記入できます（複数種類も可）"
               >
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
-                  <Field label="飲酒したか" optional>
-                    <select
-                      name="alcoholDrank"
-                      className={inputClass}
-                      value={alcoholDrank}
-                      onChange={(event) => setAlcoholDrank(event.target.value)}
-                    >
-                      <option value="">選択してください</option>
-                      <option value="none">なし</option>
-                      <option value="yes">あり</option>
-                    </select>
-                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="飲酒" optional>
+                      <RadioOptions
+                        name="alcoholDrank"
+                        value={alcoholDrank}
+                        onChange={setAlcoholDrank}
+                        options={ALCOHOL_DONE_OPTIONS}
+                      />
+                    </Field>
+                  </div>
                   {alcoholDrank === "yes" && (
                     <>
-                      <Field label="種類" optional>
-                        <input
-                          name="alcoholType"
-                          type="text"
-                          className={inputClass}
-                          placeholder="例：ビール"
-                        />
-                      </Field>
-                      <Field label="量" optional>
-                        <input
-                          name="alcoholAmount"
-                          type="text"
-                          className={inputClass}
-                          placeholder="例：500ml"
-                        />
-                      </Field>
+                      <div className="sm:col-span-2">
+                        <Field label="飲んだお酒の種類" optional>
+                          <input
+                            name="alcoholType"
+                            type="text"
+                            className={inputClass}
+                            placeholder="例：ビール、赤ワイン、ハイボール"
+                          />
+                        </Field>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Field label="飲んだ量" optional>
+                          <input
+                            name="alcoholAmount"
+                            type="text"
+                            className={inputClass}
+                            placeholder="例：ビール350ml、ワイン2杯、ハイボール1杯"
+                          />
+                        </Field>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Field label="アルコール度数" optional>
+                          <input
+                            name="alcoholAbv"
+                            type="text"
+                            className={inputClass}
+                            placeholder="例：5%、12%、7%"
+                          />
+                        </Field>
+                      </div>
                       <Field label="飲み終わった時間" optional>
                         <input
                           name="alcoholEndTime"
@@ -2478,12 +3235,12 @@ function NewAnalysisPageInner() {
                         />
                       </Field>
                       <div className="sm:col-span-2">
-                        <Field label="複数種類の補足" optional>
+                        <Field label="補足" optional>
                           <textarea
                             name="alcoholNotes"
                             rows={2}
                             className={textareaClass}
-                            placeholder="例：ビール500ml、缶チューハイ350ml"
+                            placeholder="例：食後に少量、など"
                           />
                         </Field>
                       </div>
@@ -2494,7 +3251,7 @@ function NewAnalysisPageInner() {
 
               <FormGroup
                 title="コンディション"
-                description="体調と生活背景。鼻づまりは呼吸・睡眠の連続性に影響します"
+                description="体調と生活背景"
               >
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="体調" optional>
@@ -2504,18 +3261,6 @@ function NewAnalysisPageInner() {
                       className={inputClass}
                       placeholder="疲労感、風邪症状など"
                     />
-                  </Field>
-                  <Field label="鼻づまり" optional>
-                    <select
-                      name="nasalCongestion"
-                      className={inputClass}
-                      defaultValue=""
-                    >
-                      <option value="">選択してください</option>
-                      <option value="none">なし</option>
-                      <option value="slight">少し</option>
-                      <option value="severe">かなり</option>
-                    </select>
                   </Field>
                   <div className="sm:col-span-2">
                     <Field label="仕事・生活リズム" optional>
@@ -2537,12 +3282,12 @@ function NewAnalysisPageInner() {
                 <p className="mb-4 rounded-2xl border border-slate-100 bg-[#fafaf8] px-4 py-3.5 text-[14px] leading-6 text-slate-600 sm:text-sm sm:leading-7">
                   ストレスはSOXAIなどの測定データを参考に分析します。ご自身の体感を補足したい場合のみ入力してください。
                 </p>
-                <Field label="主観的なストレス・気分" optional>
-                  <textarea
+                <Field label="主観的なストレス" optional>
+                  <RadioOptions
                     name="stress"
-                    rows={3}
-                    className={textareaClass}
-                    placeholder="例：仕事の締切で少し張りつめていた、全体的に穏やかだった、など"
+                    value={stressLevel}
+                    onChange={setStressLevel}
+                    options={STRESS_LEVEL_OPTIONS}
                   />
                 </Field>
               </FormGroup>
@@ -2663,6 +3408,46 @@ function FormGroup({
   );
 }
 
+function RadioOptions({
+  name,
+  value,
+  onChange,
+  options,
+}: {
+  name: string;
+  value: string;
+  onChange: (next: string) => void;
+  options: readonly { value: string; label: string }[];
+}) {
+  return (
+    <div className="mt-2.5 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:gap-3">
+      {options.map((option) => {
+        const selected = value === option.value;
+        return (
+          <label
+            key={option.value}
+            className={`inline-flex min-h-12 cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 text-[15px] transition sm:min-h-0 sm:text-sm ${
+              selected
+                ? "border-[#315f68] bg-white text-[#071426] ring-4 ring-[#315f68]/10"
+                : "border-slate-200 bg-[#fafaf8] text-[#071426]"
+            }`}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={selected}
+              onChange={() => onChange(option.value)}
+              className="h-4 w-4 accent-[#315f68]"
+            />
+            {option.label}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function Field({
   label,
   required,
@@ -2675,7 +3460,7 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
+    <div className="block">
       <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
         {label}
         {required && (
@@ -2690,6 +3475,6 @@ function Field({
         )}
       </span>
       {children}
-    </label>
+    </div>
   );
 }

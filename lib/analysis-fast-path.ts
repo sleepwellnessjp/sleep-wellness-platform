@@ -294,6 +294,20 @@ export function buildScoreFirstAnalysisResult(
   const metrics = normalizeMetrics(
     request.metrics ?? request.extractedMetrics ?? {},
   );
+
+  // 確認画面確定値をそのまま結果へ渡す（計算・推測・再取得・merge禁止）
+  const confirmed = request.metrics;
+  if (confirmed) {
+    const sleepDuration = String(confirmed.sleepDuration ?? "").trim();
+    if (sleepDuration) {
+      metrics.sleepDuration = sleepDuration;
+    }
+    const hrv = String(confirmed.hrv ?? "").trim();
+    if (hrv) {
+      metrics.hrv = hrv;
+    }
+  }
+
   const { score, scoreBreakdown, categoryScores } =
     computeFastSleepWellnessScore({
       metrics,
@@ -313,7 +327,7 @@ export function buildScoreFirstAnalysisResult(
     Boolean(request.lifestyle.age?.trim()) &&
     Boolean(request.lifestyle.gender?.trim());
 
-  return normalizeAnalysisResult({
+  const result = normalizeAnalysisResult({
     summary: "",
     karteSummary: "",
     goodPoints: [],
@@ -353,6 +367,20 @@ export function buildScoreFirstAnalysisResult(
     snoringNasal: request.lifestyle.snoringNasal,
     medicalHistory: request.lifestyle.medicalHistory,
   });
+
+  // normalizeAnalysisResult 後も確認済み sleepDuration / hrv を再固定
+  if (confirmed) {
+    const sleepDuration = String(confirmed.sleepDuration ?? "").trim();
+    if (sleepDuration) {
+      result.metrics.sleepDuration = sleepDuration;
+    }
+    const hrv = String(confirmed.hrv ?? "").trim();
+    if (hrv) {
+      result.metrics.hrv = hrv;
+    }
+  }
+
+  return result;
 }
 
 /**

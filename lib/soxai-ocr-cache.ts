@@ -18,9 +18,9 @@ export type CachedOcrImageStatus = {
   durationMs?: number;
 };
 
-export const SOXAI_OCR_CACHE_VERSION = "v5";
-const PER_IMAGE_STORAGE_KEY = "swij-soxai-ocr-image-cache-v5";
-const SET_STORAGE_KEY = "swij-soxai-ocr-set-cache-v5";
+export const SOXAI_OCR_CACHE_VERSION = "v8";
+const PER_IMAGE_STORAGE_KEY = "swij-soxai-ocr-image-cache-v8";
+const SET_STORAGE_KEY = "swij-soxai-ocr-set-cache-v8";
 const DEBUG_FLAG_KEY = "swij-ocr-debug-v1";
 const MAX_PER_IMAGE = 24;
 const MAX_SETS = 8;
@@ -199,4 +199,17 @@ export function getLatestCachedOcrSet(): CachedOcrSetResult | null {
     if (!latest || entry.cachedAt > latest.cachedAt) latest = entry;
   }
   return latest;
+}
+
+/** 新規分析開始時: 画像単位・セット単位の OCR キャッシュを破棄（古い抽出の再利用防止） */
+export function clearSoxaiOcrCaches(): void {
+  memoryPerImage.clear();
+  memorySets.clear();
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(PER_IMAGE_STORAGE_KEY);
+    localStorage.removeItem(SET_STORAGE_KEY);
+  } catch {
+    // private mode / quota
+  }
 }

@@ -26,11 +26,16 @@ import {
 } from "@/lib/client-profiles";
 import { getClientById } from "@/lib/repositories/client-repository";
 import { graphPanelCount } from "@/lib/soxai-graphs";
-import { OCR_LOW_CONFIDENCE_THRESHOLD } from "@/lib/soxai-merge";
 import {
   detectMetricConsistencyWarnings,
   consistencyWarningKeys,
 } from "@/lib/soxai-consistency";
+import {
+  fieldStatus,
+  diagnoseNeedsReview,
+  logNeedsReviewDiagnosis,
+  type FieldStatus,
+} from "@/lib/soxai-field-status";
 import {
   collectedMetricKeys,
   isMetricPresent,
@@ -38,8 +43,10 @@ import {
   normalizeMetrics,
   setMetricValue,
   SOXAI_METRIC_FIELDS,
+  SOXAI_UI_METRIC_FIELDS,
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
+import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
 import { CRITICAL_OCR_KEYS, isCriticalOcrKey, SCREEN_PRIMARY_METRICS } from "@/lib/soxai-screen";
 import { toSwsMetrics } from "@/lib/sws-standard";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
@@ -101,36 +108,6 @@ const inputConflictClass =
 
 const inputLowConfidenceClass =
   "mt-2.5 min-h-12 w-full rounded-2xl border border-[#8a6a2d]/35 bg-[#fbf7ef] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#8a6a2d] focus:bg-white focus:ring-4 focus:ring-[#8a6a2d]/15 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
-
-type FieldStatus =
-  | "from_image"
-  | "needs_review"
-  | "conflict"
-  | "no_explicit"
-  | "manual_needed";
-
-function fieldStatus(
-  key: MetricFieldKey,
-  fromImage: boolean,
-  conflict: MetricConflict | undefined,
-  confidence: number | undefined,
-  present: boolean,
-  consistencyHit: boolean,
-): FieldStatus {
-  if (conflict) return "conflict";
-  if (consistencyHit && fromImage && present) return "needs_review";
-  if (fromImage && present) {
-    if (
-      typeof confidence === "number" &&
-      confidence < OCR_LOW_CONFIDENCE_THRESHOLD
-    ) {
-      return "needs_review";
-    }
-    return "from_image";
-  }
-  if (!present) return "no_explicit";
-  return "manual_needed";
-}
 
 function statusBadge(status: FieldStatus) {
   switch (status) {
@@ -249,21 +226,26 @@ export default function ConfirmExtractionPage() {
       return;
     }
     setDraft(initialDraft);
-    setMetrics(normalizeMetrics(initialDraft.extractedMetrics));
-    const keys = collectedMetricKeys(
+    const normalized = normalizeMetricsForDisplay(
       normalizeMetrics(initialDraft.extractedMetrics),
     );
+    setMetrics(normalized);
+    const keys = collectedMetricKeys(normalized);
     console.log("[ocr-trace] confirm mount: draft metrics 生JSON", {
       metricCount: keys.length,
       imageKeys: initialDraft.imageKeys,
       metrics: initialDraft.extractedMetrics,
+      confirmKeys: {
+        sleepDuration: normalized.sleepDuration,
+        deepSleep: normalized.deepSleep,
+        deepSleepRate: normalized.deepSleepRate,
+        respiratoryRate: normalized.respiratoryRate,
+        restingHeartRate: normalized.restingHeartRate,
+      },
     });
     for (const field of SOXAI_METRIC_FIELDS) {
       const key = field.key;
-      const value = metricDisplayValue(
-        normalizeMetrics(initialDraft.extractedMetrics),
-        key,
-      );
+      const value = metricDisplayValue(normalized, key);
       const fromImage = (initialDraft.imageKeys ?? []).includes(key);
       console.log("[ocr-trace] confirm setValue相当", {
         key,
@@ -301,8 +283,10 @@ export default function ConfirmExtractionPage() {
     [consistencyWarnings],
   );
 
-  const extractedCount = draft?.imageKeys.length ?? 0;
-  const missingCount = SOXAI_METRIC_FIELDS.length - extractedCount;
+  const extractedCount = (draft?.imageKeys ?? []).filter((key) =>
+    SOXAI_UI_METRIC_FIELDS.some((field) => field.key === key),
+  ).length;
+  const missingCount = SOXAI_UI_METRIC_FIELDS.length - extractedCount;
   const conflictCount = draft?.conflicts?.length ?? 0;
   const graphCount = draft ? graphPanelCount(draft.graphs) : 0;
   const sectionAcquisition = useMemo(() => {
@@ -324,32 +308,29 @@ export default function ConfirmExtractionPage() {
   }, [draft, metrics]);
   const needsReviewCount = useMemo(() => {
     if (!metrics || !draft) return 0;
-    let count = 0;
-    for (const field of SOXAI_METRIC_FIELDS) {
-      const key = field.key;
-      const fromImage = imageKeySet.has(key);
-      const present = isMetricPresent(metrics, key);
-      const conflict = conflictByKey.get(key);
-      const confidence = confidenceMap[key];
-      const status = fieldStatus(
-        key,
-        fromImage,
-        conflict,
-        confidence,
-        present,
-        consistencyKeySet.has(key),
-      );
-      if (status === "needs_review" || status === "conflict") count += 1;
-    }
-    return count;
-  }, [
-    metrics,
-    draft,
-    imageKeySet,
-    conflictByKey,
-    confidenceMap,
-    consistencyKeySet,
-  ]);
+    return diagnoseNeedsReview({
+      metrics,
+      imageKeys: draft.imageKeys ?? [],
+      conflicts: draft.conflicts,
+      confidence: confidenceMap,
+      consistencyWarnings,
+    }).needsReviewCount;
+  }, [metrics, draft, confidenceMap, consistencyWarnings]);
+
+  useEffect(() => {
+    if (!metrics || !draft) return;
+    const diagnosis = diagnoseNeedsReview({
+      metrics,
+      imageKeys: draft.imageKeys ?? [],
+      conflicts: draft.conflicts,
+      confidence: confidenceMap,
+      consistencyWarnings,
+    });
+    logNeedsReviewDiagnosis(
+      "[ocr-trace] confirm needs-review diagnosis",
+      diagnosis,
+    );
+  }, [metrics, draft, confidenceMap, consistencyWarnings]);
 
   const backHref = draft?.lifestyle.clientId
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
@@ -400,10 +381,17 @@ export default function ConfirmExtractionPage() {
       };
       setExtractionDraft(next);
       setDraft(next);
-      setMetrics(normalizeMetrics(result.metrics));
+      setMetrics(normalizeMetricsForDisplay(normalizeMetrics(result.metrics)));
       console.info("[ocr-trace] ⑦ フォーム反映完了", {
         metricCount,
         imageKeys: next.imageKeys.length,
+        confirmSample: {
+          sleepDuration: result.metrics.sleepDuration,
+          deepSleep: result.metrics.deepSleep,
+          deepSleepRate: result.metrics.deepSleepRate,
+          respiratoryRate: result.metrics.respiratoryRate,
+          restingHeartRate: result.metrics.restingHeartRate,
+        },
         at: new Date().toISOString(),
       });
     } catch (error) {
@@ -693,7 +681,6 @@ export default function ConfirmExtractionPage() {
     const present = isMetricPresent(metrics, field.key);
     const confidence = confidenceMap[field.key];
     const status = fieldStatus(
-      field.key,
       fromImage,
       conflict,
       confidence,
@@ -759,10 +746,10 @@ export default function ConfirmExtractionPage() {
     );
   };
 
-  const criticalFields = SOXAI_METRIC_FIELDS.filter((f) =>
+  const criticalFields = SOXAI_UI_METRIC_FIELDS.filter((f) =>
     CRITICAL_OCR_KEYS.includes(f.key),
   );
-  const otherFields = SOXAI_METRIC_FIELDS.filter(
+  const otherFields = SOXAI_UI_METRIC_FIELDS.filter(
     (f) => !CRITICAL_OCR_KEYS.includes(f.key),
   );
 
@@ -885,7 +872,7 @@ export default function ConfirmExtractionPage() {
             <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
               {extractedCount}
               <span className="ml-1 text-sm font-medium text-slate-400">
-                / {SOXAI_METRIC_FIELDS.length}
+                / {SOXAI_UI_METRIC_FIELDS.length}
               </span>
             </p>
           </div>

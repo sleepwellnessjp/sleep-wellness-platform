@@ -784,6 +784,8 @@ function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
     ["覚醒率", metrics.awakeningRate || missing],
     ["REM睡眠", metrics.remSleep || missing],
     ["レム睡眠率", metrics.remSleepRate || missing],
+    ["ノンレム睡眠", metrics.nonRemSleep || missing],
+    ["ノンレム睡眠率", metrics.nonRemSleepRate || missing],
     ["浅い睡眠", metrics.lightSleep || missing],
     ["浅い睡眠率", metrics.lightSleepRate || missing],
     ["深い睡眠", metrics.deepSleep || missing],
@@ -804,8 +806,8 @@ function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
   const table = rows.map(([label, value]) => `${label}: ${value}`).join("\n");
   return `${table}
 
-【取得済み ${present.length}/25】${present.map(([l]) => l).join(" / ") || "なし"}
-【未確認 ${absent.length}/25】${absent.map(([l]) => l).join(" / ") || "なし"}
+【取得済み ${present.length}/27】${present.map(([l]) => l).join(" / ") || "なし"}
+【未確認 ${absent.length}/27】${absent.map(([l]) => l).join(" / ") || "なし"}
 ※文章中の数値は上記表と一字一句一致させること。表に無い数値の創作・言い換え禁止。
 ※取得済みはすべて総合評価に反映すること（HRV・睡眠スコア・睡眠時間・睡眠ステージ・ストレス・呼吸数・皮膚温・安静時心拍など）。単一指標だけで結論しない。`;
 }
@@ -1062,7 +1064,7 @@ ${formatConfirmedMetrics(confirmedMetrics)}
 「今回の画像では確認できませんでした」の項目は推測で埋めず、文章でも同じ文言で明示する。`
       : `【① 画像解析 — 最大限抽出】
 画像に存在する数値・時刻はすべて読み取り、手入力より優先する。推測禁止。読めない項目は ""、sleepScore は null。
-抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / REM睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス`;
+抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / REM睡眠 / レム睡眠率 / ノンレム睡眠 / ノンレム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス`;
 
     const seedScoreBlock =
       typeof seedScore === "number"
