@@ -16,8 +16,8 @@ const IMAGE_DIR =
 const EXTRACT_URL =
   process.env.EXTRACT_URL ?? "http://127.0.0.1:3000/api/extract";
 const OUT_DIR = process.env.OUT_DIR ?? "/tmp/soxai-tpm-measure";
-const MAX_EDGE_PX = 1600;
-const JPEG_QUALITY = 88;
+const MAX_EDGE_PX = 1024;
+const JPEG_QUALITY = 78;
 
 function listImages(dir: string): string[] {
   return fs

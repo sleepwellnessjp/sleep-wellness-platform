@@ -43,14 +43,24 @@ function shuffle<T>(items: T[]): T[] {
     { label: "体調", value: "75" },
     { label: "心拍数", value: "64" },
   ]);
-  const sleepDetail = mapVisibleReadingsToMetricsDetailed([
-    { label: "睡眠", value: "5時間32分" },
-    { label: "全就床時間", value: "6時間10分" },
-    { label: "入眠潜時", value: "12分" },
-    { label: "睡眠効率", value: "87%" },
-    { label: "睡眠負債", value: "-40分" },
-    { label: "体内時計", value: "やや遅れ" },
-  ]);
+  const sleepDetail = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "睡眠", value: "5時間32分" },
+      { label: "全就床時間", value: "6時間10分" },
+      { label: "入眠潜時", value: "12分" },
+      { label: "睡眠効率", value: "87%" },
+      { label: "睡眠負債", value: "-40分" },
+      { label: "体内時計", value: "やや遅れ" },
+    ],
+    { screenType: "sleep_detail" },
+  );
+  const sleepOverview = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "睡眠スコア", value: "71" },
+      { label: "睡眠時間", value: "5時間32分" },
+    ],
+    { screenType: "sleep_overview" },
+  );
   const stages = mapVisibleReadingsToMetricsDetailed([
     { label: "覚醒", value: "8%" },
     { label: "レム睡眠", value: "22%" },
@@ -77,8 +87,13 @@ function shuffle<T>(items: T[]): T[] {
 
   assert(home.metrics.sleepScore === 71, "map: ホーム「睡眠」→ sleepScore 71");
   assert(
-    sleepDetail.metrics.sleepDuration === "5時間32分",
-    "map: 詳細「睡眠」時間 → sleepDuration",
+    !sleepDetail.metrics.sleepDuration ||
+      sleepDetail.metrics.sleepDuration === "",
+    "map: 詳細画面から sleepDuration を採らない（概要固定）",
+  );
+  assert(
+    sleepOverview.metrics.sleepDuration === "5時間32分",
+    "map: 概要「睡眠時間」→ sleepDuration",
   );
   assert(
     sleepDetail.metrics.sleepLatency === "12分",
@@ -95,6 +110,22 @@ function shuffle<T>(items: T[]): T[] {
   assert(
     vitals.metrics.restingHeartRate === "64",
     "map: 安静時心拍数は平均を最小より優先",
+  );
+  assert(vitals.metrics.hrv === "42 ms", "map: 心拍変動 平均 → hrv");
+  assert(vitals.metrics.hrvMax === "80 ms", "map: 心拍変動 最大 → hrvMax");
+
+  const hrvScreen = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "心拍変動", value: "56 ms" },
+      { label: "平均", value: "56 ms" },
+      { label: "最大", value: "91 ms" },
+    ],
+    { screenType: "hrv" },
+  );
+  assert(hrvScreen.metrics.hrv === "56 ms", "map: hrv画面 平均 → hrv 56 ms");
+  assert(
+    hrvScreen.metrics.hrvMax === "91 ms",
+    "map: hrv画面 最大 → hrvMax 91 ms",
   );
 
   const five: ImageExtractResult[] = [
@@ -117,7 +148,6 @@ function shuffle<T>(items: T[]): T[] {
       screenType: "sleep_detail",
       metrics: sleepDetail.metrics,
       readings: [
-        { label: "睡眠", value: "5時間32分" },
         { label: "全就床時間", value: "6時間10分" },
         { label: "入眠潜時", value: "12分" },
         { label: "睡眠効率", value: "87%" },
@@ -125,10 +155,22 @@ function shuffle<T>(items: T[]): T[] {
         { label: "体内時計", value: "やや遅れ" },
       ],
       provenance: sleepDetail.provenance,
-      visibleReadingCount: 6,
+      visibleReadingCount: 5,
+    },
+    {
+      imageIndex: 5,
+      screenType: "sleep_overview",
+      metrics: sleepOverview.metrics,
+      readings: [
+        { label: "睡眠スコア", value: "71" },
+        { label: "睡眠時間", value: "5時間32分" },
+      ],
+      provenance: sleepOverview.provenance,
+      visibleReadingCount: 2,
     },
     {
       imageIndex: 2,
+      screenType: "sleep_stages",
       metrics: stages.metrics,
       readings: [
         { label: "覚醒", value: "8%" },
@@ -146,6 +188,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 3,
+      screenType: "rhr",
       metrics: vitals.metrics,
       readings: [
         { label: "安静時心拍数 最小", value: "52" },
@@ -173,7 +216,7 @@ function shuffle<T>(items: T[]): T[] {
   assert(merged.sleepScore === 71, "5枚実ログ: 睡眠スコアは71（チャート60ではない）");
   assert(
     merged.sleepDuration === "5時間32分",
-    "5枚実ログ: 睡眠時間は5時間32分（レム0:49ではない）",
+    "5枚実ログ: 睡眠時間は概要の5時間32分（詳細・レムから取らない）",
   );
   assert(
     merged.restingHeartRate === "64" ||
@@ -203,7 +246,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
-      screenType: "sleep_detail",
+      screenType: "sleep_overview",
       visibleReadingCount: 3,
       readings: [
         { label: "睡眠スコア", value: "78" },
@@ -229,7 +272,7 @@ function shuffle<T>(items: T[]): T[] {
   );
   assert(
     merged.sleepDuration === "6時間10分",
-    "ホームに無い睡眠時間は詳細画面から補完",
+    "ホームに無い睡眠時間は概要画面から取得（詳細とマージしない）",
   );
 }
 
@@ -238,6 +281,7 @@ function shuffle<T>(items: T[]): T[] {
   const results: ImageExtractResult[] = [
     {
       imageIndex: 0,
+      screenType: "home",
       visibleReadingCount: 4,
       readings: [
         { label: "QoL", value: "50" },
@@ -250,6 +294,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
+      screenType: "rhr",
       visibleReadingCount: 2,
       readings: [
         { label: "安静時心拍数", value: "58 bpm" },
@@ -282,37 +327,34 @@ function shuffle<T>(items: T[]): T[] {
       provenance: {
         sleepScore: "睡眠",
         qol: "QoL",
-        restingHeartRate: "心拍数",
       },
       metrics: metrics({
         sleepScore: 78,
-        restingHeartRate: "58 bpm",
         qol: "50",
       }),
     },
     {
       imageIndex: 1,
-      screenType: "sleep_detail",
-      visibleReadingCount: 8,
+      screenType: "rhr",
+      visibleReadingCount: 1,
+      readings: [{ label: "安静時心拍数", value: "58 bpm" }],
+      provenance: { restingHeartRate: "安静時心拍数" },
+      metrics: metrics({ restingHeartRate: "58 bpm" }),
+    },
+    {
+      imageIndex: 2,
+      screenType: "sleep_overview",
+      visibleReadingCount: 2,
       readings: [
-        { label: "睡眠スコア", value: "82" },
         { label: "睡眠時間", value: "6時間42分" },
         { label: "睡眠効率", value: "87%" },
-        { label: "レム睡眠時間", value: "1時間20分" },
-        { label: "深い睡眠時間", value: "1時間05分" },
       ],
       provenance: {
-        sleepScore: "睡眠スコア",
         sleepDuration: "睡眠時間",
-        remSleep: "レム睡眠時間",
-        deepSleep: "深い睡眠時間",
       },
       metrics: metrics({
-        sleepScore: 82,
         sleepDuration: "6時間42分",
         sleepEfficiency: "87%",
-        remSleep: "1時間20分",
-        deepSleep: "1時間05分",
       }),
     },
   ];
@@ -321,11 +363,11 @@ function shuffle<T>(items: T[]): T[] {
   assert(merged.sleepScore === 78, "2枚: ホーム「睡眠」を採用");
   assert(
     merged.restingHeartRate === "58 bpm",
-    "2枚: 不足項目を他画像から補完 (RHR)",
+    "2枚: 安静時心拍は呼吸/RHR画面から取得",
   );
   assert(
     merged.sleepDuration === "6時間42分",
-    "2枚: 不足項目を他画像から補完 (duration)",
+    "2枚: 睡眠時間は概要画面から取得",
   );
   assert(merged.qol === "50", "2枚: QoL を保持");
   assert(
@@ -382,6 +424,9 @@ function shuffle<T>(items: T[]): T[] {
     {
       imageIndex: 4,
       visibleReadingCount: 5,
+      screenType: "hrv",
+      readings: [{ label: "平均HRV", value: "42 ms" }],
+      provenance: { hrv: "平均HRV" },
       metrics: metrics({
         hrv: "42 ms",
         spo2: "96%",
@@ -757,38 +802,58 @@ function shuffle<T>(items: T[]): T[] {
       ],
       provenance: {
         sleepScore: "睡眠",
-        restingHeartRate: "心拍数",
-        sleepDuration: "睡眠時間",
       },
       metrics: metrics({
         sleepScore: 71,
-        sleepDuration: "6:22",
-        restingHeartRate: "49",
         stress: "33",
       }),
     },
     {
       imageIndex: 1,
-      screenType: "sleep_detail",
-      visibleReadingCount: 4,
+      screenType: "sleep_overview",
+      visibleReadingCount: 2,
       readings: [
-        { label: "睡眠時間", value: "6時間22分" },
-        { label: "安静時心拍数", value: "49 bpm" },
-        { label: "ストレス", value: "33標準" },
+        { label: "睡眠時間", value: "6:22" },
         { label: "睡眠効率", value: "88%" },
       ],
       provenance: {
         sleepDuration: "睡眠時間",
-        restingHeartRate: "安静時心拍数",
-        stress: "ストレス",
         sleepEfficiency: "睡眠効率",
       },
       metrics: metrics({
-        sleepDuration: "6時間22分",
-        restingHeartRate: "49 bpm",
-        stress: "33標準",
+        sleepDuration: "6:22",
         sleepEfficiency: "88%",
       }),
+    },
+    {
+      imageIndex: 2,
+      screenType: "sleep_overview",
+      visibleReadingCount: 1,
+      readings: [{ label: "睡眠時間", value: "6時間22分" }],
+      provenance: { sleepDuration: "睡眠時間" },
+      metrics: metrics({ sleepDuration: "6時間22分" }),
+    },
+    {
+      imageIndex: 3,
+      screenType: "rhr",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "安静時心拍数", value: "49" },
+        { label: "安静時心拍数", value: "49 bpm" },
+      ],
+      provenance: { restingHeartRate: "安静時心拍数" },
+      metrics: metrics({ restingHeartRate: "49 bpm" }),
+    },
+    {
+      imageIndex: 4,
+      screenType: "stress",
+      visibleReadingCount: 2,
+      readings: [
+        { label: "ストレス", value: "33" },
+        { label: "ストレス", value: "33標準" },
+      ],
+      provenance: { stress: "ストレス" },
+      metrics: metrics({ stress: "33標準" }),
     },
   ];
 
@@ -816,7 +881,7 @@ function shuffle<T>(items: T[]): T[] {
   assert(merged.sleepScore === 71, "表記ゆれケースでもホーム睡眠スコア優先");
 }
 
-// —— 安静時心拍: 異常値は画面優先（詳細 ＞ ホーム）、競合にしない ——
+// —— 安静時心拍: 呼吸/RHR画面のみ（ホーム・詳細とマージしない）——
 {
   const results: ImageExtractResult[] = [
     {
@@ -832,7 +897,7 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
-      screenType: "sleep_detail",
+      screenType: "rhr",
       visibleReadingCount: 2,
       readings: [
         { label: "安静時心拍数", value: "49 bpm" },
@@ -840,11 +905,9 @@ function shuffle<T>(items: T[]): T[] {
       ],
       provenance: {
         restingHeartRate: "安静時心拍数",
-        sleepDuration: "睡眠時間",
       },
       metrics: metrics({
         restingHeartRate: "49 bpm",
-        sleepDuration: "5時間32分",
       }),
     },
   ];
@@ -854,7 +917,7 @@ function shuffle<T>(items: T[]): T[] {
     assert(
       merged.restingHeartRate === "49 bpm" ||
         merged.restingHeartRate === "49",
-      "RHR優先: 睡眠詳細の49をホーム95より優先",
+      "RHR優先: 呼吸/RHR画面の49をホーム95より優先",
     );
     assert(
       !conflicts.some((c) => c.key === "restingHeartRate"),
@@ -863,12 +926,12 @@ function shuffle<T>(items: T[]): T[] {
   }
 }
 
-// —— 睡眠時間: 5:32 と 5時間32分 は同一 ——
+// —— 睡眠時間: 概要画面の表記ゆれは同一 ——
 {
   const results: ImageExtractResult[] = [
     {
       imageIndex: 0,
-      screenType: "home",
+      screenType: "sleep_overview",
       visibleReadingCount: 1,
       readings: [{ label: "睡眠時間", value: "5:32" }],
       provenance: { sleepDuration: "睡眠時間" },
@@ -876,23 +939,194 @@ function shuffle<T>(items: T[]): T[] {
     },
     {
       imageIndex: 1,
-      screenType: "sleep_detail",
+      screenType: "sleep_overview",
       visibleReadingCount: 1,
       readings: [{ label: "睡眠時間", value: "5時間32分" }],
       provenance: { sleepDuration: "睡眠時間" },
       metrics: metrics({ sleepDuration: "5時間32分" }),
     },
+    {
+      imageIndex: 2,
+      screenType: "sleep_detail",
+      visibleReadingCount: 1,
+      readings: [{ label: "睡眠時間", value: "9時間99分" }],
+      provenance: { sleepDuration: "睡眠時間" },
+      metrics: metrics({ sleepDuration: "9時間99分" }),
+    },
   ];
   const { metrics: merged, conflicts } = mergeImageExtractResults(results);
   assert(
     merged.sleepDuration === "5時間32分" || merged.sleepDuration === "5:32",
-    "睡眠時間: 5:32 / 5時間32分 を同一採用",
+    "睡眠時間: 概要の 5:32 / 5時間32分 を同一採用（詳細は無視）",
   );
   assert(
     !conflicts.some((c) => c.key === "sleepDuration"),
     "睡眠時間: 表記ゆれは競合0",
   );
 }
+
+// —— ノンレム: SOXAI「深い睡眠」をノンレムとして格納（浅いと合算しない） ——
+{
+  const stages = mapVisibleReadingsToMetricsDetailed(
+    [
+      { label: "覚醒", value: "10%" },
+      { label: "覚醒時間", value: "0:43" },
+      { label: "レム睡眠", value: "21%" },
+      { label: "レム睡眠時間", value: "1:31" },
+      { label: "浅い睡眠", value: "44%" },
+      { label: "浅い睡眠時間", value: "3:07" },
+      { label: "深い睡眠", value: "25%" },
+      { label: "深い睡眠時間", value: "1:49" },
+    ],
+    { screenType: "sleep_stages" },
+  );
+  const { metrics: merged } = mergeImageExtractResults([
+    {
+      imageIndex: 0,
+      screenType: "sleep_stages",
+      visibleReadingCount: 8,
+      readings: stages.provenance
+        ? Object.entries(stages.provenance).map(([k, label]) => ({
+            label,
+            value: String(stages.metrics[k as keyof AnalysisMetrics] ?? ""),
+          }))
+        : [],
+      provenance: stages.provenance,
+      metrics: {
+        ...stages.metrics,
+        sleepDuration: "6時間27分",
+        // Vision が睡眠時間をノンレムに誤マッピングしたケース
+        nonRemSleep: "6時間27分",
+        nonRemSleepRate: "",
+      },
+    },
+  ]);
+  assert(
+    merged.nonRemSleep === "1時間49分",
+    `ノンレム時間: 深い睡眠 OCR → 1時間49分 (got ${merged.nonRemSleep})`,
+  );
+  assert(
+    merged.nonRemSleepRate === "25%",
+    `ノンレム率: 深い睡眠率 OCR → 25% (got ${merged.nonRemSleepRate})`,
+  );
+  assert(
+    merged.lightSleep === "3時間7分" || merged.lightSleep === "3時間07分",
+    "浅い睡眠は分析用に保持",
+  );
+  assert(merged.deepSleep === "1時間49分", "深い睡眠は分析用に保持");
+}
+
+// —— 深い睡眠は OCR 値を保持（sleep−レム−浅いの余り計算はしない）——
+{
+  const { metrics: merged } = mergeImageExtractResults([
+    {
+      imageIndex: 0,
+      screenType: "sleep_stages",
+      visibleReadingCount: 8,
+      metrics: metrics({
+        sleepDuration: "5時間10分",
+        awakenings: "37分",
+        awakeningRate: "11%",
+        remSleep: "1時間3分",
+        remSleepRate: "18%",
+        lightSleep: "2時間44分",
+        lightSleepRate: "47%",
+        deepSleep: "1時間23分",
+        deepSleepRate: "24%",
+      }),
+    },
+  ]);
+  assert(
+    merged.deepSleep === "1時間23分",
+    `深い睡眠 OCR を保持 (got ${merged.deepSleep})`,
+  );
+  assert(
+    merged.deepSleepRate === "24%",
+    `深い睡眠率 OCR を保持 (got ${merged.deepSleepRate})`,
+  );
+  assert(
+    merged.nonRemSleep === "1時間23分",
+    `ノンレム時間 = 深い睡眠 (got ${merged.nonRemSleep})`,
+  );
+  assert(
+    merged.nonRemSleepRate === "24%",
+    `ノンレム率 = 深い睡眠率 (got ${merged.nonRemSleepRate})`,
+  );
+}
+
+// —— 深い睡眠率: 強い「深い睡眠」時間と同居する候補を優先 ——
+{
+  const { metrics: merged } = mergeImageExtractResults([
+    {
+      imageIndex: 4,
+      screenType: "sleep_stages",
+      visibleReadingCount: 8,
+      provenance: {
+        deepSleep: "深い",
+        deepSleepRate: "深い睡眠率",
+      },
+      metrics: metrics({
+        deepSleep: "43分",
+        deepSleepRate: "12%",
+        lightSleep: "2時間44分",
+        lightSleepRate: "47%",
+      }),
+    },
+    {
+      imageIndex: 5,
+      screenType: "sleep_stages",
+      visibleReadingCount: 10,
+      provenance: {
+        deepSleep: "深い睡眠",
+        deepSleepRate: "深い睡眠率",
+      },
+      metrics: metrics({
+        deepSleep: "1時間23分",
+        deepSleepRate: "24%",
+        lightSleep: "2時間44分",
+        lightSleepRate: "47%",
+      }),
+    },
+  ]);
+  assert(
+    merged.deepSleep === "1時間23分",
+    `深い時間は強いラベル側 (got ${merged.deepSleep})`,
+  );
+  assert(
+    merged.deepSleepRate === "24%",
+    `深い率は強いラベル+時間同居側 (got ${merged.deepSleepRate})`,
+  );
+  assert(merged.nonRemSleepRate === "24%", "ノンレム率=深い率24%");
+}
+
+// —— 深い睡眠＝ノンレム（明示ノンレムより深い睡眠を正とする）——
+{
+  const { metrics: merged } = mergeImageExtractResults([
+    {
+      imageIndex: 0,
+      screenType: "sleep_stages",
+      visibleReadingCount: 4,
+      metrics: metrics({
+        sleepDuration: "6時間42分",
+        lightSleep: "3時間40分",
+        lightSleepRate: "55%",
+        deepSleep: "1時間5分",
+        deepSleepRate: "15%",
+        nonRemSleep: "4時間45分",
+        nonRemSleepRate: "70%",
+      }),
+    },
+  ]);
+  assert(
+    merged.nonRemSleep === "1時間5分",
+    "深い睡眠＝ノンレム時間（明示ノンレムで上書きしない）",
+  );
+  assert(
+    merged.nonRemSleepRate === "15%",
+    "深い睡眠率＝ノンレム率（明示ノンレム率で上書きしない）",
+  );
+}
+
 
 if (process.exitCode) {
   console.error("\nSome merge tests failed.");

@@ -5,5 +5,6 @@ export {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
   SleepStagesOverview,
+  SleepStagesPrintBlock,
   type VisualPanel,
 } from "@/components/SoxaiVisualCharts";

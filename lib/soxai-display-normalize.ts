@@ -18,6 +18,7 @@ const DURATION_KEYS = new Set<MetricFieldKey>([
   "sleepDuration",
   "awakenings",
   "remSleep",
+  "nonRemSleep",
   "lightSleep",
   "deepSleep",
   "sleepDebt",
@@ -28,6 +29,7 @@ const PERCENT_KEYS = new Set<MetricFieldKey>([
   "sleepEfficiency",
   "awakeningRate",
   "remSleepRate",
+  "nonRemSleepRate",
   "lightSleepRate",
   "deepSleepRate",
   "spo2",
@@ -103,15 +105,18 @@ export function normalizeMetricDisplayValue(
     return formatPercentDisplay(raw);
   }
 
-  if (key === "hrv") {
+  if (key === "hrv" || key === "hrvMax" || key === "hrvMin") {
     const n = parseLeadingNumber(raw);
     if (n == null) return raw;
     const shown = Number.isInteger(n) ? String(n) : String(n);
-    if (/ms|ミリ秒/i.test(raw)) return `${shown} ms`;
-    return shown;
+    return `${shown} ms`;
   }
 
-  if (key === "restingHeartRate") {
+  if (
+    key === "restingHeartRate" ||
+    key === "restingHeartRateMin" ||
+    key === "restingHeartRateMax"
+  ) {
     const n = parseLeadingNumber(raw);
     if (n == null) return raw;
     const rounded = Math.round(n);
@@ -128,7 +133,8 @@ export function normalizeMetricDisplayValue(
       if (/rpm/i.test(raw)) return `${shown} rpm`;
       return `${shown} rpm`;
     }
-    return shown;
+    // 単位欠落時も呼吸速度として rpm を明示（未取得扱い・取り違え防止）
+    return `${shown} rpm`;
   }
 
   if (key === "skinTemperature") {

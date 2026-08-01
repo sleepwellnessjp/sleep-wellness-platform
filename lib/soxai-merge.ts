@@ -1,5 +1,7 @@
 import {
+  isPlausibleSleepLatency,
   labelMatchScore,
+  looksLikeLatencyMisreadAsBedtime,
   screenTypeScore,
   type MetricProvenance,
   type VisibleReading,
@@ -15,18 +17,15 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
-import { normalizeMetricsForDisplay, formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
-import { parseDurationMinutes } from "@/lib/soxai-graphs";
-import {
-  detectMetricConsistencyWarnings,
-  consistencyWarningKeys,
-} from "@/lib/soxai-consistency";
+import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import { parseDurationMinutes, parsePercent } from "@/lib/soxai-graphs";
 import {
   inferScreenTypeFromReadings,
   isCriticalOcrKey,
   isHomeAuthoritativeKey,
   isLockedAuthoritativeScreen,
   isPrimaryMetricForScreen,
+  isStrictSourceScreenKey,
   lockedScreensForKey,
   metricScreenRank,
   screenAffinityScore,
@@ -86,6 +85,13 @@ function looksTime(value: string): boolean {
   return /^\s*\d{1,2}[:：]\d{2}/.test(value);
 }
 
+function looksBpmLike(value: string): boolean {
+  const v = String(value ?? "").normalize("NFKC").trim();
+  if (!v || /\bms\b|ミリ秒/i.test(v)) return false;
+  if (/bpm|拍\/分/i.test(v)) return true;
+  return /^\s*\d{2,3}(\.\d+)?\s*$/.test(v);
+}
+
 /**
  * 値形式の妥当性（タイブレーカー用。主判定には使わない）
  */
@@ -114,6 +120,7 @@ export function scoreValueReliability(
     key === "sleepEfficiency" ||
     key === "awakeningRate" ||
     key === "remSleepRate" ||
+    key === "nonRemSleepRate" ||
     key === "lightSleepRate" ||
     key === "deepSleepRate" ||
     key === "spo2"
@@ -130,6 +137,7 @@ export function scoreValueReliability(
   if (
     key === "sleepDuration" ||
     key === "remSleep" ||
+    key === "nonRemSleep" ||
     key === "lightSleep" ||
     key === "deepSleep" ||
     key === "awakenings" ||
@@ -138,9 +146,33 @@ export function scoreValueReliability(
   ) {
     if (looksDuration(v)) score += 8;
     if (/%|％/.test(v)) score -= 6;
-    // 「5時間32分」のような明示表記を短時間表記より優先
-    if (/時間/.test(v)) score += 6;
-    if (/^\d{1,2}:\d{2}$/.test(v.trim()) && key === "sleepDuration") score -= 4;
+    // 「5時間10分」や「5:10」を「7時間」だけの丸めより優先（丸めは誤読・必要睡眠の混入が多い）
+    if (/\d+\s*時間\s*\d+\s*分/.test(v) || /^\d{1,2}:\d{2}$/.test(v.trim())) {
+      score += 8;
+    } else if (/^\d+\s*時間$/.test(v.trim())) {
+      score -= 10;
+    }
+    if (key === "sleepDuration") {
+      const ln = label.normalize("NFKC").replace(/\s/g, "");
+      if (/^睡眠時間$/.test(ln)) score += 14;
+      if (/必要睡眠|目標睡眠|推奨睡眠|全就床|就床時間|ベッド滞在|滞在時間/.test(label))
+        score -= 30;
+    }
+    if (key === "sleepLatency") {
+      if (isPlausibleSleepLatency(v)) score += 16;
+      else score -= 40;
+      // 「30分」表記を「7:10」比較値より優先
+      if (/\d+\s*分/.test(v) && !/時間/.test(v)) score += 10;
+      if (/入眠潜時|sleeplatency/.test(label.replace(/\s/g, ""))) score += 10;
+    }
+    if (key === "deepSleep") {
+      if (/深い睡眠/.test(label)) score += 12;
+      if (/^深い$/.test(label)) score -= 8;
+    }
+  }
+
+  if (key === "bedtime") {
+    if (looksLikeLatencyMisreadAsBedtime(v, label)) score -= 50;
   }
 
   if (key === "restingHeartRate") {
@@ -151,12 +183,32 @@ export function scoreValueReliability(
     if (Number.isFinite(n) && (n < 35 || n > 100)) score -= 12;
   }
 
-  if (key === "hrv") {
+  if (key === "hrv" || key === "hrvMax" || key === "hrvMin") {
     if (/ms/i.test(v)) score += 5;
+    if (key === "hrv") {
+      if (
+        /平均hrv|hrv平均|平均心拍変動|心拍変動平均|平均rmssd/i.test(label) ||
+        (/心拍変動|hrv|心拍動/i.test(label) && /平均|avg|mean/i.test(label)) ||
+        (/^(心拍変動|心拍動|hrv|rmssd)$/i.test(label.trim()) &&
+          /平均|avg|mean/i.test(v))
+      ) {
+        score += 20;
+      }
+      if (/平均|avg|mean/i.test(v)) score += 8;
+      if (!/ms/i.test(v)) score -= 18;
+      if (/最大|最小|max|min/i.test(label) && !/平均|avg|mean/i.test(label)) {
+        score -= 30;
+      }
+      if (/安静時心拍|resting\s*hr|^rhr$/i.test(label)) score -= 40;
+    }
+    if (key === "hrvMax" && /最大|max/i.test(label)) score += 15;
+    if (key === "hrvMin" && /最小|min/i.test(label)) score += 15;
   }
 
   if (key === "respiratoryRate") {
-    if (/回|\/分|bpm|brpm/i.test(v)) score += 4;
+    if (/rpm|brpm|回\/?分|呼吸\/分/i.test(v)) score += 8;
+    const n = Number(v.replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(n) && n >= 6 && n <= 40) score += 6;
   }
 
   if (key === "skinTemperature") {
@@ -232,12 +284,27 @@ function candidateRankForKey(key: MetricFieldKey, c: Candidate): number {
   const rank = metricScreenRank(key, c.screenType);
   const rankBonus = Math.max(0, 80 - rank * 20);
   const primaryBonus = isPrimaryMetricForScreen(c.screenType, key) ? 30 : 0;
+  let bonus = 0;
+  const label = c.sourceLabel.normalize("NFKC");
+  // 安静時心拍: 「平均」を最小・最大より強く優先（空上書きはしない）
+  if (key === "restingHeartRate") {
+    if (/平均|avg|average|mean/i.test(label)) bonus += 80;
+    if (/最小|最大|min|max/i.test(label) && !/平均|avg|mean/i.test(label)) {
+      bonus -= 60;
+    }
+  }
+  // 深い睡眠率: 「深い睡眠率」全文ラベルを短縮・誤%より優先
+  if (key === "deepSleepRate") {
+    if (/深い睡眠率/.test(label)) bonus += 90;
+    else if (/^深い率$|^深率$|^深い$/.test(label)) bonus -= 20;
+  }
   return (
     c.screenScore * 50 +
     c.labelScore * 100 +
     c.reliability +
     rankBonus * 10 +
-    primaryBonus * 40
+    primaryBonus * 40 +
+    bonus
   );
 }
 
@@ -245,7 +312,77 @@ function pickBestCandidateForKey(
   key: MetricFieldKey,
   candidates: Candidate[],
 ): Candidate {
-  return [...candidates].sort((a, b) => {
+  let pool = candidates;
+  if (key === "deepSleepRate" && candidates.length > 1) {
+    const strong = candidates.filter((c) =>
+      /深い睡眠率/.test(c.sourceLabel.normalize("NFKC")),
+    );
+    if (strong.length > 0) pool = strong;
+    // 同一ラベルで複数%があるときは件数が多い方（同数なら順位比較に委ねる）
+    if (pool.length > 1) {
+      const byVal = new Map<string, Candidate[]>();
+      for (const c of pool) {
+        const n = String(c.value).replace(/\s/g, "");
+        const list = byVal.get(n) ?? [];
+        list.push(c);
+        byVal.set(n, list);
+      }
+      let bestGroup: Candidate[] | null = null;
+      let bestCount = 0;
+      for (const group of byVal.values()) {
+        if (group.length > bestCount) {
+          bestCount = group.length;
+          bestGroup = group;
+        }
+      }
+      // 単独同士の同数多数決は誤って先頭値を固定してしまうのでスキップ
+      if (bestGroup && bestCount > 1) pool = bestGroup;
+    }
+  }
+  if (key === "restingHeartRate" && candidates.length > 1) {
+    const avg = candidates.filter((c) =>
+      /平均|avg|average|mean/i.test(c.sourceLabel.normalize("NFKC")),
+    );
+    if (avg.length > 0) pool = avg;
+    else {
+      // ラベルに最小・最大が無い候補を優先（プレーン「安静時心拍数」）
+      const plain = candidates.filter(
+        (c) => !/(最小|最大|min|max)/i.test(c.sourceLabel.normalize("NFKC")),
+      );
+      if (plain.length > 0) pool = plain;
+    }
+  }
+  if (key === "sleepDuration" && candidates.length > 1) {
+    const exact = candidates.filter((c) =>
+      /^睡眠時間$/.test(c.sourceLabel.normalize("NFKC").trim()),
+    );
+    if (exact.length > 0) pool = exact;
+    // 概要画面の「睡眠時間」を他画面の同名候補より優先
+    const overview = pool.filter((c) => c.screenType === "sleep_overview");
+    if (overview.length > 0) pool = overview;
+  }
+  if (key === "hrv" && candidates.length > 1) {
+    const avg = candidates.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "");
+      return (
+        /平均hrv|hrv平均|平均心拍変動|心拍変動平均|平均rmssd/i.test(label) ||
+        (/心拍変動|hrv|心拍動/i.test(label) && /平均|avg|mean/i.test(label)) ||
+        (/^(心拍変動|心拍動|hrv|rmssd)$/i.test(label.trim()) &&
+          /平均|avg|mean/i.test(value))
+      );
+    });
+    if (avg.length > 0) pool = avg;
+    const withMs = pool.filter((c) => /\bms\b|ミリ秒/i.test(String(c.value)));
+    if (withMs.length > 0) pool = withMs;
+  }
+  if (key === "respiratoryRate" && candidates.length > 1) {
+    const exact = candidates.filter((c) =>
+      /呼吸速度/.test(c.sourceLabel.normalize("NFKC")),
+    );
+    if (exact.length > 0) pool = exact;
+  }
+  return [...pool].sort((a, b) => {
     const diff = candidateRankForKey(key, b) - candidateRankForKey(key, a);
     if (diff !== 0) return diff;
     // 画像順に依存しないタイブレーク（同一セットなら順不同で同じ採用値）
@@ -313,6 +450,10 @@ function filterCandidatesForKey(
       }
       return lockedOnly;
     }
+    // 固定画面ルール: ロック画面に候補が無ければ他画面で埋めない（deep/nonRem のみ）
+    if (isStrictSourceScreenKey(key)) {
+      return [];
+    }
   }
 
   // ホーム画面の代表値: ホームから取れたら他画面は無視（競合にもしない）
@@ -321,16 +462,148 @@ function filterCandidatesForKey(
     if (homeOnly.length > 0) return homeOnly;
   }
 
-  // 安静時心拍数: 睡眠詳細 ＞ 専用(rhr) ＞ その他（ホームの「心拍数」より強いラベルを優先）
-  // 表記ゆれは正規化で同一扱い。異常値は別画面由来として優先順位で捨てる。
+  // 明示ラベル優先（画面種別よりラベルを優先。空・弱ラベルは採用しない）
+  if (key === "sleepDuration") {
+    const explicit = candidates.filter((c) => {
+      const label = c.sourceLabel
+        .normalize("NFKC")
+        .replace(/[\s　]/g, "")
+        .trim();
+      return /^睡眠時間$/.test(label);
+    });
+    // 概要に「睡眠時間」があれば他画面の同名候補は使わない
+    const overview = explicit.filter((c) => c.screenType === "sleep_overview");
+    return overview.length > 0 ? overview : explicit;
+  }
+  if (key === "respiratoryRate") {
+    const explicit = candidates.filter((c) =>
+      /呼吸速度|呼吸レート|呼吸数|respiratoryrate/i.test(
+        c.sourceLabel.normalize("NFKC"),
+      ),
+    );
+    return explicit;
+  }
+  if (key === "hrv") {
+    // 平均HRV / 心拍変動の平均 / 同一カード。裸数字（SpO₂取り違え）は除外
+    return candidates.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "");
+      if (/最小|最大|min|max/i.test(label) && !/平均|avg|mean/i.test(label)) {
+        return false;
+      }
+      if (/安静時心拍|resting\s*hr|^rhr$/i.test(label)) return false;
+      if (!/\bms\b|ミリ秒/i.test(value) && !/平均|avg|mean/i.test(value)) {
+        return false;
+      }
+      return (
+        /平均hrv|hrv平均|平均心拍変動|心拍変動平均|平均rmssd|^rmssd$/i.test(
+          label.replace(/\s/g, ""),
+        ) ||
+        (/心拍変動|hrv|rmssd|心拍動/i.test(label) &&
+          /平均|avg|mean/i.test(label)) ||
+        (/^(心拍変動|心拍動|hrv|rmssd)$/i.test(label.trim()) &&
+          (/\bms\b|ミリ秒/i.test(value) || /平均|avg|mean/i.test(value))) ||
+        (/^(平均|avg|mean)$/i.test(label.trim()) &&
+          c.screenType === "hrv" &&
+          /ms/i.test(value))
+      );
+    });
+  }
+  if (key === "hrvMax" || key === "hrvMin") {
+    const wantMax = key === "hrvMax";
+    return candidates.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "");
+      if (/安静時心拍|resting\s*hr|^rhr$/i.test(label)) return false;
+      if (wantMax) {
+        return (
+          /最大|max/i.test(label) ||
+          /最大|max/i.test(value) ||
+          (c.screenType === "hrv" && /^(最大|max)$/i.test(label.trim()))
+        );
+      }
+      return (
+        /最小|min/i.test(label) ||
+        /最小|min/i.test(value) ||
+        (c.screenType === "hrv" && /^(最小|min)$/i.test(label.trim()))
+      );
+    });
+  }
+  if (key === "restingHeartRateMin" || key === "restingHeartRateMax") {
+    const wantMax = key === "restingHeartRateMax";
+    return candidates.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "").normalize("NFKC");
+      // HRV 画面の「最大 101」を安静時最大にしない
+      if (c.screenType === "hrv") return false;
+      if (/\bms\b|ミリ秒/i.test(value)) return false;
+      if (/心拍変動|hrv|rmssd/i.test(label)) return false;
+      if (
+        /安静時心拍|resting\s*hr|^rhr$/i.test(label) &&
+        (wantMax ? /最大|max/i.test(label) : /最小|min/i.test(label))
+      ) {
+        return true;
+      }
+      if (
+        (wantMax ? /^(最大|max)$/i : /^(最小|min)$/i).test(label.trim()) &&
+        (c.screenType === "rhr" || c.screenType === "respiration") &&
+        looksBpmLike(value)
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+  if (key === "sleepLatency") {
+    const plausible = candidates.filter((c) =>
+      isPlausibleSleepLatency(String(c.value ?? "")),
+    );
+    return plausible.length > 0 ? plausible : candidates;
+  }
+  if (key === "bedtime") {
+    const filtered = candidates.filter(
+      (c) =>
+        !looksLikeLatencyMisreadAsBedtime(
+          String(c.value ?? ""),
+          c.sourceLabel,
+        ),
+    );
+    return filtered.length > 0 ? filtered : candidates;
+  }
   if (key === "restingHeartRate") {
-    const detailOnly = candidates.filter((c) => c.screenType === "sleep_detail");
-    if (detailOnly.length > 0) return detailOnly;
-    const rhrOnly = candidates.filter((c) => c.screenType === "rhr");
-    if (rhrOnly.length > 0) return rhrOnly;
-    // ホーム以外に強い「安静時心拍数」ラベルがあればそちらを優先
-    const strongLabel = candidates.filter((c) => c.labelScore >= 90);
-    if (strongLabel.length > 0) return strongLabel;
+    const withResting = candidates.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "").normalize("NFKC").trim();
+      if (/安静時心拍|resting\s*hr|restinghr|restingheartrate|^rhr$/i.test(label)) {
+        return true;
+      }
+      // 弱ラベル「平均」は BPM 形状のときだけ（皮膚温 +0.2 は除外）
+      if (/^(平均|avg|mean)$/i.test(label.trim())) {
+        if (/^[+-]/.test(value) || /℃|°/.test(value)) return false;
+        return (
+          /bpm|拍\/分/i.test(value) ||
+          /^\s*\d{2,3}(\.\d+)?\s*$/.test(value) ||
+          /^(平均|avg|mean)\s*\d{2,3}/i.test(value)
+        );
+      }
+      return false;
+    });
+    if (withResting.length === 0) return [];
+    // 最小・最大は捨て、平均付き or プレーン「安静時心拍数」を残す
+    const notMinMax = withResting.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      return !/(最小|最大|min|max)/i.test(label) || /平均|avg|mean/i.test(label);
+    });
+    const avg = notMinMax.filter((c) => {
+      const label = c.sourceLabel.normalize("NFKC");
+      const value = String(c.value ?? "");
+      return (
+        /平均|avg|mean/i.test(label) ||
+        /^(平均|avg|mean)\s*\d{2,3}/i.test(value.normalize("NFKC").trim())
+      );
+    });
+    if (avg.length > 0) return avg;
+    return notMinMax.length > 0 ? notMinMax : withResting;
   }
 
   const hasPrimary = candidates.some((c) =>
@@ -415,15 +688,7 @@ function shouldRecordConflict(
 
   // 安静時心拍数: 優先画面から採用できていれば他画面差は競合にしない
   if (key === "restingHeartRate") {
-    if (
-      adopted.screenType === "sleep_detail" ||
-      adopted.screenType === "rhr" ||
-      adopted.labelScore >= 90
-    ) {
-      return false;
-    }
-    // ホーム採用でも、他候補が正規化後に同一なら競合しない（uniqueValueCount で除外済み）
-    if (adopted.screenType === "home") {
+    if (adopted.screenType === "rhr" || adopted.screenType === "respiration") {
       return false;
     }
   }
@@ -434,10 +699,35 @@ function shouldRecordConflict(
 function resolveEffectiveScreenType(
   result: ImageExtractResult,
 ): SoxaiScreenType {
-  if (result.screenType && result.screenType !== "other") {
-    return result.screenType;
+  const inferred = inferScreenTypeFromReadings(result.readings ?? []);
+  const vision =
+    result.screenType && result.screenType !== "other"
+      ? result.screenType
+      : null;
+
+  // Vision が home/stress/hrv でも、ラベルが専用画面を強く示すなら上書き
+  // （呼吸+安静時を HRV と誤分類しても、明示ラベル側の画面として扱う）
+  if (
+    (!vision ||
+      vision === "home" ||
+      vision === "stress" ||
+      vision === "other" ||
+      vision === "sleep_overview" ||
+      vision === "hrv") &&
+    (inferred === "respiration" ||
+      inferred === "rhr" ||
+      inferred === "sleep_stages" ||
+      (inferred === "hrv" && vision !== "hrv"))
+  ) {
+    return inferred;
   }
-  return inferScreenTypeFromReadings(result.readings ?? []);
+  if (
+    vision === "home" &&
+    (inferred === "sleep_overview" || inferred === "sleep_detail")
+  ) {
+    return inferred;
+  }
+  return vision ?? inferred;
 }
 
 function resolveSourceLabel(
@@ -503,6 +793,40 @@ export function mergeImageExtractResults(
       const value = metricDisplayValue(result.metrics, key).trim();
       if (!value) continue;
 
+      // 同一画像内で深い睡眠＝覚醒時間なら深い睡眠候補から除外
+      if (key === "deepSleep" && isMetricPresent(result.metrics, "awakenings")) {
+        const deepM = parseDurationMinutes(value);
+        const awakeM = parseDurationMinutes(
+          metricDisplayValue(result.metrics, "awakenings"),
+        );
+        if (
+          deepM != null &&
+          awakeM != null &&
+          Math.abs(deepM - awakeM) <= 1
+        ) {
+          continue;
+        }
+      }
+      // 同一画像内で深い睡眠率＝浅い睡眠率なら深い率候補から除外（明示ラベル以外）
+      if (
+        key === "deepSleepRate" &&
+        isMetricPresent(result.metrics, "lightSleepRate")
+      ) {
+        const deepP = parsePercent(value);
+        const lightP = parsePercent(
+          metricDisplayValue(result.metrics, "lightSleepRate"),
+        );
+        const deepLabel = resolveSourceLabel(result, "deepSleepRate");
+        if (
+          deepP != null &&
+          lightP != null &&
+          deepP === lightP &&
+          !/深い睡眠率/.test(deepLabel.normalize("NFKC"))
+        ) {
+          continue;
+        }
+      }
+
       const readings = result.readings ?? [];
       const sourceLabel = resolveSourceLabel(result, key);
       const screenType = resolveEffectiveScreenType(result);
@@ -513,12 +837,55 @@ export function mergeImageExtractResults(
       if (key === "sleepScore" && isLikelyChartFragment(readings)) {
         labelScore = Math.min(labelScore, 25);
       }
+      // HRV 画面の履歴棒グラフ「睡眠スコア」をホーム代表値として採らない
+      if (
+        key === "sleepScore" &&
+        (screenType === "hrv" ||
+          /心拍変動|hrv|rmssd/i.test(
+            readings.map((r) => r.label).join("|"),
+          ))
+      ) {
+        labelScore = Math.min(labelScore, 10);
+        screenScore = Math.min(screenScore, 0);
+      }
+      // ホームの「心拍数/最新」は安静時ではない
+      if (
+        key === "restingHeartRate" &&
+        (/最新|現在|latest/i.test(sourceLabel) ||
+          (/^心拍数$|^心拍$|^hr$/i.test(sourceLabel.normalize("NFKC").trim()) &&
+            screenType === "home"))
+      ) {
+        labelScore = Math.min(labelScore, 5);
+        screenScore = Math.min(screenScore, -10);
+      }
+      // SOXAI: 最小・最大より平均を優先
       if (
         key === "restingHeartRate" &&
         /最小|最大|min|max/i.test(sourceLabel) &&
         !/平均|avg|mean/i.test(sourceLabel)
       ) {
         labelScore = Math.min(labelScore, 20);
+      }
+
+      // 深い睡眠率: 「深い睡眠率」明示ラベルを強く優先（同居加点で誤%を勝たせない）
+      if (key === "deepSleepRate" || key === "deepSleep") {
+        const deepDurLabel = resolveSourceLabel(result, "deepSleep");
+        const deepRateLabel = resolveSourceLabel(result, "deepSleepRate");
+        const hasStrongRate =
+          isMetricPresent(result.metrics, "deepSleepRate") &&
+          /深い睡眠率/.test(deepRateLabel.normalize("NFKC"));
+        const hasStrongDur =
+          isMetricPresent(result.metrics, "deepSleep") &&
+          /深い睡眠/.test(deepDurLabel.normalize("NFKC"));
+        if (key === "deepSleepRate") {
+          if (hasStrongRate) labelScore += 40;
+          else labelScore -= 30;
+          // 時間同居だけでは加点しない（誤読%が時間正しい画像に載ると勝ってしまう）
+          if (hasStrongDur && hasStrongRate) labelScore += 5;
+        }
+        if (key === "deepSleep" && hasStrongDur) {
+          labelScore += 20;
+        }
       }
 
       candidates.push({
@@ -534,7 +901,16 @@ export function mergeImageExtractResults(
 
     if (candidates.length === 0) continue;
 
-    const gated = filterCandidatesForKey(key, candidates);
+    const gatedRaw = filterCandidatesForKey(key, candidates);
+    // restingHeartRate: OCR取得済み値をゲート全滅で空文字にしない（補完は空のときだけ）
+    const gated =
+      gatedRaw.length > 0
+        ? gatedRaw
+        : key === "restingHeartRate"
+          ? candidates
+          : [];
+    // 固定画面に候補が無ければそのキーは未取得のまま（他画面で埋めない）
+    if (gated.length === 0) continue;
 
     // QoL: 昨日のスコアに近い値を優先（端末バッテリー％の誤採用を防ぐ）
     let gatedForPick = gated;
@@ -581,23 +957,72 @@ export function mergeImageExtractResults(
     }
 
     const adopted = pickBestCandidateForKey(key, scored);
+    // 深い睡眠率がレム率と同値のとき、別の「深い睡眠率」候補があればそちらを採用
+    // （レム%の取り違え。浅い率との合算や逆算はしない）
+    let finalAdopted = adopted;
+    if (key === "deepSleepRate" && scored.length > 1) {
+      const remNorm = isMetricPresent(merged, "remSleepRate")
+        ? normalizeComparable("remSleepRate", merged.remSleepRate)
+        : "";
+      const awakeNorm = isMetricPresent(merged, "awakeningRate")
+        ? normalizeComparable("awakeningRate", merged.awakeningRate)
+        : "";
+      const lightNorm = isMetricPresent(merged, "lightSleepRate")
+        ? normalizeComparable("lightSleepRate", merged.lightSleepRate)
+        : "";
+      const adoptedNorm = normalizeComparable(key, adopted.value);
+      if (
+        (remNorm && adoptedNorm === remNorm) ||
+        (awakeNorm && adoptedNorm === awakeNorm) ||
+        (lightNorm && adoptedNorm === lightNorm)
+      ) {
+        const alt = scored.find((c) => {
+          const n = normalizeComparable(key, c.value);
+          return (
+            n !== adoptedNorm &&
+            n !== remNorm &&
+            n !== awakeNorm &&
+            n !== lightNorm &&
+            /深い睡眠率/.test(c.sourceLabel.normalize("NFKC"))
+          );
+        });
+        if (alt) finalAdopted = alt;
+      }
+      // 明示「深い睡眠率」候補が複数あるとき、既に確定した深い睡眠時間と睡眠時間との
+      // 整合が取れる OCR 候補だけを残す（率を計算して埋めるのではなく、誤読候補を落とす）
+      const sleepM = parseDurationMinutes(merged.sleepDuration);
+      const deepM = parseDurationMinutes(merged.deepSleep);
+      if (sleepM != null && deepM != null && sleepM > 0) {
+        const expected = (deepM / sleepM) * 100;
+        const consistent = scored.filter((c) => {
+          if (!/深い睡眠率|深い睡眠/.test(c.sourceLabel.normalize("NFKC"))) {
+            return false;
+          }
+          const p = parsePercent(c.value);
+          return p != null && Math.abs(p - expected) <= 12;
+        });
+        if (consistent.length > 0) {
+          finalAdopted = pickBestCandidateForKey(key, consistent);
+        }
+      }
+    }
     if (key === "sleepScore") {
-      const n = Number(adopted.value.replace(/[^\d.-]/g, ""));
+      const n = Number(finalAdopted.value.replace(/[^\d.-]/g, ""));
       merged.sleepScore = Number.isFinite(n) ? n : null;
     } else {
-      merged[key] = adopted.value;
+      merged[key] = finalAdopted.value;
     }
 
     // 表記ゆれのみの差は unique=1 扱い（競合にしない）
     const uniqueValueCount = byNorm.size;
     confidence[key] = confidenceFromCandidateForKey(
       key,
-      adopted,
+      finalAdopted,
       uniqueValueCount,
     );
 
-    if (shouldRecordConflict(key, adopted, uniqueValueCount)) {
-      const adoptedNorm = normalizeComparable(key, adopted.value);
+    if (shouldRecordConflict(key, finalAdopted, uniqueValueCount)) {
+      const adoptedNorm = normalizeComparable(key, finalAdopted.value);
       const alternatives = [...byNorm.entries()]
         .filter(([norm]) => norm !== adoptedNorm)
         .map(([, group]) => pickBestCandidateForKey(key, group).value);
@@ -606,10 +1031,44 @@ export function mergeImageExtractResults(
         conflicts.push({
           key,
           label: labelByKey.get(key) ?? key,
-          adopted: adopted.value,
+          adopted: finalAdopted.value,
           alternatives: [...new Set(alternatives)],
         });
       }
+    }
+  }
+
+  // restingHeartRate: 画像OCRに取得済みがあるのにマージ結果が空なら、空のままにせず保持
+  // （undefined / null / "" のときだけ補完。52 最小・63 平均など既存値は優先度で採用）
+  if (!isMetricPresent(merged, "restingHeartRate")) {
+    const ocrCandidates: Candidate[] = [];
+    for (const result of valid) {
+      if (!isMetricPresent(result.metrics, "restingHeartRate")) continue;
+      const value = metricDisplayValue(result.metrics, "restingHeartRate").trim();
+      if (!value) continue;
+      const sourceLabel = resolveSourceLabel(result, "restingHeartRate");
+      const screenType = resolveEffectiveScreenType(result);
+      ocrCandidates.push({
+        imageIndex: result.imageIndex,
+        value,
+        labelScore: labelMatchScore("restingHeartRate", sourceLabel),
+        screenScore:
+          screenTypeScore(result.readings ?? [], "restingHeartRate") +
+          screenAffinityScore(screenType, "restingHeartRate"),
+        reliability: scoreValueReliability(
+          "restingHeartRate",
+          value,
+          sourceLabel,
+        ),
+        sourceLabel,
+        screenType,
+      });
+    }
+    if (ocrCandidates.length > 0) {
+      merged.restingHeartRate = pickBestCandidateForKey(
+        "restingHeartRate",
+        ocrCandidates,
+      ).value;
     }
   }
 
@@ -621,19 +1080,70 @@ export function mergeImageExtractResults(
     normalized.wakeTime = normalizeTimeToHHMM(normalized.wakeTime);
   }
 
-  // ステージ時間の整合: 覚醒+レム+浅い+深い ≈ 全就床/睡眠時間 なら欠落・誤読を補正
-  repairStageDurationsFromSum(normalized);
+  // 深い睡眠の時間・率は OCR ラベル直読みのみ。
+  // sleep−レム−浅い の余り計算や 100%−他率 の補完はしない（誤った睡眠時間から深い睡眠が化ける）。
+  // SOXAI: 深い睡眠 = 表示上のノンレム（浅い+深いの合算はしない）
+  applyNonRemFromStageOcr(normalized);
 
-  // 矛盾がある項目は信頼度を下げて確認画面で「要確認」にする
-  const consistencyKeys = consistencyWarningKeys(
-    detectMetricConsistencyWarnings(normalized),
-  );
-  for (const key of consistencyKeys) {
-    if (confidence[key] != null) {
-      confidence[key] = Math.min(confidence[key]!, OCR_LOW_CONFIDENCE_THRESHOLD - 0.01);
+  // 安静時平均が最小と同じなら、平均未取得として空にする（最小の誤採用防止）
+  if (
+    isMetricPresent(normalized, "restingHeartRate") &&
+    isMetricPresent(normalized, "restingHeartRateMin")
+  ) {
+    const avgN = Number(
+      String(normalized.restingHeartRate).replace(/[^\d.-]/g, ""),
+    );
+    const minN = Number(
+      String(normalized.restingHeartRateMin).replace(/[^\d.-]/g, ""),
+    );
+    if (
+      Number.isFinite(avgN) &&
+      Number.isFinite(minN) &&
+      Math.round(avgN) === Math.round(minN)
+    ) {
+      normalized.restingHeartRate = "";
     }
   }
 
+  // 入眠が潜時と同じ長さなら破棄
+  if (
+    isMetricPresent(normalized, "bedtime") &&
+    isMetricPresent(normalized, "sleepLatency")
+  ) {
+    const latM = parseDurationMinutes(normalized.sleepLatency);
+    const bedAsDur = parseDurationMinutes(normalized.bedtime);
+    if (
+      latM != null &&
+      bedAsDur != null &&
+      Math.abs(bedAsDur - latM) <= 1
+    ) {
+      normalized.bedtime = "";
+    } else if (looksLikeLatencyMisreadAsBedtime(normalized.bedtime, "入眠時間")) {
+      normalized.bedtime = "";
+    }
+  }
+
+  // restingHeartRateMax が hrvMax と同じなら HRV からの誤流入 → 破棄
+  if (
+    isMetricPresent(normalized, "restingHeartRateMax") &&
+    isMetricPresent(normalized, "hrvMax")
+  ) {
+    const rhrMaxN = Number(
+      String(normalized.restingHeartRateMax).replace(/[^\d.-]/g, ""),
+    );
+    const hrvMaxN = Number(
+      String(normalized.hrvMax).replace(/[^\d.-]/g, ""),
+    );
+    if (
+      Number.isFinite(rhrMaxN) &&
+      Number.isFinite(hrvMaxN) &&
+      Math.round(rhrMaxN) === Math.round(hrvMaxN)
+    ) {
+      normalized.restingHeartRateMax = "";
+    }
+  }
+
+  // 信頼度の整合性クランプは最終 metrics 確定後に行う（中間値での誤クランプを避ける）
   return {
     metrics: normalized,
     conflicts,
@@ -641,27 +1151,40 @@ export function mergeImageExtractResults(
   };
 }
 
-function durationMinutesOrNull(value: string): number | null {
-  return parseDurationMinutes(value);
-}
-
 /**
- * 覚醒・レム・浅い・深い の合計が睡眠時間に合うよう、深い睡眠の欠落のみ補完する。
- * OCRで取得済みの深い睡眠は上書きしない（SOXAI画面の内訳と睡眠時間は一致しないことが多い）。
+ * sleep_stages OCR 結果からノンレム時間・割合を確定する。
+ *
+ * 仕様（表示・分析とも）:
+ * - SOXAI「深い睡眠」→ ノンレム睡眠
+ * - SOXAI「深い睡眠率」→ ノンレム睡眠率
+ * - 浅い睡眠は合算しない / 独自計算しない
+ * - 他画面の OCR 候補とはマージしない（ステージの深い睡眠のみ）
  */
-function repairStageDurationsFromSum(metrics: AnalysisMetrics): void {
-  const rem = durationMinutesOrNull(metrics.remSleep);
-  const light = durationMinutesOrNull(metrics.lightSleep);
-  const deep = durationMinutesOrNull(metrics.deepSleep);
-  const sleep = durationMinutesOrNull(metrics.sleepDuration);
+export function applyNonRemFromStageOcr(metrics: AnalysisMetrics): void {
+  const deepPresent = isMetricPresent(metrics, "deepSleep");
+  const deepRatePresent = isMetricPresent(metrics, "deepSleepRate");
 
-  if (rem == null || light == null || sleep == null) return;
-
-  // 欠落時のみ: レム+浅い+深い ≈ 睡眠時間 から深い睡眠を推定
-  if (deep == null) {
-    const remain = sleep - rem - light;
-    if (remain >= 0 && remain <= 12 * 60) {
-      metrics.deepSleep = formatMinutesAsDuration(remain);
+  // 深い睡眠＝ノンレム（明示ノンレムより深い睡眠を正とする）
+  if (deepPresent) {
+    metrics.nonRemSleep = metrics.deepSleep;
+  }
+  if (deepRatePresent) {
+    const deepP = parsePercent(metrics.deepSleepRate);
+    const deepM = parseDurationMinutes(metrics.deepSleep);
+    // 0% かつ時間ありは OCR 欠損扱い → 率は空に
+    if (deepP === 0 && deepM != null && deepM > 0) {
+      metrics.nonRemSleepRate = "";
+    } else {
+      metrics.nonRemSleepRate = metrics.deepSleepRate;
     }
+  }
+
+  // 深い睡眠が無いのに残った非ステージ由来のノンレムは捨てない
+  // （ステージで明示「ノンレム」だけ取れたケースは deep 未取得時に残す）
+  if (!deepPresent && !isMetricPresent(metrics, "nonRemSleep")) {
+    metrics.nonRemSleep = "";
+  }
+  if (!deepRatePresent && !isMetricPresent(metrics, "nonRemSleepRate")) {
+    metrics.nonRemSleepRate = "";
   }
 }

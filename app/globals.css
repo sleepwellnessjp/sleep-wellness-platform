@@ -172,6 +172,11 @@ html[data-theme="dark"] {
   }
 }
 
+/* 印刷専用 Sleep Stages: 画面では常に非表示（Tailwind hidden に依存しない） */
+.print-only-sleep-stages {
+  display: none !important;
+}
+
 @media print {
   /*
    * Expert Report: A4 × 3 pages（空白ページなし）
@@ -195,6 +200,26 @@ html[data-theme="dark"] {
   }
 
   .no-print {
+    display: none !important;
+  }
+
+  .print-only-instructor-comment {
+    display: block !important;
+  }
+
+  .report-client-wellness {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .report-client-wellness .report-client-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .report-instructor-comment-field textarea.no-print,
+  .report-instructor-comment-field .no-print {
     display: none !important;
   }
 
@@ -401,12 +426,151 @@ html[data-theme="dark"] {
     font-size: 7.5pt !important;
   }
 
-  /* Metrics: 6 columns keeps page 1 balanced */
-  .report-metrics > div,
-  .report-soxai > .grid {
+  /*
+   * Metrics: 6 columns — ONLY .report-soxai-metrics-grid.
+   * Never apply to .report-sleep-stages or print sleep-stage cards
+   * (historical bug: 6-col on parent → thin vertical cards / overlap).
+   */
+  .report-soxai > .report-soxai-metrics-grid,
+  .report-soxai-metrics-grid {
     display: grid !important;
     grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
     gap: 4px !important;
+  }
+
+  /* Sleep stages: compact 2×3 print block, full width */
+  .report-sleep-stages {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 0 !important;
+    padding: 6px 8px !important;
+    border-radius: 4px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* 画面用 Sleep Stages を印刷で隠し、印刷専用 DOM を表示 */
+  .screen-only-sleep-stages,
+  .screen-sleep-stages {
+    display: none !important;
+  }
+
+  .print-only-sleep-stages {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .report-sleep-stages-print {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  .report-sleep-stages-print-card {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+    padding: 6px 8px !important;
+    border-radius: 4px !important;
+    position: static !important;
+    float: none !important;
+    transform: none !important;
+  }
+
+  .report-sleep-stages-print-card p {
+    display: block !important;
+    white-space: normal !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed !important;
+  }
+
+  .report-sleep-stages-print-card p:first-child {
+    font-size: 7pt !important;
+  }
+
+  .report-sleep-stages-print-card p:last-child {
+    margin-top: 2px !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+  }
+
+  /* 詳細: 睡眠ステージ塊 → その下にストレス/体内時計（通常フロー） */
+  .report-detail-stages-block {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 4px !important;
+    margin-bottom: 0 !important;
+    padding: 6px 8px !important;
+    border-radius: 4px !important;
+    position: static !important;
+    float: none !important;
+    transform: none !important;
+  }
+
+  .report-detail-bio-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-top: 6px !important;
+    position: static !important;
+    float: none !important;
+    transform: none !important;
+  }
+
+  /* 詳細パネル全体はページまたぎ可（固定高さクリップの原因を避ける） */
+  .report-print-page-2 .report-soxai-detail {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  .report-sleep-stages > p:first-child {
+    font-size: 6pt !important;
+    letter-spacing: 0.14em !important;
+  }
+
+  .report-sleep-stages h3 {
+    margin-top: 2px !important;
+    font-size: 9pt !important;
+    line-height: 1.25 !important;
+  }
+
+  /* legacy screen grid — print では非表示のため補助のみ */
+  .report-sleep-stages .report-stage-grid {
+    display: none !important;
+  }
+
+  .report-sleep-stages .report-hypnogram,
+  .report-detail-chart .report-hypnogram {
+    display: none !important;
   }
 
   .report-metric {
@@ -514,7 +678,7 @@ html[data-theme="dark"] {
 
   .report-print-page-1 .report-detail-chart {
     max-height: 120px !important;
-    overflow: visible !important;
+    overflow: hidden !important;
   }
 
   .report-print-page-1 .report-lifestyle-grid {
@@ -541,11 +705,20 @@ html[data-theme="dark"] {
   .report-print-page-2 .report-detail-panel {
     padding: 5px 6px !important;
     border-radius: 3px !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
-  .report-print-page-2 .report-detail-chart {
-    max-height: 110px !important;
+  /* ストレス/体内時計チャートのみ高さ制限。睡眠ステージ塊には適用しない */
+  .report-print-page-2 .report-detail-bio-row .report-detail-chart {
+    max-height: 90px !important;
+    overflow: hidden !important;
+  }
+
+  .report-print-page-2 .report-detail-stages-block {
+    max-height: none !important;
     overflow: visible !important;
+    height: auto !important;
   }
 
   .report-print-page-2 .report-wellness-radar svg {
