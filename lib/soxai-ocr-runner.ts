@@ -112,9 +112,7 @@ function logOcrTraceFailure(
     ...params.extra,
   };
   if (params.final && !transient) {
-    console.error("[ocr-trace] ⑧ エラー発生箇所", payload);
   } else {
-    console.warn("[ocr-trace] ⑧ エラー発生箇所", payload);
   }
 }
 
@@ -363,12 +361,12 @@ async function callExtractApi(params: {
   }, params.timeoutMs);
 
   try {
-    console.info("[ocr-trace] ② OpenAIへリクエスト送信直前", {
-      mode: params.mode,
-      imageCount: params.images.length,
-      timeoutMs: params.timeoutMs,
-      at: new Date().toISOString(),
-    });
+    const sectionTag =
+      params.sections && params.sections.length > 0
+        ? params.sections.join(",")
+        : `batch(${params.images.length})`;
+    const callStartedAt = Date.now();
+    console.info(`START ${sectionTag}`);
     const response = await fetch("/api/extract", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -380,20 +378,14 @@ async function callExtractApi(params: {
           mode: params.mode,
           imageTotal: params.total,
           imageHashes: params.imageHashes,
-          skipRetries: false,
-          skipCriticalReOcr: false,
+          // 初回OCRのみで確定（screenRetry / criticalReOcr は壁時計超過の主因）
+          skipRetries: true,
+          skipCriticalReOcr: true,
         },
       }),
     });
 
-    console.info("[ocr-trace] ③ OpenAIレスポンス受信", {
-      mode: params.mode,
-      httpStatus: response.status,
-      ok: response.ok,
-      contentType: response.headers.get("content-type"),
-      contentLength: response.headers.get("content-length"),
-      at: new Date().toISOString(),
-    });
+    console.info(`END ${sectionTag} ${Date.now() - callStartedAt}ms (http ${response.status})`);
 
     let data: unknown;
     const jsonStartedAt = Date.now();
@@ -414,13 +406,6 @@ async function callExtractApi(params: {
         error: "画像解析結果のJSON解析に失敗しました。",
       };
     }
-    console.info("[ocr-trace] ③b JSON parse完了", {
-      parseMs: Date.now() - jsonStartedAt,
-      topLevelKeys:
-        data && typeof data === "object" && !Array.isArray(data)
-          ? Object.keys(data as Record<string, unknown>)
-          : [],
-    });
 
     // 画面反映調査用: APIが返した metrics をそのまま出す
     const rawMetrics =
@@ -431,10 +416,6 @@ async function callExtractApi(params: {
       data && typeof data === "object" && "collectedCount" in data
         ? (data as { collectedCount?: unknown }).collectedCount
         : undefined;
-    console.log("[ocr-trace] ③c APIレスポンス metrics 生JSON", {
-      collectedCount: rawCollectedCount,
-      metrics: rawMetrics,
-    });
 
     const timing =
       data && typeof data === "object" && "timing" in data
@@ -458,23 +439,6 @@ async function callExtractApi(params: {
           ).timing
         : undefined;
     if (timing) {
-      console.info("[ocr-trace] timing（サーバー計測）", {
-        totalMs: timing.totalMs,
-        concurrency: timing.concurrency,
-        phases: (timing.phases ?? []).map((p) => ({
-          name: p.name,
-          durationMs: p.durationMs,
-          detail: p.detail,
-        })),
-        perImage: (timing.perImage ?? []).map((row) => ({
-          imageIndex: row.imageIndex,
-          durationMs: row.durationMs,
-          phases: (row.phases ?? []).map((p) => ({
-            name: p.name,
-            durationMs: p.durationMs,
-          })),
-        })),
-      });
     }
 
     const usage =
@@ -491,16 +455,6 @@ async function callExtractApi(params: {
           : "画像の自動解析に失敗しました。";
       const is429 = response.status === 429 || /429|rate limit/i.test(errorMessage);
       if (is429) {
-        console.warn("[ocr-trace] 429発生", {
-          imageIndex: null,
-          callNo: 1,
-          purpose: "callExtractApi",
-          action: "呼び出し元へ返却（再試行対象）",
-          continued: true,
-          aborted: false,
-          httpStatus: response.status,
-          message: errorMessage,
-        });
       }
       // HTTP 失敗は返却のみ。最終失敗の error は runSoxaiOcr 側で1回出す
       logOcrTraceFailure("callExtractApi.http", {
@@ -537,12 +491,10 @@ async function callExtractApi(params: {
       data && typeof data === "object" && "metrics" in data
         ? (data as { metrics: Partial<AnalysisMetrics> }).metrics
         : undefined;
-    console.log("before merge", metricsRaw);
     const mergedMetrics = mergeMetricsFromVisibleReadings(
       metricsRaw ?? emptyMetrics(),
       visibleReadings,
     );
-    console.log("after merge", mergedMetrics);
     const metrics = normalizeMetricsForDisplay(normalizeMetrics(mergedMetrics));
 
     const formKeys = SOXAI_METRIC_FIELDS.map((field) => field.key);
@@ -555,13 +507,6 @@ async function callExtractApi(params: {
       (key) => !formKeys.includes(key as (typeof formKeys)[number]),
     );
     const missingFormKeys = formKeys.filter((key) => !presentKeys.includes(key));
-    console.log("[ocr-trace] ③d 正規化後metrics / キー突合", {
-      rawMetricKeys,
-      presentKeys,
-      missingFormKeys,
-      unknownRawKeys,
-      metrics,
-    });
 
     const perImageRaw =
       data && typeof data === "object" && "perImage" in data
@@ -596,13 +541,6 @@ async function callExtractApi(params: {
       };
     }
 
-    console.info("[ocr-trace] ④ OCR結果（取得項目数）", {
-      mode: params.mode,
-      mappedMetricCount: collectedMetricKeys(metrics).length,
-      visibleReadingCount: visibleReadings.length,
-      perImageCount: perImage.length,
-      perImageErrors: perImage.filter((row) => row.error).length,
-    });
 
     return {
       merged: {
@@ -618,6 +556,13 @@ async function callExtractApi(params: {
     };
   } catch (error) {
     // 再試行対象（Abort / タイムアウト等）は warn。成功時に error を残さない
+    const sectionTag =
+      params.sections && params.sections.length > 0
+        ? params.sections.join(",")
+        : `batch(${params.images.length})`;
+    console.info(
+      `END ${sectionTag} aborted timedOut=${timedOut} signalAborted=${params.signal.aborted}`,
+    );
     logOcrTraceFailure("callExtractApi", {
       message: error instanceof Error ? error.message : String(error),
       error,
@@ -625,8 +570,22 @@ async function callExtractApi(params: {
     });
     if (isAbortError(error)) {
       if (timedOut && !params.signal.aborted) {
+        console.info(`ERROR ${sectionTag} timeout`);
+        try {
+          void fetch("/api/debug-client-log", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              msg: `ERROR ${sectionTag} timeout`,
+              at: Date.now(),
+            }),
+          });
+        } catch {
+          /* ignore */
+        }
         return { merged: null, perImage: [], error: "タイムアウト" };
       }
+      console.info(`ERROR ${sectionTag} aborted`);
       throw error;
     }
     return {
@@ -796,13 +755,6 @@ export async function runSoxaiOcr(
     activeLabels: targetIndexes.map((i) => labels[i] ?? ""),
     estimatedRemainingMs: Math.min(imageTimeoutMs, overallBudgetMs),
   });
-  console.info("[ocr-trace] ① OCR解析開始", {
-    imageCount: images.length,
-    targetIndexes,
-    forceRefresh,
-    fromCache: false,
-    at: new Date().toISOString(),
-  });
 
   for (const index of targetIndexes) {
     const img = snapshot.images[index];
@@ -965,10 +917,6 @@ export async function runSoxaiOcr(
   // API成功後の遅延 abort で結果を cancelled 扱いにしない（確認画面へ進める）
   if (controller.signal.aborted || signal?.aborted) {
     if (gotMergedResult) {
-      console.warn("[ocr-trace] abort after successful merge — keep result", {
-        collected: collectedMetricKeys(merged.metrics).length,
-        at: new Date().toISOString(),
-      });
     } else {
       cancelled = true;
       for (const img of snapshot.images) {
@@ -991,11 +939,6 @@ export async function runSoxaiOcr(
     cancelled,
   });
   if (!cancelled) {
-    console.info("[ocr-trace] ⑤ mergeImageExtractResults実行", {
-      note: "サーバー側で完了済み。クライアントは結果を受け取り統合表示へ",
-      collected: collectedMetricKeys(merged.metrics).length,
-      at: new Date().toISOString(),
-    });
   }
 
   // onlyIndexes 再解析でキャッシュ画像分が無い場合のフォールバック統合

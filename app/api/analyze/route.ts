@@ -17,6 +17,13 @@ import {
   buildAnalysisAiInput,
   logAnalysisAiInputInDev,
 } from "@/lib/client-profiles/ai-input";
+import {
+  aiInputFromMetricsAndLifestyle,
+  evaluateAllItems,
+  generateGoodPoints,
+  generateImprovementItems,
+} from "@/lib/ai-analysis";
+import { sanitizeAnalysisNarratives } from "@/lib/analysis-narrative";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -97,6 +104,14 @@ type AnalyzeRequestBody = {
   seedScore?: number;
   seedScoreBreakdown?: unknown;
   seedCategoryScores?: unknown;
+  /** soxai | manual | oura。未指定は soxai 扱い */
+  inputSource?: "soxai" | "manual" | "oura";
+  deviceSpecificMetrics?: unknown;
+  ouraScores?: {
+    sleepScore?: number | null;
+    readinessScore?: number | null;
+    activityScore?: number | null;
+  };
 };
 
 const analysisSchema = {
@@ -147,7 +162,7 @@ const analysisSchema = {
       },
     },
     summary: { type: "string" },
-    /** Sleep Wellness Insight（■今回最も重要な課題／■判断の根拠／■今回もっとも改善効果が高い行動） */
+    /** Sleep Wellness Insight（■最重要課題／■判断根拠／■最も改善効果が高い行動） */
     karteSummary: { type: "string" },
     profileRelation: { type: "string" },
     scoreComment: { type: "string" },
@@ -324,11 +339,11 @@ AI、ChatGPT、モデル名、テンプレート文章などの内部事情は�
 出力前に次を頭の中で整理する（出力には出さない）:
 1. 上記必須データを横断的に読む（単指標で決めつけない）
 2. 【必須・最優先】データ根拠つきの良かった点を先に特定する（最低2つ）
-3. 複数指標の関連から「今回最も重要な課題」「判断根拠」「今回もっとも改善効果が高い行動」を統合考察する
+3. 複数指標の関連から「最重要課題」「判断根拠」「最も改善効果が高い行動」を統合考察する
 4. 固定プロフィール（普段の傾向）と当日習慣を区別して関連づける
 5. スコアと4軸のバランス・各軸の点数根拠を決める
 6. 今日やる3つ・AI宿題（優先順位付き）・次回比較ポイントを決める
-7. Sleep Wellness Insight（課題／根拠／改善ポイント）を書く
+7. Sleep Wellness Insight（課題／根拠／行動）を毎回新規に書く（固定テンプレ禁止）
 8. メラトニンヨガ™連携（Phase・呼吸法・入浴・朝）を決める
 9. 前回・初回比較の解説を書く（履歴がある場合）
 10. 認定講師へのカウンセリング提案を決める
@@ -370,6 +385,12 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 ⑥ 定型アドバイス禁止
 - 「飲酒を減らしましょう」など根拠のない一般論で終わらない
 - 必ず今回の数値・習慣入力を根拠に理由を書く
+
+⑥-b 『ノンレム』という語の使用禁止
+- 睡眠ステージは「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」のみで書く
+
+⑥-c 同一数値フレーズの反復禁止
+- 「睡眠時間○時間○分」など同じ実測フレーズを summary / karteSummary / scoreComment / improvements で何度も繰り返さない
 
 ⑦ ソースの混同禁止
 - 固定プロフィール＝普段の傾向。当日の飲酒・カフェイン・運動と混同しない
@@ -414,57 +435,69 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 【構成の鉄則】必ず「良かった点 → 改善点 → 総合評価」の順。改善点だけは禁止。
 
 ① goodPoints（今回の睡眠で良かった点）※必須・最優先・省略禁止
-  必ず 2〜4件の配列（1件以下・空は禁止）。各項目は1文（目安 50〜90文字）。
+  取得済み metrics だけから毎回生成する。固定文・定型テンプレ禁止。
+  候補（該当するものだけ）:
+    REM良好 / HRV良好 / SpO₂良好 / 睡眠効率良好 / ストレス低い / 体内時計良好 / 深睡眠十分 / 睡眠時間十分
+  良好判定できた候補をスコア・根拠の強さ順に並べ、上位最大5件を配列で返す。
+  各文に実測値を含める（例: 「深睡眠十分：深睡眠3時間40分が十分に確保され、身体回復を支えています」）。
+  良くない指標は入れない。該当が3件なら3件でよい（無理に5件埋めない）。
+  最大5件。0件のときだけ埋め草の固定文を足すことは禁止。
+  各項目は1文（目安 50〜90文字）。
   【必須】数値・指標名を含め、「なぜ良いと言えるのか」をデータ根拠で書く。
   例:
-  - 「深睡眠が1時間15分確保されています」
-  - 「REM睡眠が1時間58分確保されています」
-  ※深い睡眠・REMの時間だけで身体や記憶の回復が良好とは断定しない
-  - 「HRV72msは、自律神経の回復状態が良好である可能性があります」
+  - 「深睡眠十分：深睡眠3時間40分が十分に確保され、身体回復を支えています」
+  - 「HRV良好：HRV72msは回復余力（心拍のゆらぎ）が良好な範囲です」
   根拠のない美辞麗句・数値なしの褒め言葉は禁止。
   改善点・注意点・「〜が課題」のような文言をここへ入れない。
   番号は付けない（表示側で付ける）。
 
 ② improvements（改善が期待できるポイント）
   ※必ず goodPoints のあとに書く。改善点からレポートを始めない。
-  最も効果が高い順に 1〜5件（上限5件。全部を一度に改善しろとは言わない）。
+  取得済み metrics から毎回動的生成する。固定文・定型テンプレ禁止。
+  【改善優先順位・厳守】次の順で弱項目を選び、重要度の高い順に最大3件:
+    ①睡眠時間 → ②深睡眠 → ③睡眠効率 → ④入眠潜時 → ⑤覚醒 → ⑥HRV → ⑦ストレス
+    （良好な項目は候補に入れない。深睡眠が十分なら深睡眠改善を出さない）
   各項目は { stars, text, whyNow } オブジェクト。
-  stars は内部ソート用（5=最優先 / 4=高 / 3=中）。配列は stars の高い順。
-  text / whyNow に★・優先番号・「今すぐ改善」などのラベルは付けない。
-  【必須】text には次を文章で含める:
-    ・何を整えるか（データ根拠の数値を示す）
-    ・最も効果が高い改善として何を期待するか
-  【必須】whyNow（1文・目安 40〜90文字）:
-    ・「なぜ今それを優先するのか」だけを書く（text の言い換え禁止）
-    ・他指標への波及・今回データの緊急度・生活習慣との関連など論理的理由
+  stars: 1件目=5 / 2件目=4 / 3件目=3（配列はこの順）。
+  text: 実測値を含め、何をどう整えるかを1〜2文で書く。
+  whyNow: 「なぜ今それを優先するか」を実測値と優先順位に基づき1文で自動生成（text の言い換え禁止）。
+  該当が2件なら2件でよい（無理に3件埋めない・埋め草禁止）。
   本人を責めず、「整える余地」「改善が期待できます」表現。
-  今回の数値・当日習慣・プロフィールに紐づく内容のみ。各 text は1〜2文。
 
-③ summary（総合評価）
-  必ず 120〜220文字（日本語）。
+③ summary（総評）
+  必ず 120〜220文字（日本語）。毎回GPTで新規生成。固定テンプレ禁止。
   【最重要】必ず最初の文・最初の段落で「データ根拠つきの良かった点」から書き始める。
   複数指標を関連づけた見通しを述べ、整え余地を穏やかに続ける。
   改善点・注意点・課題だけで始まる文章は禁止。
   数値の羅列だけにせず、解釈を添える。単日評価であることを踏まえる。
+  『ノンレム』という語は使用禁止（覚醒／レム睡眠／浅い睡眠／深い睡眠のみ）。
+  同じ実測フレーズ（例:「睡眠時間4時間12分」）を他フィールドで繰り返さないよう、数値は必要最小限。
 
-③-b karteSummary（Sleep Wellness Insight）※必須・最重要
+③-b karteSummary（Sleep Wellness Insight）※必須・最重要・毎回GPT生成
   Sleep Wellness Institute Japan 独自の総合考察。旧称「AIカルテ」。
   単なるデータ説明ではなく、睡眠データ・SOXAI・生活習慣を統合した洞察。
   認定講師がカウンセリングでそのまま読み上げて説明できる品質にする。
-  summary（総合評価）とは役割が異なる。
-  【役割】最重要課題・判断根拠・最効果改善行動の記録のみ。行動リスト・宿題・講師への問いかけは書かない。
+  summary（総評）とは役割が異なる。固定テンプレ・定型文の使い回しは禁止。毎回データに合わせて新規に書く。
+  【役割】最重要課題・判断根拠・最も改善効果が高い行動のみ。行動リスト・宿題・講師への問いかけは書かない。
   【読み手】クライアント本人が読んで理解できること。専門用語には短い言い換えを添える。
   【一般論禁止】「規則正しい生活を」「リラックスを」など根拠のない抽象論は禁止。
-  【必須】次のうち該当する複数を横断して関連づける（単一指標だけで結論しない）:
-    睡眠効率 / 覚醒時間 / HRV / 深睡眠 / 生活習慣 / 飲酒 / 体内時計
+  【用語】睡眠ステージは「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」のみ。『ノンレム』は絶対に使わない。
+  【重複禁止】summary / scoreComment / improvements と同じ数値フレーズ（例:「睡眠時間4時間12分」）を繰り返さない。同じ指標は必要なら指標名のみで触れる。
+  【優先順位・厳守】次の順で総合評価し、深い睡眠だけで最重要課題を決めない:
+    ①睡眠時間 → ②深い睡眠 → ③睡眠効率 → ④入眠潜時 → ⑤覚醒時間 → ⑥ストレス → ⑦HRV → ⑧SpO₂ → ⑨呼吸数 → ⑩体内時計
     （未測定・未入力は推測せず触れない）
+  【最重要課題の選び方】
+    上記①〜⑩のうち「整え余地がある項目」を優先順位どおりに見て、最初に該当した項目を最重要課題にする。
+    ＝改善効果が最も高い項目。深い睡眠が良好でも、睡眠時間が不足していれば最重要は睡眠時間。
+    良好な深い睡眠を最重要課題にしない。
+  【必須】優先指標を横断して関連づける（単一指標だけで結論しない）。良い点にも短く触れる。
   【構成・必須】次の3見出しで書く（改行区切り。見出し＋各1〜3文）:
-    ■今回最も重要な課題
-    （今回のデータから最も重要な課題を1つに絞る。数値根拠を短く含める）
-    ■判断の根拠
-    （なぜそう判断したか。上記指標・生活習慣を「AとBの関連」で説明する。単一要因に決めつけない）
-    ■今回もっとも改善効果が高い行動
-    （いま最も改善効果が高いと考えられる具体的な行動1つと、どのデータ関連からそう言えるか。箇条書き禁止）
+    ■最重要課題
+    （優先順位に従い、最も改善効果が高い課題を1つに絞る。数値根拠は短く1回だけ）
+    ■判断根拠
+    （なぜそう判断したか。①〜⑩の複数指標を「AとBの関連」で説明する。単一要因に決めつけない）
+    ■最も改善効果が高い行動
+    （最重要課題に直結する具体的な行動1つと、どのデータ関連からそう言えるか。箇条書き禁止）
   見出し込みでおおむね 260〜500文字（日本語）。
   前回分析がある場合:
     課題＝変化を踏まえた今回の焦点、根拠＝横断的理由、行動＝今後の最優先。
@@ -472,7 +505,7 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   前回分析がない場合（初回）:
     「初回 Insight」として書く。「前回より」など比較表現は使わない。
   医療診断表現禁止。単日断定禁止。「可能性があります」「考えられます」トーンを保つ。
-  1段落の地の文だけは禁止。旧見出し（現在の状態／原因分析／改善戦略／最も効果が高い改善ポイント）のみは不可。
+  1段落の地の文だけは禁止。旧見出し（現在の状態／原因分析／改善戦略／最も効果が高い改善ポイント／今回最も重要な課題）のみは不可。
   todaysRecommendations / recommendationsUntilNext / instructorCounseling と同じ文言のコピー禁止。
 
 ④ profileRelation（プロフィールとの関連）
@@ -645,6 +678,9 @@ function validateBody(body: unknown): {
     lifestyle: number;
     environment: number;
   };
+  inputSource?: "soxai" | "manual" | "oura";
+  deviceSpecificMetrics?: unknown;
+  ouraScores?: AnalyzeRequestBody["ouraScores"];
 } | {
   ok: false;
   message: string;
@@ -662,6 +698,9 @@ function validateBody(body: unknown): {
     aiInput,
     seedScore,
     seedCategoryScores,
+    inputSource,
+    deviceSpecificMetrics,
+    ouraScores,
   } = body as AnalyzeRequestBody;
 
   if (!lifestyle || typeof lifestyle !== "object" || Array.isArray(lifestyle)) {
@@ -741,6 +780,15 @@ function validateBody(body: unknown): {
         ? Math.max(0, Math.min(100, Math.round(seedScore)))
         : undefined,
     seedCategoryScores: parsedSeedCategories,
+    inputSource:
+      inputSource === "oura" ||
+      inputSource === "manual" ||
+      inputSource === "soxai"
+        ? inputSource
+        : undefined,
+    deviceSpecificMetrics,
+    ouraScores:
+      ouraScores && typeof ouraScores === "object" ? ouraScores : undefined,
   };
 }
 
@@ -780,16 +828,14 @@ function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
     ["入眠時間", metrics.bedtime || missing],
     ["起床時間", metrics.wakeTime || missing],
     ["睡眠効率", metrics.sleepEfficiency || missing],
-    ["覚醒時間", metrics.awakenings || missing],
-    ["覚醒率", metrics.awakeningRate || missing],
     ["REM睡眠", metrics.remSleep || missing],
     ["レム睡眠率", metrics.remSleepRate || missing],
-    ["ノンレム睡眠", metrics.nonRemSleep || missing],
-    ["ノンレム睡眠率", metrics.nonRemSleepRate || missing],
     ["浅い睡眠", metrics.lightSleep || missing],
     ["浅い睡眠率", metrics.lightSleepRate || missing],
     ["深い睡眠", metrics.deepSleep || missing],
     ["深い睡眠率", metrics.deepSleepRate || missing],
+    ["覚醒時間", metrics.awakenings || missing],
+    ["覚醒率", metrics.awakeningRate || missing],
     ["睡眠負債", metrics.sleepDebt || missing],
     ["入眠潜時", metrics.sleepLatency || missing],
     ["体内時計", metrics.circadianRhythm || missing],
@@ -806,9 +852,10 @@ function formatConfirmedMetrics(metrics: AnalysisMetrics): string {
   const table = rows.map(([label, value]) => `${label}: ${value}`).join("\n");
   return `${table}
 
-【取得済み ${present.length}/27】${present.map(([l]) => l).join(" / ") || "なし"}
-【未確認 ${absent.length}/27】${absent.map(([l]) => l).join(" / ") || "なし"}
+【取得済み ${present.length}/${rows.length}】${present.map(([l]) => l).join(" / ") || "なし"}
+【未確認 ${absent.length}/${rows.length}】${absent.map(([l]) => l).join(" / ") || "なし"}
 ※文章中の数値は上記表と一字一句一致させること。表に無い数値の創作・言い換え禁止。
+※睡眠ステージの表現は「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」のみ。『ノンレム』という語は使用禁止。
 ※取得済みはすべて総合評価に反映すること（HRV・睡眠スコア・睡眠時間・睡眠ステージ・ストレス・呼吸数・皮膚温・安静時心拍など）。単一指標だけで結論しない。`;
 }
 
@@ -983,6 +1030,9 @@ export async function POST(request: Request) {
   const confirmedMetrics = validated.metrics;
   const seedScore = validated.seedScore;
   const seedCategoryScores = validated.seedCategoryScores;
+  const inputSource = validated.inputSource ?? "soxai";
+  const isOura = inputSource === "oura";
+  const deviceLabel = isOura ? "Oura" : "SOXAI";
 
   const aiInput = buildAnalysisAiInput({
     analysisDate:
@@ -1057,14 +1107,33 @@ ${JSON.stringify(aiInput.firstAnalysis, null, 2)}`
     });
 
     const metricsBlock = confirmedMetrics
-      ? `【① SOXAI 確認済みメトリクス（分析の唯一の数値根拠。上書き・推測禁止）】
+      ? `【① ${deviceLabel} 確認済みメトリクス（分析の唯一の数値根拠。上書き・推測禁止）】
 ${formatConfirmedMetrics(confirmedMetrics)}
+${
+  isOura
+    ? `
+【デバイス指定】測定デバイスは Oura Ring です。
+文章中では「SOXAIデータ」ではなく「Ouraデータ」と書いてください。
+Oura Readiness Score を Sleep Wellness Score にコピーしないでください（SWIJ独自評価を維持）。
+${
+  validated.ouraScores
+    ? `Oura参考スコア: Sleep=${validated.ouraScores.sleepScore ?? "なし"} / Readiness=${validated.ouraScores.readinessScore ?? "なし"} / Activity=${validated.ouraScores.activityScore ?? "なし"}`
+    : ""
+}
+${
+  validated.deviceSpecificMetrics
+    ? `Oura固有: ${JSON.stringify(validated.deviceSpecificMetrics)}`
+    : ""
+}`
+    : ""
+}
 
 出力 metrics には上記をそのまま反映すること。
 「今回の画像では確認できませんでした」の項目は推測で埋めず、文章でも同じ文言で明示する。`
       : `【① 画像解析 — 最大限抽出】
 画像に存在する数値・時刻はすべて読み取り、手入力より優先する。推測禁止。読めない項目は ""、sleepScore は null。
-抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / REM睡眠 / レム睡眠率 / ノンレム睡眠 / ノンレム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス`;
+抽出対象: 睡眠スコア / 睡眠時間 / 入眠時間 / 起床時間 / 睡眠効率 / 睡眠負債 / 体内時計 / 入眠潜時 / 覚醒時間 / 覚醒率 / レム睡眠 / レム睡眠率 / 浅い睡眠 / 浅い睡眠率 / 深い睡眠 / 深い睡眠率 / 呼吸速度 / 平均SpO₂ / 安静時心拍数 / HRV / 皮膚温度 / ストレス
+※『ノンレム』という語は使わない。`;
 
     const seedScoreBlock =
       typeof seedScore === "number"
@@ -1109,7 +1178,9 @@ ${fixedProfileBlock}
 
 ${previousBlock}
 
-【生成順】①goodPoints(2〜4) → ②improvements → ③summary → ③-b karteSummary(課題/根拠/行動) → ④profileRelation → ⑤scoreComment → ⑤-b categoryScoreRationales → ⑥todaysRecommendations(ちょうど3) → ⑦nextComparisonPoints → ⑧recommendationsUntilNext(4〜6) → ⑨instructorCounseling → ⑩melatoninYogaPlan → ⑪comparisonNarrative
+【生成順】①goodPoints(2〜5) → ②improvements → ③summary(総評) → ③-b karteSummary(最重要課題/判断根拠/最も改善効果が高い行動) → ④profileRelation → ⑤scoreComment → ⑤-b categoryScoreRationales → ⑥todaysRecommendations(ちょうど3) → ⑦nextComparisonPoints → ⑧recommendationsUntilNext(4〜6) → ⑨instructorCounseling → ⑩melatoninYogaPlan → ⑪comparisonNarrative
+
+【文章品質】フィールド間で同じ数値フレーズを繰り返さない。『ノンレム』禁止。固定テンプレ禁止。
 
 【クライアント基本情報＋生活習慣フォーム】
 ${formatLifestyle(lifestyle)}`,
@@ -1183,6 +1254,28 @@ ${formatLifestyle(lifestyle)}`,
 
     if (confirmedMetrics) {
       analysis = applyConfirmedMetrics(analysis, confirmedMetrics);
+      // Good Points / 改善提案は metrics から確定。Insight(karteSummary)はGPT生成を維持
+      if (analysis && typeof analysis === "object") {
+        const record = analysis as Record<string, unknown>;
+        const insightInput = aiInputFromMetricsAndLifestyle({
+          clientName:
+            typeof lifestyle?.clientName === "string"
+              ? lifestyle.clientName
+              : undefined,
+          measurementDate:
+            typeof lifestyle?.measurementDate === "string"
+              ? lifestyle.measurementDate
+              : undefined,
+          metrics: confirmedMetrics,
+          lifestyle: {},
+        });
+        const items = evaluateAllItems(insightInput);
+        record.goodPoints = generateGoodPoints(items);
+        record.improvements = generateImprovementItems(items);
+        sanitizeAnalysisNarratives(record);
+      }
+    } else if (analysis && typeof analysis === "object") {
+      sanitizeAnalysisNarratives(analysis as Record<string, unknown>);
     }
 
     if (typeof seedScore === "number" && analysis && typeof analysis === "object") {

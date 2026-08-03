@@ -544,7 +544,7 @@ const MAPPING_RULES: MappingRule[] = [
       (/安静時心拍|resting\s*hr|restinghr|restingheartrate|^rhr$/.test(l) &&
         /最小|min/.test(l) &&
         !/変動|hrv|rmssd|sdnn|平均|avg|mean|最大|max/.test(l)) ||
-      /^最小心拍$|^最小rhr$|^rhrmin$/.test(l),
+      /^最小心拍$|^最小rhr$|^rhrmin$|^安静時心拍数最小$/.test(l),
   },
   {
     key: "restingHeartRateMax",
@@ -552,12 +552,13 @@ const MAPPING_RULES: MappingRule[] = [
       (/安静時心拍|resting\s*hr|restinghr|restingheartrate|^rhr$/.test(l) &&
         /最大|max/.test(l) &&
         !/変動|hrv|rmssd|sdnn|平均|avg|mean|最小|min/.test(l)) ||
-      /^最大心拍$|^最大rhr$|^rhrmax$/.test(l),
+      /^最大心拍$|^最大rhr$|^rhrmax$|^安静時心拍数最大$/.test(l),
   },
   {
     key: "restingHeartRate",
-    // 「安静時心拍」明示のみ。平均心拍・最新心拍・単独の平均/最小/最大は対象外
+    // 「安静時心拍」明示、または「安静時心拍数平均」
     test: (l) =>
+      /^安静時心拍数平均$|^安静時心拍平均$|^rhr平均$|^平均rhr$/.test(l) ||
       (/安静時心拍|resting\s*hr|restinghr|restingheartrate|^rhr$/.test(l) &&
         !/変動|hrv|rmssd|sdnn/.test(l) &&
         !(/^(最小|最大|平均|min|max|avg)$/.test(l))),
@@ -669,11 +670,13 @@ const MAPPING_RULES: MappingRule[] = [
       !/率|percent|割合/.test(l),
     valueHint: "duration",
   },
-  // —— 総睡眠（見出し「睡眠時間」完全一致のみ。就床・ベッド滞在・ステージ名は除外）——
+  // —— 総睡眠（見出し「睡眠時間」、または「○h ○○min 睡眠」カード）——
   {
     key: "sleepDuration",
     test: (l) =>
-      /^睡眠時間$/.test(l) &&
+      (/^睡眠時間$/.test(l) ||
+        // 詳細カード「5h 43min 睡眠」でラベルが「睡眠」になるケース
+        /^睡眠$/.test(l)) &&
       !/レム|rem|浅い|light|深い|deep|負債|効率|スコア|潜時|全就床|就床|ノンレム|nrem|必要|目標|推奨|全体|ベッド|滞在/.test(
         l,
       ),
@@ -958,15 +961,15 @@ export function extractCriticalFromCompoundText(
     }
   }
 
-  // 「23:40 - 06:20」や「23:40〜6:20」形式（ラベルが睡眠時間帯）
+  // 「23:40 - 06:20」「02:10|07:57」「02:10\n07:57」など（睡眠カード右の縦並び含む）
   if (!out.bedtime || !out.wakeTime) {
     const range = blob.match(
-      /(\d{1,2}\s*[:：]\s*\d{2})\s*[-~〜～–—]\s*(\d{1,2}\s*[:：]\s*\d{2})/,
+      /(\d{1,2}\s*[:：]\s*\d{2})\s*(?:[-~〜～–—|/／]|と|\s+)\s*(\d{1,2}\s*[:：]\s*\d{2})/,
     );
     if (range) {
       const a = extractTimeToken(range[1]);
       const b = extractTimeToken(range[2]);
-      if (a && b) {
+      if (a && b && a !== b) {
         // 夜側を入眠、朝側を起床とみなす
         const aHour = Number(a.slice(0, 2));
         const bHour = Number(b.slice(0, 2));
@@ -2789,11 +2792,9 @@ export function mergeMetricsFromVisibleReadings(
   readings: VisibleReading[],
 ): AnalysisMetrics {
   const fromApi = normalizeMetrics(apiMetrics);
-  console.log("before merge", fromApi);
 
   if (readings.length === 0) {
     applyNonRemFromStageOcr(fromApi);
-    console.log("after merge", fromApi);
     return fromApi;
   }
 
@@ -2877,7 +2878,6 @@ export function mergeMetricsFromVisibleReadings(
   // visibleReadings には「ノンレム」行が無いことが多い。
   // API metrics に無くても深い睡眠があればノンレムへ写す（浅いと合算しない）。
   applyNonRemFromStageOcr(mergedMetrics);
-  console.log("after merge", mergedMetrics);
   return mergedMetrics;
 }
 

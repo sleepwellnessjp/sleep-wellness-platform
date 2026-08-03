@@ -117,7 +117,7 @@ export function generateRuleBasedInstructorAssistant(
     needsImprovement: sections.needsImprovement,
     possibleFactors: sections.possibleFactors,
     questionCandidates: sections.questionCandidates,
-    improvementPoints: sections.goodPoints,
+    improvementPoints: sections.needsImprovement,
     worseningCauses: sections.possibleFactors,
     counselingAgenda: agenda(sections.needsImprovement),
     homeworkSuggestions: homework(ctx, sections.needsImprovement),

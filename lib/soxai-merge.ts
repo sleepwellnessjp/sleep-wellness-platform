@@ -17,7 +17,7 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
-import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+import { formatDurationDisplay, normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
 import { parseDurationMinutes, parsePercent } from "@/lib/soxai-graphs";
 import {
   inferScreenTypeFromReadings,
@@ -1161,30 +1161,31 @@ export function mergeImageExtractResults(
  * - 他画面の OCR 候補とはマージしない（ステージの深い睡眠のみ）
  */
 export function applyNonRemFromStageOcr(metrics: AnalysisMetrics): void {
+  const lightPresent = isMetricPresent(metrics, "lightSleep");
   const deepPresent = isMetricPresent(metrics, "deepSleep");
+  const lightRatePresent = isMetricPresent(metrics, "lightSleepRate");
   const deepRatePresent = isMetricPresent(metrics, "deepSleepRate");
 
-  // 深い睡眠＝ノンレム（明示ノンレムより深い睡眠を正とする）
-  if (deepPresent) {
-    metrics.nonRemSleep = metrics.deepSleep;
-  }
-  if (deepRatePresent) {
-    const deepP = parsePercent(metrics.deepSleepRate);
+  // 医学定義: ノンレム = 浅い + 深い（両方あるときだけ合算。推測禁止）
+  if (lightPresent && deepPresent) {
+    const lightM = parseDurationMinutes(metrics.lightSleep);
     const deepM = parseDurationMinutes(metrics.deepSleep);
-    // 0% かつ時間ありは OCR 欠損扱い → 率は空に
-    if (deepP === 0 && deepM != null && deepM > 0) {
-      metrics.nonRemSleepRate = "";
-    } else {
-      metrics.nonRemSleepRate = metrics.deepSleepRate;
+    if (lightM != null && deepM != null) {
+      metrics.nonRemSleep = formatDurationDisplay(`${lightM + deepM}分`);
     }
   }
 
-  // 深い睡眠が無いのに残った非ステージ由来のノンレムは捨てない
-  // （ステージで明示「ノンレム」だけ取れたケースは deep 未取得時に残す）
-  if (!deepPresent && !isMetricPresent(metrics, "nonRemSleep")) {
-    metrics.nonRemSleep = "";
+  if (lightRatePresent && deepRatePresent) {
+    const lightP = parsePercent(metrics.lightSleepRate);
+    const deepP = parsePercent(metrics.deepSleepRate);
+    if (lightP != null && deepP != null) {
+      const sum = lightP + deepP;
+      const shown = Number.isInteger(sum)
+        ? String(sum)
+        : String(Math.round(sum * 10) / 10);
+      metrics.nonRemSleepRate = `${shown}%`;
+    }
   }
-  if (!deepRatePresent && !isMetricPresent(metrics, "nonRemSleepRate")) {
-    metrics.nonRemSleepRate = "";
-  }
+
+  // 浅いだけ／深いだけをノンレムにしない（欠ける側は空のまま）
 }

@@ -7,6 +7,8 @@
 import {
   aiInputFromMetricsAndLifestyle,
   evaluateAllItems,
+  generateGoodPoints,
+  generateImprovementItems,
   generateRuleBasedAiSleepAnalysis,
   toInstructorCounseling,
   type AiAnalysisItem,
@@ -152,8 +154,8 @@ export function buildScoreBreakdownFromItems(
       deepSleep: byKey("deepSleep") || fallback,
       hrv: byKey("hrv") || fallback,
       stress: byKey("stress") || fallback,
-      spo2: fallback,
-      recovery: byKey("sleepScore") || fallback,
+      spo2: byKey("spo2") || fallback,
+      recovery: byKey("hrv") || byKey("restingHeartRate") || fallback,
     },
     score,
   );
@@ -172,9 +174,17 @@ export function buildCategoryScoresFromItems(
       "remSleep",
       "awakenings",
       "restingHeartRate",
+      "spo2",
+      "sleepDebt",
+      "sleepLatency",
     ]) ?? score;
   const mind =
-    averageNormalized(items, ["hrv", "stress", "sleepScore"]) ?? score;
+    averageNormalized(items, [
+      "hrv",
+      "stress",
+      "skinTemperature",
+      "respiratoryRate",
+    ]) ?? score;
   const lifestyle =
     averageNormalized(items, [
       "meals",
@@ -308,7 +318,7 @@ export function buildScoreFirstAnalysisResult(
     }
   }
 
-  const { score, scoreBreakdown, categoryScores } =
+  const { score, scoreBreakdown, categoryScores, items } =
     computeFastSleepWellnessScore({
       metrics,
       lifestyle: request.lifestyle,
@@ -330,8 +340,8 @@ export function buildScoreFirstAnalysisResult(
   const result = normalizeAnalysisResult({
     summary: "",
     karteSummary: "",
-    goodPoints: [],
-    improvements: [],
+    goodPoints: generateGoodPoints(items),
+    improvements: generateImprovementItems(items),
     profileRelation: "",
     scoreComment: "",
     todaysRecommendations: [],
@@ -354,6 +364,9 @@ export function buildScoreFirstAnalysisResult(
       "本レポートは睡眠ウェルネス支援であり、医療診断・治療を代替するものではありません。",
     ocrConfidence: request.ocrConfidence,
     contentStatus: "pending",
+    inputSource: request.inputSource,
+    deviceSpecificMetrics: request.deviceSpecificMetrics,
+    ouraScores: request.ouraScores,
     clientId: request.lifestyle.clientId,
     clientName: request.lifestyle.clientName,
     measurementDate: request.lifestyle.measurementDate,
@@ -405,10 +418,15 @@ export function mergeAiNarrativeIntoScoreFirstResult(
     ...preliminary,
     summary: ai.summary || preliminary.summary,
     karteSummary: ai.karteSummary || preliminary.karteSummary,
+    // Good Points / 改善提案は metrics ルール確定を優先（GPT固定文で上書きしない）
     goodPoints:
-      ai.goodPoints.length > 0 ? ai.goodPoints : preliminary.goodPoints,
+      preliminary.goodPoints.length > 0
+        ? preliminary.goodPoints
+        : ai.goodPoints,
     improvements:
-      ai.improvements.length > 0 ? ai.improvements : preliminary.improvements,
+      preliminary.improvements.length > 0
+        ? preliminary.improvements
+        : ai.improvements,
     profileRelation: ai.profileRelation || preliminary.profileRelation,
     scoreComment: aligned.scoreComment,
     todaysRecommendations:
@@ -451,5 +469,9 @@ export function mergeAiNarrativeIntoScoreFirstResult(
     clientId: preliminary.clientId ?? ai.clientId,
     clientName: preliminary.clientName ?? ai.clientName,
     measurementDate: preliminary.measurementDate ?? ai.measurementDate,
+    inputSource: preliminary.inputSource ?? ai.inputSource,
+    deviceSpecificMetrics:
+      preliminary.deviceSpecificMetrics ?? ai.deviceSpecificMetrics,
+    ouraScores: preliminary.ouraScores ?? ai.ouraScores,
   });
 }

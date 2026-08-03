@@ -20,6 +20,7 @@ import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 import {
   ClientWellnessReportSections,
 } from "@/components/analysis/ClientWellnessReport";
+import { ClientDiagnosticPdf } from "@/components/analysis/ClientDiagnosticPdf";
 import {
   buildVisualPanels,
   MEDICAL_METRIC_ROWS,
@@ -108,8 +109,8 @@ function clampLine(text: string, maxChars: number): string {
 
 /** 測定データ未取得 */
 const UNMEASURED = "未測定";
-/** コンテンツ未生成・今後対応予定 */
-const FORTHCOMING = "今後対応";
+/** コンテンツ未生成時の表示 */
+const FORTHCOMING = "該当なし";
 
 function AiContentPendingPlaceholder({ label }: { label: string }) {
   return (
@@ -168,23 +169,26 @@ function FormattedAiText({ text }: { text: string }) {
 }
 
 type KarteSectionTitle =
-  | "今回最も重要な課題"
-  | "判断の根拠"
-  | "今回もっとも改善効果が高い行動";
+  | "最重要課題"
+  | "判断根拠"
+  | "最も改善効果が高い行動";
 
 type KarteSection = { title: KarteSectionTitle; body: string };
 
 const KARTE_HEADING_ALIASES: Record<string, KarteSectionTitle> = {
-  今回最も重要な課題: "今回最も重要な課題",
-  判断の根拠: "判断の根拠",
-  今回もっとも改善効果が高い行動: "今回もっとも改善効果が高い行動",
-  最も効果が高い改善ポイント: "今回もっとも改善効果が高い行動",
+  最重要課題: "最重要課題",
+  判断根拠: "判断根拠",
+  最も改善効果が高い行動: "最も改善効果が高い行動",
+  今回最も重要な課題: "最重要課題",
+  判断の根拠: "判断根拠",
+  今回もっとも改善効果が高い行動: "最も改善効果が高い行動",
+  最も効果が高い改善ポイント: "最も改善効果が高い行動",
   // 旧 AIカルテ見出し互換
-  現在の状態: "今回最も重要な課題",
-  原因分析: "判断の根拠",
-  考えられる要因: "判断の根拠",
-  改善戦略: "今回もっとも改善効果が高い行動",
-  次回までの目標: "今回もっとも改善効果が高い行動",
+  現在の状態: "最重要課題",
+  原因分析: "判断根拠",
+  考えられる要因: "判断根拠",
+  改善戦略: "最も改善効果が高い行動",
+  次回までの目標: "最も改善効果が高い行動",
 };
 
 /** Sleep Wellness Insight を3見出し構成へ整形（旧見出しも互換） */
@@ -193,14 +197,14 @@ function parseKarteSections(text: string): KarteSection[] {
   if (!trimmed) return [];
 
   const headingPattern =
-    /(?:^|\n)\s*■?\s*(今回最も重要な課題|判断の根拠|今回もっとも改善効果が高い行動|最も効果が高い改善ポイント|現在の状態|原因分析|考えられる要因|改善戦略|次回までの目標)\s*[:：]?\s*/g;
+    /(?:^|\n)\s*■?\s*(最重要課題|判断根拠|最も改善効果が高い行動|今回最も重要な課題|判断の根拠|今回もっとも改善効果が高い行動|最も効果が高い改善ポイント|現在の状態|原因分析|考えられる要因|改善戦略|次回までの目標)\s*[:：]?\s*/g;
   const hits = [...trimmed.matchAll(headingPattern)];
 
   if (hits.length >= 2) {
     const sections: KarteSection[] = [];
     for (let i = 0; i < hits.length; i++) {
       const rawTitle = hits[i][1];
-      const title = KARTE_HEADING_ALIASES[rawTitle] ?? "今回最も重要な課題";
+      const title = KARTE_HEADING_ALIASES[rawTitle] ?? "最重要課題";
       const start = (hits[i].index ?? 0) + hits[i][0].length;
       const end = i + 1 < hits.length ? (hits[i + 1].index ?? trimmed.length) : trimmed.length;
       const body = trimmed.slice(start, end).trim();
@@ -216,22 +220,22 @@ function parseKarteSections(text: string): KarteSection[] {
 
   if (sentences.length === 0) return [];
   if (sentences.length === 1) {
-    return [{ title: "今回最も重要な課題", body: sentences[0] }];
+    return [{ title: "最重要課題", body: sentences[0] }];
   }
   if (sentences.length === 2) {
     return [
-      { title: "今回最も重要な課題", body: sentences[0] },
-      { title: "今回もっとも改善効果が高い行動", body: sentences[1] },
+      { title: "最重要課題", body: sentences[0] },
+      { title: "最も改善効果が高い行動", body: sentences[1] },
     ];
   }
 
   const mid = Math.max(1, Math.floor(sentences.length / 3));
   const mid2 = Math.max(mid + 1, Math.floor((sentences.length * 2) / 3));
   const fallback: KarteSection[] = [
-    { title: "今回最も重要な課題", body: sentences.slice(0, mid).join("") },
-    { title: "判断の根拠", body: sentences.slice(mid, mid2).join("") },
+    { title: "最重要課題", body: sentences.slice(0, mid).join("") },
+    { title: "判断根拠", body: sentences.slice(mid, mid2).join("") },
     {
-      title: "今回もっとも改善効果が高い行動",
+      title: "最も改善効果が高い行動",
       body: sentences.slice(mid2).join(""),
     },
   ];
@@ -243,9 +247,9 @@ function FormattedKarteText({ text }: { text: string }) {
   if (sections.length === 0) return null;
 
   const KARTE_HINTS: Record<KarteSection["title"], string> = {
-    今回最も重要な課題: "いま最も大切な焦点",
-    判断の根拠: "データ同士を関連づけた考察",
-    今回もっとも改善効果が高い行動: "今回いちばん効果が期待できる行動",
+    最重要課題: "いま最も大切な焦点",
+    判断根拠: "データ同士を関連づけた考察",
+    最も改善効果が高い行動: "今回いちばん効果が期待できる行動",
   };
 
   return (
@@ -1097,9 +1101,26 @@ function ResultContent({
   }
   const graphBundle = result.graphs ?? graphs;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
+  const isOuraResult = result.inputSource === "oura";
+  const deviceName = isOuraResult
+    ? "Oura Ring"
+    : result.inputSource === "manual"
+      ? "手入力"
+      : "SOXAI Ring";
+  const dataHeading = isOuraResult ? "Ouraデータ" : "SOXAIデータ";
+  const dataEyebrow = isOuraResult ? "OURA" : "SOXAI";
   const recoveryIndex = computeRecoveryIndex({
+    sleepDuration: confirmedMetrics.sleepDuration,
+    deepSleep: confirmedMetrics.deepSleep,
+    sleepEfficiency: confirmedMetrics.sleepEfficiency,
     hrv: confirmedMetrics.hrv,
+    stress: confirmedMetrics.stress,
     restingHeartRate: confirmedMetrics.restingHeartRate,
+    spo2: confirmedMetrics.spo2,
+    respiratoryRate: confirmedMetrics.respiratoryRate,
+    readinessScore: isOuraResult
+      ? result.ouraScores?.readinessScore
+      : null,
   });
   const categoryScores = result.categoryScores;
   const aiPending = result.contentStatus === "pending";
@@ -1109,10 +1130,10 @@ function ResultContent({
   const categoryKeys = Object.keys(
     WELLNESS_CATEGORY_LABELS,
   ) as WellnessCategoryKey[];
-  const goodPoints = takeItems(result.goodPoints, 4).map((item) =>
+  const goodPoints = takeItems(result.goodPoints, 5).map((item) =>
     clampLine(item, 80),
   );
-  const improvements = takeItems(result.improvements, 5).map((item) => ({
+  const improvements = takeItems(result.improvements, 3).map((item) => ({
     ...item,
     text: clampLine(item.text, 160),
     whyNow: item.whyNow ? clampLine(item.whyNow, 120) : undefined,
@@ -1265,9 +1286,9 @@ function ResultContent({
           </div>
         )}
 
-        {/* ===== Expert Report (PDF: 3 pages / 7-section reading flow) ===== */}
-        <article className="report-page report-page-text overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] print:overflow-visible print:rounded-none print:border-0 print:px-0 print:py-0 print:shadow-none sm:px-9 sm:py-10 md:px-11 md:py-11">
-          {/* —— PDF page 1: ①基本情報 → ②SOXAIデータ → ③AIカルテ —— */}
+        {/* ===== Expert Report（認定講師用カルテ・画面固定。PDFには出さない） ===== */}
+        <article className="report-page report-page-text no-print overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] sm:px-9 sm:py-10 md:px-11 md:py-11">
+          {/* —— 画面 page 1: ①基本情報 → ②データ → ③AIカルテ —— */}
           <div className="report-print-page report-print-page-1">
             <header className="report-header">
               <div className="flex items-start justify-between gap-3 border-b border-[#071426]/12 pb-4 sm:gap-4 sm:pb-6">
@@ -1294,6 +1315,9 @@ function ResultContent({
                   </h1>
                   <p className="mt-2 text-[13px] leading-5 text-slate-500 sm:text-[15px] sm:leading-6">
                     Sleep Wellness Institute Japan · 睡眠ウェルネス専門レポート
+                    <span className="mt-1 block text-[12px] text-slate-400">
+                      デバイス：{deviceName}
+                    </span>
                   </p>
                 </div>
 
@@ -1316,7 +1340,10 @@ function ResultContent({
                     </p>
                     <p className="mt-2 max-w-[8.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[11rem] sm:text-[11px] sm:leading-4">
                       生活・環境・測定を総合した独自指標
-                      <span className="block">（SOXAIスコアとは別）</span>
+                      <span className="block">
+                        （{isOuraResult ? "Oura Sleep Score" : "SOXAIスコア"}
+                        とは別）
+                      </span>
                     </p>
                   </div>
                   <div className="border-l border-[#071426]/10 pl-5 sm:pl-7">
@@ -1447,10 +1474,38 @@ function ResultContent({
             </section>
 
             <section className="report-panel report-soxai mt-5 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5">
-              <SectionLabel title="② SOXAIデータ" eyebrow="SOXAI" />
+              <SectionLabel title={`② ${dataHeading}`} eyebrow={dataEyebrow} />
               <ReportLead>
-                ウェアラブルで測定し、講師が確認した睡眠データです。数値は今回1日分の記録です。
+                {deviceName}
+                で測定し、講師が確認した睡眠データです。数値は今回1日分の記録です。
               </ReportLead>
+
+              {isOuraResult ? (
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(
+                    [
+                      ["Sleep Score", result.ouraScores?.sleepScore],
+                      ["Readiness Score", result.ouraScores?.readinessScore],
+                      ["Activity Score", result.ouraScores?.activityScore],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5"
+                    >
+                      <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-400">
+                        {label}
+                      </p>
+                      <p
+                        className="mt-1 text-[1.15rem] font-semibold tracking-[-0.03em]"
+                        style={{ color: NAVY }}
+                      >
+                        {value == null ? "要確認" : value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               <div
                 className="report-sleep-stages rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3.5 py-3.5 sm:px-4 sm:py-4"
@@ -1466,7 +1521,7 @@ function ResultContent({
                   className="mt-1 text-[14px] font-semibold tracking-[-0.02em] sm:text-[15px]"
                   style={{ color: NAVY }}
                 >
-                  睡眠ステージ（覚醒 / レム / ノンレム）
+                  睡眠ステージ（覚醒 / レム / 浅い / 深い）
                 </h3>
                 {/* 画面用（印刷時は CSS で非表示） */}
                 <div className="screen-only-sleep-stages">
@@ -1560,6 +1615,55 @@ function ResultContent({
                   );
                 })()}
               </div>
+
+              {isOuraResult &&
+              (Object.keys(
+                result.deviceSpecificMetrics?.sleepContributors ?? {},
+              ).length > 0 ||
+                Object.keys(
+                  result.deviceSpecificMetrics?.readinessContributors ?? {},
+                ).length > 0) ? (
+                <div className="mt-3 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-3.5 py-3.5 sm:px-4">
+                  <p
+                    className="text-[10px] font-semibold tracking-[0.18em]"
+                    style={{ color: GOLD }}
+                  >
+                    OURA CONTRIBUTORS
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {Object.entries(
+                      result.deviceSpecificMetrics?.sleepContributors ?? {},
+                    )
+                      .slice(0, 8)
+                      .map(([key, value]) => (
+                        <div key={`sc-${key}`} className="text-[12px]">
+                          <span className="text-slate-400">Sleep · {key}</span>
+                          <p className="font-semibold" style={{ color: NAVY }}>
+                            {value == null || String(value).trim() === ""
+                              ? "要確認"
+                              : String(value)}
+                          </p>
+                        </div>
+                      ))}
+                    {Object.entries(
+                      result.deviceSpecificMetrics?.readinessContributors ?? {},
+                    )
+                      .slice(0, 8)
+                      .map(([key, value]) => (
+                        <div key={`rc-${key}`} className="text-[12px]">
+                          <span className="text-slate-400">
+                            Readiness · {key}
+                          </span>
+                          <p className="font-semibold" style={{ color: NAVY }}>
+                            {value == null || String(value).trim() === ""
+                              ? "要確認"
+                              : String(value)}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="report-panel report-karte mt-5 rounded-xl border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-4 sm:mt-6 sm:px-5">
@@ -1568,7 +1672,7 @@ function ResultContent({
                 eyebrow="INSIGHT"
               />
               <ReportLead>
-                睡眠データ・SOXAI・生活習慣を統合し、「最も重要な課題」「判断の根拠」「最も効果が高い改善」をまとめた記録です。認定講師がそのまま説明できる品質で作成しています。
+                睡眠データ・{dataHeading}・生活習慣を統合し、「総評」「最重要課題」「判断根拠」「最も改善効果が高い行動」をまとめた記録です。認定講師がそのまま説明できる品質で作成しています。
               </ReportLead>
               {aiPending && !summaryText ? null : summaryText ? (
                 <div className="report-assessment mb-3 rounded-lg border border-[#8a6a2d]/15 bg-white/70 px-3 py-2.5">
@@ -1603,8 +1707,8 @@ function ResultContent({
             </section>
           </div>
 
-          {/* —— PDF page 2: SOXAI詳細 → ④今日やる3つ → ⑤改善提案 —— */}
-          <div className="report-print-page report-print-page-2 mt-8 border-t border-[#071426]/08 pt-8 print:mt-0 print:border-0 print:pt-0">
+          {/* —— 画面 page 2: 詳細 → ④今日やる3つ → ⑤改善提案 —— */}
+          <div className="report-print-page report-print-page-2 mt-8 border-t border-[#071426]/08 pt-8">
             <header className="report-page2-header mb-1 border-b border-[#071426]/10 pb-3">
               <p
                 className="text-[10px] font-semibold tracking-[0.22em]"
@@ -1626,7 +1730,7 @@ function ResultContent({
             {printDetailPanels.length > 0 ? (
               <section className="report-panel report-soxai-detail mt-4 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:px-5">
                 <SectionLabel
-                  title="SOXAIデータ（詳細）"
+                  title={`${dataHeading}（詳細）`}
                   eyebrow="BIO SIGNALS"
                 />
                 <ReportLead>
@@ -1755,18 +1859,24 @@ function ResultContent({
               </section>
             ) : null}
 
-            <ClientWellnessReportSections
-              result={result}
-              lifestyle={pendingLifestyle}
-              includeInstructorComment
-            />
+            {!aiPending ? (
+              <ClientWellnessReportSections
+                result={result}
+                lifestyle={pendingLifestyle}
+                includeInstructorComment
+              />
+            ) : null}
 
             <section className="report-panel report-today mt-4 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:px-5">
               <SectionLabel title="④ 今日やる3つ" eyebrow="TODAY" />
               <ReportLead>
                 今夜〜明日中に取り組める、あなた専用の3つの行動です。いちばん上から順に進めてください。
               </ReportLead>
-              <TodaysRecommendationsList items={todaysRecommendations} />
+              {aiPending ? (
+                <AiContentPendingPlaceholder label="今日やる3つ" />
+              ) : (
+                <TodaysRecommendationsList items={todaysRecommendations} />
+              )}
             </section>
 
             <section className="report-panel report-improvements mt-4 rounded-xl border border-[#071426]/10 px-4 py-4 sm:px-5">
@@ -1918,8 +2028,8 @@ function ResultContent({
             ) : null}
           </div>
 
-          {/* —— PDF page 3: ⑥AI宿題 → ⑦講師コメント —— */}
-          <div className="report-print-page report-print-page-3 mt-8 border-t border-[#071426]/08 pt-8 print:mt-0 print:border-0 print:pt-0">
+          {/* —— 画面 page 3: ⑥AI宿題 → ⑦講師コメント —— */}
+          <div className="report-print-page report-print-page-3 mt-8 border-t border-[#071426]/08 pt-8">
             <header className="report-page2-header mb-1 border-b border-[#071426]/10 pb-3">
               <p
                 className="text-[10px] font-semibold tracking-[0.22em]"
@@ -2056,7 +2166,15 @@ function ResultContent({
           </div>
         </article>
 
-        {/* ===== Visual Report (screen only; Expert PDF is 3 pages) ===== */}
+        {/* ===== クライアント向け診断書 PDF（A4両面・印刷専用。画面には出さない） ===== */}
+        <ClientDiagnosticPdf
+          result={result}
+          lifestyle={pendingLifestyle}
+          deviceName={deviceName}
+          recovery={recoveryIndex}
+        />
+
+        {/* ===== Visual Report（画面専用） ===== */}
         <article className="report-page report-page-visual no-print mt-6 overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] sm:mt-10 sm:px-9 sm:py-10 md:px-11 md:py-11">
           <header className="visual-header">
             <div className="flex items-start justify-between gap-3 border-b border-[#071426]/12 pb-4 sm:gap-4 sm:pb-5">
@@ -2265,7 +2383,7 @@ function ResultContent({
               success(
                 aiFailed
                   ? "スコア確定レポートをPDF生成しました（AI本文は未生成）"
-                  : "PDFを生成しました",
+                  : "睡眠カウンセリングシートPDFを生成しました",
               );
               void fetch("/api/activity", {
                 method: "POST",
@@ -2305,8 +2423,8 @@ function ResultContent({
             {aiPending
               ? "PDF準備中…"
               : aiFailed
-                ? "PDFダウンロード（スコア版）"
-                : "PDFダウンロード"}
+                ? "カウンセリングシート（スコア版）"
+                : "カウンセリングシート（A4両面）"}
           </button>
 
           <Link

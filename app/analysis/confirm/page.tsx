@@ -33,7 +33,6 @@ import {
 import {
   fieldStatus,
   diagnoseNeedsReview,
-  logNeedsReviewDiagnosis,
   type FieldStatus,
 } from "@/lib/soxai-field-status";
 import {
@@ -109,39 +108,27 @@ const inputConflictClass =
 const inputLowConfidenceClass =
   "mt-2.5 min-h-12 w-full rounded-2xl border border-[#8a6a2d]/35 bg-[#fbf7ef] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#8a6a2d] focus:bg-white focus:ring-4 focus:ring-[#8a6a2d]/15 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
 
-function statusBadge(status: FieldStatus) {
-  switch (status) {
-    case "from_image":
-      return {
-        label: "画像から取得",
-        className:
-          "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]",
-      };
-    case "needs_review":
-      return {
-        label: "要確認",
-        className:
-          "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]",
-      };
-    case "conflict":
-      return {
-        label: "複数画像で競合",
-        className:
-          "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800",
-      };
-    case "no_explicit":
-      return {
-        label: "未取得",
-        className:
-          "rounded-full bg-[#FFF8EC] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#C48A2D]",
-      };
-    case "manual_needed":
-      return {
-        label: "手入力が必要",
-        className:
-          "rounded-full bg-[#FFF8EC] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#C48A2D]",
-      };
+function statusBadge(status: FieldStatus, present: boolean) {
+  // Vision方式: 「要確認」は Vision 未取得のときだけ。値が入っている項目は画像から取得。
+  if (!present || status === "no_explicit" || status === "manual_needed") {
+    return {
+      label: "要確認",
+      className:
+        "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]",
+    };
   }
+  if (status === "conflict") {
+    return {
+      label: "複数画像で競合",
+      className:
+        "rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-800",
+    };
+  }
+  return {
+    label: "画像から取得",
+    className:
+      "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]",
+  };
 }
 
 function imageStatusLabel(status: SoxaiOcrImageStatusRecord["status"]): {
@@ -219,9 +206,6 @@ export default function ConfirmExtractionPage() {
   useEffect(() => {
     const initialDraft = getExtractionDraft();
     if (!initialDraft) {
-      console.error("[ocr-trace] confirm: draft null → /analysis/new へ戻す", {
-        at: new Date().toISOString(),
-      });
       router.replace("/analysis/new");
       return;
     }
@@ -230,32 +214,20 @@ export default function ConfirmExtractionPage() {
       normalizeMetrics(initialDraft.extractedMetrics),
     );
     setMetrics(normalized);
+    // Vision metrics を正とする。取得済みキーはすべて「画像から取得」扱いで自動入力
     const keys = collectedMetricKeys(normalized);
-    console.log("[ocr-trace] confirm mount: draft metrics 生JSON", {
-      metricCount: keys.length,
-      imageKeys: initialDraft.imageKeys,
-      metrics: initialDraft.extractedMetrics,
-      confirmKeys: {
-        sleepDuration: normalized.sleepDuration,
-        deepSleep: normalized.deepSleep,
-        deepSleepRate: normalized.deepSleepRate,
-        respiratoryRate: normalized.respiratoryRate,
-        restingHeartRate: normalized.restingHeartRate,
-      },
-    });
-    for (const field of SOXAI_METRIC_FIELDS) {
-      const key = field.key;
-      const value = metricDisplayValue(normalized, key);
-      const fromImage = (initialDraft.imageKeys ?? []).includes(key);
-      console.log("[ocr-trace] confirm setValue相当", {
-        key,
-        formKey: field.key,
-        keysMatch: key === field.key,
-        fromImage,
-        inputType: field.inputType,
-        value,
-        emptyOnScreen: !value,
-      });
+    const prevKeys = initialDraft.imageKeys ?? [];
+    const keysMismatch =
+      keys.length !== prevKeys.length ||
+      keys.some((key) => !prevKeys.includes(key));
+    if (keys.length > 0 && keysMismatch) {
+      const synced = {
+        ...initialDraft,
+        extractedMetrics: normalized,
+        imageKeys: keys,
+      };
+      setDraft(synced);
+      setExtractionDraft(synced);
     }
   }, [router]);
 
@@ -317,25 +289,21 @@ export default function ConfirmExtractionPage() {
     }).needsReviewCount;
   }, [metrics, draft, confidenceMap, consistencyWarnings]);
 
-  useEffect(() => {
-    if (!metrics || !draft) return;
-    const diagnosis = diagnoseNeedsReview({
-      metrics,
-      imageKeys: draft.imageKeys ?? [],
-      conflicts: draft.conflicts,
-      confidence: confidenceMap,
-      consistencyWarnings,
-    });
-    logNeedsReviewDiagnosis(
-      "[ocr-trace] confirm needs-review diagnosis",
-      diagnosis,
-    );
-  }, [metrics, draft, confidenceMap, consistencyWarnings]);
-
   const backHref = draft?.lifestyle.clientId
     ? `/analysis/new?clientId=${encodeURIComponent(draft.lifestyle.clientId)}`
     : "/analysis/new";
   const isManualInput = draft?.inputSource === "manual";
+  const isOuraInput = draft?.inputSource === "oura";
+  const deviceLabel = isOuraInput
+    ? "Oura Ring"
+    : isManualInput
+      ? "手入力"
+      : "SOXAI Ring";
+  const analysisMethodLabel = isManualInput
+    ? "手入力"
+    : isOuraInput
+      ? "Vision画像解析"
+      : "Vision画像解析";
 
   const updateField = (key: MetricFieldKey, value: string) => {
     setMetrics((current) => {
@@ -360,11 +328,6 @@ export default function ConfirmExtractionPage() {
     },
   ) => {
     const metricCount = collectedMetricKeys(result.metrics).length;
-    console.info("[ocr-trace] ⑥ フォームへsetValue開始", {
-      metricCount,
-      imageStatusCount: result.imageStatuses.length,
-      at: new Date().toISOString(),
-    });
     try {
       const next: ExtractionDraft = {
         ...current,
@@ -374,32 +337,19 @@ export default function ConfirmExtractionPage() {
         ocrConfidence: result.confidence,
         graphs: result.graphs,
         ocrImageStatuses: result.imageStatuses,
-        swsMetrics: toSwsMetrics(
+          swsMetrics: toSwsMetrics(
           result.metrics,
-          current.inputSource === "manual" ? "manual" : "soxai",
+          current.inputSource === "manual"
+            ? "manual"
+            : current.inputSource === "oura"
+              ? "oura"
+              : "soxai",
         ),
       };
       setExtractionDraft(next);
       setDraft(next);
       setMetrics(normalizeMetricsForDisplay(normalizeMetrics(result.metrics)));
-      console.info("[ocr-trace] ⑦ フォーム反映完了", {
-        metricCount,
-        imageKeys: next.imageKeys.length,
-        confirmSample: {
-          sleepDuration: result.metrics.sleepDuration,
-          deepSleep: result.metrics.deepSleep,
-          deepSleepRate: result.metrics.deepSleepRate,
-          respiratoryRate: result.metrics.respiratoryRate,
-          restingHeartRate: result.metrics.restingHeartRate,
-        },
-        at: new Date().toISOString(),
-      });
     } catch (error) {
-      console.error("[ocr-trace] ⑧ エラー発生箇所", {
-        where: "applyOcrResultToDraft",
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
       throw error;
     }
   };
@@ -408,15 +358,6 @@ export default function ConfirmExtractionPage() {
     if (!draft || indexes.length === 0) return;
     setAccessError(null);
     setReanalyzing(true);
-    console.log("[overlay]", {
-      source: "confirm",
-      action: "open",
-      ocrOverlayOpen,
-      isSubmitting,
-      reanalyzing,
-      pathname:
-        typeof window !== "undefined" ? window.location.pathname : undefined,
-    });
     setOcrOverlayOpen(true);
     setOcrCancelledMenu(false);
     setShowOcrCancelConfirm(false);
@@ -462,15 +403,6 @@ export default function ConfirmExtractionPage() {
         imageStatuses: result.imageStatuses,
       });
       flushSync(() => {
-        console.log("[overlay]", {
-          source: "confirm",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          reanalyzing,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
       });
       document
@@ -478,53 +410,21 @@ export default function ConfirmExtractionPage() {
         .forEach((node) => node.remove());
     } catch (error) {
       console.error("[analysis/confirm] reanalyze failed:", error);
-      console.error("[ocr-trace] ⑧ エラー発生箇所", {
-        where: "handleReanalyzeIndexes",
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
       setAccessError(
         error instanceof Error
           ? error.message
           : "再解析に失敗しました。もう一度お試しください。",
       );
       flushSync(() => {
-        console.log("[overlay]", {
-          source: "confirm",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          reanalyzing,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
       });
       document
         .querySelectorAll("[data-soxai-ocr-overlay]")
         .forEach((node) => node.remove());
     } finally {
-      console.log("[overlay]", {
-        source: "confirm",
-        action: "close",
-        ocrOverlayOpen,
-        isSubmitting,
-        reanalyzing,
-        pathname:
-          typeof window !== "undefined" ? window.location.pathname : undefined,
-      });
       setReanalyzing(false);
       setReanalyzeAbort(null);
       if (!retainOcrOverlay) {
-        console.log("[overlay]", {
-          source: "confirm",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          reanalyzing,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
       }
     }
@@ -622,7 +522,9 @@ export default function ConfirmExtractionPage() {
       resetProgressiveAnalysisJobs();
       setPendingAnalysisRequest({
         lifestyle: draft.lifestyle,
-        images: draft.images,
+        // Vision方式: 分析APIは metrics のみ。巨大な画像 data URL は送らない
+        // （表示用画像は extraction draft / IndexedDB 側を参照）
+        images: [],
         inputSource: draft.inputSource ?? "soxai",
         swsMetrics: draft.swsMetrics,
         metrics: confirmed,
@@ -631,6 +533,8 @@ export default function ConfirmExtractionPage() {
         ocrConfidence: draft.ocrConfidence,
         fixedProfile: draft.fixedProfile,
         dayContext: draft.dayContext,
+        deviceSpecificMetrics: draft.deviceSpecificMetrics,
+        ouraScores: draft.ouraScores,
         aiInput: (() => {
           const aiInput = buildAnalysisAiInput({
             analysisDate: draft.lifestyle.measurementDate,
@@ -687,7 +591,7 @@ export default function ConfirmExtractionPage() {
       present,
       consistencyKeySet.has(field.key),
     );
-    const badge = statusBadge(status);
+    const badge = statusBadge(status, present);
     const critical = isCriticalOcrKey(field.key);
 
     return (
@@ -734,7 +638,9 @@ export default function ConfirmExtractionPage() {
                   ? inputClass
                   : inputEmptyClass
           }
-          placeholder={present ? field.placeholder : "未取得"}
+          placeholder={present ? field.placeholder : "要確認"}
+          readOnly={!isManualInput && !isOuraInput}
+          aria-readonly={!isManualInput && !isOuraInput ? "true" : undefined}
         />
         {conflict && (
           <span className="mt-1.5 block text-[11px] leading-5 text-amber-800">
@@ -753,15 +659,6 @@ export default function ConfirmExtractionPage() {
     (f) => !CRITICAL_OCR_KEYS.includes(f.key),
   );
 
-  console.log("[overlay]", {
-    source: "confirm",
-    action: "render",
-    ocrOverlayOpen,
-    isSubmitting,
-    reanalyzing,
-    pathname:
-      typeof window !== "undefined" ? window.location.pathname : undefined,
-  });
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
@@ -777,17 +674,6 @@ export default function ConfirmExtractionPage() {
             reanalyzeAbort?.abort();
           }}
           onReviewPartial={() => {
-            console.log("[overlay]", {
-              source: "confirm",
-              action: "close",
-              ocrOverlayOpen,
-              isSubmitting,
-              reanalyzing,
-              pathname:
-                typeof window !== "undefined"
-                  ? window.location.pathname
-                  : undefined,
-            });
             setOcrOverlayOpen(false);
             setOcrCancelledMenu(false);
           }}
@@ -796,17 +682,6 @@ export default function ConfirmExtractionPage() {
           }}
           onBackToUpload={() => {
             reanalyzeAbort?.abort();
-            console.log("[overlay]", {
-              source: "confirm",
-              action: "close",
-              ocrOverlayOpen,
-              isSubmitting,
-              reanalyzing,
-              pathname:
-                typeof window !== "undefined"
-                  ? window.location.pathname
-                  : undefined,
-            });
             setOcrOverlayOpen(false);
             router.push(backHref);
           }}
@@ -844,7 +719,11 @@ export default function ConfirmExtractionPage() {
 
         <header className="mx-auto max-w-2xl text-center">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
-            {isManualInput ? "MANUAL INPUT REVIEW" : "SOXAI EXTRACTION"}
+            {isManualInput
+              ? "MANUAL INPUT REVIEW"
+              : isOuraInput
+                ? "OURA EXTRACTION"
+                : "SOXAI EXTRACTION"}
           </p>
           <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal">
             抽出結果の確認
@@ -852,8 +731,16 @@ export default function ConfirmExtractionPage() {
           <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
             {isManualInput
               ? "手入力値を確認し、必要なら修正してから「AI分析を開始する」へ進んでください。"
-              : "OCRは完了済みです。元画像と抽出値を照合し、必要なら修正してから「AI分析を開始する」へ進んでください。"}
+              : "Vision解析の結果を自動入力しています。値が入っている項目はそのまま「AI分析を開始する」へ進めます。未取得は「要確認」です。空欄と0は区別されます。"}
           </p>
+          <div className="mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-2 text-[12px] text-slate-600 sm:text-[13px]">
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+              デバイス：{deviceLabel}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+              解析方式：{analysisMethodLabel}
+            </span>
+          </div>
         </header>
 
         <AnalysisAccessBanner />
@@ -878,7 +765,7 @@ export default function ConfirmExtractionPage() {
           </div>
           <div className="min-w-0 rounded-2xl border border-[#C48A2D]/25 bg-[#FFF8EC] px-2.5 py-3.5 text-center sm:px-4 sm:py-4">
             <p className="text-[10px] font-semibold tracking-[0.18em] text-[#C48A2D] sm:text-[11px]">
-              未取得
+              要確認
             </p>
             <p className="mt-1 break-words text-lg font-semibold tracking-[-0.03em] text-[#C48A2D] sm:text-2xl">
               {missingCount}
@@ -1017,7 +904,7 @@ export default function ConfirmExtractionPage() {
                               {badge.label}
                             </span>
                           </button>
-                          {canRetry && (
+                          {canRetry && !isOuraInput && (
                             <button
                               type="button"
                               disabled={reanalyzing}
@@ -1032,7 +919,7 @@ export default function ConfirmExtractionPage() {
                         </div>
                       );
                     })}
-                    {failedImageIndexes.length > 1 && (
+                    {failedImageIndexes.length > 1 && !isOuraInput && (
                       <button
                         type="button"
                         disabled={reanalyzing}
@@ -1098,8 +985,8 @@ export default function ConfirmExtractionPage() {
                     重点4項目の確認
                   </h2>
                   <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                    入眠時間・起床時間・皮膚温度・ストレスは SOXAI
-                    の見出しと数値から自動取得します。読み取れない項目は空欄のままにしてください（推測補完しません）。
+                    入眠時間・起床時間・皮膚温度・ストレスは Vision
+                    解析で自動入力します。取得できなかった項目は「要確認」表示のまま分析へ進めます（手入力・推測補完しません）。
                   </p>
                 </div>
                 <div className="grid grid-cols-1 gap-3.5 px-4 py-5 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
@@ -1116,7 +1003,7 @@ export default function ConfirmExtractionPage() {
                     その他の睡眠データ
                   </h2>
                   <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                    「要確認」や競合の項目を優先して照合してください。手動修正した値が最終分析に使われます。
+                    Vision解析で取得した値を自動入力しています。取得できなかった項目のみ「要確認」です（手入力は不要です）。
                   </p>
                 </div>
 
@@ -1124,6 +1011,96 @@ export default function ConfirmExtractionPage() {
                   {otherFields.map(renderField)}
                 </div>
               </section>
+
+              {isOuraInput && (
+                <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+                  <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8">
+                    <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                      OURA SPECIFIC
+                    </p>
+                    <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                      Oura固有項目
+                    </h2>
+                    <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                      Readiness / Activity / Contributors など。未取得は要確認です（0埋めしません）。
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 px-4 py-5 sm:grid-cols-2 sm:px-8 sm:py-8">
+                    {(
+                      [
+                        [
+                          "Readiness Score",
+                          draft.ouraScores?.readinessScore != null
+                            ? String(draft.ouraScores.readinessScore)
+                            : "",
+                        ],
+                        [
+                          "Activity Score",
+                          draft.ouraScores?.activityScore != null
+                            ? String(draft.ouraScores.activityScore)
+                            : "",
+                        ],
+                        [
+                          "Sleep Score（Oura）",
+                          draft.ouraScores?.sleepScore != null
+                            ? String(draft.ouraScores.sleepScore)
+                            : "",
+                        ],
+                      ] as const
+                    ).map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
+                      >
+                        <p className="text-[12px] font-semibold text-slate-500">
+                          {label}
+                        </p>
+                        <p className="mt-1 text-[15px] font-semibold text-[#071426]">
+                          {value || "要確認"}
+                        </p>
+                      </div>
+                    ))}
+                    {Object.entries(
+                      draft.deviceSpecificMetrics?.sleepContributors ?? {},
+                    )
+                      .slice(0, 8)
+                      .map(([key, value]) => (
+                        <div
+                          key={`sleep-${key}`}
+                          className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
+                        >
+                          <p className="text-[12px] font-semibold text-slate-500">
+                            Sleep · {key}
+                          </p>
+                          <p className="mt-1 text-[15px] font-semibold text-[#071426]">
+                            {value == null || String(value).trim() === ""
+                              ? "要確認"
+                              : String(value)}
+                          </p>
+                        </div>
+                      ))}
+                    {Object.entries(
+                      draft.deviceSpecificMetrics?.readinessContributors ?? {},
+                    )
+                      .slice(0, 8)
+                      .map(([key, value]) => (
+                        <div
+                          key={`ready-${key}`}
+                          className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
+                        >
+                          <p className="text-[12px] font-semibold text-slate-500">
+                            Readiness · {key}
+                          </p>
+                          <p className="mt-1 text-[15px] font-semibold text-[#071426]">
+                            {value == null || String(value).trim() === ""
+                              ? "要確認"
+                              : String(value)}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                </section>
+              )}
             </div>
           </div>
 
@@ -1156,7 +1133,8 @@ export default function ConfirmExtractionPage() {
                 .join(" · ") || "年齢・性別未入力（参考分析）"}
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              SOXAI画像 {draft.images.length} 枚 · 生活習慣データ付き
+              {isOuraInput ? "Oura" : isManualInput ? "手入力" : "SOXAI"}画像{" "}
+              {draft.images.length} 枚 · 生活習慣データ付き
               {draft.lifestyle.clientId ? " · 既存クライアントに紐づけ" : ""}
             </p>
           </section>

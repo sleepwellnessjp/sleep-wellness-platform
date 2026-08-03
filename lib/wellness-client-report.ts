@@ -43,6 +43,8 @@ export type PriorityImprovement = {
   tierLabel: string;
   title: string;
   reason: string;
+  /** 今夜からできる具体的な行動（1つ） */
+  action: string;
 };
 
 export type MelatoninYogaDisplay = {
@@ -52,6 +54,8 @@ export type MelatoninYogaDisplay = {
   breathing: string;
   yogaMinutes: string;
   meditationMinutes: string;
+  /** 合計時間（例: 合計 20分） */
+  totalMinutes: string;
   bathing: string;
   morningAction: string;
 };
@@ -64,9 +68,11 @@ export type ClientWellnessReportModel = {
   impactFactors: string[];
   goodPoints: string[];
   improvements: ImprovementPoint[];
-  /** ①最優先 / ②次に改善 / ③余裕があれば */
+  /** 最優先 / 次に改善 / 余裕があれば（該当のみ・最大3） */
   priorityImprovements: PriorityImprovement[];
   melatoninYoga: MelatoninYogaDisplay;
+  /** 今日から実行できる行動（最大3・固定文にしない） */
+  todaysActions: string[];
   lifestyleStars: LifestyleStarRow[];
 };
 
@@ -159,76 +165,165 @@ function buildOverallComment(
   const durationMin = parseMinutesRough(metrics.sleepDuration);
   const efficiency = parsePercent(metrics.sleepEfficiency);
   const hrv = Number(String(metrics.hrv ?? "").replace(/[^\d.]/g, ""));
+  const maxHrv = Number(String(metrics.hrvMax ?? "").replace(/[^\d.]/g, ""));
   const stressNum = Number(String(metrics.stress ?? "").replace(/[^\d.]/g, ""));
-  const deepRate =
-    parsePercent(metrics.deepSleepRate) ?? parsePercent(metrics.nonRemSleepRate);
+  const remRate = parsePercent(metrics.remSleepRate);
+  const deepRate = parsePercent(metrics.deepSleepRate);
+  const awakeRate = parsePercent(metrics.awakeningRate);
   const rhr = Number(
     String(metrics.restingHeartRate ?? "").replace(/[^\d.]/g, ""),
   );
 
-  const parasympatheticWeak =
-    (Number.isFinite(hrv) && hrv > 0 && hrv < 40) ||
-    (Number.isFinite(stressNum) && stressNum >= 50) ||
-    (!isAbsent(lifestyle?.alcohol) && isPresent(lifestyle?.alcohol));
-
-  const recoveryWeak =
-    (deepRate != null && deepRate < 13) ||
-    (durationMin != null && durationMin < 360) ||
-    (efficiency != null && efficiency < 85);
-
   const lines: string[] = [];
+  const goodBits: string[] = [];
+  const concernBits: string[] = [];
 
-  if (parasympatheticWeak && recoveryWeak) {
-    lines.push(
-      "今日は副交感神経への切り替えが弱く、睡眠の回復側にも負担が残っている印象です。",
-    );
-  } else if (parasympatheticWeak) {
-    lines.push(
-      "今日は副交感神経への切り替えが弱く、心と身体が眠りに入りきれていない可能性があります。",
-    );
-  } else if (recoveryWeak) {
-    lines.push(
-      "今日は眠り自体は取れていても、回復に必要な深い休息が十分でない可能性があります。",
-    );
+  if (durationMin != null) {
+    if (durationMin >= 420 && durationMin <= 540) {
+      goodBits.push("睡眠時間はおおむね確保できている傾向が見られます");
+    } else if (durationMin < 360) {
+      concernBits.push("睡眠時間がやや短めの傾向が見られます");
+    } else if (durationMin > 540) {
+      concernBits.push("睡眠時間が長めで、質のばらつきに注意したい傾向が見られます");
+    }
+  }
+
+  if (efficiency != null) {
+    if (efficiency >= 90) {
+      goodBits.push("睡眠効率は良好で、ベッドでの時間を休息に活かせている可能性があります");
+    } else if (efficiency < 85) {
+      concernBits.push("睡眠効率がやや低めのため、就床時間に対する実際の休息が不足気味の可能性があります");
+    }
+  }
+
+  if (awakeRate != null && awakeRate >= 10) {
+    concernBits.push("夜間の覚醒が多めの傾向が見られます");
+  } else if (awakeRate != null && awakeRate > 0 && awakeRate < 8) {
+    goodBits.push("夜間の覚醒は比較的抑えられている可能性があります");
+  }
+
+  if (remRate != null) {
+    if (remRate >= 18 && remRate <= 25) {
+      goodBits.push("レム睡眠のバランスはおおむね妥当な範囲にある傾向が見られます");
+    } else if (remRate < 15) {
+      concernBits.push("レム睡眠がやや少なめの傾向が見られます");
+    }
+  }
+
+  if (deepRate != null) {
+    if (deepRate >= 13) {
+      goodBits.push("深い睡眠側の比率は比較的保てている可能性があります");
+    } else {
+      concernBits.push("深い睡眠側の休息が不足気味の可能性があります");
+    }
+  }
+
+  if (Number.isFinite(hrv) && hrv > 0) {
+    if (hrv >= 50) {
+      goodBits.push("平均HRVは回復しやすい側に寄っている可能性があります");
+    } else if (hrv < 40) {
+      concernBits.push("平均HRVが低めのため、副交感神経への切り替えが弱い可能性があります");
+    }
+  }
+
+  if (Number.isFinite(maxHrv) && maxHrv > 0 && Number.isFinite(hrv) && hrv > 0) {
+    if (maxHrv >= hrv * 1.4 && hrv < 45) {
+      concernBits.push(
+        "最大HRVと平均HRVの差から、回復の波が安定していない可能性があります",
+      );
+    }
+  }
+
+  if (Number.isFinite(rhr) && rhr > 0) {
+    if (rhr < 60) {
+      goodBits.push("安静時心拍数は落ち着いている傾向が見られます");
+    } else if (rhr >= 70) {
+      concernBits.push("安静時心拍数がやや高めのため、就寝前のリラックスが特に大切な可能性があります");
+    }
+  }
+
+  if (goodBits.length > 0) {
+    lines.push(`良かった点として、${goodBits.slice(0, 2).join("。また、")}。`);
   } else if (result.score >= 78) {
     lines.push(
-      "今日は自律神経と睡眠のバランスが比較的整っており、回復の土台はできています。",
+      "今日は大きく崩れた睡眠ではなく、回復の土台はある程度できている傾向が見られます。",
     );
   } else {
     lines.push(
-      "今日の眠りは大きく崩れてはいませんが、生活の一部が睡眠の質に影響している可能性があります。",
+      "今日の睡眠は大きく崩れてはいませんが、生活の一部が質に影響している可能性があります。",
     );
   }
 
-  if (efficiency != null && efficiency < 85) {
-    lines.push("睡眠効率も低下しており、就床時間に対して実際の休息がやや不足気味です。");
-  } else if (efficiency != null && efficiency >= 90) {
-    lines.push("睡眠効率は良好で、ベッドにいる時間を休息として活かせています。");
+  if (concernBits.length > 0) {
+    lines.push(
+      `一方で、${concernBits.slice(0, 2).join("。また、")}。`,
+    );
+  } else if (Number.isFinite(stressNum) && stressNum >= 50) {
+    lines.push(
+      "ストレス指標が高めのため、就寝前に副交感神経へ切り替える時間が短い可能性があります。",
+    );
   }
 
+  const lifestyleHints: string[] = [];
   if (!isAbsent(lifestyle?.alcohol) && isPresent(lifestyle?.alcohol)) {
-    lines.push(
-      "飲酒の影響で中途覚醒や深い睡眠の減少が起きやすい状態なので、今夜の整え方が特に大切です。",
+    lifestyleHints.push(
+      "飲酒は睡眠後半の覚醒やHRVに影響した可能性があります",
     );
-  } else if (caffeineLate(lifestyle)) {
-    lines.push(
-      "カフェインの残効が入眠や中途覚醒に影響している可能性があるため、摂取タイミングの見直しが有効です。",
+  }
+  if (caffeineLate(lifestyle)) {
+    lifestyleHints.push(
+      "カフェインの残効が入眠や中途覚醒に影響した可能性があります",
     );
-  } else if (lateDinner(lifestyle)) {
-    lines.push(
-      "遅い夕食による消化負担が、深い睡眠を妨げている可能性があります。",
+  }
+  if (lateDinner(lifestyle)) {
+    lifestyleHints.push(
+      "遅い夕食による消化負担が深い休息を妨げた可能性があります",
     );
-  } else if (Number.isFinite(rhr) && rhr >= 70) {
-    lines.push(
-      "安静時心拍がやや高めのため、就寝前のリラックスで回復モードへ切り替えましょう。",
+  }
+  const bath = lifestyle?.bathing ?? "";
+  if (
+    lifestyle?.bathing != null &&
+    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
+  ) {
+    lifestyleHints.push(
+      "入浴が十分でないと体温リズムの整えにくさに影響した可能性があります",
     );
-  } else {
-    lines.push(
-      "良い点を維持しつつ、優先度の高い改善から1つずつ整えていくのがおすすめです。",
+  } else if (isPresent(bath) && /入浴|湯船|バス/i.test(bath)) {
+    lifestyleHints.push(
+      "入浴習慣は入眠の助けになった可能性があります",
+    );
+  }
+  if (isPresent(lifestyle?.exercise) && !isAbsent(lifestyle?.exercise)) {
+    lifestyleHints.push(
+      "運動は日中の覚醒と夜間の深い休息のバランスに影響した可能性があります",
+    );
+  }
+  if (isPresent(lifestyle?.yoga) && !isAbsent(lifestyle?.yoga)) {
+    lifestyleHints.push(
+      "ヨガは副交感神経への切り替えを助けた可能性があります",
+    );
+  }
+  if (isPresent(lifestyle?.pilates) && !isAbsent(lifestyle?.pilates)) {
+    lifestyleHints.push(
+      "ピラティスは身体の緊張をほぐし、入眠の助けになった可能性があります",
     );
   }
 
-  return lines.slice(0, 3).join("\n");
+  if (lifestyleHints.length > 0) {
+    lines.push(lifestyleHints.slice(0, 2).join("。") + "。");
+  } else {
+    lines.push(
+      "良い点を維持しつつ、影響しやすい生活習慣から1つずつ整えていくのがおすすめです。",
+    );
+  }
+
+  if (lines.length < 3) {
+    lines.push(
+      "認定講師として、数値の良し悪しだけでなく「何が支えになり、何が負担になったか」を一緒に整理して伝えると伝わりやすいです。",
+    );
+  }
+
+  return lines.slice(0, 5).join("\n");
 }
 
 function buildImpactFactors(
@@ -257,10 +352,9 @@ function buildImpactFactors(
     hits.push({ label: "HRV低下", weight: 88 });
   }
 
-  const deepRate =
-    parsePercent(metrics.deepSleepRate) ?? parsePercent(metrics.nonRemSleepRate);
+  const deepRate = parsePercent(metrics.deepSleepRate);
   if (deepRate != null && deepRate < 13) {
-    hits.push({ label: "深睡眠不足", weight: 86 });
+    hits.push({ label: "深い睡眠不足", weight: 86 });
   }
 
   const bath = lifestyle?.bathing ?? "";
@@ -362,7 +456,10 @@ function buildGoodPoints(
   return points.slice(0, 5);
 }
 
-type RankedImprovement = ImprovementPoint & { weight: number };
+type RankedImprovement = ImprovementPoint & {
+  action: string;
+  weight: number;
+};
 
 function collectImprovementCandidates(
   result: AnalysisResult,
@@ -370,9 +467,14 @@ function collectImprovementCandidates(
 ): RankedImprovement[] {
   const items: RankedImprovement[] = [];
 
-  const push = (title: string, reason: string, weight: number) => {
+  const push = (
+    title: string,
+    reason: string,
+    action: string,
+    weight: number,
+  ) => {
     if (items.some((item) => item.title === title)) return;
-    items.push({ title, reason, weight });
+    items.push({ title, reason, action, weight });
   };
 
   for (const item of result.improvements ?? []) {
@@ -380,14 +482,16 @@ function collectImprovementCandidates(
       item.text,
       item.whyNow?.trim() ||
         "今回の測定データと生活習慣から、優先して整えると効果が期待できるポイントです。",
+      "今夜からできる小さな一歩を1つ選んで実践してください。",
       70,
     );
   }
 
   if (!isAbsent(lifestyle?.alcohol) && isPresent(lifestyle?.alcohol)) {
     push(
-      "飲酒タイミングを見直す",
-      "飲酒は入眠を早めても中途覚醒や深い睡眠の減少につながりやすいです。就寝の2時間前までに終えると、睡眠の質が安定しやすくなります。",
+      "就寝前の飲酒",
+      "睡眠の後半の覚醒やHRVに影響した可能性があります。",
+      "飲酒は就寝2〜3時間前までに終えてください。",
       95,
     );
   }
@@ -396,16 +500,20 @@ function collectImprovementCandidates(
     (!isAbsent(lifestyle?.caffeine) && isPresent(lifestyle?.caffeine))
   ) {
     push(
-      "カフェインの摂取タイミングを整える",
-      "カフェインは数時間にわたり覚醒作用が残ります。午後以降の摂取を控えめにすると、入眠潜時と中途覚醒の改善が期待できます。",
+      "カフェインの摂取タイミング",
+      "カフェインの残効が入眠や中途覚醒に影響した可能性があります。",
+      caffeineLate(lifestyle)
+        ? "カフェインは就寝6時間前までにしてください。"
+        : "午後以降のカフェインを控えめにしてください。",
       caffeineLate(lifestyle) ? 82 : 62,
     );
   }
   const durationMin = parseMinutesRough(result.metrics.sleepDuration);
   if (durationMin != null && durationMin < 360) {
     push(
-      "睡眠時間を確保する",
-      "必要睡眠に対して実睡眠が短めです。就寝時刻を15〜30分早めるだけでも、翌日の回復感と日中パフォーマンスに差が出やすくなります。",
+      "睡眠時間の確保",
+      "必要睡眠に対して実睡眠が短めの傾向が見られます。",
+      "今夜は就寝時刻を15〜30分早めてみてください。",
       90,
     );
   }
@@ -414,15 +522,17 @@ function collectImprovementCandidates(
   );
   if (Number.isFinite(stressNum) && stressNum >= 45) {
     push(
-      "就寝前にストレスをほぐす",
-      "ストレス指標が高めです。就寝前の呼吸法やメラトニンヨガ™で自律神経を整えると、入眠と回復の両方に良い影響が期待できます。",
+      "就寝前のストレスケア",
+      "ストレス指標が高めのため、副交感神経への切り替えが弱い可能性があります。",
+      "就寝前にメラトニンヨガ™の呼吸を5分取り入れてください。",
       84,
     );
   }
   if (lateDinner(lifestyle)) {
     push(
-      "夕食を早めに終える",
-      "遅い時間の食事は消化活動が残り、深い睡眠を妨げやすいです。就寝の3時間前までに夕食を終えると、睡眠の質が上がりやすくなります。",
+      "夕食のタイミング",
+      "遅い夕食による消化負担が深い休息を妨げた可能性があります。",
+      "夕食は就寝の3時間前までに終えてください。",
       80,
     );
   }
@@ -430,20 +540,30 @@ function collectImprovementCandidates(
   const hrv = Number(String(result.metrics.hrv ?? "").replace(/[^\d.]/g, ""));
   if (Number.isFinite(hrv) && hrv > 0 && hrv < 40) {
     push(
-      "副交感神経への切り替えを促す",
-      "HRVが低めのため、交感神経優位が残っている可能性があります。入浴・呼吸・メラトニンヨガ™で回復モードへ切り替えると効果的です。",
+      "副交感神経への切り替え",
+      "平均HRVが低めのため、交感神経優位が残っている可能性があります。",
+      "就寝90分前に39〜40℃で15分入浴してください。",
       88,
     );
   }
 
-  const deepRate =
-    parsePercent(result.metrics.deepSleepRate) ??
-    parsePercent(result.metrics.nonRemSleepRate);
+  const deepRate = parsePercent(result.metrics.deepSleepRate);
   if (deepRate != null && deepRate < 13) {
     push(
-      "深い睡眠を増やす習慣づくり",
-      "深い睡眠が少なめです。就寝前の刺激を減らし、体温を下げる入浴と規則正しい就寝で、回復睡眠を育てていきましょう。",
+      "深い休息を育てる習慣",
+      "深い睡眠側の休息が不足気味の可能性があります。",
+      "寝る30分前からスマートフォンを見ないようにしてください。",
       86,
+    );
+  }
+
+  const awakeRate = parsePercent(result.metrics.awakeningRate);
+  if (awakeRate != null && awakeRate >= 15) {
+    push(
+      "中途覚醒への備え",
+      "夜間の覚醒が多めの傾向が見られます。",
+      "就寝前の照明を落とし、寝室を静かに保ってください。",
+      76,
     );
   }
 
@@ -453,17 +573,10 @@ function collectImprovementCandidates(
     (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
   ) {
     push(
-      "湯船での入浴を取り入れる",
-      "入浴がないと体温リズムが整いにくく、入眠と深い睡眠に影響しやすいです。就寝90分前の湯船がおすすめです。",
+      "湯船での入浴",
+      "入浴が十分でないと体温リズムが整いにくい可能性があります。",
+      "就寝90分前に湯船へ入ってください。",
       58,
-    );
-  }
-
-  if (items.length === 0) {
-    push(
-      "生活リズムの安定を続ける",
-      "大きな乱れは見当たりません。就寝・起床時刻をそろえ、良い習慣を継続することが次の改善につながります。",
-      40,
     );
   }
 
@@ -472,6 +585,7 @@ function collectImprovementCandidates(
     .map((item) => ({
       ...item,
       reason: item.reason.slice(0, 180),
+      action: item.action.slice(0, 120),
     }));
 }
 
@@ -489,47 +603,31 @@ function buildPriorityImprovements(
   lifestyle?: LifestyleSnapshot,
 ): PriorityImprovement[] {
   const tiers = [
-    { tier: "highest" as const, tierLabel: "① 最優先" },
-    { tier: "next" as const, tierLabel: "② 次に改善" },
-    { tier: "optional" as const, tierLabel: "③ 余裕があれば" },
+    { tier: "highest" as const, tierLabel: "最優先" },
+    { tier: "next" as const, tierLabel: "次に改善" },
+    { tier: "optional" as const, tierLabel: "余裕があれば" },
   ];
-  const candidates = collectImprovementCandidates(result, lifestyle);
-  const fallbacks: ImprovementPoint[] = [
-    {
-      title: "就寝・起床時刻をそろえる",
-      reason:
-        "リズムが整うと、自律神経とメラトニン分泌のタイミングが安定しやすくなります。",
-    },
-    {
-      title: "就寝前の光刺激を減らす",
-      reason:
-        "強い光は覚醒を延長しやすいです。寝る1時間前から照明を落とし、スマホを控えると入眠がスムーズになります。",
-    },
-    {
-      title: "朝の光を取り入れる",
-      reason:
-        "起床後の自然光は体内時計のリセットに役立ち、夜の眠気を生みやすくします。",
-    },
-  ];
+  const candidates = collectImprovementCandidates(result, lifestyle).slice(0, 3);
 
-  while (candidates.length < 3) {
-    const next = fallbacks[candidates.length];
-    if (!next) break;
-    if (!candidates.some((item) => item.title === next.title)) {
-      candidates.push({ ...next, weight: 10 - candidates.length });
-    } else {
-      break;
-    }
+  // 該当しない項目は無理に埋めない（0件のときのみ、維持の1件を出す）
+  if (candidates.length === 0) {
+    return [
+      {
+        ...tiers[0],
+        title: "良い習慣の継続",
+        reason:
+          "大きな乱れは目立たないため、現状のリズムを維持することが安定につながる可能性があります。",
+        action: "就寝・起床時刻をできるだけそろえてください。",
+      },
+    ];
   }
 
-  return tiers.map((tier, index) => {
-    const item = candidates[index] ?? fallbacks[index]!;
-    return {
-      ...tier,
-      title: item.title,
-      reason: item.reason,
-    };
-  });
+  return candidates.map((item, index) => ({
+    ...tiers[index]!,
+    title: item.title,
+    reason: item.reason,
+    action: item.action,
+  }));
 }
 
 function buildMelatoninYoga(
@@ -549,73 +647,134 @@ function buildMelatoninYoga(
   const highStress = Number.isFinite(stressNum) && stressNum >= 50;
   const lowHrv = Number.isFinite(hrv) && hrv > 0 && hrv < 35;
 
-  let phase =
-    plan?.recommendedPhase?.trim() ||
-    (score >= 78
-      ? "Phase1（メンテナンス）"
-      : score >= 55
-        ? "Phase2（整える）"
-        : "Phase3（回復集中）");
+  const normalizePhase = (raw: string): "Phase1" | "Phase2" | "Phase3" => {
+    if (/phase\s*3|フェーズ\s*3|回復/i.test(raw)) return "Phase3";
+    if (/phase\s*2|フェーズ\s*2|整える/i.test(raw)) return "Phase2";
+    if (/phase\s*1|フェーズ\s*1|メンテ/i.test(raw)) return "Phase1";
+    return "Phase2";
+  };
+
+  let phase: "Phase1" | "Phase2" | "Phase3" = "Phase2";
+  if (plan?.recommendedPhase?.trim()) {
+    phase = normalizePhase(plan.recommendedPhase);
+  } else if (shortSleep || (score < 55 && (highStress || lowHrv))) {
+    phase = "Phase3";
+  } else if (alcoholOn || highStress || (score >= 55 && score < 78)) {
+    phase = "Phase2";
+  } else if (score >= 78) {
+    phase = "Phase1";
+  } else {
+    phase = "Phase2";
+  }
 
   let phaseReason = "";
-
-  if (!plan?.recommendedPhase) {
-    if (shortSleep || (score < 55 && (highStress || lowHrv))) {
-      phase = "Phase3（回復集中）";
-    } else if (alcoholOn || highStress || (score >= 55 && score < 78)) {
-      phase = "Phase2（整える）";
-    } else if (score >= 78) {
-      phase = "Phase1（メンテナンス）";
-    }
-  }
-
-  if (phase.includes("3") || /Phase\s*3/i.test(phase)) {
-    phaseReason =
-      shortSleep
-        ? "睡眠時間が短く回復が不足しているため、Phase3で呼吸・ヨガ・瞑想の時間を厚くし、副交感神経への切り替えを集中的に促します。"
-        : highStress || lowHrv
-          ? "自律神経の回復負荷が大きいため、Phase3でじっくり整えるメニューが適しています。"
-          : "総合的に回復優先の状態のため、Phase3で睡眠の土台づくりを重点的に行うのが効果的です。";
-  } else if (phase.includes("2") || /Phase\s*2/i.test(phase)) {
+  if (phase === "Phase3") {
+    phaseReason = shortSleep
+      ? "睡眠時間が短めの傾向が見られるため、回復を厚くするPhase3が適している可能性があります。"
+      : highStress || lowHrv
+        ? "ストレスやHRVから回復負荷が大きめの傾向が見られるため、Phase3でじっくり整えるのがよい可能性があります。"
+        : "総合的に回復を優先したい状態のため、Phase3が適している可能性があります。";
+  } else if (phase === "Phase2") {
     phaseReason = alcoholOn
-      ? "飲酒や生活リズムの乱れが睡眠に影響しているため、Phase2で習慣を整えつつ、就寝前のリラックスを強化するのがおすすめです。"
+      ? "生活習慣の影響が残っている可能性があるため、Phase2で整えつつリラックスを促すのがよい可能性があります。"
       : highStress
-        ? "ストレス負荷が残っているため、Phase2で呼吸とヨガを中心に副交感神経へ切り替えやすいメニューを提案します。"
-        : "大きく崩れてはいませんが改善余地があるため、Phase2で整えるペースが無理なく続けやすいです。";
+        ? "ストレスが高く、副交感神経への切り替えを促したい状態です。"
+        : "大きく崩れてはいませんが改善余地があるため、Phase2が続けやすい可能性があります。";
   } else {
     phaseReason =
-      "睡眠と生活習慣のバランスが比較的良いため、Phase1で良い状態を維持しつつ、無理のないメンテナンスを続けるのが適しています。";
+      "睡眠と生活習慣のバランスが比較的良い傾向が見られるため、Phase1で良い状態を維持するのが適している可能性があります。";
   }
 
-  const breathing =
-    plan?.breathing?.trim() ||
-    (phase.includes("3")
-      ? "4-7-8呼吸 × 4セット（約5分）"
-      : phase.includes("2")
-        ? "腹式呼吸 5分"
-        : "鼻呼吸リセット 3分");
-
-  const yogaMinutes = phase.includes("3")
-    ? "ヨガ 20分"
-    : phase.includes("2")
-      ? "ヨガ 15分"
-      : "ヨガ 10分";
-
-  const meditationMinutes = phase.includes("3")
-    ? "瞑想 10分"
-    : phase.includes("2")
-      ? "瞑想 7分"
-      : "瞑想 5分";
+  const breathMin = phase === "Phase1" ? 3 : 5;
+  const yogaMin = phase === "Phase3" ? 20 : 10;
+  const meditationMin = phase === "Phase3" ? 10 : 5;
+  const total = breathMin + yogaMin + meditationMin;
 
   return {
     phase,
     phaseReason,
-    breathing,
-    yogaMinutes,
-    meditationMinutes,
+    breathing: `呼吸 ${breathMin}分`,
+    yogaMinutes: `ヨガ ${yogaMin}分`,
+    meditationMinutes: `瞑想 ${meditationMin}分`,
+    totalMinutes: `合計 ${total}分`,
     bathing: plan?.bathing?.trim() || "39〜40℃で15分の湯船",
-    morningAction: plan?.morningAction?.trim() || "起床後すぐ Curtain Open＋軽いストレッチ",
+    morningAction:
+      plan?.morningAction?.trim() || "起床後すぐ Curtain Open＋軽いストレッチ",
   };
+}
+
+function buildTodaysActions(
+  result: AnalysisResult,
+  lifestyle?: LifestyleSnapshot,
+): string[] {
+  const actions: string[] = [];
+  const push = (text: string) => {
+    if (!text.trim()) return;
+    if (actions.includes(text)) return;
+    actions.push(text);
+  };
+
+  if (!isAbsent(lifestyle?.alcohol) && isPresent(lifestyle?.alcohol)) {
+    push("飲酒は就寝2〜3時間前までに終える");
+  }
+  if (caffeineLate(lifestyle) || isPresent(lifestyle?.caffeine)) {
+    push(
+      caffeineLate(lifestyle)
+        ? "カフェインは就寝6時間前までにする"
+        : "午後のカフェインを控えめにする",
+    );
+  }
+  if (lateDinner(lifestyle)) {
+    push("夕食は就寝の3時間前までに終える");
+  }
+
+  const bath = lifestyle?.bathing ?? "";
+  if (
+    lifestyle?.bathing != null &&
+    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
+  ) {
+    push("39〜40℃で15分入浴する");
+  }
+
+  const hrv = Number(String(result.metrics.hrv ?? "").replace(/[^\d.]/g, ""));
+  const stressNum = Number(
+    String(result.metrics.stress ?? "").replace(/[^\d.]/g, ""),
+  );
+  if (
+    (Number.isFinite(hrv) && hrv > 0 && hrv < 40) ||
+    (Number.isFinite(stressNum) && stressNum >= 45)
+  ) {
+    push("寝る前にメラトニンヨガ™の呼吸を5分行う");
+  }
+
+  const durationMin = parseMinutesRough(result.metrics.sleepDuration);
+  if (durationMin != null && durationMin < 360) {
+    push("今夜はいつもより15〜30分早く床につく");
+  }
+
+  const deepRate = parsePercent(result.metrics.deepSleepRate);
+  const awakeRate = parsePercent(result.metrics.awakeningRate);
+  if (
+    (deepRate != null && deepRate < 13) ||
+    (awakeRate != null && awakeRate >= 12)
+  ) {
+    push("寝る30分前からスマートフォンを見ない");
+  }
+
+  if (
+    lifestyle?.yogaDone === "none" ||
+    (lifestyle?.yoga != null && isAbsent(lifestyle.yoga))
+  ) {
+    push("今夜は短いヨガまたはストレッチを10分取り入れる");
+  }
+
+  if (actions.length === 0) {
+    push("就寝・起床の時刻をできるだけそろえる");
+    push("寝室の照明を就寝1時間前から落とす");
+    push("起床後すぐにカーテンを開けて光を取り入れる");
+  }
+
+  return actions.slice(0, 3);
 }
 
 function buildLifestyleStars(
@@ -706,15 +865,45 @@ export function buildClientWellnessReport(
   );
   const melatoninYoga = buildMelatoninYoga(result, snap);
 
+  // Expert AI 本文と食い違わないよう、確定済みフィールドを優先する
+  const aiSummary = (result.summary ?? "").trim();
+  const aiGood = (result.goodPoints ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+  const aiImprovements = (result.improvements ?? []).filter(
+    (item) => item && typeof item.text === "string" && item.text.trim(),
+  );
+  const tiers = [
+    { tier: "highest" as const, tierLabel: "最優先" },
+    { tier: "next" as const, tierLabel: "次に改善" },
+    { tier: "optional" as const, tierLabel: "余裕があれば" },
+  ];
+  const fromAiPriority: PriorityImprovement[] = aiImprovements
+    .slice(0, 3)
+    .map((item, index) => ({
+      ...tiers[index]!,
+      title: item.text.trim().slice(0, 40),
+      reason: (item.whyNow ?? "").trim() || "今回の測定データから優先しています。",
+      action: item.text.trim(),
+    }));
+
   return {
     score,
     stars,
-    overallComment: buildOverallComment(result, snap),
+    overallComment: aiSummary || buildOverallComment(result, snap),
     impactFactors: buildImpactFactors(result, snap),
-    goodPoints: buildGoodPoints(result, snap),
+    goodPoints: aiGood.length > 0 ? aiGood : buildGoodPoints(result, snap),
     improvements: buildImprovements(result, snap),
-    priorityImprovements: buildPriorityImprovements(result, snap),
+    priorityImprovements:
+      fromAiPriority.length > 0
+        ? fromAiPriority
+        : buildPriorityImprovements(result, snap),
     melatoninYoga,
+    todaysActions:
+      (result.todaysRecommendations ?? []).filter(Boolean).slice(0, 3).length > 0
+        ? (result.todaysRecommendations ?? []).filter(Boolean).slice(0, 3)
+        : buildTodaysActions(result, snap),
     lifestyleStars: buildLifestyleStars(result, snap),
   };
 }

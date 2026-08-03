@@ -1,0 +1,918 @@
+{
+  "httpStatus": 200,
+  "elapsedMs": 104190,
+  "body": {
+    "metrics": {
+      "sleepScore": 55,
+      "qol": "",
+      "yesterdayQol": "",
+      "conditionScore": "",
+      "bedtime": "02:10",
+      "wakeTime": "07:57",
+      "sleepDuration": "5時間10分",
+      "sleepEfficiency": "89%",
+      "awakenings": "2時間10分",
+      "awakeningRate": "30%",
+      "remSleep": "1時間15分",
+      "remSleepRate": "25%",
+      "nonRemSleep": "H:MM",
+      "nonRemSleepRate": "NN%",
+      "lightSleep": "H:MM",
+      "lightSleepRate": "NN%",
+      "deepSleep": "H:MM",
+      "deepSleepRate": "NN%",
+      "sleepDebt": "-1時間32分",
+      "sleepLatency": "30分",
+      "circadianRhythm": "0:17",
+      "respiratoryRate": "",
+      "spo2": "",
+      "restingHeartRate": "",
+      "restingHeartRateMin": "",
+      "restingHeartRateMax": "",
+      "hrv": "",
+      "hrvMax": "",
+      "hrvMin": "",
+      "skinTemperature": "",
+      "stress": ""
+    },
+    "graphs": {},
+    "visibleReadings": [
+      {
+        "label": "睡眠",
+        "value": "55"
+      },
+      {
+        "label": "睡眠時間",
+        "value": "5:10"
+      },
+      {
+        "label": "必要睡眠時間",
+        "value": "8:32"
+      },
+      {
+        "label": "目標達成率",
+        "value": "61%"
+      },
+      {
+        "label": "心拍数",
+        "value": "5:10"
+      },
+      {
+        "label": "入眠時間",
+        "value": "02:10"
+      },
+      {
+        "label": "起床時間",
+        "value": "07:57"
+      },
+      {
+        "label": "全就床時間",
+        "value": "5:47"
+      },
+      {
+        "label": "入眠潜時",
+        "value": "0:30"
+      },
+      {
+        "label": "睡眠効率",
+        "value": "89%"
+      },
+      {
+        "label": "睡眠負債",
+        "value": "-1:32"
+      },
+      {
+        "label": "体内時計",
+        "value": "0:17"
+      },
+      {
+        "label": "覚醒率",
+        "value": "30%"
+      },
+      {
+        "label": "覚醒時間",
+        "value": "2:10"
+      },
+      {
+        "label": "レム睡眠率",
+        "value": "25%"
+      },
+      {
+        "label": "レム睡眠",
+        "value": "1:15"
+      },
+      {
+        "label": "浅い睡眠率",
+        "value": "NN%"
+      },
+      {
+        "label": "浅い睡眠",
+        "value": "H:MM"
+      },
+      {
+        "label": "深い睡眠率",
+        "value": "NN%"
+      },
+      {
+        "label": "深い睡眠",
+        "value": "H:MM"
+      }
+    ],
+    "conflicts": [],
+    "confidence": {
+      "sleepScore": 0.37,
+      "sleepDuration": 0.98,
+      "bedtime": 0.99,
+      "wakeTime": 0.99,
+      "sleepEfficiency": 0.73,
+      "sleepDebt": 0.76,
+      "circadianRhythm": 0.7,
+      "sleepLatency": 0.99,
+      "awakenings": 0.99,
+      "awakeningRate": 0.73,
+      "remSleep": 0.98,
+      "remSleepRate": 0.96,
+      "nonRemSleep": 0.65,
+      "nonRemSleepRate": 0.73,
+      "lightSleep": 0.95,
+      "lightSleepRate": 0.96,
+      "deepSleep": 0.99,
+      "deepSleepRate": 0.99
+    },
+    "consistencyWarnings": [],
+    "metricSources": {
+      "sleepScore": {
+        "section": "home",
+        "imageIndex": 0
+      },
+      "sleepDuration": {
+        "section": "home",
+        "imageIndex": 0
+      },
+      "bedtime": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "wakeTime": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "sleepEfficiency": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "sleepDebt": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "circadianRhythm": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "sleepLatency": {
+        "section": "sleep_detail",
+        "imageIndex": 1
+      },
+      "awakenings": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "awakeningRate": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "remSleep": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "remSleepRate": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "nonRemSleep": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "nonRemSleepRate": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "lightSleep": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "lightSleepRate": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "deepSleep": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      },
+      "deepSleepRate": {
+        "section": "sleep_stages",
+        "imageIndex": 2
+      }
+    },
+    "collectedCount": 18,
+    "graphPanelCount": 0,
+    "visibleCount": 20,
+    "imageCount": 4,
+    "perImage": [
+      {
+        "imageIndex": 0,
+        "screenType": "home",
+        "visibleCount": 5,
+        "graphPanels": [],
+        "collectedCount": 2,
+        "error": null,
+        "startedAt": 1785570197053,
+        "endedAt": 1785570236053,
+        "durationMs": 39000
+      },
+      {
+        "imageIndex": 1,
+        "screenType": "sleep_detail",
+        "visibleCount": 7,
+        "graphPanels": [],
+        "collectedCount": 6,
+        "error": null,
+        "startedAt": 1785570197054,
+        "endedAt": 1785570207504,
+        "durationMs": 10450
+      },
+      {
+        "imageIndex": 2,
+        "screenType": "sleep_stages",
+        "visibleCount": 8,
+        "graphPanels": [],
+        "collectedCount": 10,
+        "error": null,
+        "startedAt": 1785570197055,
+        "endedAt": 1785570237680,
+        "durationMs": 40625
+      },
+      {
+        "imageIndex": 3,
+        "screenType": "other",
+        "visibleCount": 0,
+        "graphPanels": [],
+        "collectedCount": 0,
+        "error": "タイムアウト",
+        "startedAt": 1785570252058,
+        "endedAt": 1785570252058,
+        "durationMs": 0
+      }
+    ],
+    "verifyDiagnostics": {
+      "sleepScore": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "home",
+          "sleep_overview"
+        ],
+        "sectionMismatch": false
+      },
+      "qol": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "home"
+        ],
+        "sectionMismatch": false
+      },
+      "yesterdayQol": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "home"
+        ],
+        "sectionMismatch": false
+      },
+      "conditionScore": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "home"
+        ],
+        "sectionMismatch": false
+      },
+      "sleepDuration": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "home"
+        ],
+        "expectedScreens": [
+          "sleep_overview",
+          "sleep_detail",
+          "other"
+        ],
+        "sectionMismatch": true
+      },
+      "bedtime": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_detail"
+        ],
+        "expectedScreens": [
+          "bed_wake",
+          "sleep_detail",
+          "circadian"
+        ],
+        "sectionMismatch": false
+      },
+      "wakeTime": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_detail"
+        ],
+        "expectedScreens": [
+          "bed_wake",
+          "sleep_detail",
+          "circadian"
+        ],
+        "sectionMismatch": false
+      },
+      "sleepEfficiency": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      },
+      "sleepDebt": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      },
+      "circadianRhythm": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "circadian",
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      },
+      "sleepLatency": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_detail"
+        ],
+        "expectedScreens": [
+          "sleep_detail",
+          "bed_wake"
+        ],
+        "sectionMismatch": false
+      },
+      "awakenings": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages",
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      },
+      "awakeningRate": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "remSleep": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "remSleepRate": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "nonRemSleep": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "nonRemSleepRate": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "lightSleep": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "lightSleepRate": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "deepSleep": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "deepSleepRate": {
+        "presentInAnyImage": true,
+        "presentInMergedRaw": true,
+        "presentBeforeDisplayNormalize": true,
+        "hasStrongLabel": true,
+        "strongLabelScreens": [
+          "sleep_stages"
+        ],
+        "expectedScreens": [
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "respiratoryRate": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "respiration",
+          "rhr",
+          "hrv",
+          "other"
+        ],
+        "sectionMismatch": false
+      },
+      "spo2": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "respiration",
+          "sleep_stages"
+        ],
+        "sectionMismatch": false
+      },
+      "restingHeartRate": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "rhr",
+          "respiration",
+          "hrv",
+          "other"
+        ],
+        "sectionMismatch": false
+      },
+      "restingHeartRateMin": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "respiration",
+          "rhr"
+        ],
+        "sectionMismatch": false
+      },
+      "restingHeartRateMax": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "respiration",
+          "rhr"
+        ],
+        "sectionMismatch": false
+      },
+      "hrv": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "hrv"
+        ],
+        "sectionMismatch": false
+      },
+      "hrvMax": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "hrv"
+        ],
+        "sectionMismatch": false
+      },
+      "hrvMin": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "hrv"
+        ],
+        "sectionMismatch": false
+      },
+      "skinTemperature": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "skin_temp",
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      },
+      "stress": {
+        "presentInAnyImage": false,
+        "presentInMergedRaw": false,
+        "presentBeforeDisplayNormalize": false,
+        "hasStrongLabel": false,
+        "strongLabelScreens": [],
+        "expectedScreens": [
+          "stress",
+          "sleep_detail"
+        ],
+        "sectionMismatch": false
+      }
+    },
+    "usage": {
+      "purpose": "ocr",
+      "model": "gpt-4o-mini",
+      "apiCalls": 19,
+      "inputTokens": 585413,
+      "outputTokens": 1453,
+      "durationMs": 104109,
+      "imageCount": 4,
+      "cacheHits": 0,
+      "note": "per-image-vision"
+    },
+    "timing": {
+      "totalMs": 104109,
+      "concurrency": 5,
+      "phases": [
+        {
+          "name": "init",
+          "durationMs": 5,
+          "detail": {
+            "imageCount": 4
+          }
+        },
+        {
+          "name": "cacheLookup",
+          "durationMs": 0,
+          "detail": {
+            "cacheHits": 0,
+            "needVision": 4
+          }
+        },
+        {
+          "name": "perImageOcr",
+          "durationMs": 55007,
+          "detail": {
+            "concurrency": 5,
+            "count": 4,
+            "apiCallsSoFar": 14,
+            "durationsMs": [
+              {
+                "imageIndex": 0,
+                "durationMs": 39000,
+                "screenType": "home",
+                "error": null
+              },
+              {
+                "imageIndex": 1,
+                "durationMs": 10450,
+                "screenType": "sleep_detail",
+                "error": null
+              },
+              {
+                "imageIndex": 2,
+                "durationMs": 40625,
+                "screenType": "sleep_stages",
+                "error": null
+              },
+              {
+                "imageIndex": 3,
+                "durationMs": 0,
+                "screenType": "other",
+                "error": "タイムアウト"
+              }
+            ]
+          }
+        },
+        {
+          "name": "transientRetry",
+          "durationMs": 0,
+          "detail": {
+            "count": 0
+          }
+        },
+        {
+          "name": "mergeRecover",
+          "durationMs": 54,
+          "detail": {
+            "collected": 18,
+            "missing": [
+              "qol",
+              "yesterdayQol",
+              "conditionScore",
+              "respiratoryRate",
+              "spo2",
+              "restingHeartRate",
+              "restingHeartRateMin",
+              "restingHeartRateMax",
+              "hrv",
+              "hrvMax",
+              "hrvMin",
+              "skinTemperature",
+              "stress"
+            ],
+            "missingCritical": [
+              "skinTemperature",
+              "stress",
+              "spo2",
+              "restingHeartRate",
+              "hrv"
+            ]
+          }
+        },
+        {
+          "name": "homeReOcr",
+          "durationMs": 20096,
+          "detail": {
+            "missing": [
+              "yesterdayQol",
+              "conditionScore",
+              "qol"
+            ],
+            "skipped": false,
+            "collected": 18,
+            "stillMissingHome": [
+              "yesterdayQol",
+              "conditionScore",
+              "qol"
+            ]
+          }
+        },
+        {
+          "name": "criticalReOcr",
+          "durationMs": 28943,
+          "detail": {
+            "missing": [
+              "skinTemperature",
+              "stress",
+              "spo2",
+              "restingHeartRate",
+              "hrv",
+              "respiratoryRate",
+              "hrvMax",
+              "hrvMin"
+            ],
+            "skipped": false,
+            "collected": 18,
+            "stillMissingCritical": [
+              "skinTemperature",
+              "stress",
+              "spo2",
+              "restingHeartRate",
+              "hrv"
+            ]
+          }
+        },
+        {
+          "name": "normalize",
+          "durationMs": 3,
+          "detail": {
+            "collected": 18,
+            "missing": [
+              "qol",
+              "yesterdayQol",
+              "conditionScore",
+              "respiratoryRate",
+              "spo2",
+              "restingHeartRate",
+              "restingHeartRateMin",
+              "restingHeartRateMax",
+              "hrv",
+              "hrvMax",
+              "hrvMin",
+              "skinTemperature",
+              "stress"
+            ]
+          }
+        }
+      ],
+      "perImage": [
+        {
+          "imageIndex": 0,
+          "durationMs": 38990,
+          "phases": [
+            {
+              "name": "firstPass",
+              "durationMs": 5342,
+              "detail": {
+                "screenType": "home",
+                "mode": "roi",
+                "roiDefs": 1,
+                "readings": 4
+              }
+            },
+            {
+              "name": "screenRetry",
+              "durationMs": 33648,
+              "detail": {
+                "missingPrimary": [
+                  "qol",
+                  "yesterdayQol",
+                  "conditionScore"
+                ],
+                "readings": 5,
+                "mode": "roi-retry"
+              }
+            }
+          ]
+        },
+        {
+          "imageIndex": 1,
+          "durationMs": 10436,
+          "phases": [
+            {
+              "name": "firstPass",
+              "durationMs": 10436,
+              "detail": {
+                "screenType": "sleep_detail",
+                "mode": "roi",
+                "roiDefs": 2,
+                "readings": 7
+              }
+            }
+          ]
+        },
+        {
+          "imageIndex": 2,
+          "durationMs": 40616,
+          "phases": [
+            {
+              "name": "firstPass",
+              "durationMs": 18223,
+              "detail": {
+                "screenType": "sleep_stages",
+                "mode": "roi",
+                "roiDefs": 3,
+                "readings": 8
+              }
+            },
+            {
+              "name": "screenRetry",
+              "durationMs": 22393,
+              "detail": {
+                "missingPrimary": [
+                  "spo2"
+                ],
+                "readings": 8,
+                "mode": "roi-retry"
+              }
+            }
+          ]
+        },
+        {
+          "imageIndex": 3,
+          "durationMs": 60631,
+          "phases": [
+            {
+              "name": "firstPass",
+              "durationMs": 60631,
+              "detail": {
+                "screenType": "sleep_stages",
+                "mode": "roi",
+                "roiDefs": 3,
+                "readings": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "imageHashes": [
+      "c542bc8579db80cb2b720176f58c63a98ae9f5ccf0ad4683ab7e9f5c6693e1cf",
+      "00c9ae21df18c2d498d20c60747855173697a012a03b3cd1fa333dff2338769b",
+      "7f29dbe6f72cf341195d95cce12fc257b4a2bd2aa233b565814343b8c4f92026",
+      "8de27a408af10957716ce6795c4aeeb00944cec4066238ae2f17015bf3beae9b"
+    ]
+  }
+}

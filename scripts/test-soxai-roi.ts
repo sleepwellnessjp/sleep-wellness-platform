@@ -42,8 +42,57 @@ for (const screen of screens) {
 
 check(
   "classify ROI が上部〜中部",
-  CLASSIFY_ROI.rect.y < 0.1 && CLASSIFY_ROI.rect.h >= 0.3 && CLASSIFY_ROI.rect.h <= 0.5,
+  CLASSIFY_ROI.rect.y < 0.1 &&
+    CLASSIFY_ROI.rect.h >= 0.3 &&
+    CLASSIFY_ROI.rect.h <= 0.5,
 );
+
+const stageIds = getRoisForScreen("sleep_stages").map((r) => r.id);
+check(
+  "sleep_stages: 2 ROI（入眠潜時系＋ステージ系）",
+  stageIds.length === 2 &&
+    stageIds.includes("roi_bed_wake_latency") &&
+    stageIds.includes("roi_sleep_stages_core"),
+);
+
+for (const screen of ["bed_wake", "sleep_stages"] as SoxaiScreenType[]) {
+  const ids = getRoisForScreen(screen).map((r) => r.id);
+  check(
+    `${screen}: 同一の2 ROI`,
+    ids[0] === "roi_bed_wake_latency" && ids[1] === "roi_sleep_stages_core",
+  );
+}
+
+const sleepOverviewIds = getRoisForScreen("sleep_overview").map((r) => r.id);
+check(
+  "sleep_overview: 睡眠時間ROI",
+  sleepOverviewIds.includes("roi_sleep_overview_duration"),
+);
+
+const sleepDetailIds = getRoisForScreen("sleep_detail").map((r) => r.id);
+check(
+  "sleep_detail: 詳細トレンドROI",
+  sleepDetailIds.includes("roi_sleep_detail_trends"),
+);
+
+const hrvIds = getRoisForScreen("hrv").map((r) => r.id);
+check("hrv: 統合ROIあり", hrvIds.includes("hrv_vitals_full"));
+check("hrv: ROIは1つ（壁時計対策）", hrvIds.length === 1);
+
+const respIds = getRoisForScreen("respiration").map((r) => r.id);
+check("respiration: 呼吸速度ROIあり", respIds.includes("resp_rate"));
+
+// プロンプト雛形が値に混入しないよう、ROI hint に NN%/H:MM を置かない
+let placeholderLeak = false;
+for (const screen of screens) {
+  for (const r of getRoisForScreen(screen)) {
+    if (/NN%|H:MM|例:\s*\d/.test(r.promptHint)) {
+      placeholderLeak = true;
+      console.error(`placeholder in ${screen}/${r.id}`);
+    }
+  }
+}
+check("ROI promptHint にプレースホルダ例なし", !placeholderLeak);
 
 const px = roiRectToPixels({ x: 0.1, y: 0.2, w: 0.5, h: 0.3 }, 1000, 2000);
 check("pixel 変換 left", px.left === 100);
@@ -52,7 +101,7 @@ check("pixel 変換 width", px.width === 500);
 check("pixel 変換 height", px.height === 600);
 
 const preview = previewRoiPixels("hrv", 1170, 2532);
-check("hrv preview に値領域", preview.some((p) => p.id === "hrv_values"));
+check("hrv preview に値領域", preview.some((p) => p.id === "hrv_vitals_full"));
 
 const passed = results.filter((r) => r.pass).length;
 const failed = results.filter((r) => !r.pass).length;

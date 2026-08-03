@@ -1,0 +1,107 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+images=4
+ - 02_IMG_2595.PNG
+ - 03_IMG_2596.PNG
+ - 04_IMG_2597.PNG
+ - 05_IMG_2598.PNG
+POST http://127.0.0.1:3000/api/extract ...
+HTTP 200 in 104190ms → /Users/taka/Desktop/sleep-wellness-platform/.tmp-soxai-731/_ocr-investigate-9.json
+
+========== TIMING ==========
+total=104109ms concurrency=5
+  section init: 5ms {"imageCount":4}
+  section cacheLookup: 0ms {"cacheHits":0,"needVision":4}
+  section perImageOcr: 55007ms {"concurrency":5,"count":4,"apiCallsSoFar":14,"durationsMs":[{"imageIndex":0,"durationMs":39000,"screenType":"home","error":null},{"imageIndex":1,"durationMs":10450,"screenType":"sleep_detail","error":null},{"imageIndex":2,"durationMs":40625,"screenType":"sleep_stages","error":null},{"imageIndex":3,"durationMs":0,"screenType":"other","error":"タイムアウト"}]}
+  section transientRetry: 0ms {"count":0}
+  section mergeRecover: 54ms {"collected":18,"missing":["qol","yesterdayQol","conditionScore","respiratoryRate","spo2","restingHeartRate","restingHeartRateMin","restingHeartRateMax","hrv","hrvMax","hrvMin","skinTemperature","stress"],"missingCritical":["skinTemperature","stress","spo2","restingHeartRate","hrv"]}
+  section homeReOcr: 20096ms {"missing":["yesterdayQol","conditionScore","qol"],"skipped":false,"collected":18,"stillMissingHome":["yesterdayQol","conditionScore","qol"]}
+  section criticalReOcr: 28943ms {"missing":["skinTemperature","stress","spo2","restingHeartRate","hrv","respiratoryRate","hrvMax","hrvMin"],"skipped":false,"collected":18,"stillMissingCritical":["skinTemperature","stress","spo2","restingHeartRate","hrv"]}
+  section normalize: 3ms {"collected":18,"missing":["qol","yesterdayQol","conditionScore","respiratoryRate","spo2","restingHeartRate","restingHeartRateMin","restingHeartRateMax","hrv","hrvMax","hrvMin","skinTemperature","stress"]}
+-- per image --
+  #0 screen=home durationMs=39000
+  #1 screen=sleep_detail durationMs=10450
+  #2 screen=sleep_stages durationMs=40625
+  #3 screen=other durationMs=0
+    #0 firstPass: 5342ms
+    #0 screenRetry: 33648ms
+    #1 firstPass: 10436ms
+    #2 firstPass: 18223ms
+    #2 screenRetry: 22393ms
+    #3 firstPass: 60631ms
+
+========== RESULT ==========
+filled 18/31
+
+-- present --
+OK  [ホーム/睡眠スコア] 睡眠スコア (sleepScore) = 55
+OK  [睡眠・睡眠時間] 睡眠時間 (sleepDuration) = "5時間10分"
+OK  [睡眠・入眠(23:45付近)] 入眠時間 (bedtime) = "02:10"
+OK  [睡眠・起床(08:05付近)] 起床時間 (wakeTime) = "07:57"
+OK  [睡眠・睡眠効率] 睡眠効率 (sleepEfficiency) = "89%"
+OK  [睡眠・睡眠負債] 睡眠負債 (sleepDebt) = "-1時間32分"
+OK  [睡眠・体内時計] 体内時計 (circadianRhythm) = "0:17"
+OK  [睡眠・入眠潜時] 入眠潜時 (sleepLatency) = "30分"
+OK  [睡眠ステージ・覚醒時間] 覚醒時間 (awakenings) = "2時間10分"
+OK  [睡眠ステージ・覚醒率] 覚醒率 (awakeningRate) = "30%"
+OK  [睡眠ステージ・レム時間] レム睡眠 (remSleep) = "1時間15分"
+OK  [睡眠ステージ・レム率] レム睡眠率 (remSleepRate) = "25%"
+OK  [?] ノンレム睡眠 (nonRemSleep) = "H:MM"
+OK  [?] ノンレム睡眠率 (nonRemSleepRate) = "NN%"
+OK  [睡眠ステージ・浅い時間] 浅い睡眠 (lightSleep) = "H:MM"
+OK  [睡眠ステージ・浅い率] 浅い睡眠率 (lightSleepRate) = "NN%"
+OK  [睡眠ステージ・深い時間] ノンレム睡眠 (deepSleep) = "H:MM"
+OK  [睡眠ステージ・深い率] ノンレム睡眠率 (deepSleepRate) = "NN%"
+
+-- MISSING --
+MISS [概要・QoL] QoL (qol)
+MISS [概要・昨日のスコア] 昨日のスコア (yesterdayQol)
+MISS [概要・体調] 体調スコア (conditionScore)
+MISS [睡眠・呼吸速度] 呼吸速度 (respiratoryRate)
+MISS [睡眠・平均酸素レベル] 平均SpO₂ (spo2)
+MISS [睡眠・安静時心拍数] 安静時心拍数 (restingHeartRate)
+MISS [?] 安静時心拍数（最小） (restingHeartRateMin)
+MISS [?] 安静時心拍数（最大） (restingHeartRateMax)
+MISS [睡眠・心拍変動] 平均HRV (hrv)
+MISS [?] 最大HRV (hrvMax)
+MISS [?] 最小HRV (hrvMin)
+MISS [皮膚温度詳細] 皮膚温度 (skinTemperature)
+MISS [概要・ストレスモニター] ストレス (stress)
+
+-- per image --
+#0 screen=home readings=0 ok=true err=-
+#1 screen=sleep_detail readings=0 ok=true err=-
+#2 screen=sleep_stages readings=0 ok=true err=-
+#3 screen=other readings=0 ok=true err=タイムアウト
+
+-- missing cause hints (raw readings that look related) --
+
+[qol] related readings (0):
+
+[yesterdayQol] related readings (0):
+
+[conditionScore] related readings (0):
+
+[respiratoryRate] related readings (0):
+
+[spo2] related readings (0):
+
+[restingHeartRate] related readings (0):
+
+[restingHeartRateMin] related readings (0):
+
+[restingHeartRateMax] related readings (0):
+
+[hrv] related readings (0):
+
+[hrvMax] related readings (0):
+
+[hrvMin] related readings (0):
+
+[skinTemperature] related readings (0):
+
+[stress] related readings (0):
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.0.2
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2
+npm notice To update run: npm install -g npm@12.0.2
+npm notice

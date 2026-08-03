@@ -1,5 +1,6 @@
 /**
  * SOXAI ROI OCR 用プロンプトと結果結合ヘルパ。
+ * 画像全体は読まない。切り出し領域に見える数値だけを返す。
  */
 
 import type { SoxaiRoiDef } from "@/lib/soxai-roi-map";
@@ -34,7 +35,7 @@ export function roiOcrPrompt(params: {
 }): string {
   const screenLabel = SOXAI_SCREEN_LABELS[params.screenType];
   const focuses = params.roi.focusLabels.join(" / ") || "見える数値すべて";
-  return `SOXAI専用OCR（切り出し領域のみ）。
+  return `SOXAI専用OCR（切り出し領域のみ・画像全体は見ない）。
 元スクショ ${params.total}枚中 ${params.imageIndex + 1}枚目。
 確定 screenType: 「${params.screenType}」（${screenLabel}）
 切り出し領域: 「${params.roi.label}」（id=${params.roi.id}）
@@ -45,11 +46,13 @@ export function roiOcrPrompt(params: {
 指示:
 ${params.roi.promptHint}
 
-ルール:
-- この切り出しに見えるラベル+値だけを visibleReadings に返す
-- 画面外・切り出し外の値は想像しない
-- 右端の昨日比較（↑↓隣）は捨てる
-- 単位（% / bpm / ms / rpm / ℃）が付いていれば値に含める
+厳守ルール:
+- この切り出しに実際に見えるラベル+数値だけを visibleReadings に返す
+- 見えない項目は省略する（空値や仮の値を作らない）
+- 数値の推測・補完・計算・他画面の知識の持ち込みは禁止
+- 「NN%」「H:MM」「例」などのプレースホルダ文字列を値にしてはいけない
+- 右端の昨日比較（↑↓隣の小さな値）は捨てる
+- 単位（% / bpm / ms / rpm / ℃）が画像に付いていれば値に含める
 - screenType は必ず「${params.screenType}」を返す
-- graphReadings は不要（空配列）`;
+- graphReadings は空配列`;
 }

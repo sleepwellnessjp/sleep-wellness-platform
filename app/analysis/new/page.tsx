@@ -34,8 +34,16 @@ import {
 } from "@/lib/analysis-session";
 import { resetProgressiveAnalysisJobs } from "@/lib/analysis-progressive";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
-import type { SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import {
+  emptyGraphBundle,
+  type SoxaiGraphBundle,
+} from "@/lib/soxai-graphs";
 import type { MetricConfidenceMap } from "@/lib/soxai-merge";
+import {
+  OURA_MAX_IMAGES,
+  resolveOuraVisionExtraction,
+} from "@/lib/oura-vision-runner";
+import { toSwsMetrics } from "@/lib/sws-standard";
 import {
   CLIENT_GENDER_OPTIONS,
   emptyClientProfileBasics,
@@ -58,8 +66,6 @@ import {
   emptyMetrics,
   SOXAI_METRIC_FIELDS,
 } from "@/lib/soxai-metrics";
-import { emptyGraphBundle } from "@/lib/soxai-graphs";
-import { toSwsMetrics } from "@/lib/sws-standard";
 
 const SLOT_MAX_FILES: Record<SoxaiExtractSection, number> = {
   home: 1,
@@ -290,8 +296,9 @@ const SOXAI_UPLOAD_SLOTS: SoxaiUploadSlot[] = [
     description: "睡眠ステージ内訳とグラフが表示される画面",
     items: [
       "覚醒時間と割合",
-      "REM睡眠時間と割合",
-      "ノンレム睡眠時間と割合",
+      "レム睡眠時間と割合",
+      "浅い睡眠時間と割合",
+      "深い睡眠時間と割合",
       "睡眠ステージグラフ",
     ],
   },
@@ -567,24 +574,8 @@ function adoptSubmitGeneration(
 ): boolean {
   if (submitGeneration === submitGenerationRef.current) return true;
   if (submitGeneration > submitGenerationRef.current) {
-    if (!options?.silent) {
-      console.info(
-        "[ocr-trace] ⑥ reclaim submitGeneration after counter reset",
-        {
-          submitGeneration,
-          was: submitGenerationRef.current,
-          at: new Date().toISOString(),
-        },
-      );
-    }
     submitGenerationRef.current = submitGeneration;
     return true;
-  }
-  if (!options?.silent) {
-    console.warn("[ocr-trace] ⑥ skip: submitGeneration mismatch（結果を破棄）", {
-      submitGeneration,
-      current: submitGenerationRef.current,
-    });
   }
   return false;
 }
@@ -613,6 +604,7 @@ function NewAnalysisPageInner() {
   const [slotFiles, setSlotFiles] = useState<
     Partial<Record<SoxaiExtractSection, File[]>>
   >({});
+  const [ouraFiles, setOuraFiles] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<BackgroundOcrStatus>("idle");
   const [ocrImageCache, setOcrImageCache] = useState<{
@@ -767,18 +759,13 @@ function NewAnalysisPageInner() {
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
 
         setOcrImageCache({ fingerprint: filesFingerprint, images });
-        await startBackgroundSoxaiExtraction(images, sections);
+        // Vision 方式: バックグラウンド OCR は使用停止（提出時に Vision 一括解析）
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
+        setError(null);
         setOcrStatus("ready");
       } catch (ocrError) {
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
         console.error("[analysis/new] background OCR failed:", ocrError);
-        console.error("[ocr-trace] ⑧ エラー発生箇所", {
-          where: "analysis/new.backgroundOcr",
-          message:
-            ocrError instanceof Error ? ocrError.message : String(ocrError),
-          stack: ocrError instanceof Error ? ocrError.stack : undefined,
-        });
         setOcrStatus("error");
         // 提出時に再試行できるよう、ここではフォーム全体のエラーにはしない
       }
@@ -1000,20 +987,40 @@ function NewAnalysisPageInner() {
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    const probe = (msg: string, extra?: Record<string, unknown>) => {
+      console.log(msg, ...(extra ? [extra] : []));
+      void fetch("/api/debug-client-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ msg, ...extra, at: Date.now() }),
+      }).catch(() => {});
+    };
+    probe("OCR BUTTON CLICK");
     event.preventDefault();
     // React state の isSubmitting 反映前の二重クリックで generation が進み、
     // 先に完了した提出が mismatch で破棄されるのを防ぐ
-    if (submitInFlightRef.current || isSubmitting) return;
+    if (submitInFlightRef.current || isSubmitting) {
+      probe("OCR BUTTON CLICK blocked", {
+        submitInFlightRef: submitInFlightRef.current,
+        isSubmitting,
+      });
+      return;
+    }
 
     setError(null);
     setTouchedUpload(true);
-    if (inputMethod === "oura" || inputMethod === "garmin" || inputMethod === "apple") {
+    if (inputMethod === "garmin" || inputMethod === "apple") {
       setError("現在開発中です。今後のアップデートで対応予定です。");
       return;
     }
 
     if (inputMethod === "soxai" && files.length === 0) {
       setError("SOXAI画像を1枚以上アップロードしてください。");
+      return;
+    }
+
+    if (inputMethod === "oura" && ouraFiles.length === 0) {
+      setError("Oura画像を1枚以上アップロードしてください。");
       return;
     }
 
@@ -1025,10 +1032,19 @@ function NewAnalysisPageInner() {
       return;
     }
 
+    if (inputMethod === "oura" && ouraFiles.length > OURA_MAX_IMAGES) {
+      setError(`Oura画像は最大${OURA_MAX_IMAGES}枚までです。`);
+      return;
+    }
+
     const measurementDate = String(formData.get("measurementDate") ?? "");
     const resolvedClientName = clientName.trim();
 
     if (!resolvedClientName || !measurementDate) {
+      probe("OCR BUTTON STOP: missing name/date", {
+        resolvedClientName,
+        measurementDate,
+      });
       setError(
         "対象者名と測定日は必須です。クライアントを選択または入力してください。",
       );
@@ -1036,15 +1052,21 @@ function NewAnalysisPageInner() {
     }
 
     if (!profile.age.trim() || !profile.gender.trim()) {
+      probe("OCR BUTTON STOP: missing age/gender", {
+        age: profile.age,
+        gender: profile.gender,
+      });
       setError("年齢と性別は必須です。クライアント基本情報を入力してください。");
       return;
     }
 
     if (parseOptionalAge(profile.age) == null) {
+      probe("OCR BUTTON STOP: invalid age", { age: profile.age });
       setError("年齢は 0〜130 の数値で入力してください。");
       return;
     }
 
+    probe("OCR BUTTON PASS validation → setIsSubmitting");
     submitInFlightRef.current = true;
     setIsSubmitting(true);
     const submitGeneration = ++submitGenerationRef.current;
@@ -1363,7 +1385,7 @@ function NewAnalysisPageInner() {
         }
       }
 
-      if (inputMethod !== "soxai") {
+      if (inputMethod === "manual") {
         beginNewSoxaiAnalysisSession({ clearOcrCaches: false });
         resetProgressiveAnalysisJobs();
         setExtractionDraft({
@@ -1382,15 +1404,91 @@ function NewAnalysisPageInner() {
         return;
       }
 
-      console.log("[overlay]", {
-        source: "new",
-        action: "open",
-        ocrOverlayOpen,
-        isSubmitting,
-        ocrStatus,
-        pathname:
-          typeof window !== "undefined" ? window.location.pathname : undefined,
-      });
+      if (inputMethod === "oura") {
+        beginNewSoxaiAnalysisSession({ clearOcrCaches: false });
+        resetProgressiveAnalysisJobs();
+        setOcrOverlayOpen(true);
+        setOcrCancelledMenu(false);
+        setShowOcrCancelConfirm(false);
+        setOcrProgress(null);
+        const abortController = new AbortController();
+        ocrAbortRef.current = abortController;
+
+        images = await Promise.all(ouraFiles.map(fileToDataUrl));
+        if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) {
+          return;
+        }
+
+        const useFixture =
+          process.env.NEXT_PUBLIC_OURA_USE_FIXTURE === "1" ||
+          (typeof window !== "undefined" &&
+            window.localStorage.getItem("oura_use_fixture") === "1");
+
+        let fixture: unknown;
+        if (useFixture) {
+          const fixtureRes = await fetch("/fixtures/oura/sample-vision-result.json");
+          if (fixtureRes.ok) {
+            fixture = await fixtureRes.json();
+          }
+        }
+
+        const extraction = await resolveOuraVisionExtraction(images, {
+          signal: abortController.signal,
+          onProgress: setOcrProgress,
+          fixture,
+        });
+
+        if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) {
+          return;
+        }
+
+        if (extraction.cancelled) {
+          retainOcrOverlay = true;
+          setOcrCancelledMenu(true);
+          setOcrStatus("cancelled");
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (extraction.error && extraction.imageKeys.length === 0) {
+          throw new AnalysisError(
+            extraction.error ||
+              "Oura画像から睡眠データを読み取れませんでした。",
+          );
+        }
+
+        setError(null);
+        setOcrStatus("ready");
+        const extractedMetrics = extraction.metrics;
+        setExtractionDraft({
+          lifestyle,
+          images,
+          inputSource: "oura",
+          extractedMetrics,
+          imageKeys: extraction.imageKeys,
+          conflicts: [],
+          ocrConfidence: {},
+          graphs: emptyGraphBundle(),
+          ocrImageStatuses: extraction.imageStatuses,
+          fixedProfile,
+          swsMetrics: toSwsMetrics(extractedMetrics, "oura"),
+          deviceSpecificMetrics: extraction.deviceSpecificMetrics,
+          ouraScores: extraction.ouraScores,
+          ouraWarnings: extraction.warnings,
+        });
+        flushSync(() => {
+          setOcrOverlayOpen(false);
+        });
+        router.push("/analysis/confirm");
+        return;
+      }
+
+      // —— SOXAI path（既存・変更最小） ——
+      void fetch("/api/debug-client-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ msg: "OCR BUTTON setOcrOverlayOpen(true)", at: Date.now() }),
+      }).catch(() => {});
       setOcrOverlayOpen(true);
       setOcrCancelledMenu(false);
       setShowOcrCancelConfirm(false);
@@ -1422,21 +1520,10 @@ function NewAnalysisPageInner() {
       // ページを離れた／新しい提出が始まった場合は遷移しない
       // （HMR・remount で counter がリセットされた場合は reclaim して続行）
       if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) {
-        console.warn("[ocr-trace] ⑥ skip detail", {
-          submitGeneration,
-          current: submitGenerationRef.current,
-          metricCount: collectedMetricKeys(extraction.metrics).length,
-          cancelled: extraction.cancelled,
-        });
         return;
       }
 
       if (extraction.cancelled) {
-        console.warn("[ocr-trace] ⑥ cancelled path（確認へ自動遷移しない）", {
-          metricCount: collectedMetricKeys(extraction.metrics).length,
-          metrics: extraction.metrics,
-          imageStatuses: extraction.imageStatuses,
-        });
         setPendingDraftPayload({
           lifestyle,
           images,
@@ -1458,33 +1545,11 @@ function NewAnalysisPageInner() {
         return;
       }
 
+      // 成功後は失敗時バナーを残さない（「データ取得済み」のみ）
+      setError(null);
       setOcrStatus("ready");
       const extractedMetrics = extraction.metrics;
       const imageKeys = collectedMetricKeys(extractedMetrics);
-      const formKeys = SOXAI_METRIC_FIELDS.map((field) => field.key);
-      console.log("[ocr-trace] ⑥ フォームへsetValue開始（metrics生JSON）", {
-        metricCount: imageKeys.length,
-        imageCount: images.length,
-        imageKeys,
-        missingKeys: formKeys.filter((key) => !imageKeys.includes(key)),
-        metrics: extractedMetrics,
-        at: new Date().toISOString(),
-      });
-      for (const field of SOXAI_METRIC_FIELDS) {
-        const key = field.key;
-        const raw =
-          key === "sleepScore"
-            ? extractedMetrics.sleepScore
-            : extractedMetrics[key];
-        const present = imageKeys.includes(key);
-        console.log("[ocr-trace] ⑥ setValue", {
-          key,
-          formKey: field.key,
-          keysMatch: key === field.key,
-          present,
-          value: raw,
-        });
-      }
       const statuses =
         extraction.imageStatuses.length === images.length
           ? extraction.imageStatuses
@@ -1504,9 +1569,6 @@ function NewAnalysisPageInner() {
           item.status !== "timeout",
       );
       if (incomplete || statuses.length !== images.length) {
-        console.error("[ocr-trace] ⑥ stop: incomplete imageStatuses", {
-          statuses,
-        });
         throw new AnalysisError(
           "全画像のOCRが完了していません。もう一度お試しください。",
           { errorType: "Empty Extraction" },
@@ -1518,7 +1580,6 @@ function NewAnalysisPageInner() {
         imageKeys.length === 0 &&
         statuses.every((item) => item.status !== "success")
       ) {
-        console.error("[ocr-trace] ⑥ stop: empty extraction", { statuses });
         throw new AnalysisError(
           "画像から睡眠データを読み取れませんでした。SOXAIのスクリーンショットが鮮明か、対応形式（JPG / JPEG / PNG / WEBP）かを確認してください。",
           { errorType: "Empty Extraction" },
@@ -1539,49 +1600,28 @@ function NewAnalysisPageInner() {
         fixedProfile,
         swsMetrics: toSwsMetrics(extractedMetrics, "soxai"),
       });
-      console.info("[ocr-trace] ⑦ フォーム反映完了 → /analysis/confirm へ遷移", {
-        metricCount: imageKeys.length,
-        successImages: statuses.filter((s) => s.status === "success").length,
-        draftKeys: getExtractionDraft()?.imageKeys,
-        at: new Date().toISOString(),
-      });
       // Safari: setState 未コミットのまま router.push すると bfcache で Overlay が残る
       flushSync(() => {
-        console.log("[overlay]", {
-          source: "new",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          ocrStatus,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
         setIsSubmitting(false);
       });
       document
         .querySelectorAll("[data-soxai-ocr-overlay]")
         .forEach((node) => node.remove());
+      void fetch("/api/debug-client-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          msg: "OCR BUTTON router.push(/analysis/confirm)",
+          at: Date.now(),
+        }),
+      }).catch(() => {});
       router.push("/analysis/confirm");
     } catch (err) {
       if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) return;
       console.error("SOXAI extract failed:", err);
-      console.error("[ocr-trace] ⑧ エラー発生箇所", {
-        where: "analysis/new.submitSoxai",
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
       setError(formatExtractErrorMessage(err));
       flushSync(() => {
-        console.log("[overlay]", {
-          source: "new",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          ocrStatus,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
         setIsSubmitting(false);
       });
@@ -1589,30 +1629,10 @@ function NewAnalysisPageInner() {
         .querySelectorAll("[data-soxai-ocr-overlay]")
         .forEach((node) => node.remove());
     } finally {
-      console.log("[overlay]", {
-        source: "new",
-        action: "close",
-        ocrOverlayOpen,
-        isSubmitting,
-        ocrStatus,
-        pathname:
-          typeof window !== "undefined" ? window.location.pathname : undefined,
-      });
       if (submitGeneration === submitGenerationRef.current) {
         submitInFlightRef.current = false;
         setIsSubmitting(false);
         if (!retainOcrOverlay) {
-          console.log("[overlay]", {
-            source: "new",
-            action: "close",
-            ocrOverlayOpen,
-            isSubmitting,
-            ocrStatus,
-            pathname:
-              typeof window !== "undefined"
-                ? window.location.pathname
-                : undefined,
-          });
           setOcrOverlayOpen(false);
         }
       }
@@ -1639,15 +1659,6 @@ function NewAnalysisPageInner() {
       swsMetrics: toSwsMetrics(extractedMetrics, "soxai"),
     });
     flushSync(() => {
-      console.log("[overlay]", {
-        source: "new",
-        action: "close",
-        ocrOverlayOpen,
-        isSubmitting,
-        ocrStatus,
-        pathname:
-          typeof window !== "undefined" ? window.location.pathname : undefined,
-      });
       setOcrOverlayOpen(false);
       setOcrCancelledMenu(false);
       setPendingDraftPayload(null);
@@ -1734,6 +1745,9 @@ function NewAnalysisPageInner() {
         return;
       }
 
+      // 成功後は失敗時バナーを残さない（「データ取得済み」のみ）
+      setError(null);
+      setOcrStatus("ready");
       setExtractionDraft({
         lifestyle,
         images,
@@ -1749,15 +1763,6 @@ function NewAnalysisPageInner() {
         swsMetrics: toSwsMetrics(result.metrics, "soxai"),
       });
       flushSync(() => {
-        console.log("[overlay]", {
-          source: "new",
-          action: "close",
-          ocrOverlayOpen,
-          isSubmitting,
-          ocrStatus,
-          pathname:
-            typeof window !== "undefined" ? window.location.pathname : undefined,
-        });
         setOcrOverlayOpen(false);
         setPendingDraftPayload(null);
         setIsSubmitting(false);
@@ -1773,30 +1778,10 @@ function NewAnalysisPageInner() {
       setOcrCancelledMenu(true);
       setIsSubmitting(false);
     } finally {
-      console.log("[overlay]", {
-        source: "new",
-        action: "close",
-        ocrOverlayOpen,
-        isSubmitting,
-        ocrStatus,
-        pathname:
-          typeof window !== "undefined" ? window.location.pathname : undefined,
-      });
       if (submitGeneration === submitGenerationRef.current) {
         submitInFlightRef.current = false;
         setIsSubmitting(false);
         if (!retainOcrOverlay) {
-          console.log("[overlay]", {
-            source: "new",
-            action: "close",
-            ocrOverlayOpen,
-            isSubmitting,
-            ocrStatus,
-            pathname:
-              typeof window !== "undefined"
-                ? window.location.pathname
-                : undefined,
-          });
           setOcrOverlayOpen(false);
         }
       }
@@ -1808,15 +1793,6 @@ function NewAnalysisPageInner() {
     submitInFlightRef.current = false;
     cancelBackgroundSoxaiExtraction();
     ocrAbortRef.current?.abort();
-    console.log("[overlay]", {
-      source: "new",
-      action: "close",
-      ocrOverlayOpen,
-      isSubmitting,
-      ocrStatus,
-      pathname:
-        typeof window !== "undefined" ? window.location.pathname : undefined,
-    });
     setOcrOverlayOpen(false);
     setOcrCancelledMenu(false);
     setShowOcrCancelConfirm(false);
@@ -1827,12 +1803,11 @@ function NewAnalysisPageInner() {
 
 
   const uploadMissing =
-    inputMethod === "soxai" && touchedUpload && files.length === 0;
+    (inputMethod === "soxai" && touchedUpload && files.length === 0) ||
+    (inputMethod === "oura" && touchedUpload && ouraFiles.length === 0);
 
   const methodPending =
-    inputMethod === "oura" ||
-    inputMethod === "garmin" ||
-    inputMethod === "apple";
+    inputMethod === "garmin" || inputMethod === "apple";
 
   const handleMethodContinue = () => {
     setError(null);
@@ -1843,15 +1818,6 @@ function NewAnalysisPageInner() {
     setFlowStep("input");
   };
 
-  console.log("[overlay]", {
-    source: "new",
-    action: "render",
-    ocrOverlayOpen,
-    isSubmitting,
-    ocrStatus,
-    pathname:
-      typeof window !== "undefined" ? window.location.pathname : undefined,
-  });
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
@@ -1919,7 +1885,7 @@ function NewAnalysisPageInner() {
                 {(
                   [
                     ["soxai", "SOXAI Ring（対応済み）"],
-                    ["oura", "Oura Ring（近日対応予定）"],
+                    ["oura", "Oura Ring（画像アップロード）"],
                     ["garmin", "Garmin（近日対応予定）"],
                     ["apple", "Apple Watch / ヘルスケア（近日対応予定）"],
                     ["manual", "手入力（対応済み）"],
@@ -1970,9 +1936,11 @@ function NewAnalysisPageInner() {
                 >
                   {inputMethod === "soxai"
                     ? "SOXAIアップロードへ進む"
-                    : inputMethod === "manual"
-                      ? "手入力へ進む"
-                      : "選択してください"}
+                    : inputMethod === "oura"
+                      ? "Ouraアップロードへ進む"
+                      : inputMethod === "manual"
+                        ? "手入力へ進む"
+                        : "選択してください"}
                 </button>
               </div>
             </section>
@@ -1985,13 +1953,19 @@ function NewAnalysisPageInner() {
           </p>
 
           <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal lg:text-5xl">
-            {inputMethod === "manual" ? "手入力で睡眠分析" : "SOXAIデータで睡眠分析"}
+            {inputMethod === "manual"
+              ? "手入力で睡眠分析"
+              : inputMethod === "oura"
+                ? "Oura Ringで睡眠分析"
+                : "SOXAIデータで睡眠分析"}
           </h1>
 
           <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
             {inputMethod === "manual"
               ? "画像なしで生活習慣と睡眠データを入力し、Sleep Wellness Report を作成します。"
-              : "7種類のSOXAI画面を指定してアップロードし、睡眠データを確認して Sleep Wellness Report を作成します。"}
+              : inputMethod === "oura"
+                ? "Ouraアプリの睡眠・コンディション関連画面をアップロードし、確認画面で数値を整えて Sleep Wellness Report を作成します。"
+                : "7種類のSOXAI画面を指定してアップロードし、睡眠データを確認して Sleep Wellness Report を作成します。"}
           </p>
           {inputMethod === "soxai" && (
             <Link
@@ -2407,6 +2381,96 @@ function NewAnalysisPageInner() {
                   <p className="text-sm font-medium text-rose-600">
                     SOXAI画像を1枚以上選択してください
                   </p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {inputMethod === "oura" && (
+            <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+              <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                  01 · OURA DATA
+                </p>
+                <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                  Oura Ring 画像アップロード
+                </h2>
+                <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                  Ouraアプリの睡眠・コンディション関連画面をアップロードしてください
+                </p>
+                <p className="mt-2 max-w-xl text-[13px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                  同じ測定日のスクリーンショットをまとめて追加してください。画像に表示されていない値は推測せず、確認画面で手入力できます。
+                </p>
+              </div>
+
+              <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <input
+                  id="oura-multi-upload"
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const selected = Array.from(event.target.files ?? []);
+                    setOuraFiles((current) => {
+                      const merged = [...current, ...selected].slice(
+                        0,
+                        OURA_MAX_IMAGES,
+                      );
+                      return merged;
+                    });
+                    event.target.value = "";
+                  }}
+                />
+                <label
+                  htmlFor="oura-multi-upload"
+                  className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-[#315f68]/25 bg-white px-4 py-3 text-[14px] font-semibold text-[#071426] transition hover:border-[#315f68]/45 hover:bg-[#f4f7f7] sm:text-sm"
+                >
+                  {ouraFiles.length === 0
+                    ? "画像を選択（複数可）"
+                    : "画像を追加"}
+                </label>
+                {ouraFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOuraFiles([])}
+                    className="ml-2 inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-[13px] font-semibold text-slate-500 transition hover:text-[#071426] sm:text-sm"
+                  >
+                    すべて削除
+                  </button>
+                )}
+                <p className="text-[13px] text-slate-500">
+                  {ouraFiles.length} / {OURA_MAX_IMAGES} 枚選択中
+                </p>
+                {uploadMissing && (
+                  <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-700">
+                    Oura画像を1枚以上選択してください
+                  </p>
+                )}
+                {ouraFiles.length > 0 && (
+                  <ul className="space-y-2">
+                    {ouraFiles.map((file, index) => (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-[#fafaf8] px-3 py-2.5 text-[13px] text-slate-700"
+                      >
+                        <span className="min-w-0 truncate">
+                          {index + 1}. {file.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 text-[12px] font-semibold text-slate-500 hover:text-[#071426]"
+                          onClick={() =>
+                            setOuraFiles((current) =>
+                              current.filter((_, i) => i !== index),
+                            )
+                          }
+                        >
+                          削除
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </section>
@@ -3314,7 +3378,11 @@ function NewAnalysisPageInner() {
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(216,179,106,0.2),transparent_45%)]" />
 
             <div className="relative z-10">
-              {error && (
+              {error &&
+                !(
+                  ocrStatus === "ready" &&
+                  error.includes("画像から睡眠データを読み取れませんでした")
+                ) && (
                 <p className="mb-5 text-[14px] font-medium text-rose-300 sm:text-sm">
                   {error}
                 </p>
@@ -3323,29 +3391,37 @@ function NewAnalysisPageInner() {
               <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
                 {inputMethod === "manual"
                   ? "MANUAL INPUT"
-                  : "SOXAI AUTO READ"}
+                  : inputMethod === "oura"
+                    ? "OURA VISION"
+                    : "SOXAI AUTO READ"}
               </p>
               <h2 className="mt-3 text-lg font-semibold tracking-[-0.03em] text-white sm:text-2xl">
                 {inputMethod === "manual"
                   ? "手入力データを確認する"
-                  : ocrStatus === "ready"
-                    ? "データ取得済み — 確認へ進む"
-                    : "画像を読み取り、結果を確認する"}
+                  : inputMethod === "oura"
+                    ? "Oura画像を読み取り、結果を確認する"
+                    : ocrStatus === "ready"
+                      ? "データ取得済み — 確認へ進む"
+                      : "画像を読み取り、結果を確認する"}
               </h2>
               <p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/60 sm:text-sm sm:leading-7">
                 {inputMethod === "manual"
                   ? "SOXAI画像なしで、手入力データを確認画面に渡します。"
-                  : ocrStatus === "ready"
-                    ? "選択したSOXAI画像の解析は完了しています。必須項目を入力して確認画面へ進んでください。"
-                    : ocrStatus === "running"
-                      ? "画像選択後、入力中にバックグラウンドでOCR解析を進めています。"
-                      : "必須：SOXAI画像（1枚以上）・対象者名・測定日・年齢・性別。未選択の画面項目は確認画面で未取得と表示されます。"}
+                  : inputMethod === "oura"
+                    ? "必須：Oura画像（1枚以上）・対象者名・測定日・年齢・性別。画像に無い値は確認画面で手入力できます。"
+                    : ocrStatus === "ready"
+                      ? "選択したSOXAI画像の解析は完了しています。必須項目を入力して確認画面へ進んでください。"
+                      : ocrStatus === "running"
+                        ? "画像選択後、入力中にバックグラウンドでOCR解析を進めています。"
+                        : "必須：SOXAI画像（1枚以上）・対象者名・測定日・年齢・性別。未選択の画面項目は確認画面で未取得と表示されます。"}
               </p>
 
               <button
                 type="submit"
                 disabled={
-                  isSubmitting || (inputMethod === "soxai" && files.length === 0)
+                  isSubmitting ||
+                  (inputMethod === "soxai" && files.length === 0) ||
+                  (inputMethod === "oura" && ouraFiles.length === 0)
                 }
                 className="group mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 active:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg sm:hover:-translate-y-1 sm:hover:bg-[#f4f4f4] sm:active:translate-y-0 disabled:sm:hover:translate-y-0"
               >
@@ -3354,15 +3430,19 @@ function NewAnalysisPageInner() {
                     <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#071426]/20 border-t-[#071426]" />
                     {inputMethod === "manual"
                       ? "確認画面へ移動中..."
-                      : ocrStatus === "ready"
-                        ? "確認画面へ移動中..."
-                        : "SOXAIデータ取得を完了中..."}
+                      : inputMethod === "oura"
+                        ? "Oura Vision解析中..."
+                        : ocrStatus === "ready"
+                          ? "確認画面へ移動中..."
+                          : "SOXAIデータ取得を完了中..."}
                   </>
                 ) : (
                   <>
                     {inputMethod === "manual"
                       ? "手入力の確認へ進む"
-                      : "OCR解析へ進む"}
+                      : inputMethod === "oura"
+                        ? "Oura Vision解析へ進む"
+                        : "OCR解析へ進む"}
                     <span className="transition-transform duration-500 group-hover:translate-x-1">
                       →
                     </span>

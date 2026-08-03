@@ -352,8 +352,13 @@ export function ClientWellnessReportSections({
               >
                 {item.title}
               </p>
-              <p className="mt-2 whitespace-pre-line text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+              <p className="mt-2 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                <span className="font-semibold text-slate-700">理由：</span>
                 {item.reason}
+              </p>
+              <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                <span className="font-semibold text-slate-700">行動：</span>
+                {item.action}
               </p>
             </div>
           ))}
@@ -371,7 +376,7 @@ export function ClientWellnessReportSections({
             className="text-[11px] font-semibold tracking-[0.12em]"
             style={{ color: GOLD }}
           >
-            おすすめ Phase
+            推奨Phase
           </p>
           <p
             className="mt-1 text-[15px] font-semibold leading-6 sm:text-[16px]"
@@ -380,6 +385,7 @@ export function ClientWellnessReportSections({
             {model.melatoninYoga.phase}
           </p>
           <p className="mt-2 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+            <span className="font-semibold text-slate-700">推奨理由：</span>
             {model.melatoninYoga.phaseReason}
           </p>
         </div>
@@ -389,8 +395,7 @@ export function ClientWellnessReportSections({
               ["呼吸", model.melatoninYoga.breathing],
               ["ヨガ", model.melatoninYoga.yogaMinutes],
               ["瞑想", model.melatoninYoga.meditationMinutes],
-              ["入浴", model.melatoninYoga.bathing],
-              ["朝の行動", model.melatoninYoga.morningAction],
+              ["合計時間", model.melatoninYoga.totalMinutes],
             ] as const
           ).map(([label, value]) => (
             <div
@@ -412,6 +417,35 @@ export function ClientWellnessReportSections({
             </div>
           ))}
         </div>
+      </ReportCard>
+
+      {/* 今日のアクション */}
+      <ReportCard>
+        <SectionLabel title="今日のアクション" eyebrow="TODAY" />
+        <p className="mb-3 text-[13px] leading-6 text-slate-500 sm:text-[14px]">
+          今日から実行できる行動です（最大3件）。
+        </p>
+        <ul className="mt-1 space-y-2.5">
+          {model.todaysActions.map((action, index) => (
+            <li
+              key={`${action}-${index}`}
+              className="flex gap-3 rounded-xl border border-[#071426]/08 bg-[#fafaf8] px-3.5 py-3.5"
+            >
+              <span
+                className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white"
+                style={{ background: NAVY }}
+              >
+                {index + 1}
+              </span>
+              <span
+                className="text-[14px] font-medium leading-6 sm:text-[15px]"
+                style={{ color: NAVY }}
+              >
+                {action}
+              </span>
+            </li>
+          ))}
+        </ul>
       </ReportCard>
 
       {/* ⑥ 生活習慣評価 */}

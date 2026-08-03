@@ -65,6 +65,7 @@ export const SCREEN_PRIMARY_METRICS: Record<
   sleep_detail: [
     "bedtime",
     "wakeTime",
+    "sleepDuration",
     "sleepEfficiency",
     "sleepDebt",
     "sleepLatency",
@@ -102,7 +103,17 @@ export const SCREEN_PRIMARY_METRICS: Record<
     "restingHeartRateMax",
     "respiratoryRate",
   ],
-  hrv: ["hrv", "hrvMax", "hrvMin"],
+  hrv: [
+    "hrv",
+    "hrvMax",
+    "hrvMin",
+    // UI「呼吸・心拍」スロット: 同居スクショの酸素・呼吸・安静時も一次項目
+    "respiratoryRate",
+    "spo2",
+    "restingHeartRate",
+    "restingHeartRateMin",
+    "restingHeartRateMax",
+  ],
   other: [],
 };
 
@@ -469,16 +480,16 @@ export function screenCriticalLabels(screen: SoxaiScreenType): string {
     case "bed_wake":
       return "入眠時間 / 起床時間（HH:mm）。潜時・就床・覚醒時間と混同しない";
     case "sleep_detail":
-      return "入眠時間 / 起床時間（HH:mm）/ 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計。潜時・就床と混同しない";
+      return "入眠時間 / 起床時間（HH:mm）/ 睡眠時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計。潜時・就床と混同しない";
     case "sleep_stages":
       return "覚醒・レム・浅い・深い（ラベル直後の%が率。右端比較は昨日差）。深い睡眠率は深い睡眠行の%のみ / SpO₂。睡眠時間をノンレム・浅いにしない";
     case "home":
     case "sleep_overview":
-      return "睡眠スコア（カード行。QoL円・昨日・体調・心拍数と取り違えない）/ 睡眠時間（見出し「睡眠時間」のみ。全就床・ベッド滞在・必要睡眠と取り違えない）";
+      return "睡眠スコア（カード行。QoL円・昨日・体調・心拍数と取り違えない）/ 睡眠時間（見出し「睡眠時間」のみ。全就床・ベッド滞在・必要睡眠と取り違えない。値を就寝時刻にしない）";
     case "rhr":
       return "安静時心拍数: 小さめの「平均 NN」と大きめの「最小 NN bpm」を別エントリで返す。平均を最小にしない。最大が見えれば最大も返す";
     case "hrv":
-      return "平均HRV（ms）/ 最大HRV / 最小HRV（見える場合）。最大・最小を平均にしない。同一画面の安静時・呼吸速度も取る";
+      return "平均酸素レベル / 呼吸速度 / 安静時心拍数の平均・最小 / 平均HRV（ms）/ 最大HRV / 最小HRV。同居スクショでも全部取る。bpmとmsを取り違えない";
     case "respiration":
       return "呼吸速度（rpm）/ 平均酸素レベル（SpO₂）/ 安静時心拍数の平均・最小を別ラベルで。平均酸素を「平均状態」と誤らない";
     case "circadian":

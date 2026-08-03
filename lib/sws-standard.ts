@@ -21,7 +21,7 @@ export type SwsMetricEntry = {
   code: SwsMetricCode;
   label: string;
   value: string;
-  source: "soxai" | "manual";
+  source: "soxai" | "manual" | "oura";
 };
 
 export const SWS_DEFINITIONS: Record<
@@ -47,7 +47,7 @@ export const SWS_DEFINITIONS: Record<
 
 export function toSwsMetrics(
   metrics: AnalysisMetrics,
-  source: "soxai" | "manual",
+  source: "soxai" | "manual" | "oura",
 ): SwsMetricEntry[] {
   const entries: SwsMetricEntry[] = [];
   for (const [code, def] of Object.entries(SWS_DEFINITIONS) as Array<

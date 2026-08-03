@@ -195,15 +195,24 @@ export function SleepStagesPrintBlock({
       color: REM_NREM_COLORS.rem,
     },
     {
-      // 確認画面と同じ: SOXAI「深い睡眠」をノンレムとして表示（浅い+深いの合算は使わない）
-      label: "ノンレム睡眠",
-      value: displayValue(metrics.deepSleep),
-      color: REM_NREM_COLORS.nonRem,
+      label: "浅い睡眠",
+      value: summary.light.durationText || displayValue(metrics.lightSleep),
+      color: REM_NREM_COLORS.light,
     },
     {
-      label: "ノンレム睡眠率",
-      value: displayValue(metrics.deepSleepRate),
-      color: REM_NREM_COLORS.nonRem,
+      label: "浅い睡眠率",
+      value: summary.light.percentText || displayValue(metrics.lightSleepRate),
+      color: REM_NREM_COLORS.light,
+    },
+    {
+      label: "深い睡眠",
+      value: summary.deep.durationText || displayValue(metrics.deepSleep),
+      color: REM_NREM_COLORS.deep,
+    },
+    {
+      label: "深い睡眠率",
+      value: summary.deep.percentText || displayValue(metrics.deepSleepRate),
+      color: REM_NREM_COLORS.deep,
     },
   ];
 
@@ -288,7 +297,7 @@ export function SleepStagesPrintBlock({
   );
 }
 
-/** 覚醒 / レム / ノンレム（2列×3段）。ノンレムは SOXAI 深い睡眠をそのまま表示 */
+/** 覚醒 / レム / 浅い / 深い（2列×4段）。SOXAI元表示に合わせ個別表示 */
 export function SleepStagesOverview({
   metrics,
   graph,
@@ -303,9 +312,14 @@ export function SleepStagesOverview({
   const awakeRate = displayValue(metrics.awakeningRate);
   const remDuration = summary.rem.durationText || displayValue(metrics.remSleep);
   const remRate = summary.rem.percentText || displayValue(metrics.remSleepRate);
-  // 確認画面と同じ元データ: deepSleep / deepSleepRate（合算ノンレムは使わない）
-  const nonRemDuration = displayValue(metrics.deepSleep);
-  const nonRemRate = displayValue(metrics.deepSleepRate);
+  const lightDuration =
+    summary.light.durationText || displayValue(metrics.lightSleep);
+  const lightRate =
+    summary.light.percentText || displayValue(metrics.lightSleepRate);
+  const deepDuration =
+    summary.deep.durationText || displayValue(metrics.deepSleep);
+  const deepRate =
+    summary.deep.percentText || displayValue(metrics.deepSleepRate);
   const segments = graph?.segments ?? [];
   const isFeatured = variant === "featured";
 
@@ -339,15 +353,27 @@ export function SleepStagesOverview({
           featured={isFeatured}
         />
         <SleepStageStatCard
-          label="ノンレム睡眠"
-          value={nonRemDuration}
-          color={REM_NREM_COLORS.nonRem}
+          label="浅い睡眠"
+          value={lightDuration}
+          color={REM_NREM_COLORS.light}
           featured={isFeatured}
         />
         <SleepStageStatCard
-          label="ノンレム睡眠率"
-          value={nonRemRate}
-          color={REM_NREM_COLORS.nonRem}
+          label="浅い睡眠率"
+          value={lightRate}
+          color={REM_NREM_COLORS.light}
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="深い睡眠"
+          value={deepDuration}
+          color={REM_NREM_COLORS.deep}
+          featured={isFeatured}
+        />
+        <SleepStageStatCard
+          label="深い睡眠率"
+          value={deepRate}
+          color={REM_NREM_COLORS.deep}
           featured={isFeatured}
         />
       </div>
@@ -931,7 +957,7 @@ export function buildVisualPanels(
 }
 
 /** Medical Report 用：確認済みメトリクス一覧（単一ソース）
- * 睡眠ステージ（覚醒 / レム / ノンレム）は SleepStagesOverview で別表示
+ * 睡眠ステージ（覚醒 / レム / 浅い / 深い）は SleepStagesOverview で別表示
  */
 export const MEDICAL_METRIC_ROWS: Array<{
   label: string;

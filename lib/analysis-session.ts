@@ -31,6 +31,7 @@ import type {
 } from "@/lib/client-profiles/types";
 import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
 import type { SwsMetricEntry } from "@/lib/sws-standard";
+import type { OuraDeviceSpecificMetrics } from "@/lib/oura-vision-schema";
 import {
   improvementTexts,
   normalizeImprovements,
@@ -129,10 +130,18 @@ type LifestyleData = {
   notes: string;
 };
 
+export type AnalysisInputSource = "soxai" | "manual" | "oura";
+
+export type OuraScoresSnapshot = {
+  sleepScore: number | null;
+  readinessScore: number | null;
+  activityScore: number | null;
+};
+
 export type AnalysisRequest = {
   lifestyle: LifestyleData;
   images: string[];
-  inputSource?: "soxai" | "manual";
+  inputSource?: AnalysisInputSource;
   swsMetrics?: SwsMetricEntry[];
   /** 確認画面で確定したメトリクス（画像優先＋不足分の手入力） */
   metrics?: AnalysisMetrics;
@@ -163,6 +172,9 @@ export type AnalysisRequest = {
   seedScore?: number;
   seedScoreBreakdown?: ScoreBreakdown;
   seedCategoryScores?: WellnessCategoryScores;
+  /** Oura 固有（SOXAI では未設定） */
+  deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
+  ouraScores?: OuraScoresSnapshot;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -177,7 +189,7 @@ export type MetricConflict = {
 export type ExtractionDraft = {
   lifestyle: LifestyleData;
   images: string[];
-  inputSource?: "soxai" | "manual";
+  inputSource?: AnalysisInputSource;
   extractedMetrics: AnalysisMetrics;
   /** 画像から取得できたキー */
   imageKeys: MetricFieldKey[];
@@ -197,6 +209,10 @@ export type ExtractionDraft = {
   dayContext?: AnalysisDayContext;
   /** Sleep Wellness Standard 形式（分析入力の共通契約） */
   swsMetrics?: SwsMetricEntry[];
+  /** Oura 固有（inputSource=oura のとき） */
+  deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
+  ouraScores?: OuraScoresSnapshot;
+  ouraWarnings?: string[];
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -347,9 +363,10 @@ export type AnalysisResult = {
   summary: string;
   /**
    * Sleep Wellness Insight（旧称 AIカルテ）。
-   * ■今回最も重要な課題 / ■判断の根拠 / ■今回もっとも改善効果が高い行動 の3見出し構成。
+   * ■最重要課題 / ■判断根拠 / ■最も改善効果が高い行動 の3見出し構成（総評は summary）。
+   * GPT が毎回生成。固定テンプレ禁止。
    * 睡眠データ・SOXAI・生活習慣を統合した総合考察。認定講師がそのまま説明できる品質。
-   * 分析履歴に時系列保存する。summary（今回評価）とは別役割。
+   * 分析履歴に時系列保存する。summary（総評）とは別役割。
    */
   karteSummary: string;
   /** ①今回の睡眠で良かった点（2〜4件の短文）。必須・省略禁止 */
@@ -431,6 +448,11 @@ export type AnalysisResult = {
   analysisId?: string;
   /** 項目別 OCR 信頼度（保存用） */
   ocrConfidence?: MetricConfidenceMap;
+  /** 入力ソース（未設定は soxai 扱い） */
+  inputSource?: AnalysisInputSource;
+  /** Oura 固有（inputSource=oura） */
+  deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
+  ouraScores?: OuraScoresSnapshot;
   /** @deprecated 旧スキーマ互換 → 本文には使わない */
   sleepAnalysis?: string;
   /** @deprecated 旧スキーマ互換 */
@@ -1417,7 +1439,7 @@ export function normalizeAnalysisResult(
   const improvementTextList = improvementTexts(improvements);
 
   const goodPoints = (() => {
-    const list = normalizeStringList(raw.goodPoints, 4);
+    const list = normalizeStringList(raw.goodPoints, 5);
     if (list.length > 0) return list;
     // 旧結果互換: evidence / sleepAnalysis から補完しにくいため空でも可
     return [];
@@ -1611,6 +1633,21 @@ export function normalizeAnalysisResult(
     snoringNasal: extras?.snoringNasal ?? raw.snoringNasal,
     medicalHistory: extras?.medicalHistory ?? raw.medicalHistory,
     analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
+    inputSource:
+      raw.inputSource === "oura" ||
+      raw.inputSource === "manual" ||
+      raw.inputSource === "soxai"
+        ? raw.inputSource
+        : undefined,
+    deviceSpecificMetrics:
+      raw.deviceSpecificMetrics &&
+      typeof raw.deviceSpecificMetrics === "object"
+        ? (raw.deviceSpecificMetrics as OuraDeviceSpecificMetrics)
+        : undefined,
+    ouraScores:
+      raw.ouraScores && typeof raw.ouraScores === "object"
+        ? (raw.ouraScores as OuraScoresSnapshot)
+        : undefined,
     // 旧UI・保存互換
     sleepAnalysis,
     autonomicAssessment,
@@ -1682,17 +1719,7 @@ function persistExtractionDraft(draft: ExtractionDraft | null) {
     delete (rest as { images?: string[] }).images;
     sessionStorage.setItem(EXTRACTION_DRAFT_KEY, JSON.stringify(rest));
     storeImages(draft.images);
-    console.info("[ocr-trace] persistExtractionDraft ok", {
-      metricCount: collectedMetricKeys(draft.extractedMetrics).length,
-      imageKeys: draft.imageKeys?.length ?? 0,
-    });
   } catch (error) {
-    console.error("[ocr-trace] ⑧ persistExtractionDraft failed", {
-      message: error instanceof Error ? error.message : String(error),
-      metricCount: draft
-        ? collectedMetricKeys(draft.extractedMetrics).length
-        : 0,
-    });
     try {
       sessionStorage.removeItem(EXTRACTION_DRAFT_KEY);
     } catch {
@@ -1823,6 +1850,9 @@ export function setExtractionDraft(draft: ExtractionDraft) {
     dayContext: draft.dayContext,
     inputSource: draft.inputSource ?? "soxai",
     swsMetrics: draft.swsMetrics ? [...draft.swsMetrics] : undefined,
+    deviceSpecificMetrics: draft.deviceSpecificMetrics,
+    ouraScores: draft.ouraScores,
+    ouraWarnings: draft.ouraWarnings,
   };
   persistExtractionDraft(extractionDraft);
 }
@@ -1900,6 +1930,8 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     seedCategoryScores: request.seedCategoryScores,
     inputSource: request.inputSource ?? "soxai",
     swsMetrics: request.swsMetrics ? [...request.swsMetrics] : undefined,
+    deviceSpecificMetrics: request.deviceSpecificMetrics,
+    ouraScores: request.ouraScores,
   };
   inFlightAnalysis = null;
   persistPendingRequest(pendingRequest);
@@ -2274,8 +2306,8 @@ export function isAnalysisOcrDebugMode(): boolean {
 }
 
 /**
- * SOXAI 画像アップロード直後に OCR をバックグラウンド開始する。
- * 同じ指紋のキャッシュ／ジョブがあれば再利用し、再解析しない。
+ * SOXAI 画像アップロード直後のバックグラウンド解析。
+ * Vision 方式へ移行したため OCR は使用停止（no-op）。提出時に Vision 一括解析する。
  */
 export async function startBackgroundSoxaiExtraction(
   images: string[],
@@ -2284,137 +2316,44 @@ export async function startBackgroundSoxaiExtraction(
     onProgress?: (snapshot: OcrProgressSnapshot) => void;
   },
 ): Promise<SoxaiOcrRunResult> {
-  if (!Array.isArray(images) || images.length === 0) {
-    return Promise.reject(
-      new AnalysisError("睡眠データ画像が不足しています。", {
-        errorType: "Validation Error",
-      }),
-    );
-  }
-
-  const strongFp = await soxaiImagesFingerprint(images);
-  const fingerprint = `${strongFp}::${soxaiSectionsFingerprint(sections)}`;
-
-  const cached = await getCachedSoxaiExtraction(images);
-  if (cached) {
-    const readyProgress: OcrProgressSnapshot = {
-      phase: "done",
-      message: `${images.length} / ${images.length}枚 完了`,
-      total: images.length,
-      completed: images.length,
-      activeLabels: [],
-      startedAt: Date.now(),
-      estimatedRemainingMs: 0,
-      cancelled: false,
-      images: images.map((_, index) => ({
-        index,
-        section: sections?.[index] ?? "",
-        label: sections?.[index] ?? `画像${index + 1}`,
-        status: "success",
-        startedAt: null,
-        endedAt: null,
-      })),
-    };
-    const abortController = new AbortController();
-    const promise = Promise.resolve({
-      ...cached,
-      imageStatuses:
-        (cached as SoxaiOcrRunResult).imageStatuses ??
-        images.map((_, index) => ({
-          index,
-          section: (sections?.[index] ?? "") as SoxaiExtractSection | "",
-          label: String(index + 1),
-          status: "success" as const,
-        })),
-      cancelled: false,
-      elapsedMs: 0,
-      fromCache: true,
-    } satisfies SoxaiOcrRunResult);
-    backgroundOcrJob = {
-      fingerprint,
-      promise,
-      status: "ready",
-      abortController,
-      progress: readyProgress,
-      generation: backgroundOcrGeneration,
-      listeners: new Set(),
-    };
-    options?.onProgress?.(readyProgress);
-    return promise;
-  }
-
-  if (
-    backgroundOcrJob &&
-    backgroundOcrJob.fingerprint === fingerprint &&
-    backgroundOcrJob.status !== "error"
-  ) {
-    if (options?.onProgress) {
-      backgroundOcrJob.listeners.add(options.onProgress);
-      if (backgroundOcrJob.progress) {
-        options.onProgress(backgroundOcrJob.progress);
-      }
-    }
-    return backgroundOcrJob.promise;
-  }
-
-  // 旧ジョブがあれば中止（新しい画像セット）
-  if (backgroundOcrJob && backgroundOcrJob.status === "running") {
-    backgroundOcrJob.abortController.abort();
-  }
-
-  const abortController = new AbortController();
-  const generation = ++backgroundOcrGeneration;
-  const listeners = new Set<(progress: OcrProgressSnapshot) => void>();
-  if (options?.onProgress) listeners.add(options.onProgress);
-
-  const notify = (progress: OcrProgressSnapshot) => {
-    if (backgroundOcrJob?.fingerprint === fingerprint) {
-      backgroundOcrJob.progress = progress;
-    }
-    for (const listener of listeners) {
-      try {
-        listener(progress);
-      } catch (error) {
-        console.error("[ocr] progress listener failed:", error);
-      }
-    }
+  // OCR バックグラウンド開始は無効化（実装は lib/soxai-ocr-runner.ts に残置）
+  void sections;
+  const readyProgress: OcrProgressSnapshot = {
+    phase: "done",
+    message: "Vision解析は確認へ進むボタンで実行されます",
+    total: images.length,
+    completed: 0,
+    activeLabels: [],
+    startedAt: Date.now(),
+    estimatedRemainingMs: null,
+    cancelled: false,
+    images: images.map((_, index) => ({
+      index,
+      section: sections?.[index] ?? "",
+      label: sections?.[index] ?? `画像${index + 1}`,
+      status: "pending",
+      startedAt: null,
+      endedAt: null,
+    })),
+  };
+  options?.onProgress?.(readyProgress);
+  return {
+    metrics: emptyMetrics(),
+    conflicts: [],
+    graphs: emptyGraphBundle(),
+    confidence: {},
+    imageStatuses: images.map((_, index) => ({
+      index,
+      section: (sections?.[index] ?? "") as SoxaiExtractSection | "",
+      label: String(index + 1),
+      status: "failed",
+      error: "Vision方式のためバックグラウンドOCRは無効",
+    })),
+    cancelled: false,
+    elapsedMs: 0,
+    fromCache: false,
   };
 
-  const promise = extractSoxaiMetricsDetailed(images, sections, {
-    signal: abortController.signal,
-    onProgress: notify,
-  })
-    .then(async (result) => {
-      await rememberSoxaiExtraction(
-        strongFp,
-        result,
-        result.imageHashes,
-      );
-      if (backgroundOcrJob?.fingerprint === fingerprint) {
-        backgroundOcrJob.status = result.cancelled ? "cancelled" : "ready";
-      }
-      return result;
-    })
-    .catch((error) => {
-      if (backgroundOcrJob?.fingerprint === fingerprint) {
-        backgroundOcrJob.status =
-          abortController.signal.aborted ? "cancelled" : "error";
-        backgroundOcrJob.error = error;
-      }
-      throw error;
-    });
-
-  backgroundOcrJob = {
-    fingerprint,
-    promise,
-    status: "running",
-    abortController,
-    progress: null,
-    generation,
-    listeners,
-  };
-
-  return promise;
 }
 
 /** 現在のバックグラウンド OCR 状態（UI 表示用） */
@@ -2446,8 +2385,8 @@ export function getBackgroundSoxaiGeneration(): number {
 }
 
 /**
- * 提出時に OCR 結果を取得する。
- * キャッシュ／バックグラウンド完了済みなら即座に返し、未開始なら新規開始する。
+ * 提出時に SOXAI 解析結果を取得する。
+ * Vision 方式へ切替済み（OCR / ROI / reading-map は使用停止。コードは残置）。
  */
 export async function resolveSoxaiExtraction(
   images: string[],
@@ -2457,49 +2396,24 @@ export async function resolveSoxaiExtraction(
     signal?: AbortSignal;
   },
 ): Promise<SoxaiOcrRunResult> {
-  const cached = await getCachedSoxaiExtraction(images);
-  if (cached && !(cached as SoxaiOcrRunResult).cancelled) {
-    const result: SoxaiOcrRunResult = {
-      ...cached,
-      imageStatuses:
-        (cached as SoxaiOcrRunResult).imageStatuses ??
-        images.map((_, index) => ({
-          index,
-          section: (sections?.[index] ?? "") as SoxaiExtractSection | "",
-          label: String(index + 1),
-          status: "success" as const,
-        })),
-      cancelled: false,
-      elapsedMs: 0,
-      fromCache: true,
-    };
-    return result;
-  }
-
-  const strongFp = await soxaiImagesFingerprint(images);
-  const fingerprint = `${strongFp}::${soxaiSectionsFingerprint(sections)}`;
-  if (
-    backgroundOcrJob &&
-    backgroundOcrJob.fingerprint === fingerprint &&
-    backgroundOcrJob.status !== "error" &&
-    backgroundOcrJob.status !== "cancelled"
-  ) {
-    if (options?.onProgress) {
-      backgroundOcrJob.listeners.add(options.onProgress);
-      if (backgroundOcrJob.progress) {
-        options.onProgress(backgroundOcrJob.progress);
-      }
-    }
-    if (options?.signal) {
-      const onAbort = () => backgroundOcrJob?.abortController.abort();
-      if (options.signal.aborted) onAbort();
-      else options.signal.addEventListener("abort", onAbort, { once: true });
-    }
-    return backgroundOcrJob.promise;
-  }
-  return startBackgroundSoxaiExtraction(images, sections, {
-    onProgress: options?.onProgress,
-  });
+  const { resolveSoxaiVisionExtraction } = await import(
+    "@/lib/soxai-vision-runner"
+  );
+  const visionResult = await resolveSoxaiVisionExtraction(
+    images,
+    sections ?? [],
+    options,
+  );
+  return {
+    metrics: visionResult.metrics,
+    conflicts: [],
+    graphs: emptyGraphBundle(),
+    confidence: {},
+    imageStatuses: visionResult.imageStatuses,
+    cancelled: visionResult.cancelled,
+    elapsedMs: visionResult.elapsedMs,
+    fromCache: false,
+  };
 }
 
 export function cancelBackgroundSoxaiExtraction(): void {
@@ -2515,7 +2429,7 @@ export function clearBackgroundSoxaiExtraction() {
   backgroundOcrJob = null;
 }
 
-/** 確認画面から失敗画像のみ再解析 */
+/** 確認画面から失敗画像のみ再解析（Vision 一括再実行） */
 export async function reanalyzeSoxaiImages(params: {
   images: string[];
   sections?: SoxaiExtractSection[];
@@ -2530,11 +2444,10 @@ export async function reanalyzeSoxaiImages(params: {
   signal?: AbortSignal;
   onProgress?: (snapshot: OcrProgressSnapshot) => void;
 }): Promise<SoxaiOcrRunResult> {
-  return extractSoxaiMetricsDetailed(params.images, params.sections, {
+  // Vision は画像単位再OCRしない。全枚を再送して上書きする。
+  return resolveSoxaiExtraction(params.images, params.sections, {
     signal: params.signal,
     onProgress: params.onProgress,
-    onlyIndexes: params.indexes,
-    seed: params.seed,
   });
 }
 
@@ -2659,6 +2572,8 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       seedScore: payload.seedScore,
       seedScoreBreakdown: payload.seedScoreBreakdown,
       seedCategoryScores: payload.seedCategoryScores,
+      deviceSpecificMetrics: payload.deviceSpecificMetrics,
+      ouraScores: payload.ouraScores,
     };
 
     let response: Response;
