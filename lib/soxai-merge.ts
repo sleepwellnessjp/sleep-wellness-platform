@@ -711,7 +711,6 @@ function resolveEffectiveScreenType(
     (!vision ||
       vision === "home" ||
       vision === "stress" ||
-      vision === "other" ||
       vision === "sleep_overview" ||
       vision === "hrv") &&
     (inferred === "respiration" ||

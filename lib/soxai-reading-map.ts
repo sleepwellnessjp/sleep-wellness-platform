@@ -2835,10 +2835,7 @@ export function mergeMetricsFromVisibleReadings(
     }
     // 固定画面キー: API を正とする。API が空のときだけ readings で補完（空上書き禁止）
     if (isStrictSourceScreenKey(key)) {
-      if (
-        isMetricPresent(fromReadings, key) &&
-        (key === "deepSleepRate" || key === "deepSleep")
-      ) {
+      if (isMetricPresent(fromReadings, key)) {
         if (key === "sleepScore") {
           merged.sleepScore = fromReadings.sleepScore;
         } else {
