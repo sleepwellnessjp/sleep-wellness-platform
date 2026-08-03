@@ -45,24 +45,24 @@ export default function Hero() {
 
           <div className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center">
             <Link
-              href="/analysis/new"
+              href="/login"
               className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
+            >
+              プラットフォームに入る
+            </Link>
+
+            <Link
+              href="/analysis/new"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20 sm:text-base"
             >
               睡眠分析を受ける
             </Link>
 
             <Link
               href="/academy/certified-instructor"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20 sm:text-base"
-            >
-              認定講師になる
-            </Link>
-
-            <Link
-              href="#contact"
               className="inline-flex min-h-12 items-center justify-center px-3 py-3.5 text-sm font-semibold text-white/80 transition duration-300 hover:text-white sm:text-base"
             >
-              お問い合わせ →
+              認定講師になる →
             </Link>
           </div>
         </div>

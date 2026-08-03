@@ -541,7 +541,7 @@ export default function CertifiedInstructorProgramPage() {
                 認定講座について問い合わせる
               </Link>
               <Link
-                href="/"
+                href="/welcome"
                 className="text-sm font-semibold text-white/70 transition hover:text-white"
               >
                 トップページへ戻る
