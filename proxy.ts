@@ -22,6 +22,7 @@ import {
  */
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;
+  if (pathname === "/welcome" || pathname.startsWith("/welcome/")) return true;
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/")) return true;
   if (pathname === "/contact" || pathname.startsWith("/contact/")) return true;

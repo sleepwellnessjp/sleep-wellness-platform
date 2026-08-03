@@ -20,7 +20,7 @@ export default function Footer() {
         <div className="grid gap-12 pb-14 lg:grid-cols-[1fr_1fr_0.9fr] lg:gap-16 lg:pb-16">
           <div>
             <Link
-              href="/"
+              href="/welcome"
               aria-label="Sleep Wellness Institute Japan"
               className="inline-flex rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 backdrop-blur-md"
             >
