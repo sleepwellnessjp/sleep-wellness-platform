@@ -24,18 +24,23 @@ export const AI_SLEEP_ANALYSIS_VERSION = "1.0" as const;
 
 export type AiAnalysisSource = "rules" | "openai";
 
-/** 分析対象 16 項目 */
+/** 分析対象項目（Sleep Wellness Score 用 + 生活習慣参考） */
 export type AiAnalysisItemKey =
   | "sleepScore"
   | "sleepDuration"
   | "sleepEfficiency"
+  | "sleepDebt"
+  | "sleepLatency"
   | "deepSleep"
   | "remSleep"
   | "awakenings"
   | "hrv"
   | "stress"
   | "restingHeartRate"
+  | "spo2"
+  | "respiratoryRate"
   | "circadianRhythm"
+  | "skinTemperature"
   | "meals"
   | "alcohol"
   | "caffeine"
@@ -80,6 +85,9 @@ export type AiSleepAnalysisInput = {
     circadianRhythm?: string | null;
     sleepLatency?: string | null;
     sleepDebt?: string | null;
+    spo2?: string | null;
+    respiratoryRate?: string | null;
+    skinTemperature?: string | null;
   };
   lifestyle: {
     breakfast?: string | null;
@@ -160,16 +168,21 @@ export type AiSleepAnalysisGenerator = (
 ) => AiSleepAnalysisOutput | Promise<AiSleepAnalysisOutput>;
 
 const ITEM_LABELS: Record<AiAnalysisItemKey, string> = {
-  sleepScore: "睡眠スコア",
+  sleepScore: "睡眠スコア（参考）",
   sleepDuration: "睡眠時間",
   sleepEfficiency: "睡眠効率",
-  deepSleep: "深睡眠",
+  sleepDebt: "睡眠負債",
+  sleepLatency: "入眠潜時",
+  deepSleep: "深い睡眠",
   remSleep: "レム睡眠",
-  awakenings: "中途覚醒",
+  awakenings: "覚醒時間",
   hrv: "HRV",
   stress: "ストレス",
   restingHeartRate: "安静時心拍",
+  spo2: "SpO₂",
+  respiratoryRate: "呼吸数",
   circadianRhythm: "体内時計",
+  skinTemperature: "皮膚温",
   meals: "食事",
   alcohol: "飲酒",
   caffeine: "カフェイン",
@@ -194,27 +207,48 @@ const SYSTEM_ROLE =
   "複数指標を関連づけ、良い点から触れ、定型文と病名診断は避けてください。" +
   "可能性があります・考えられます・参考として・改善が期待できます、を用いてください。";
 
-/** —— 閾値（ルールベース） —— */
+/** —— 閾値（SWIJ 独自 Sleep Wellness Score） —— */
 const THRESH = {
   sleepScoreGood: 80,
   sleepScoreFair: 65,
   durationGoodMin: 7 * 60,
   durationFairMin: 6 * 60,
+  durationSoftMin: 5 * 60 + 30,
   durationMaxMin: 9 * 60,
   efficiencyGood: 90,
   efficiencyFair: 85,
+  efficiencySoft: 75,
   deepGoodMin: 75,
   deepFairMin: 55,
   remGoodMin: 90,
   remFairMin: 70,
+  remSoftMin: 25,
+  awakeningsGoodMaxMin: 20,
+  awakeningsFairMaxMin: 60,
+  awakeningsSoftMaxMin: 90,
   awakeningsGoodMax: 1,
   awakeningsFairMax: 3,
+  latencyGoodMax: 15,
+  latencyFairMax: 25,
+  latencySoftMax: 40,
+  debtGoodMaxMin: 20,
+  debtFairMaxMin: 45,
+  debtSoftMaxMin: 90,
   hrvGood: 50,
   hrvFair: 35,
   stressGoodMax: 35,
   stressFairMax: 50,
   rhrGoodMax: 60,
   rhrFairMax: 72,
+  spo2Good: 96,
+  spo2Fair: 94,
+  spo2Soft: 92,
+  circadianGoodMaxMin: 20,
+  circadianFairMaxMin: 40,
+  circadianSoftMaxMin: 60,
+  skinGoodAbs: 0.3,
+  skinFairAbs: 0.6,
+  skinSoftAbs: 1.0,
 } as const;
 
 function clamp100(n: number): number {
@@ -321,22 +355,20 @@ export function evaluateSleepScore(
   if (value == null || !Number.isFinite(value)) {
     return emptyItem("sleepScore", null, "missing", "睡眠スコア未入力");
   }
+  // SOXAIスコアは参考値。生値をなだらかに正規化し、総合への寄与は重みで抑える
   const v = clamp100(value);
-  let score: number;
+  const score = Math.round(40 + v * 0.55);
   let signal: string;
   let note: string;
   if (v >= THRESH.sleepScoreGood) {
-    score = 90 + (v - THRESH.sleepScoreGood) / 2;
     signal = "strong";
-    note = "睡眠スコアは良好帯です";
+    note = "SOXAI睡眠スコアは良好帯です（参考）";
   } else if (v >= THRESH.sleepScoreFair) {
-    score = 60 + ((v - THRESH.sleepScoreFair) / (THRESH.sleepScoreGood - THRESH.sleepScoreFair)) * 15;
     signal = "moderate";
-    note = "睡眠スコアはまずまず。伸びしろがあります";
+    note = "SOXAI睡眠スコアはまずまずです（参考）";
   } else {
-    score = Math.max(20, (v / THRESH.sleepScoreFair) * 55);
     signal = "low";
-    note = "睡眠スコアが低めです。総合的な見直しが有効です";
+    note = "SOXAI睡眠スコアは低めです（参考・総合では重み小）";
   }
   return scoredItem("sleepScore", v, score, signal, note);
 }
@@ -353,20 +385,35 @@ export function evaluateSleepDuration(
   let signal: string;
   let note: string;
   if (minutes >= THRESH.durationGoodMin && minutes <= THRESH.durationMaxMin) {
-    score = 88;
+    score = 90;
     signal = "adequate";
     note = "睡眠時間は推奨レンジ内です";
   } else if (minutes >= THRESH.durationFairMin) {
-    score = 62;
+    // 6h〜7h: 68〜88
+    score =
+      68 +
+      ((minutes - THRESH.durationFairMin) /
+        (THRESH.durationGoodMin - THRESH.durationFairMin)) *
+        20;
     signal = "slightly_short";
     note = "睡眠時間がやや短めです";
+  } else if (minutes >= THRESH.durationSoftMin) {
+    // 5.5h〜6h: 58〜68
+    score =
+      58 +
+      ((minutes - THRESH.durationSoftMin) /
+        (THRESH.durationFairMin - THRESH.durationSoftMin)) *
+        10;
+    signal = "short";
+    note = "睡眠時間が短めです。機会の確保が有効です";
   } else if (minutes > THRESH.durationMaxMin) {
-    score = 58;
+    score = 62;
     signal = "long";
     note = "睡眠時間が長めです。質とリズムも合わせて確認します";
   } else {
-    score = 35;
-    signal = "short";
+    // 5.5h未満
+    score = Math.max(32, 28 + (minutes / THRESH.durationSoftMin) * 30);
+    signal = "insufficient";
     note = "睡眠時間不足の可能性があります";
   }
   return scoredItem("sleepDuration", raw, score, signal, note);
@@ -388,15 +435,110 @@ export function evaluateSleepEfficiency(
     signal = "high";
     note = "睡眠効率は高い水準です";
   } else if (pct >= THRESH.efficiencyFair) {
-    score = 68;
+    score =
+      75 +
+      ((pct - THRESH.efficiencyFair) /
+        (THRESH.efficiencyGood - THRESH.efficiencyFair)) *
+        17;
     signal = "moderate";
     note = "睡眠効率は許容範囲。わずかな改善余地があります";
+  } else if (pct >= THRESH.efficiencySoft) {
+    score =
+      58 +
+      ((pct - THRESH.efficiencySoft) /
+        (THRESH.efficiencyFair - THRESH.efficiencySoft)) *
+        17;
+    signal = "borderline";
+    note = "睡眠効率はやや低めです。中途覚醒や入眠の確認が有効です";
   } else {
-    score = Math.max(25, (pct / THRESH.efficiencyFair) * 55);
+    score = Math.max(30, (pct / THRESH.efficiencySoft) * 55);
     signal = "low";
-    note = "睡眠効率が低めです。中途覚醒や入眠の確認が有効です";
+    note = "睡眠効率が低めです。連続性の改善を優先します";
   }
   return scoredItem("sleepEfficiency", raw, score, signal, note);
+}
+
+export function evaluateSleepDebt(
+  value: string | null | undefined,
+): AiAnalysisItem {
+  const raw = textOrNull(value);
+  if (!raw) {
+    return emptyItem("sleepDebt", null, "missing", "睡眠負債未入力");
+  }
+  const minutes = Math.abs(parseDurationMinutes(raw) ?? NaN);
+  if (!Number.isFinite(minutes)) {
+    return emptyItem("sleepDebt", raw, "missing", "睡眠負債を解釈できません");
+  }
+  let score: number;
+  let signal: string;
+  let note: string;
+  if (minutes <= THRESH.debtGoodMaxMin) {
+    score = 90;
+    signal = "low";
+    note = "睡眠負債は小さいです";
+  } else if (minutes <= THRESH.debtFairMaxMin) {
+    score =
+      75 +
+      ((THRESH.debtFairMaxMin - minutes) /
+        (THRESH.debtFairMaxMin - THRESH.debtGoodMaxMin)) *
+        12;
+    signal = "mild";
+    note = "睡眠負債は軽度です";
+  } else if (minutes <= THRESH.debtSoftMaxMin) {
+    score =
+      58 +
+      ((THRESH.debtSoftMaxMin - minutes) /
+        (THRESH.debtSoftMaxMin - THRESH.debtFairMaxMin)) *
+        14;
+    signal = "moderate";
+    note = "睡眠負債がややあります。回復夜の確保が有効です";
+  } else {
+    score = Math.max(30, 55 - (minutes - THRESH.debtSoftMaxMin) / 8);
+    signal = "elevated";
+    note = "睡眠負債が大きめです。総睡眠の底上げを優先します";
+  }
+  return scoredItem("sleepDebt", raw, score, signal, note);
+}
+
+export function evaluateSleepLatency(
+  value: string | null | undefined,
+): AiAnalysisItem {
+  const raw = textOrNull(value);
+  const minutes = raw
+    ? (parseDurationMinutes(raw) ?? parseLeadingNumber(raw))
+    : null;
+  if (minutes == null) {
+    return emptyItem("sleepLatency", raw, "missing", "入眠潜時未入力");
+  }
+  let score: number;
+  let signal: string;
+  let note: string;
+  if (minutes <= THRESH.latencyGoodMax) {
+    score = 90;
+    signal = "prompt";
+    note = "入眠潜時は良好です";
+  } else if (minutes <= THRESH.latencyFairMax) {
+    score =
+      72 +
+      ((THRESH.latencyFairMax - minutes) /
+        (THRESH.latencyFairMax - THRESH.latencyGoodMax)) *
+        14;
+    signal = "acceptable";
+    note = "入眠潜時はまずまずです";
+  } else if (minutes <= THRESH.latencySoftMax) {
+    score =
+      55 +
+      ((THRESH.latencySoftMax - minutes) /
+        (THRESH.latencySoftMax - THRESH.latencyFairMax)) *
+        14;
+    signal = "delayed";
+    note = "入眠にやや時間がかかっています";
+  } else {
+    score = Math.max(28, 52 - (minutes - THRESH.latencySoftMax) * 0.6);
+    signal = "prolonged";
+    note = "入眠潜時が長めです。就寝前ルーティンの見直しが有効です";
+  }
+  return scoredItem("sleepLatency", raw, score, signal, note);
 }
 
 export function evaluateDeepSleep(
@@ -411,15 +553,19 @@ export function evaluateDeepSleep(
   let signal: string;
   let note: string;
   if (minutes >= THRESH.deepGoodMin) {
-    score = 90;
+    score = Math.min(95, 88 + (minutes - THRESH.deepGoodMin) / 20);
     signal = "sufficient";
     note = "深睡眠は十分な長さです";
   } else if (minutes >= THRESH.deepFairMin) {
-    score = 65;
+    score =
+      65 +
+      ((minutes - THRESH.deepFairMin) /
+        (THRESH.deepGoodMin - THRESH.deepFairMin)) *
+        20;
     signal = "borderline";
     note = "深睡眠はまずまず。就寝前ルーティンで伸ばせます";
   } else {
-    score = Math.max(25, (minutes / THRESH.deepFairMin) * 50);
+    score = Math.max(28, (minutes / THRESH.deepFairMin) * 58);
     signal = "insufficient";
     note = "深睡眠が短めです。回復の核として優先したい項目です";
   }
@@ -438,17 +584,29 @@ export function evaluateRemSleep(
   let signal: string;
   let note: string;
   if (minutes >= THRESH.remGoodMin) {
-    score = 88;
+    score = 90;
     signal = "sufficient";
     note = "レム睡眠はバランスが取れています";
   } else if (minutes >= THRESH.remFairMin) {
-    score = 64;
+    score =
+      68 +
+      ((minutes - THRESH.remFairMin) /
+        (THRESH.remGoodMin - THRESH.remFairMin)) *
+        18;
     signal = "borderline";
     note = "レム睡眠は標準付近です";
+  } else if (minutes >= THRESH.remSoftMin) {
+    score =
+      42 +
+      ((minutes - THRESH.remSoftMin) /
+        (THRESH.remFairMin - THRESH.remSoftMin)) *
+        22;
+    signal = "low";
+    note = "レム睡眠が短めです。規則的な就寝・起床が支えになります";
   } else {
-    score = Math.max(28, (minutes / THRESH.remFairMin) * 52);
+    score = Math.max(30, 28 + (minutes / THRESH.remSoftMin) * 14);
     signal = "insufficient";
-    note = "レム睡眠が短めです。睡眠時間と規則性が影響しやすいです";
+    note = "レム睡眠がかなり短めです。総睡眠とリズムの見直しが有効です";
   }
   return scoredItem("remSleep", raw, score, signal, note);
 }
@@ -457,9 +615,49 @@ export function evaluateAwakenings(
   value: string | null | undefined,
 ): AiAnalysisItem {
   const raw = textOrNull(value);
-  const count = raw ? parseLeadingNumber(raw) : null;
+  if (!raw) {
+    return emptyItem("awakenings", raw, "missing", "覚醒時間未入力");
+  }
+
+  // 「1時間33分」「93分」など時間表記は覚醒時間（分）として評価
+  const looksLikeDuration = /時間|分|:/.test(raw);
+  const durationMin = looksLikeDuration ? parseDurationMinutes(raw) : null;
+
+  if (durationMin != null) {
+    let score: number;
+    let signal: string;
+    let note: string;
+    if (durationMin <= THRESH.awakeningsGoodMaxMin) {
+      score = 90;
+      signal = "low";
+      note = "覚醒時間は短いです";
+    } else if (durationMin <= THRESH.awakeningsFairMaxMin) {
+      score =
+        58 +
+        ((THRESH.awakeningsFairMaxMin - durationMin) /
+          (THRESH.awakeningsFairMaxMin - THRESH.awakeningsGoodMaxMin)) *
+          28;
+      signal = "moderate";
+      note = "覚醒時間がややあります";
+    } else if (durationMin <= THRESH.awakeningsSoftMaxMin) {
+      score =
+        45 +
+        ((THRESH.awakeningsSoftMaxMin - durationMin) /
+          (THRESH.awakeningsSoftMaxMin - THRESH.awakeningsFairMaxMin)) *
+          12;
+      signal = "elevated";
+      note = "覚醒時間が長めです。連続性の改善が有効です";
+    } else {
+      score = Math.max(25, 45 - (durationMin - THRESH.awakeningsSoftMaxMin) / 6);
+      signal = "high";
+      note = "覚醒時間が多めです。環境・呼吸・飲酒などの確認が有効です";
+    }
+    return scoredItem("awakenings", raw, score, signal, note);
+  }
+
+  const count = parseLeadingNumber(raw);
   if (count == null) {
-    return emptyItem("awakenings", raw, "missing", "中途覚醒未入力");
+    return emptyItem("awakenings", raw, "missing", "覚醒時間未入力");
   }
   let score: number;
   let signal: string;
@@ -469,11 +667,11 @@ export function evaluateAwakenings(
     signal = "low";
     note = "中途覚醒は少ないです";
   } else if (count <= THRESH.awakeningsFairMax) {
-    score = 60;
+    score = 62;
     signal = "moderate";
     note = "中途覚醒がややあります";
   } else {
-    score = Math.max(20, 55 - (count - THRESH.awakeningsFairMax) * 8);
+    score = Math.max(25, 55 - (count - THRESH.awakeningsFairMax) * 7);
     signal = "frequent";
     note = "中途覚醒が多い傾向です。生活・環境要因の確認が有効です";
   }
@@ -494,11 +692,13 @@ export function evaluateHrv(value: string | null | undefined): AiAnalysisItem {
     signal = "resilient";
     note = "HRVは回復余力を示しています";
   } else if (ms >= THRESH.hrvFair) {
-    score = 62;
+    score =
+      62 +
+      ((ms - THRESH.hrvFair) / (THRESH.hrvGood - THRESH.hrvFair)) * 22;
     signal = "moderate";
     note = "HRVは標準帯。ストレスと休息のバランスが鍵です";
   } else {
-    score = Math.max(22, (ms / THRESH.hrvFair) * 50);
+    score = Math.max(28, (ms / THRESH.hrvFair) * 55);
     signal = "low";
     note = "HRVが低めです。過緊張や睡眠不足の影響が考えられます";
   }
@@ -521,11 +721,15 @@ export function evaluateStress(
     signal = "low";
     note = "ストレス指標は落ち着いています";
   } else if (level <= THRESH.stressFairMax) {
-    score = 60;
+    score =
+      58 +
+      ((THRESH.stressFairMax - level) /
+        (THRESH.stressFairMax - THRESH.stressGoodMax)) *
+        24;
     signal = "moderate";
     note = "ストレスはやや高め。就寝前のリセットが有効です";
   } else {
-    score = Math.max(20, 55 - (level - THRESH.stressFairMax));
+    score = Math.max(25, 55 - (level - THRESH.stressFairMax));
     signal = "high";
     note = "ストレス指標が高めです。自律神経ケアを優先しましょう";
   }
@@ -549,19 +753,109 @@ export function evaluateRestingHeartRate(
   let signal: string;
   let note: string;
   if (bpm <= THRESH.rhrGoodMax) {
-    score = 88;
+    score = 90;
     signal = "calm";
     note = "安静時心拍は落ち着いた水準です";
   } else if (bpm <= THRESH.rhrFairMax) {
-    score = 62;
+    score =
+      62 +
+      ((THRESH.rhrFairMax - bpm) / (THRESH.rhrFairMax - THRESH.rhrGoodMax)) *
+        22;
     signal = "moderate";
     note = "安静時心拍は標準帯です";
   } else {
-    score = Math.max(25, 55 - (bpm - THRESH.rhrFairMax) * 1.5);
+    score = Math.max(28, 55 - (bpm - THRESH.rhrFairMax) * 1.4);
     signal = "elevated";
     note = "安静時心拍が高めです。回復と負荷のバランスを確認します";
   }
   return scoredItem("restingHeartRate", raw, score, signal, note);
+}
+
+export function evaluateSpo2(value: string | null | undefined): AiAnalysisItem {
+  const raw = textOrNull(value);
+  const pct = raw ? parseLeadingNumber(raw) : null;
+  if (pct == null) {
+    return emptyItem("spo2", raw, "missing", "SpO₂未入力");
+  }
+  let score: number;
+  let signal: string;
+  let note: string;
+  if (pct >= THRESH.spo2Good) {
+    score = 92;
+    signal = "high";
+    note = "平均SpO₂は良好です";
+  } else if (pct >= THRESH.spo2Fair) {
+    score =
+      72 +
+      ((pct - THRESH.spo2Fair) / (THRESH.spo2Good - THRESH.spo2Fair)) * 16;
+    signal = "moderate";
+    note = "平均SpO₂はまずまずです";
+  } else if (pct >= THRESH.spo2Soft) {
+    score =
+      55 +
+      ((pct - THRESH.spo2Soft) / (THRESH.spo2Fair - THRESH.spo2Soft)) * 14;
+    signal = "borderline";
+    note = "平均SpO₂はやや低めです。呼吸の安定性を確認します";
+  } else {
+    score = Math.max(28, (pct / THRESH.spo2Soft) * 52);
+    signal = "low";
+    note = "平均SpO₂が低めです。呼吸イベントや鼻閉の確認が有効です";
+  }
+  return scoredItem("spo2", raw, score, signal, note);
+}
+
+export function evaluateRespiratoryRate(
+  value: string | null | undefined,
+): AiAnalysisItem {
+  const raw = textOrNull(value);
+  const rpm = raw ? parseLeadingNumber(raw) : null;
+  if (rpm == null) {
+    return emptyItem("respiratoryRate", raw, "missing", "呼吸数未入力");
+  }
+  let score: number;
+  let signal: string;
+  let note: string;
+  if (rpm >= 12 && rpm <= 16) {
+    score = 88;
+    signal = "normal";
+    note = "呼吸数は安静時の良好帯です";
+  } else if ((rpm >= 10 && rpm < 12) || (rpm > 16 && rpm <= 20)) {
+    score = 68;
+    signal = "borderline";
+    note = "呼吸数はまずまずの範囲です";
+  } else {
+    score = Math.max(30, 55 - Math.abs(rpm - 14) * 3);
+    signal = "elevated";
+    note = "呼吸数にばらつきがあります。睡眠中の呼吸安定を確認します";
+  }
+  return scoredItem("respiratoryRate", raw, score, signal, note);
+}
+
+function parseCircadianOffsetMinutes(raw: string): number | null {
+  const text = raw.normalize("NFKC").trim();
+  const hm = text.match(/^([+-]?)(\d{1,2}):(\d{2})$/);
+  if (hm) {
+    const sign = hm[1] === "-" ? -1 : 1;
+    const h = Number(hm[2]);
+    const m = Number(hm[3]);
+    if (Number.isFinite(h) && Number.isFinite(m)) {
+      return sign * (h * 60 + m);
+    }
+  }
+  const decimal = text.match(/^([+-]?\d+(?:\.\d+)?)\s*(?:h|時間)?$/i);
+  if (decimal) {
+    const n = Number(decimal[1]);
+    if (Number.isFinite(n)) {
+      // 絶対値が 24 未満なら時間、それ以上なら分として扱う
+      return Math.abs(n) < 24 ? Math.round(n * 60) : Math.round(n);
+    }
+  }
+  const duration = parseDurationMinutes(text);
+  if (duration != null) {
+    const negative = /^-|遅|ディレイ|遅れ/.test(text);
+    return negative ? -Math.abs(duration) : duration;
+  }
+  return null;
 }
 
 export function evaluateCircadianRhythm(
@@ -571,6 +865,44 @@ export function evaluateCircadianRhythm(
   if (!raw) {
     return emptyItem("circadianRhythm", null, "missing", "体内時計未入力");
   }
+
+  const offset = parseCircadianOffsetMinutes(raw);
+  if (offset != null) {
+    const abs = Math.abs(offset);
+    let score: number;
+    let signal: string;
+    let note: string;
+    if (abs <= THRESH.circadianGoodMaxMin) {
+      score = 90;
+      signal = "aligned";
+      note = "体内時計のずれは小さいです";
+    } else if (abs <= THRESH.circadianFairMaxMin) {
+      score =
+        72 +
+        ((THRESH.circadianFairMaxMin - abs) /
+          (THRESH.circadianFairMaxMin - THRESH.circadianGoodMaxMin)) *
+          14;
+      signal = "mild_shift";
+      note = "体内時計に軽度のずれがあります";
+    } else if (abs <= THRESH.circadianSoftMaxMin) {
+      score =
+        58 +
+        ((THRESH.circadianSoftMaxMin - abs) /
+          (THRESH.circadianSoftMaxMin - THRESH.circadianFairMaxMin)) *
+          12;
+      signal = offset < 0 ? "delayed" : "advanced";
+      note =
+        offset < 0
+          ? "体内時計の遅れが示唆されます。朝の光と起床固定が有効です"
+          : "体内時計がやや前倒しの可能性があります";
+    } else {
+      score = Math.max(30, 55 - (abs - THRESH.circadianSoftMaxMin) / 5);
+      signal = offset < 0 ? "delayed" : "advanced";
+      note = "体内時計のずれが大きめです。光環境と起床リズムを優先します";
+    }
+    return scoredItem("circadianRhythm", raw, score, signal, note);
+  }
+
   const delayed = includesAny(raw, ["遅", "ディレイ", "遅れ", "夜型"]);
   const advanced = includesAny(raw, ["進", "早", "朝型"]);
   const aligned = includesAny(raw, ["良好", "安定", "整", "オンタイム", "正常"]);
@@ -588,7 +920,7 @@ export function evaluateCircadianRhythm(
     return scoredItem(
       "circadianRhythm",
       raw,
-      45,
+      55,
       "delayed",
       "体内時計の遅れが示唆されます。朝の光と起床固定が有効です",
     );
@@ -597,7 +929,7 @@ export function evaluateCircadianRhythm(
     return scoredItem(
       "circadianRhythm",
       raw,
-      58,
+      62,
       "advanced",
       "体内時計がやや前倒しの可能性があります",
     );
@@ -605,10 +937,54 @@ export function evaluateCircadianRhythm(
   return scoredItem(
     "circadianRhythm",
     raw,
-    60,
+    65,
     "unclear",
     "体内時計の記述あり。継続観察で傾向を確認します",
   );
+}
+
+export function evaluateSkinTemperature(
+  value: string | null | undefined,
+): AiAnalysisItem {
+  const raw = textOrNull(value);
+  if (!raw) {
+    return emptyItem("skinTemperature", null, "missing", "皮膚温未入力");
+  }
+  const n = parseLeadingNumber(raw.replace(/℃|°C|度/gi, ""));
+  if (n == null) {
+    return emptyItem("skinTemperature", raw, "missing", "皮膚温を解釈できません");
+  }
+  // 表示は基準差（例: -0.9℃）として扱う
+  const abs = Math.abs(n);
+  let score: number;
+  let signal: string;
+  let note: string;
+  if (abs <= THRESH.skinGoodAbs) {
+    score = 90;
+    signal = "stable";
+    note = "皮膚温のずれは小さいです";
+  } else if (abs <= THRESH.skinFairAbs) {
+    score =
+      72 +
+      ((THRESH.skinFairAbs - abs) /
+        (THRESH.skinFairAbs - THRESH.skinGoodAbs)) *
+        14;
+    signal = "mild";
+    note = "皮膚温に軽度のずれがあります";
+  } else if (abs <= THRESH.skinSoftAbs) {
+    score =
+      58 +
+      ((THRESH.skinSoftAbs - abs) /
+        (THRESH.skinSoftAbs - THRESH.skinFairAbs)) *
+        12;
+    signal = "shifted";
+    note = "皮膚温のずれがややあります。回復負荷の参考指標です";
+  } else {
+    score = Math.max(30, 55 - (abs - THRESH.skinSoftAbs) * 20);
+    signal = "elevated_shift";
+    note = "皮膚温のずれが大きめです。体調・環境要因の確認が有効です";
+  }
+  return scoredItem("skinTemperature", raw, score, signal, note);
 }
 
 export function evaluateMeals(lifestyle: AiSleepAnalysisInput["lifestyle"]): AiAnalysisItem {
@@ -864,13 +1240,18 @@ export function evaluateAllItems(
     evaluateSleepScore(m.sleepScore),
     evaluateSleepDuration(m.sleepDuration),
     evaluateSleepEfficiency(m.sleepEfficiency),
+    evaluateSleepDebt(m.sleepDebt),
+    evaluateSleepLatency(m.sleepLatency),
     evaluateDeepSleep(m.deepSleep),
     evaluateRemSleep(m.remSleep),
     evaluateAwakenings(m.awakenings),
     evaluateHrv(m.hrv),
     evaluateStress(m.stress),
     evaluateRestingHeartRate(m.restingHeartRate),
+    evaluateSpo2(m.spo2),
+    evaluateRespiratoryRate(m.respiratoryRate),
     evaluateCircadianRhythm(m.circadianRhythm),
+    evaluateSkinTemperature(m.skinTemperature),
     evaluateMeals(l),
     evaluateAlcohol(l.alcohol),
     evaluateCaffeine(l.caffeine),
@@ -880,31 +1261,50 @@ export function evaluateAllItems(
   ];
 }
 
+/**
+ * Sleep Wellness Institute Japan 独自スコア。
+ * 生理指標を主軸とし、SOXAI睡眠スコアは参考（おおよそ 5〜10%）。
+ * 生活習慣項目はカウンセリング用に評価するが、総合点には含めない。
+ */
 export function computeWellnessScore(items: AiAnalysisItem[]): number {
-  const scored = items.filter((i) => i.normalizedScore != null);
-  if (scored.length === 0) return 70;
+  /** 相対重み。sleepScore ≈ 全体の 8% になるよう設定 */
   const weight: Partial<Record<AiAnalysisItemKey, number>> = {
-    sleepScore: 1.4,
-    sleepDuration: 1.2,
-    sleepEfficiency: 1.2,
-    deepSleep: 1.3,
+    sleepDuration: 1.05,
+    sleepEfficiency: 1.15,
+    sleepDebt: 0.95,
+    sleepLatency: 0.85,
+    awakenings: 1.05,
+    deepSleep: 1.2,
     remSleep: 1.0,
-    awakenings: 1.0,
-    hrv: 1.1,
-    stress: 1.1,
-    restingHeartRate: 0.9,
-    circadianRhythm: 1.1,
-    meals: 0.8,
-    alcohol: 1.0,
-    caffeine: 0.9,
-    exercise: 0.9,
-    bathing: 0.7,
-    preBedBehavior: 1.0,
+    hrv: 1.05,
+    restingHeartRate: 0.95,
+    stress: 0.95,
+    spo2: 1.05,
+    respiratoryRate: 0.85,
+    circadianRhythm: 0.95,
+    skinTemperature: 0.75,
+    // SOXAI 参考（≈8%）
+    sleepScore: 1.15,
+    // 生活習慣は総合点に入れない
+    meals: 0,
+    alcohol: 0,
+    caffeine: 0,
+    exercise: 0,
+    bathing: 0,
+    preBedBehavior: 0,
   };
+
+  const scored = items.filter(
+    (i) =>
+      i.normalizedScore != null &&
+      (weight[i.key] ?? 0) > 0,
+  );
+  if (scored.length === 0) return 70;
+
   let sum = 0;
   let wSum = 0;
   for (const item of scored) {
-    const w = weight[item.key] ?? 1;
+    const w = weight[item.key] ?? 0;
     sum += (item.normalizedScore as number) * w;
     wSum += w;
   }
@@ -932,6 +1332,184 @@ function pickAttentionItems(
     )
     .sort((a, b) => (a.normalizedScore ?? 100) - (b.normalizedScore ?? 100))
     .slice(0, limit);
+}
+
+/**
+ * Sleep Wellness Insight の優先順位（①が最優先）。
+ * 深い睡眠だけを最重要課題にしない。改善効果が高い順に評価する。
+ */
+export const INSIGHT_PRIORITY_KEYS: readonly AiAnalysisItemKey[] = [
+  "sleepDuration",
+  "deepSleep",
+  "sleepEfficiency",
+  "sleepLatency",
+  "awakenings",
+  "stress",
+  "hrv",
+  "spo2",
+  "respiratoryRate",
+  "circadianRhythm",
+] as const;
+
+const INSIGHT_WEAK_THRESHOLD = 70;
+const INSIGHT_STRENGTH_THRESHOLD = 75;
+
+function formatInsightEvidence(item: AiAnalysisItem): string {
+  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  return v ? `${item.label}${v}` : item.label;
+}
+
+/**
+ * 優先順位に沿い、整え余地がある項目から
+ * 「最重要課題（改善効果が最も高い項目）」を選ぶ。
+ */
+export function selectInsightFocus(items: AiAnalysisItem[]): {
+  focus: AiAnalysisItem | null;
+  supporting: AiAnalysisItem[];
+  strengths: AiAnalysisItem[];
+} {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  const ordered = INSIGHT_PRIORITY_KEYS.map((key) => byKey.get(key)).filter(
+    (item): item is AiAnalysisItem =>
+      Boolean(item) && typeof item?.normalizedScore === "number",
+  );
+
+  const weak = ordered.filter(
+    (item) => (item.normalizedScore as number) < INSIGHT_WEAK_THRESHOLD,
+  );
+  // ①→⑧の順で最初に弱い項目 = 今回もっとも改善効果が高い焦点
+  const focus = weak[0] ?? null;
+  const supporting = weak.filter((item) => item.key !== focus?.key).slice(0, 3);
+  const strengths = ordered
+    .filter(
+      (item) => (item.normalizedScore as number) >= INSIGHT_STRENGTH_THRESHOLD,
+    )
+    .slice(0, 3);
+
+  return { focus, supporting, strengths };
+}
+
+function insightActionFor(key: AiAnalysisItemKey): string {
+  switch (key) {
+    case "sleepDuration":
+      return "今夜は就寝時刻を前倒しし、少なくとも6時間30分以上の睡眠機会を確保する";
+    case "sleepEfficiency":
+      return "入眠できないときは一度ベッドを離れ、眠気を再確認してから戻る習慣を今夜試す";
+    case "deepSleep":
+      return "就寝90分前から画面を控え、湯船かストレッチで深睡眠の入りを整える";
+    case "sleepLatency":
+      return "就寝前30分はデジタルオフにし、呼吸リセットで入眠までの時間を短縮する";
+    case "awakenings":
+      return "寝室の温度・光・騒音を点検し、再入眠しやすい環境を今夜整える";
+    case "hrv":
+      return "午後の予定を1つ減らし、就寝前に短い休息で回復余白をつくる";
+    case "stress":
+      return "就寝前に4〜6呼吸を3分行い、副交感神経の立ち上がりを助ける";
+    case "spo2":
+      return "鼻呼吸や側臥位など、呼吸が安定しやすい姿勢を今夜試す";
+    case "respiratoryRate":
+      return "就寝前のリラックスと鼻呼吸で、呼吸の安定を意識する";
+    case "circadianRhythm":
+      return "明日の起床時刻を固定し、起床後15分以内に朝の光を浴びる";
+    default:
+      return "良い習慣を1つ丁寧に実行し、次回比較で変化を確認する";
+  }
+}
+
+function insightChallengeLead(item: AiAnalysisItem): string {
+  const evidence = formatInsightEvidence(item);
+  switch (item.key) {
+    case "sleepDuration":
+      return `総睡眠の不足（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "sleepEfficiency":
+      return `睡眠の連続性・効率（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "deepSleep":
+      return `身体回復の核となる深睡眠（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "sleepLatency":
+      return `入眠までの時間（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "awakenings":
+      return `夜間の覚醒（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "hrv":
+      return `回復余力を示すHRV（心拍のゆらぎ）（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "stress":
+      return `測定ストレス（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    case "circadianRhythm":
+      return `体内時計のずれ（${evidence}）が、今回もっとも整える価値の高い課題と考えられます`;
+    default:
+      return `${evidence}が、今回もっとも整える価値の高い課題と考えられます`;
+  }
+}
+
+/**
+ * @deprecated Sleep Wellness Insight は GPT が毎回生成する。固定テンプレは本番で使わない。
+ * Sleep Wellness Insight（認定講師がそのまま説明できる品質）。
+ * 優先順位: 睡眠時間 → 深い睡眠 → 効率 → 入眠潜時 → 覚醒 → ストレス → HRV → SpO₂ → 呼吸数 → 体内時計
+ */
+export function buildSleepWellnessInsight(args: {
+  clientName?: string;
+  items: AiAnalysisItem[];
+}): string {
+  const name = (args.clientName ?? "").trim() || "クライアント";
+  const { focus, supporting, strengths } = selectInsightFocus(args.items);
+
+  const strengthText =
+    strengths.length > 0
+      ? strengths.map(formatInsightEvidence).join("、")
+      : null;
+  const supportText =
+    supporting.length > 0
+      ? supporting.map(formatInsightEvidence).join("、")
+      : null;
+
+  const challenge = focus
+    ? `${name}さんの今回データでは、${insightChallengeLead(focus)}。` +
+      (supportText
+        ? `あわせて${supportText}にも整え余地があり、単一指標ではなく関連として捉えます。`
+        : `優先順位の高い睡眠指標から見たとき、ここに着手すると改善効果が最も期待できます。`)
+    : `${name}さんの今回データでは、優先指標に大きな崩れは少なく、再現性の維持が焦点です。`;
+
+  const rationaleParts: string[] = [];
+  if (strengthText) {
+    rationaleParts.push(
+      `前向きなサインとして${strengthText}が確認できます。`,
+    );
+  }
+  if (focus) {
+    rationaleParts.push(
+      `一方で${formatInsightEvidence(focus)}が優先順位の高い位置で弱く、` +
+        (supportText
+          ? `${supportText}との組み合わせから、回復の土台が十分に整いきっていない可能性が考えられます。`
+          : `ここを整えると他指標への波及も期待できると考えられます。`),
+    );
+  } else {
+    rationaleParts.push(
+      `複数指標を横断すると大きな崩れは少なく、良い点の維持と小さなばらつきの観察が中心になります。`,
+    );
+  }
+  if (!strengthText && !focus) {
+    rationaleParts.push(
+      `未確認の項目は推測せず、確認できた指標の範囲で判断しています。`,
+    );
+  }
+
+  const action = focus
+    ? `${insightActionFor(focus.key)}ことが、今回のデータ関連からみて最も改善効果が高い行動と考えられます。` +
+      (focus.key === "sleepDuration" || focus.key === "sleepEfficiency"
+        ? `睡眠の量と質が整うと、覚醒・HRV・ストレス側への好影響も期待できます。`
+        : `無理に全部を変えず、この一点を丁寧に実行することが優先です。`)
+    : `良い習慣を1つ崩さず継続し、次回分析で優先指標の変化を確認していくことが、いま最も効果が高い行動と考えられます。`;
+
+  const structured = [
+    "■最重要課題",
+    challenge,
+    "■判断根拠",
+    rationaleParts.join(""),
+    "■最も改善効果が高い行動",
+    action,
+  ].join("\n");
+
+  if (structured.length <= 520) return structured;
+  return `${structured.slice(0, 519)}…`;
 }
 
 /** ① 総合評価 */
@@ -968,28 +1546,246 @@ export function generateOverallEvaluation(
   return trimToRange(base, 120, 220);
 }
 
-/** ② 良い点（データ根拠つき） */
-export function generateGoodPoints(items: AiAnalysisItem[]): string[] {
-  const goods = pickGoodItems(items, 4);
-  if (goods.length === 0) {
-    return [
-      "大きな崩れはみられず、睡眠ウェルネスの土台は保たれていると考えられます",
-      "計測の継続により、次回以降の比較分析が可能な状態です",
-    ];
+/**
+ * Good Point 候補（metrics から判定）。
+ * 良好なものだけをスコア順に最大5件返す。固定文は使わない。
+ */
+const GOOD_POINT_CANDIDATE_KEYS: readonly AiAnalysisItemKey[] = [
+  "hrv",
+  "spo2",
+  "deepSleep",
+  "stress",
+  "respiratoryRate",
+  "circadianRhythm",
+  "remSleep",
+  "sleepEfficiency",
+  "sleepDuration",
+] as const;
+
+const GOOD_POINT_THRESHOLD = 70;
+
+function goodPointLabel(key: AiAnalysisItemKey): string {
+  switch (key) {
+    case "remSleep":
+      return "REM十分";
+    case "hrv":
+      return "HRV高い";
+    case "spo2":
+      return "SpO₂良い";
+    case "sleepEfficiency":
+      return "睡眠効率良好";
+    case "stress":
+      return "ストレス低い";
+    case "circadianRhythm":
+      return "体内時計正常";
+    case "deepSleep":
+      return "深睡眠十分";
+    case "sleepDuration":
+      return "睡眠時間十分";
+    case "respiratoryRate":
+      return "呼吸数正常";
+    default:
+      return ITEM_LABELS[key] ?? key;
   }
-  return goods.map((g) => evidenceGoodPoint(g));
 }
 
-/** ③ 改善ポイント（優先理由つき） */
-export function generateImprovementPoints(items: AiAnalysisItem[]): string[] {
-  const issues = pickAttentionItems(items, 5);
-  if (issues.length === 0) {
-    return [
-      "現状の良い習慣を固定し、ばらつきを小さくすることで再現性の向上が期待できます",
-      "起床時刻の一貫性を保ち、体内時計を安定させることが次の整えどころと考えられます",
-    ];
+function metricGoodPointSentence(item: AiAnalysisItem): string {
+  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const tag = goodPointLabel(item.key);
+  switch (item.key) {
+    case "remSleep":
+      return v ? `${tag}（レム睡眠${v}）` : tag;
+    case "hrv":
+      return v ? `${tag}（${v}）` : tag;
+    case "spo2":
+      return v ? `${tag}（${v}）` : tag;
+    case "sleepEfficiency":
+      return v ? `${tag}（${v}）` : tag;
+    case "stress":
+      return v ? `${tag}（${v}）` : tag;
+    case "circadianRhythm":
+      return v ? `${tag}（${v}）` : tag;
+    case "deepSleep":
+      return v ? `${tag}（深い睡眠${v}）` : tag;
+    case "sleepDuration":
+      return v ? `${tag}（${v}）` : tag;
+    case "respiratoryRate":
+      return v ? `${tag}（${v}）` : tag;
+    default:
+      return v ? `${tag}（${v}）` : tag;
   }
-  return issues.map((i) => evidenceImprovementPoint(i));
+}
+
+/** ② 良い点（取得 metrics から毎回生成・上位5件） */
+export function generateGoodPoints(items: AiAnalysisItem[]): string[] {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  const qualified = GOOD_POINT_CANDIDATE_KEYS.map((key) => byKey.get(key))
+    .filter(
+      (item): item is AiAnalysisItem =>
+        Boolean(item) &&
+        typeof item?.normalizedScore === "number" &&
+        (item.normalizedScore as number) >= GOOD_POINT_THRESHOLD,
+    )
+    .sort(
+      (a, b) => (b.normalizedScore as number) - (a.normalizedScore as number),
+    )
+    .slice(0, 5);
+
+  return qualified.map((item) => metricGoodPointSentence(item));
+}
+
+/**
+ * 改善提案の優先順位（①が最重要）。
+ * 固定文は使わず、metrics の弱さから毎回最大3件を生成する。
+ */
+export const IMPROVEMENT_PRIORITY_KEYS: readonly AiAnalysisItemKey[] = [
+  "sleepDuration",
+  "deepSleep",
+  "sleepEfficiency",
+  "sleepLatency",
+  "awakenings",
+  "stress",
+  "hrv",
+  "spo2",
+  "respiratoryRate",
+  "circadianRhythm",
+] as const;
+
+const IMPROVEMENT_WEAK_THRESHOLD = 70;
+
+function improvementActionText(item: AiAnalysisItem): string {
+  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  switch (item.key) {
+    case "sleepDuration":
+      return v
+        ? `睡眠時間${v}は短めです。就寝を前倒しし、少なくとも6時間30分以上の睡眠機会を確保すると回復の土台が整いやすくなります`
+        : `睡眠時間が短めです。就寝を前倒しし、睡眠機会を延ばすと回復の土台が整いやすくなります`;
+    case "deepSleep":
+      return v
+        ? `深睡眠${v}は短めです。就寝90分前の画面オフと入浴・ストレッチで、身体回復の核を伸ばすことが期待できます`
+        : `深睡眠が短めです。就寝前ルーティンを整え、身体回復の核を伸ばすことが期待できます`;
+    case "sleepEfficiency":
+      return v
+        ? `睡眠効率${v}はやや低めです。入眠できないときは一度ベッドを離れ、連続睡眠を高める工夫が有効です`
+        : `睡眠効率がやや低めです。連続睡眠を高める工夫が有効です`;
+    case "sleepLatency":
+      return v
+        ? `入眠潜時${v}は長めです。就寝前30分のデジタルオフと呼吸リセットで、入眠までの時間短縮が期待できます`
+        : `入眠潜時が長めです。就寝前の切り替え行動で入眠までの時間短縮が期待できます`;
+    case "awakenings":
+      return v
+        ? `覚醒時間${v}が長めです。寝室の温度・光・騒音を整え、再入眠しやすい環境づくりを優先しましょう`
+        : `覚醒時間が長めです。再入眠しやすい環境づくりを優先しましょう`;
+    case "hrv":
+      return v
+        ? `HRV${v}は回復余力に余地があります。午後の負荷を減らし、就寝前の短い休息で余白をつくることが有効です`
+        : `HRVに回復余力の余地があります。負荷調整と就寝前の休息が有効です`;
+    case "stress":
+      return v
+        ? `測定ストレス${v}はやや高めです。就寝前の4〜6呼吸を3分行い、副交感神経の立ち上がりを助けることが期待できます`
+        : `測定ストレスがやや高めです。就寝前の呼吸リセットが期待できます`;
+    case "spo2":
+      return v
+        ? `平均SpO₂${v}はやや低めです。鼻呼吸や側臥位など、呼吸が安定しやすい姿勢を試すことが有効です`
+        : `平均SpO₂がやや低めです。呼吸の安定を優先しましょう`;
+    case "respiratoryRate":
+      return v
+        ? `呼吸数${v}にばらつきがあります。就寝前のリラックスと鼻呼吸の意識が有効です`
+        : `呼吸数にばらつきがあります。就寝前のリラックスが有効です`;
+    case "circadianRhythm":
+      return v
+        ? `体内時計（${v}）にずれがあります。起床時刻の固定と朝の光浴でリズムを整えることが期待できます`
+        : `体内時計にずれがあります。起床固定と朝の光浴が期待できます`;
+    default:
+      return v
+        ? `${item.label}${v}に整え余地があります。今回のデータに沿って一点ずつ調整しましょう`
+        : `${item.label}に整え余地があります。今回のデータに沿って一点ずつ調整しましょう`;
+  }
+}
+
+function improvementWhyNow(item: AiAnalysisItem, rank: number): string {
+  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const priorityHint =
+    rank === 0
+      ? "改善優先順位で最も効果が高い位置にあるため、いま着手する価値が大きいです。"
+      : rank === 1
+        ? "最優先の次に効きやすく、次回比較でも変化を確認しやすいためです。"
+        : "負荷を抑えつつ続けやすく、他指標への波及も期待できるため残しています。";
+
+  switch (item.key) {
+    case "sleepDuration":
+      return v
+        ? `睡眠時間${v}が短いと深睡眠・効率・HRVにも波及しやすいです。${priorityHint}`
+        : `睡眠時間の不足は他指標にも波及しやすいです。${priorityHint}`;
+    case "deepSleep":
+      return v
+        ? `深睡眠${v}は身体回復の核で、翌日コンディションへの影響が大きいです。${priorityHint}`
+        : `深睡眠は身体回復の核です。${priorityHint}`;
+    case "sleepEfficiency":
+      return v
+        ? `睡眠効率${v}の低さは覚醒や入眠の影響を反映しやすく、連続性改善の効果が大きいです。${priorityHint}`
+        : `睡眠効率の改善は連続性への効果が大きいです。${priorityHint}`;
+    case "sleepLatency":
+      return v
+        ? `入眠潜時${v}が長いと総睡眠・効率を押し下げやすいです。${priorityHint}`
+        : `入眠の遅れは総睡眠・効率を押し下げやすいです。${priorityHint}`;
+    case "awakenings":
+      return v
+        ? `覚醒${v}は睡眠の断片化につながり、効率・深睡眠へ影響しやすいです。${priorityHint}`
+        : `覚醒の多さは効率・深睡眠へ影響しやすいです。${priorityHint}`;
+    case "hrv":
+      return v
+        ? `HRV${v}は回復余力の指標で、ストレス・休息設計と合わせて整えやすいです。${priorityHint}`
+        : `HRVは回復余力の指標です。${priorityHint}`;
+    case "stress":
+      return v
+        ? `ストレス${v}が高めだと入眠・HRVに響きやすいです。${priorityHint}`
+        : `ストレスは入眠・HRVに響きやすいです。${priorityHint}`;
+    case "spo2":
+      return v
+        ? `SpO₂${v}は酸素供給の指標で、覚醒や回復感に関わりやすいです。${priorityHint}`
+        : `SpO₂は酸素供給と回復感に関わりやすいです。${priorityHint}`;
+    case "respiratoryRate":
+      return v
+        ? `呼吸数${v}の安定は睡眠の連続性に関わりやすいです。${priorityHint}`
+        : `呼吸の安定は睡眠の連続性に関わりやすいです。${priorityHint}`;
+    case "circadianRhythm":
+      return v
+        ? `体内時計（${v}）のずれは総睡眠や入眠に波及しやすいです。${priorityHint}`
+        : `体内時計のずれは総睡眠や入眠に波及しやすいです。${priorityHint}`;
+    default:
+      return priorityHint;
+  }
+}
+
+/**
+ * 改善提案を metrics から動的生成（優先順位順・最大3件）。
+ * text / whyNow / stars をセットで返す。
+ */
+export function generateImprovementItems(
+  items: AiAnalysisItem[],
+): ImprovementItem[] {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  const weak = IMPROVEMENT_PRIORITY_KEYS.map((key) => byKey.get(key)).filter(
+    (item): item is AiAnalysisItem =>
+      Boolean(item) &&
+      typeof item?.normalizedScore === "number" &&
+      (item.normalizedScore as number) < IMPROVEMENT_WEAK_THRESHOLD,
+  );
+
+  return weak.slice(0, 3).map((item, index) => {
+    const stars = (index === 0 ? 5 : index === 1 ? 4 : 3) as 5 | 4 | 3;
+    return {
+      text: improvementActionText(item),
+      stars,
+      whyNow: improvementWhyNow(item, index),
+    };
+  });
+}
+
+/** ③ 改善ポイント（文字列のみが必要な互換用） */
+export function generateImprovementPoints(items: AiAnalysisItem[]): string[] {
+  return generateImprovementItems(items).map((item) => item.text);
 }
 
 function formatEvidenceValue(rawValue: string | number | null): string {
@@ -1003,96 +1799,6 @@ function withUnit(value: string, key: AiAnalysisItemKey): string {
   if (key === "sleepEfficiency" && !/%/.test(value)) return `${value}%`;
   if (key === "restingHeartRate" && !/bpm|回/i.test(value)) return `${value}bpm`;
   return value;
-}
-
-function evidenceGoodPoint(item: AiAnalysisItem): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
-  switch (item.key) {
-    case "deepSleep":
-      return v
-        ? `深睡眠${v}が確保されているため、身体回復は比較的良好であると考えられます`
-        : "深睡眠が十分に確保されており、身体回復は比較的良好であると考えられます";
-    case "hrv":
-      return v
-        ? `HRV${v}は、自律神経の回復状態が良好である可能性があります`
-        : "HRVは自律神経の回復状態が良好である可能性があります";
-    case "sleepEfficiency":
-      return v
-        ? `睡眠効率${v}は、床上時間に対する実睡眠の質が安定していることを示しています`
-        : "睡眠効率は安定しており、実睡眠の質は比較的良好であると考えられます";
-    case "sleepDuration":
-      return v
-        ? `睡眠時間${v}は推奨レンジに近く、回復の機会が確保されていると考えられます`
-        : "睡眠時間は推奨レンジに近く、回復の機会が確保されていると考えられます";
-    case "remSleep":
-      return v
-        ? `REM睡眠${v}が確保されており、心の整理・学習の回復面は前向きなサインと考えられます`
-        : "REM睡眠が確保されており、回復面は前向きなサインと考えられます";
-    case "awakenings":
-      return v
-        ? `中途覚醒は${v}と少なく、睡眠の連続性が保たれている可能性があります`
-        : "中途覚醒が少なく、睡眠の連続性が保たれている可能性があります";
-    case "stress":
-      return v
-        ? `測定ストレス${v}は落ち着いた帯にあり、回復しやすい状態の可能性があります`
-        : "測定ストレスは落ち着いた帯にあり、回復しやすい状態の可能性があります";
-    case "restingHeartRate":
-      return v
-        ? `安静時心拍${v}は落ち着いており、夜間の回復モードが整っている可能性があります`
-        : "安静時心拍は落ち着いており、夜間の回復モードが整っている可能性があります";
-    case "sleepScore":
-      return v
-        ? `睡眠スコア${v}は良好帯にあり、総合的な睡眠の質は前向きに評価できます`
-        : "睡眠スコアは良好帯にあり、総合的な睡眠の質は前向きに評価できます";
-    case "circadianRhythm":
-      return "体内時計のリズムは比較的整っており、入眠・起床の安定が期待できます";
-    default:
-      return v
-        ? `${item.label}${v}は、今回のデータ上前向きに評価できるポイントです`
-        : `${item.label}は、今回のデータ上前向きに評価できるポイントです`;
-  }
-}
-
-function evidenceImprovementPoint(item: AiAnalysisItem): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
-  switch (item.key) {
-    case "sleepDuration":
-      return v
-        ? `睡眠時間${v}は回復機会が不足している可能性があり、深睡眠・HRVなど他指標にも波及しやすいため、いま優先して整える価値があります`
-        : "睡眠時間の不足は他指標にも波及しやすいため、いま優先して整える価値があります";
-    case "deepSleep":
-      return v
-        ? `深睡眠${v}は身体回復の核として短めの可能性があり、翌日のコンディション改善が期待できるため優先したい項目です`
-        : "深睡眠は身体回復の核であり、短めの可能性があるため優先して整えたい項目です";
-    case "sleepEfficiency":
-      return v
-        ? `睡眠効率${v}は中途覚醒や入眠の影響がうかがえ、連続睡眠を高めることで総合スコアの改善が期待できます`
-        : "睡眠効率の低下は中途覚醒や入眠の影響がうかがえ、連続睡眠を高めることで改善が期待できます";
-    case "hrv":
-      return v
-        ? `HRV${v}は自律神経の回復余地を示唆しており、ストレス・安静時心拍とあわせて休息設計を優先するのが有効と考えられます`
-        : "HRVは自律神経の回復余地を示唆しており、休息設計を優先するのが有効と考えられます";
-    case "awakenings":
-      return v
-        ? `中途覚醒${v}は睡眠の断片化につながりやすく、深睡眠・睡眠効率への影響が大きいため優先して整えたいと考えられます`
-        : "中途覚醒は睡眠の断片化につながりやすく、深睡眠・睡眠効率への影響が大きいため優先したい項目です";
-    case "stress":
-      return v
-        ? `測定ストレス${v}は高めの可能性があり、就寝前の切り替えを整えることでHRVや入眠の改善が期待できます`
-        : "測定ストレスは高めの可能性があり、就寝前の切り替えを整えることで改善が期待できます";
-    case "alcohol":
-      return "当日の飲酒は深睡眠・覚醒・HRVと関連しやすいため、終了時刻と量を今回データと照合しながら整えることが有効と考えられます";
-    case "caffeine":
-      return "カフェイン摂取のタイミングは入眠潜時や浅い睡眠と関連しやすいため、午後以降の調整を優先するのが有効と考えられます";
-    case "circadianRhythm":
-      return "体内時計のずれは睡眠時間・REM・翌日のコンディションに波及しやすいため、起床・朝光の一貫性を優先して整える価値があります";
-    case "preBedBehavior":
-      return "就寝前行動は深睡眠の入りと中途覚醒に影響しやすいため、入眠前ルーティンの固定を優先するのが有効と考えられます";
-    default:
-      return v
-        ? `${item.label}${v}に整え余地があり、他指標への波及を踏まえると優先して観察・調整する価値があると考えられます`
-        : `${item.label}に整え余地があり、他指標への波及を踏まえると優先して観察・調整する価値があると考えられます`;
-  }
 }
 
 const CHALLENGE_BY_KEY: Partial<Record<AiAnalysisItemKey, string>> = {
@@ -1112,6 +1818,11 @@ const CHALLENGE_BY_KEY: Partial<Record<AiAnalysisItemKey, string>> = {
   restingHeartRate: "就寝前の入浴と呼吸で心拍を落とし、回復モードへ切り替える",
   bathing: "就寝60〜90分前に湯船へ入り、体温低下の波を活用する",
   sleepScore: "今夜は1つだけ生活習慣を変え、スコアの反応を観察する",
+  sleepDebt: "今夜は回復夜として睡眠機会を30〜60分伸ばす",
+  sleepLatency: "就寝前のデジタルオフを徹底し、入眠までの時間を短縮する",
+  spo2: "鼻呼吸・側臥位など、呼吸が安定しやすい姿勢を試す",
+  respiratoryRate: "就寝前のリラックスと鼻呼吸で呼吸の安定を意識する",
+  skinTemperature: "寝室温度を調整し、就寝前の体温ダウンを整える",
 };
 
 /** ④ 今日の課題 */
@@ -1132,7 +1843,7 @@ const WEEKLY_BY_KEY: Partial<Record<AiAnalysisItemKey, string>> = {
   stress: "就寝前の呼吸リセットを毎日3分続ける",
   sleepDuration: "週平均の睡眠機会を7時間前後に近づける",
   sleepEfficiency: "睡眠効率85%以上を週の半数の夜で目指す",
-  awakenings: "中途覚醒回数を前回より減らす環境・行動を試す",
+  awakenings: "覚醒時間を前回より減らす環境・行動を試す",
   hrv: "HRVが落ちにくい休息日を週に1〜2日入れる",
   meals: "夕食〜就寝の間隔を3時間以上にそろえる",
   exercise: "夕方の軽い運動を週3回以上入れる",
@@ -1140,6 +1851,10 @@ const WEEKLY_BY_KEY: Partial<Record<AiAnalysisItemKey, string>> = {
   restingHeartRate: "就寝前のクールダウンを習慣化し心拍の落ち着きを見る",
   bathing: "湯船入浴を週4回以上、就寝60〜90分前に実施する",
   sleepScore: "睡眠スコアを前回比で+3〜5点伸ばす",
+  sleepDebt: "週の睡眠負債を積み上げない回復夜を2夜入れる",
+  sleepLatency: "入眠潜時20分以内を週の半数の夜で目指す",
+  spo2: "平均SpO₂の安定を呼吸習慣と合わせて観察する",
+  skinTemperature: "皮膚温のばらつきが小さくなる寝室環境を整える",
 };
 
 /** ⑤ 来週までの目標 */
@@ -1367,6 +2082,9 @@ export function aiInputFromMetricsAndLifestyle(args: {
       circadianRhythm: args.metrics.circadianRhythm ?? null,
       sleepLatency: args.metrics.sleepLatency ?? null,
       sleepDebt: args.metrics.sleepDebt ?? null,
+      spo2: args.metrics.spo2 ?? null,
+      respiratoryRate: args.metrics.respiratoryRate ?? null,
+      skinTemperature: args.metrics.skinTemperature ?? null,
     },
     lifestyle: args.lifestyle,
   };
@@ -1386,7 +2104,7 @@ export function toAiAnalysisPreview(output: AiSleepAnalysisOutput): {
     score: output.wellnessScore,
     headline: headlineFromOutput(output),
     summary: output.overallEvaluation,
-    goodPoints: output.goodPoints.slice(0, 4),
+    goodPoints: output.goodPoints.slice(0, 5),
     focusPoints: output.improvementPoints.slice(0, 4),
   };
 }
@@ -1405,15 +2123,19 @@ function headlineFromOutput(output: AiSleepAnalysisOutput): string {
 export function toImprovementItems(
   output: AiSleepAnalysisOutput,
 ): ImprovementItem[] {
-  return output.improvementPoints.slice(0, 5).map((text, index) => {
+  const generated = generateImprovementItems(output.items);
+  if (generated.length > 0) return generated;
+  // metrics に弱項目がない場合のみ、従来の文字列配列へフォールバック
+  return output.improvementPoints.slice(0, 3).map((text, index) => {
     const stars = (index === 0 ? 5 : index === 1 ? 4 : 3) as 5 | 4 | 3;
-    const whyNow =
-      index === 0
-        ? "今回のデータで最も整え余地が大きく、他指標への波及が期待できるため優先します。"
-        : index === 1
-          ? "再現性を高めやすく、次回比較で変化を確認しやすいためです。"
-          : "負荷を抑えつつ継続できる整え方として残しています。";
-    return { text, stars, whyNow };
+    return {
+      text,
+      stars,
+      whyNow:
+        index === 0
+          ? "今回のデータで整え余地が確認できるため優先します。"
+          : "再現性を高めやすく、次回比較で変化を確認しやすいためです。",
+    };
   });
 }
 
@@ -1590,8 +2312,11 @@ export function toRecommendationCards(
     deepSleep: "sleep",
     sleepDuration: "sleep",
     sleepEfficiency: "sleep",
+    sleepDebt: "sleep",
+    sleepLatency: "sleep",
     awakenings: "sleep",
     remSleep: "sleep",
+    spo2: "sleep",
     exercise: "exercise",
     meals: "meal",
     alcohol: "meal",
@@ -1601,6 +2326,7 @@ export function toRecommendationCards(
     preBedBehavior: "lifestyle",
     bathing: "lifestyle",
     circadianRhythm: "lifestyle",
+    skinTemperature: "lifestyle",
     restingHeartRate: "lifestyle",
     sleepScore: "sleep",
   };
@@ -1776,51 +2502,38 @@ export function toAnalysisResultFields(
   input?: AiSleepAnalysisInput,
 ): AnalysisResultAiFields {
   const topIssues = pickAttentionItems(output.items, 3);
-  const goods = pickGoodItems(output.items, 2);
-  const attention = pickAttentionItems(output.items, 2);
-  const stateEvidence =
-    goods.length > 0
-      ? goods
-          .map((g) => {
-            const v = formatEvidenceValue(g.rawValue);
-            return v ? `${g.label}${v}` : g.label;
-          })
-          .join("・")
-      : "安定した指標";
-  const causeEvidence =
-    attention.length > 0
-      ? attention
-          .map((i) => {
-            const v = formatEvidenceValue(i.rawValue);
-            return v ? `${i.label}${v}` : i.label;
-          })
-          .join("・")
-      : "習慣の再現性";
-  const topIssueLabel = attention[0]?.label ?? "生活リズム";
+  const insightFocus = selectInsightFocus(output.items);
   const instructorCounseling = toInstructorCounseling(output, input);
+  const byKey = (key: AiAnalysisItemKey) =>
+    output.items.find((item) => item.key === key)?.normalizedScore;
+  const avg = (keys: AiAnalysisItemKey[]) => {
+    const vals = keys
+      .map(byKey)
+      .filter((n): n is number => typeof n === "number");
+    if (vals.length === 0) return output.wellnessScore;
+    return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  };
   const categoryScores = {
-    body: Math.round(output.wellnessScore * 0.98),
-    mind: Math.round(output.wellnessScore * 0.96),
-    lifestyle: Math.round(output.wellnessScore * 0.94),
-    environment: Math.round(output.wellnessScore * 0.92),
+    body: avg([
+      "sleepDuration",
+      "sleepEfficiency",
+      "deepSleep",
+      "remSleep",
+      "awakenings",
+      "restingHeartRate",
+      "spo2",
+      "sleepDebt",
+      "sleepLatency",
+    ]),
+    mind: avg(["hrv", "stress", "skinTemperature", "respiratoryRate"]),
+    lifestyle: avg(["meals", "alcohol", "caffeine", "exercise", "bathing"]),
+    environment: avg(["circadianRhythm", "preBedBehavior"]),
   };
 
   return {
     summary: output.overallEvaluation,
-    karteSummary: (() => {
-      const structured = [
-        "■今回最も重要な課題",
-        `${output.clientName}さんの今回データでは、${topIssueLabel}を最も重要な整えどころとして捉えます（根拠: ${causeEvidence}）。`,
-        "■判断の根拠",
-        `睡眠データ・SOXAI・生活習慣をあわせると、${stateEvidence}に前向きなサインがある一方で、${causeEvidence}の関連から整え余地が考えられます。`,
-        "■今回もっとも改善効果が高い行動",
-        output.improvementPoints[0]
-          ? `${output.improvementPoints[0]}ことが、今回のデータ同士の関連からみて最も改善効果が高い行動と考えられます。`
-          : "良い習慣の再現性を高め、次回比較で変化を確認していくことが最も改善効果が高い行動と考えられます。",
-      ].join("\n");
-      if (structured.length <= 420) return structured;
-      return `${structured.slice(0, 419)}…`;
-    })(),
+    // Sleep Wellness Insight は GPT が毎回生成する（固定テンプレ禁止）
+    karteSummary: "",
     goodPoints: output.goodPoints,
     improvements: toImprovementItems(output),
     profileRelation:
@@ -1843,24 +2556,33 @@ export function toAnalysisResultFields(
       "当日の生活習慣と睡眠指標の関連を確認しました。",
     scoreComment: `${headlineFromOutput(output)}（Sleep Wellness Score ${output.wellnessScore}）`,
     categoryScoreRationales: {
-      body: `身体 ${categoryScores.body}点。深睡眠・回復関連の指標を中心に評価しています。`,
-      mind: `心 ${categoryScores.mind}点。HRV・ストレス関連の指標を中心に評価しています。`,
+      body: `身体 ${categoryScores.body}点。睡眠時間・効率・深い睡眠など身体回復の指標を中心に評価しています。`,
+      mind: `心 ${categoryScores.mind}点。HRV・ストレス・呼吸数などの指標を中心に評価しています。`,
       lifestyle: `生活 ${categoryScores.lifestyle}点。飲酒・運動・食事リズムなどの当日習慣を反映しています。`,
-      environment: `環境 ${categoryScores.environment}点。入力のある環境要因を控えめに反映した参考値です。`,
+      environment: `環境 ${categoryScores.environment}点。体内時計など入力のある環境要因を反映した参考値です。`,
     },
     todaysRecommendations: toTodaysRecommendations(output),
-    nextComparisonPoints: topIssues
+    nextComparisonPoints: (insightFocus.focus
+      ? [insightFocus.focus, ...insightFocus.supporting]
+      : topIssues
+    )
+      .filter((item): item is AiAnalysisItem => Boolean(item))
       .map((i) => i.label)
-      .concat(topIssues.length < 2 ? ["就寝前行動の実施率"] : [])
+      .concat(
+        !(insightFocus.focus || topIssues.length)
+          ? ["就寝前行動の実施率"]
+          : [],
+      )
       .slice(0, 4),
     recommendationsUntilNext: toNextActionGoals(output),
     instructorSuggestions: toInstructorSuggestions(output, input),
     instructorCounseling,
     melatoninYogaPlan: {
       recommendedPhase:
-        attention.some((i) => i.key === "stress" || i.key === "hrv")
+        insightFocus.focus?.key === "stress" ||
+        insightFocus.focus?.key === "hrv"
           ? "Phase 2 自律神経調整"
-          : attention.some((i) => i.key === "circadianRhythm")
+          : insightFocus.focus?.key === "circadianRhythm"
             ? "Phase 3 リズム定着"
             : "Phase 1 入眠導入",
       breathing: "3:6呼吸を就寝前5分",

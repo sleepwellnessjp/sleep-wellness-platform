@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { appendFileSync } from "node:fs";
 import {
   isImageDataUrl,
   normalizeImageDataUrl,
@@ -88,7 +89,7 @@ const VISION_TRANSIENT_RETRIES = 1;
 /** critical 再OCRの候補画像上限（優先画面から） */
 const CRITICAL_REOCR_MAX_IMAGES = 2;
 /** サーバー温インスタンス内の画像ハッシュキャッシュ（不完全結果は採用しない） */
-const SERVER_OCR_CACHE_VERSION = "v14";
+const SERVER_OCR_CACHE_VERSION = "v20";
 const serverOcrCache = new Map<
   string,
   {
@@ -887,10 +888,45 @@ function buildVerifyDiagnostics(params: {
 }
 
 export async function POST(request: Request) {
+  const life = (msg: string, extra?: Record<string, unknown>) => {
+    const line = `${new Date().toISOString()} ${msg}${
+      extra ? ` ${JSON.stringify(extra)}` : ""
+    }`;
+    console.info(`[ocr-life] ${msg}`, extra ?? "");
+    try {
+      appendFileSync("/tmp/ocr-api-lifecycle.log", `${line}\n`, "utf8");
+    } catch {
+      // ignore log write failures
+    }
+  };
+
+  life("START POST /api/extract", {
+    aborted: request.signal.aborted,
+  });
+  request.signal.addEventListener(
+    "abort",
+    () => {
+      life("ERROR request.signal aborted (client disconnected)", {
+        at: new Date().toISOString(),
+      });
+    },
+    { once: true },
+  );
+
   let body: unknown;
+  const jsonStarted = Date.now();
   try {
     body = await request.json();
+    life(`END request.json ${Date.now() - jsonStarted}ms`, {
+      imageCount: Array.isArray((body as { images?: unknown })?.images)
+        ? ((body as { images: unknown[] }).images.length)
+        : null,
+    });
   } catch (parseError) {
+    life(`ERROR request.json ${Date.now() - jsonStarted}ms`, {
+      message:
+        parseError instanceof Error ? parseError.message : String(parseError),
+    });
     console.error("[api/extract] request JSON parse failed:", parseError);
     return NextResponse.json(
       {
@@ -1036,6 +1072,9 @@ export async function POST(request: Request) {
     }> => {
       const callNo = ++visionCallSeq;
       const detail = ctx.detail ?? OCR_DETAIL_FAST;
+      const tag = `${ctx.purpose || "vision"}#${ctx.imageIndex ?? "?"}/call${callNo}`;
+      const visionStarted = Date.now();
+      console.info(`START ${tag}`);
       console.info(`${OCR_TRACE} ② OpenAIへリクエスト送信直前`, {
         callNo,
         imageIndex: ctx.imageIndex,
@@ -1044,6 +1083,15 @@ export async function POST(request: Request) {
         model: OCR_MODEL,
         detail,
       });
+      try {
+        appendFileSync(
+          "/tmp/ocr-api-lifecycle.log",
+          `${new Date().toISOString()} START ${tag}\n`,
+          "utf8",
+        );
+      } catch {
+        /* ignore */
+      }
 
       try {
         const response = await client.responses.create(
@@ -1076,14 +1124,28 @@ export async function POST(request: Request) {
         );
         trackUsage(response.usage);
 
+        const elapsed = Date.now() - visionStarted;
+        console.info(`END ${tag} ${elapsed}ms`);
         console.info(`${OCR_TRACE} ③ OpenAIレスポンス受信`, {
           callNo,
           imageIndex: ctx.imageIndex,
           purpose: ctx.purpose,
+          httpStatus: 200,
+          receivedAt: new Date().toISOString(),
+          elapsedMs: elapsed,
           successfulApiCalls: apiCalls,
           hasOutputText: Boolean(response.output_text?.trim()),
           usage: response.usage ?? null,
         });
+        try {
+          appendFileSync(
+            "/tmp/ocr-api-lifecycle.log",
+            `${new Date().toISOString()} END ${tag} ${elapsed}ms httpStatus=200\n`,
+            "utf8",
+          );
+        } catch {
+          /* ignore */
+        }
 
         const outputText = response.output_text?.trim();
         if (!outputText) {
@@ -1165,14 +1227,29 @@ export async function POST(request: Request) {
 
         return { screenType, readings, graphReadings, callNo };
       } catch (error) {
+        const elapsed = Date.now() - visionStarted;
+        const status = visionErrorStatus(error);
+        const message = visionErrorMessage(error);
+        console.info(
+          `ERROR ${tag} ${elapsed}ms status=${status ?? "n/a"} ${message.slice(0, 120)}`,
+        );
+        try {
+          appendFileSync(
+            "/tmp/ocr-api-lifecycle.log",
+            `${new Date().toISOString()} ERROR ${tag} ${elapsed}ms status=${status ?? "n/a"} ${message.slice(0, 200)}\n`,
+            "utf8",
+          );
+        } catch {
+          /* ignore */
+        }
         if (isRateLimitError(error)) {
           // 継続/中断は runVisionOnImage 側で確定ログ。ここでは発生事実を残す
           console.error(`${OCR_TRACE} 429発生（API応答）`, {
             imageIndex: ctx.imageIndex,
             callNo,
             purpose: ctx.purpose,
-            message: visionErrorMessage(error),
-            status: visionErrorStatus(error),
+            message,
+            status,
             stack: visionErrorStack(error),
           });
         } else {
@@ -1464,10 +1541,10 @@ export async function POST(request: Request) {
           });
           const mappedKeyCount = collectedMetricKeys(mappedOnce.metrics).length;
 
-          // ROI が空のときだけ全面再スキャン（フォールバック）
+          // ROI が空のときは全面 OCR せず、同一画面の ROI を再切り出しして再OCRのみ
           const needsRetry = readings.length === 0 || mappedKeyCount === 0;
           if (needsRetry) {
-            console.warn("[api/extract] sparse ROI readings, full-image fallback", {
+            console.warn("[api/extract] sparse ROI readings, ROI-only retry", {
               imageIndex,
               count: readings.length,
               mappedKeyCount,
@@ -1475,43 +1552,49 @@ export async function POST(request: Request) {
             });
             try {
               const sparseStarted = Date.now();
-              const retry = await runVisionOnImage(
-                imageUrl,
-                fixedScreenType
-                  ? fixedSectionPrompt(
-                      displayIndex,
-                      displayTotal,
-                      fixedScreenType,
+              const retryCrops = await cropScreenRois(imageUrl, screenType);
+              const retryReadings: VisibleReading[] = [];
+              for (const crop of retryCrops) {
+                const retry = await runVisionOnImage(
+                  crop.dataUrl,
+                  roiOcrPrompt({
+                    screenType,
+                    roi: crop.roi,
+                    imageIndex: displayIndex,
+                    total: displayTotal,
+                  }),
+                  {
+                    imageIndex,
+                    purpose: "sparseRetry",
+                    detail: OCR_DETAIL_ACCURATE,
+                  },
+                );
+                for (const reading of retry.readings) {
+                  const dedupe = `${reading.label}::${reading.value}`;
+                  if (
+                    !retryReadings.some(
+                      (r) => `${r.label}::${r.value}` === dedupe,
                     )
-                  : sparseRetryPrompt(readings.length),
-                {
-                  imageIndex,
-                  purpose: "sparseRetry",
-                  detail: OCR_DETAIL_ACCURATE,
-                },
-              );
+                  ) {
+                    retryReadings.push(reading);
+                  }
+                }
+              }
               timing.markImagePhase(
                 imageIndex,
                 "sparseRetry",
                 Date.now() - sparseStarted,
-                { readings: retry.readings.length, mode: "full-fallback" },
+                { readings: retryReadings.length, mode: "roi-only" },
               );
               if (
-                retry.readings.length > readings.length ||
+                retryReadings.length > readings.length ||
                 collectedMetricKeys(
-                  mapVisibleReadingsToMetricsDetailed(retry.readings, {
-                    screenType: fixedScreenType ?? retry.screenType,
+                  mapVisibleReadingsToMetricsDetailed(retryReadings, {
+                    screenType,
                   }).metrics,
                 ).length > mappedKeyCount
               ) {
-                readings = retry.readings;
-                screenType = fixedScreenType ?? retry.screenType;
-              }
-              if (retry.graphReadings.length > graphReadings.length) {
-                graphReadings = retry.graphReadings.map((g) => ({
-                  ...g,
-                  sourceImageIndex: imageIndex,
-                }));
+                readings = retryReadings;
               }
             } catch (retryError) {
               if (isRateLimitError(retryError)) {
@@ -1528,7 +1611,7 @@ export async function POST(request: Request) {
                 imageIndex,
               });
               console.warn(
-                "[api/extract] per-image retry failed",
+                "[api/extract] per-image ROI retry failed",
                 { imageIndex },
                 retryError,
               );
@@ -1686,8 +1769,11 @@ export async function POST(request: Request) {
       fixedScreenType?: SoxaiScreenType,
     ) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
+      const sectionLabel = fixedScreenType || `image_${index}`;
+      const started = Date.now();
+      console.info(`START ${sectionLabel} index=${index}`);
       try {
-        return await Promise.race([
+        const result = await Promise.race([
           ocrOneImage(imageUrl, index, fixedScreenType),
           new Promise<Awaited<ReturnType<typeof ocrOneImage>>>((_, reject) => {
             timer = setTimeout(() => {
@@ -1695,9 +1781,14 @@ export async function POST(request: Request) {
             }, IMAGE_HARD_TIMEOUT_MS);
           }),
         ]);
+        console.info(`END ${sectionLabel} ${Date.now() - started}ms`);
+        return result;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
+        console.info(
+          `END ${sectionLabel} ${Date.now() - started}ms error=${message}`,
+        );
         const empty = mapVisibleReadingsToMetricsDetailed([]);
         const endedAt = Date.now();
         if (isRateLimitError(error)) {
@@ -1843,17 +1934,19 @@ export async function POST(request: Request) {
       }),
     });
 
-    // 429等で空になった画像を並列再試行（取得条件は同一、壁時計のみ短縮）
-    const transientFailed = needVision.filter((item) => {
-      const result = perImage[item.index];
-      return (
-        result &&
-        result.error &&
-        /rate limit|429|temporar|timeout|ECONNRESET|ETIMEDOUT/i.test(
-          result.error,
-        )
-      );
-    });
+    // 429等で空になった画像を並列再試行（skipRetries 時は初回ウェーブ結果で確定）
+    const transientFailed = skipRetries
+      ? []
+      : needVision.filter((item) => {
+          const result = perImage[item.index];
+          return (
+            result &&
+            result.error &&
+            /rate limit|429|temporar|timeout|ECONNRESET|ETIMEDOUT/i.test(
+              result.error,
+            )
+          );
+        });
     timing.begin("transientRetry", { count: transientFailed.length });
     if (transientFailed.length > 0 && !request.signal.aborted) {
       console.warn("[api/extract] retrying transient failures", {
@@ -2534,7 +2627,6 @@ export async function POST(request: Request) {
       metrics,
       readings: allReadings,
     });
-    console.log("[api/extract] response metrics JSON", metrics);
 
     const usageEntry: Omit<OpenAiUsageEntry, "id" | "at"> = {
       purpose: "ocr",

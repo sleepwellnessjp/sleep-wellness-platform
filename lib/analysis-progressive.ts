@@ -189,13 +189,24 @@ export function startProgressiveAnalysisBackground(
         notify: true,
       });
 
-      const persisted = await persistAndConsumeCredit(merged);
-      persisted.contentStatus = "ready";
-      hydrateAnalysisSession(persisted, {
-        images: images.length > 0 ? images : undefined,
-        notify: true,
-      });
-      return persisted;
+      try {
+        const persisted = await persistAndConsumeCredit(merged);
+        persisted.contentStatus = "ready";
+        hydrateAnalysisSession(persisted, {
+          images: images.length > 0 ? images : undefined,
+          notify: true,
+        });
+        return persisted;
+      } catch (saveError) {
+        // 保存・クレジット失敗でも AI 本文は結果/PDF に残す（未ログイン時など）
+        console.error("Background analysis save failed:", saveError);
+        merged.contentStatus = "ready";
+        hydrateAnalysisSession(merged, {
+          images: images.length > 0 ? images : undefined,
+          notify: true,
+        });
+        return merged;
+      }
     } catch (error) {
       const failed: AnalysisResult = {
         ...preliminary,

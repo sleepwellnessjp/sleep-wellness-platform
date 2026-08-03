@@ -580,10 +580,7 @@ function buildStagePart(
 
 /**
  * REM / ノンレムと内訳を算出。
- * ノンレムは metrics.nonRemSleep / nonRemSleepRate を使う
- *（明示 OCR、または merge で浅い+深いから格納済み）。
- * 万一ノンレムが空で浅い・深いがある場合のみ表示用に合算する。
- * 浅い・深いは分析用に保持する。
+ * ノンレム = 浅い + 深い（両方あるときだけ合算。深いだけをノンレムにしない）。
  */
 export function computeSleepStageSummary(
   metrics: AnalysisMetrics,
@@ -597,15 +594,15 @@ export function computeSleepStageSummary(
   const lightP = parsePercent(metrics.lightSleepRate);
   const deepP = parsePercent(metrics.deepSleepRate);
 
-  // 欠損時は深い睡眠をノンレムとして扱う（浅い+深いの合算はしない）
-  if (nonRemM == null && deepM != null) {
-    nonRemM = deepM;
+  // 浅い+深いが両方あるときだけ合算でノンレムを補完（推測禁止）
+  if (nonRemM == null && lightM != null && deepM != null) {
+    nonRemM = lightM + deepM;
   }
-  if (nonRemP == null && deepP != null) {
-    nonRemP = deepP;
+  if (nonRemP == null && lightP != null && deepP != null) {
+    nonRemP = lightP + deepP;
   }
 
-  // OCR 取得値を優先。欠損時は上で深い睡眠へフォールバック済み
+  // OCR 取得値を優先
   let remPct = remP;
   let nonRemPct = nonRemP;
   if (remPct == null && nonRemPct == null && remM != null && nonRemM != null) {

@@ -659,8 +659,14 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
       const at = analysis.createdAt || `${analysis.analysisDate}T12:00:00+09:00`;
       if (latestAt && at <= latestAt) continue;
       const recovery = computeRecoveryIndex({
+        sleepDuration: analysis.metrics?.sleepDuration,
+        deepSleep: analysis.metrics?.deepSleep,
+        sleepEfficiency: analysis.metrics?.sleepEfficiency,
         hrv: analysis.metrics?.hrv,
+        stress: analysis.metrics?.stress,
         restingHeartRate: analysis.metrics?.restingHeartRate,
+        spo2: analysis.metrics?.spo2,
+        respiratoryRate: analysis.metrics?.respiratoryRate,
       });
       if (!recovery.available) continue;
       latestAt = at;

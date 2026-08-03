@@ -5,10 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import { AnalysisError } from "@/lib/analysis-session";
-import {
-  bootstrapScoreFirstAnalysis,
-  startProgressiveAnalysisBackground,
-} from "@/lib/analysis-progressive";
+import { bootstrapScoreFirstAnalysis } from "@/lib/analysis-progressive";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -28,17 +25,10 @@ export default function AnalysisLoadingPage() {
 
   useEffect(() => {
     try {
-      const { preliminary, images } = bootstrapScoreFirstAnalysis();
-      // AI本文・保存・クレジットは結果表示後に非同期
-      void startProgressiveAnalysisBackground(preliminary, images).catch(
-        (backgroundError) => {
-          console.error(
-            "Background analysis completion failed:",
-            backgroundError,
-          );
-        },
-      );
-
+      // Score だけ先に確定して結果画面へ渡す。
+      // AI fetch はここでは開始しない（location.replace で中断され、
+      // contentStatus=error になると result 側も再開できなくなる）。
+      bootstrapScoreFirstAnalysis();
       // Soft navigate can be cancelled by React Strict Mode remount in dev.
       // Hard navigation is intentional for this one-shot handoff page.
       window.location.replace("/analysis/result?pending=1");
@@ -166,7 +156,7 @@ export default function AnalysisLoadingPage() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/65 sm:mt-4 sm:text-base sm:leading-8">
-            OCRは完了済みです。スコアを先に表示し、Sleep Wellness Insight は結果画面で続けて生成します。
+            Vision解析は完了済みです。スコアを先に表示し、Sleep Wellness Insight は結果画面で続けて生成します。
           </p>
 
           <div className="relative mx-auto mt-12 flex h-28 w-28 items-center justify-center sm:mt-14 sm:h-32 sm:w-32">

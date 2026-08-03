@@ -14,9 +14,9 @@ export type AnalysisMetrics = {
   awakeningRate: string;
   remSleep: string;
   remSleepRate: string;
-  /** SOXAI深い睡眠（表示上はノンレム。浅いとの合算はしない） */
+  /** 浅い+深いの合算（内部計算用・UI非表示） */
   nonRemSleep: string;
-  /** SOXAI深い睡眠率（表示上はノンレム率） */
+  /** 浅い+深いの合算率（内部計算用・UI非表示） */
   nonRemSleepRate: string;
   lightSleep: string;
   lightSleepRate: string;
@@ -163,7 +163,7 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   {
     key: "nonRemSleep",
     label: "ノンレム睡眠",
-    hint: "合算値（分析用・画面非表示）",
+    hint: "浅い+深いの合算（分析用・画面非表示）",
     inputType: "text",
     placeholder: "例：4時間56分",
     hideFromUi: true,
@@ -171,7 +171,7 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   {
     key: "nonRemSleepRate",
     label: "ノンレム睡眠率",
-    hint: "合算値（分析用・画面非表示）",
+    hint: "浅い+深いの合算（分析用・画面非表示）",
     inputType: "text",
     placeholder: "例：69%",
     hideFromUi: true,
@@ -179,30 +179,28 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
   {
     key: "lightSleep",
     label: "浅い睡眠",
-    hint: "Light（分析用・画面非表示）",
+    hint: "Light / 浅い睡眠",
     inputType: "text",
     placeholder: "例：3時間10分",
-    hideFromUi: true,
   },
   {
     key: "lightSleepRate",
     label: "浅い睡眠率",
-    hint: "Light %（分析用・画面非表示）",
+    hint: "Light %",
     inputType: "text",
     placeholder: "例：55%",
-    hideFromUi: true,
   },
   {
     key: "deepSleep",
-    label: "ノンレム睡眠",
-    hint: "SOXAI深い睡眠を表示上ノンレムとして扱う",
+    label: "深い睡眠",
+    hint: "Deep / 深い睡眠",
     inputType: "text",
     placeholder: "例：1時間49分",
   },
   {
     key: "deepSleepRate",
-    label: "ノンレム睡眠率",
-    hint: "SOXAI深い睡眠率を表示上ノンレム率として扱う",
+    label: "深い睡眠率",
+    hint: "Deep %",
     inputType: "text",
     placeholder: "例：25%",
   },
@@ -437,7 +435,7 @@ export function setMetricValue(
   return { ...metrics, [key]: value };
 }
 
-/** 確認画面などに表示する項目（合算ノンレム・浅いは除外。深い＝表示上のノンレム） */
+/** 確認画面などに表示する項目（合算ノンレムは非表示。浅い・深いは個別表示） */
 export const SOXAI_UI_METRIC_FIELDS: MetricFieldDef[] =
   SOXAI_METRIC_FIELDS.filter((field) => !field.hideFromUi);
 

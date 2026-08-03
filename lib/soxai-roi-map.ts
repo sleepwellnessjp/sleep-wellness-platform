@@ -2,6 +2,10 @@
  * SOXAI 専用 OCR の画面別読み取り領域（ROI）マップ。
  * 座標は画像全体に対する正規化 [0,1]（左上原点）。
  * iPhone 縦スクショ（ステータスバー〜下部タブ）の固定レイアウト想定。
+ *
+ * 方針:
+ * - 画像全体は OCR しない（画面種別ごとに固定 ROI を切り出して別 OCR）
+ * - 各 ROI は「その切り出しに見える数値だけ」を対象（推測禁止）
  */
 
 import type { MetricFieldKey } from "@/lib/soxai-metrics";
@@ -42,11 +46,145 @@ function roi(
   return { id, label, rect, focusLabels, focusKeys, promptHint };
 }
 
-/** 画面種別判定用（タブ・見出し＋中央コンテンツの手がかり） */
+const VISIBLE_ONLY =
+  "切り出し内に実際に印刷されているラベルと数値だけを返す。見えなければその項目は省略。数値の推測・補完・例示値のコピーは禁止。";
+
+/**
+ * 睡眠系は固定2 ROIのみ（別々に OCR → 既存パイプラインで JSON 統合）。
+ * ① 入眠・起床・潜時
+ * ② 覚醒率・レム・レム率・ノンレム（深い睡眠）・ノンレム率
+ */
+const ROI_SLEEP_BED_WAKE_LATENCY: SoxaiRoiDef = roi(
+  "roi_bed_wake_latency",
+  "①入眠・起床・潜時",
+  // 睡眠カード右の HH:mm|HH:mm 〜 トレンドの入眠潜時までをカバー
+  { x: 0.0, y: 0.2, w: 1.0, h: 0.55 },
+  [
+    "就寝時刻",
+    "起床時刻",
+    "入眠時間",
+    "起床時間",
+    "入眠潜時",
+    "入眠",
+    "起床",
+    "就寝",
+  ],
+  ["bedtime", "wakeTime", "sleepLatency"],
+  `${VISIBLE_ONLY}
+対象はこの3つだけ（ラベル表記ゆれ・ラベル無しの両方）:
+- 就寝時刻 / 入眠時間: 睡眠カード（大きな「○h ○○min 睡眠」）の右側に縦並びの HH:mm の「上」
+- 起床時刻 / 起床時間: 同・縦並びの「下」
+- 入眠潜時（大きな主値。下の小さな比較値は捨てる）
+
+重要:
+- 就寝/起床は見出し文字が無いことが多い。縦並び HH:mm を見たら必ず
+  上→ラベル「就寝時刻」、下→ラベル「起床時刻」として visibleReadings に返す
+- 「HH:mm - HH:mm」「HH:mm | HH:mm」「HH:mm / HH:mm」なら左/上が就寝、右/下が起床
+- 睡眠ステージ帯グラフ両端の HH:mm（左端=就寝、右端=起床）も同じラベルで返す
+- 「全就床時間」の値・入眠潜時の 0:MM・グラフ軸目盛だけを就寝/起床にしてはいけない
+覚醒・レム・深い睡眠・睡眠効率・全就床・スコアは返さない。`,
+);
+
+const ROI_SLEEP_STAGES_CORE: SoxaiRoiDef = roi(
+  "roi_sleep_stages_core",
+  "②覚醒率・レム・ノンレム",
+  // 下方向へ拡張し、深い睡眠（ノンレム）行まで完全に含める（x/w・y・プロンプトは据え置き）
+  { x: 0.0, y: 0.12, w: 1.0, h: 0.86 },
+  [
+    "覚醒",
+    "覚醒率",
+    "覚醒時間",
+    "レム睡眠",
+    "レム睡眠率",
+    "深い睡眠",
+    "深い睡眠率",
+  ],
+  [
+    "awakeningRate",
+    "awakenings",
+    "remSleep",
+    "remSleepRate",
+    "deepSleep",
+    "deepSleepRate",
+    "nonRemSleep",
+    "nonRemSleepRate",
+  ],
+  `${VISIBLE_ONLY}
+対象はこの画面のステージ行だけ:
+- 覚醒率（%）と覚醒時間
+- レム睡眠率（%）とレム睡眠（時間）
+- 深い睡眠率（%）と深い睡眠（時間）※表示上ノンレム
+各行はラベル直後の%と時間。右端の昨日比較（↑↓隣）は捨てる。
+入眠・起床・潜時・浅い睡眠・酸素・グラフ軸は返さない。`,
+);
+
+/** 睡眠系画面に共通で載せる2 ROI（順序固定・別 OCR） */
+const SLEEP_TWO_ROIS: SoxaiRoiDef[] = [
+  ROI_SLEEP_BED_WAKE_LATENCY,
+  ROI_SLEEP_STAGES_CORE,
+];
+
+/** 睡眠概要: スコア直下の「睡眠時間」を取る（就床・必要睡眠と混同しない） */
+const ROI_SLEEP_OVERVIEW_DURATION: SoxaiRoiDef = roi(
+  "roi_sleep_overview_duration",
+  "睡眠スコアと睡眠時間",
+  { x: 0.02, y: 0.12, w: 0.96, h: 0.42 },
+  ["睡眠スコア", "睡眠時間", "睡眠"],
+  ["sleepScore", "sleepDuration"],
+  `${VISIBLE_ONLY}
+対象:
+- 睡眠スコア（大きな円の中心値。0–100）
+- 見出し「睡眠時間」の値（時間と分の表記）。必ず label「睡眠時間」で返す
+禁止:
+- 「必要睡眠時間」「目標達成率」「全就床時間」「ベッド滞在」を睡眠時間にしない
+- 就寝時刻・起床時刻・入眠潜時は返さない（別画面）
+- 睡眠時間の値を就寝時刻にしてはいけない`,
+);
+
+/** 睡眠詳細トレンド: 効率・負債・潜時・体内時計・総睡眠・入眠/起床 */
+const ROI_SLEEP_DETAIL_TRENDS: SoxaiRoiDef = roi(
+  "roi_sleep_detail_trends",
+  "睡眠詳細トレンド",
+  { x: 0.02, y: 0.08, w: 0.96, h: 0.82 },
+  [
+    "睡眠時間",
+    "睡眠",
+    "睡眠効率",
+    "睡眠負債",
+    "入眠潜時",
+    "体内時計",
+    "就寝時刻",
+    "起床時刻",
+    "全就床時間",
+  ],
+  [
+    "sleepDuration",
+    "sleepEfficiency",
+    "sleepDebt",
+    "sleepLatency",
+    "circadianRhythm",
+    "bedtime",
+    "wakeTime",
+  ],
+  `${VISIBLE_ONLY}
+対象（見えるものだけ・ラベルは画面表記どおり）:
+- 睡眠時間: 見出し「睡眠時間」、または大きな「○h ○○min 睡眠」カードの主値 → label「睡眠時間」
+- 睡眠効率（%）: 見出し「睡眠効率」のみ。覚醒率と取り違えない
+- 睡眠負債 / 入眠潜時 / 体内時計
+- 就寝時刻・起床時刻: 睡眠カード右の縦並び HH:mm（上=就寝、下=起床）
+禁止:
+- 全就床時間・必要睡眠時間を睡眠時間にしない
+- 睡眠効率の%を覚醒率にしない
+- 右端の昨日比較（↑↓隣）は捨てる`,
+);
+
+/** heart_hrv スロット用: 上部の酸素・呼吸・安静時（単体 ROI に統合済みのため参照用に残さない） */
+
+/** 画面種別判定用（タブ・見出しの手がかり。数値精密読みは不要） */
 export const CLASSIFY_ROI: SoxaiRoiDef = roi(
   "classify_header",
-  "ヘッダー／タブ／中央コンテンツ",
-  { x: 0.0, y: 0.02, w: 1.0, h: 0.58 },
+  "ヘッダー／タブ／上部コンテンツ",
+  { x: 0.0, y: 0.02, w: 1.0, h: 0.45 },
   [
     "概要",
     "睡眠",
@@ -63,218 +201,185 @@ export const CLASSIFY_ROI: SoxaiRoiDef = roi(
     "深い睡眠",
     "入眠潜時",
     "睡眠効率",
-    "入眠時間",
-    "起床時間",
   ],
   [],
-  "タブの選択状態と見える見出しから screenType を判定する。入眠潜時/睡眠効率/睡眠負債→sleep_detail。覚醒・レム・浅い・深いの行→sleep_stages。入眠時間/起床時間や HH:mm-HH:mm→bed_wake。大きな数値の精密読みは不要（見出しだけでよい）。",
+  "タブと見出しだけから screenType を判定する。数値の精密読みは不要。",
 );
 
 /**
- * 画面種別ごとの数値ROI。
- * 数字取得率優先のため、比較列・説明文・グラフ軸はできるだけ外す。
+ * 画面種別ごとの固定 ROI。
+ * - sleep_stages / bed_wake: 入眠潜時＋ステージの2 ROI
+ * - sleep_overview / sleep_detail: 睡眠時間・効率など画面固有 ROI
+ * - hrv（UIの heart_hrv=呼吸・心拍）: 酸素・呼吸・安静時＋HRV
  */
 export const SOXAI_SCREEN_ROIS: Record<SoxaiScreenType, SoxaiRoiDef[]> = {
+  // —— ホーム／概要 ——
   home: [
     roi(
-      "home_scores",
-      "ホームスコアカード",
-      { x: 0.02, y: 0.14, w: 0.96, h: 0.42 },
-      ["QoL", "昨日のスコア", "睡眠", "体調", "心拍数"],
-      ["qol", "yesterdayQol", "sleepScore", "conditionScore"],
-      "各カードの見出しとその直下／右の大きな数値だけ。睡眠はスコア（0–100）。睡眠時間はここから取らない。",
+      "home_qol_ring",
+      "QoL円と昨日スコア",
+      { x: 0.05, y: 0.14, w: 0.9, h: 0.28 },
+      ["QoL", "昨日のスコア", "現在のスコア"],
+      ["qol", "yesterdayQol"],
+      `${VISIBLE_ONLY} QoL円の中心値と昨日のスコアだけ。`,
+    ),
+    roi(
+      "home_category_scores",
+      "睡眠・体調スコア行",
+      { x: 0.02, y: 0.38, w: 0.96, h: 0.16 },
+      ["睡眠", "体調", "運動"],
+      ["sleepScore", "conditionScore"],
+      `${VISIBLE_ONLY} 「睡眠」「体調」のスコア（0–100）。睡眠時間は取らない。`,
     ),
   ],
-  sleep_overview: [
-    roi(
-      "overview_score_duration",
-      "睡眠スコアと睡眠時間",
-      { x: 0.02, y: 0.12, w: 0.96, h: 0.38 },
-      ["睡眠スコア", "睡眠時間", "睡眠"],
-      ["sleepScore", "sleepDuration"],
-      "睡眠スコアと見出し「睡眠時間」の値だけ。全就床時間は睡眠時間にしない。",
-    ),
-    roi(
-      "overview_bed_wake_range",
-      "入眠・起床の時刻帯",
-      { x: 0.4, y: 0.42, w: 0.56, h: 0.18 },
-      ["入眠時間", "起床時間", "睡眠"],
-      ["bedtime", "wakeTime"],
-      "睡眠カード右の「HH:mm - HH:mm」（例 02:10 - 07:57）を必ず {label:\"入眠時間\",value:\"HH:mm\"} と {label:\"起床時間\",value:\"HH:mm\"} の2件で返す。潜時・就床時間は取らない。",
-    ),
-    roi(
-      "overview_latency_trends",
-      "入眠潜時などトレンド",
-      { x: 0.0, y: 0.52, w: 1.0, h: 0.36 },
-      ["入眠潜時", "睡眠効率", "睡眠負債", "全就床時間"],
-      ["sleepLatency", "sleepEfficiency", "sleepDebt"],
-      "カード見出しとその大きな主値だけ。入眠潜時は主値（例 0:30）。下の小さな比較値は捨てる。入眠潜時を入眠時間にしない。",
-    ),
-  ],
-  sleep_detail: [
-    roi(
-      "detail_bed_wake_range",
-      "入眠・起床の時刻帯",
-      { x: 0.35, y: 0.16, w: 0.62, h: 0.2 },
-      ["入眠時間", "起床時間", "睡眠"],
-      ["bedtime", "wakeTime"],
-      "「HH:mm - HH:mm」形式（例 02:10 - 07:57）を入眠時間・起床時間の2件で返す。潜時・全就床は取らない。",
-    ),
-    roi(
-      "detail_metric_rows",
-      "睡眠詳細メトリクス行",
-      { x: 0.0, y: 0.28, w: 1.0, h: 0.55 },
-      [
-        "睡眠時間",
-        "全就床時間",
-        "入眠潜時",
-        "睡眠効率",
-        "睡眠負債",
-        "体内時計",
-        "入眠時間",
-        "起床時間",
-      ],
-      [
-        "sleepDuration",
-        "sleepLatency",
-        "sleepEfficiency",
-        "sleepDebt",
-        "circadianRhythm",
-        "bedtime",
-        "wakeTime",
-      ],
-      "各カードの左ラベルと大きな主値だけ。下段の小さな比較値（昨日差）は捨てる。入眠潜時≠入眠時間。全就床≠睡眠時間。HH:mm-HH:mm があれば入眠時間/起床時間として返す。",
-    ),
-  ],
-  bed_wake: [
-    roi(
-      "bed_wake_times",
-      "入眠・起床",
-      { x: 0.05, y: 0.18, w: 0.9, h: 0.5 },
-      ["入眠時間", "起床時間", "入眠", "起床", "睡眠"],
-      ["bedtime", "wakeTime", "sleepLatency"],
-      "入眠時間と起床時間の HH:mm。範囲「HH:mm - HH:mm」は左が入眠・右が起床。入眠潜時が見えれば主値だけ取る。覚醒時間は取らない。",
-    ),
-  ],
-  sleep_stages: [
-    roi(
-      "stages_awake_rem",
-      "覚醒・レム行",
-      { x: 0.0, y: 0.12, w: 1.0, h: 0.28 },
-      ["覚醒", "覚醒率", "覚醒時間", "レム睡眠", "レム睡眠率"],
-      ["awakenings", "awakeningRate", "remSleep", "remSleepRate"],
-      "各行は必ず2件: {label:\"覚醒率\",value:\"NN%\"} と {label:\"覚醒時間\",value:\"H:MM\"}、{label:\"レム睡眠率\",value:\"NN%\"} と {label:\"レム睡眠\",value:\"H:MM\"}。%はラベル直後の値。右端の昨日比較（↑↓隣）は捨てる。",
-    ),
-    roi(
-      "stages_light_deep",
-      "浅い・深い（ノンレム）行",
-      { x: 0.0, y: 0.32, w: 1.0, h: 0.32 },
-      ["浅い睡眠", "深い睡眠", "深い睡眠率", "ノンレム睡眠", "ノンレム睡眠率"],
-      [
-        "lightSleep",
-        "lightSleepRate",
-        "deepSleep",
-        "deepSleepRate",
-        "nonRemSleep",
-        "nonRemSleepRate",
-      ],
-      "深い睡眠行は必ず {label:\"深い睡眠率\",value:\"NN%\"} と {label:\"深い睡眠\",value:\"H:MM\"}。浅い睡眠も同様に率と時間。右端の昨日比較は捨てる。グラフ軸の数字は取らない。",
-    ),
-    roi(
-      "stages_spo2",
-      "平均酸素レベル",
-      { x: 0.04, y: 0.58, w: 0.92, h: 0.3 },
-      ["平均酸素レベル", "酸素", "SpO2", "平常"],
-      ["spo2"],
-      "平均酸素レベル（%）だけ。説明文は無視。「--」なら省略。",
-    ),
-  ],
+
+  // —— 睡眠概要: 睡眠時間を落とさない ——
+  sleep_overview: [ROI_SLEEP_OVERVIEW_DURATION],
+  // —— 睡眠詳細: 効率・負債・潜時・総睡眠 ——
+  sleep_detail: [ROI_SLEEP_DETAIL_TRENDS],
+  bed_wake: SLEEP_TWO_ROIS,
+  sleep_stages: SLEEP_TWO_ROIS,
+
   circadian: [
     roi(
       "circadian_main",
       "体内時計",
-      { x: 0.04, y: 0.18, w: 0.92, h: 0.5 },
-      ["体内時計", "遅れ", "進み"],
+      { x: 0.04, y: 0.18, w: 0.92, h: 0.45 },
+      ["体内時計"],
       ["circadianRhythm"],
-      "体内時計の位相差・遅れ/進みの表示値だけ。",
+      `${VISIBLE_ONLY} 体内時計の位相差表示だけ。`,
     ),
   ],
+
   stress: [
     roi(
       "stress_value",
       "ストレス値",
-      { x: 0.08, y: 0.18, w: 0.84, h: 0.45 },
-      ["ストレス", "平均ストレス", "ストレスレベル"],
+      { x: 0.08, y: 0.18, w: 0.84, h: 0.4 },
+      ["ストレス", "ストレスモニター"],
       ["stress"],
-      "明示されているストレス数値だけ。平均の捏造禁止。",
+      `${VISIBLE_ONLY} 明示されているストレス数値だけ。`,
     ),
   ],
+
+  // —— 呼吸画面（変更なし） ——
   respiration: [
     roi(
-      "resp_spo2_rr",
-      "酸素と呼吸速度",
-      { x: 0.02, y: 0.12, w: 0.96, h: 0.32 },
-      ["平均酸素レベル", "呼吸速度", "酸素"],
-      ["spo2", "respiratoryRate"],
-      "平均酸素レベル（%）と呼吸速度（rpm）だけ。説明文は無視。",
+      "resp_spo2",
+      "平均酸素レベル",
+      { x: 0.02, y: 0.12, w: 0.96, h: 0.2 },
+      ["平均酸素レベル", "酸素"],
+      ["spo2"],
+      `${VISIBLE_ONLY} 平均酸素レベル（%）だけ。`,
     ),
     roi(
-      "resp_rhr_values",
-      "安静時心拍の平均・最小",
-      // 酸素・呼吸カードの下〜グラフ上端。大きな最小とバッジの平均だけを狙う
-      { x: 0.12, y: 0.44, w: 0.76, h: 0.2 },
-      ["安静時心拍数", "安静時心拍数平均", "安静時心拍数最小", "平均", "最小", "最大"],
-      ["restingHeartRate", "restingHeartRateMin", "restingHeartRateMax"],
-      "この切り出しは安静時心拍のみ。必ず次の形式で返す: {label:\"安静時心拍数平均\",value:\"NN\"} と {label:\"安静時心拍数最小\",value:\"NN bpm\"}。大きめ紫数字＝最小、その下の小さな「平均 NN」＝平均。平均と最小を取り違えない。呼吸速度・酸素は返さない。",
+      "resp_rate",
+      "呼吸速度",
+      { x: 0.02, y: 0.28, w: 0.96, h: 0.16 },
+      ["呼吸速度"],
+      ["respiratoryRate"],
+      `${VISIBLE_ONLY} 「呼吸速度」の数値だけ（rpm可）。`,
+    ),
+    roi(
+      "resp_rhr",
+      "安静時心拍",
+      { x: 0.1, y: 0.42, w: 0.8, h: 0.22 },
+      ["安静時心拍数", "平均", "最小"],
+      ["restingHeartRate", "restingHeartRateMin"],
+      `${VISIBLE_ONLY} 安静時心拍の平均・最小が見えるときだけ。取り違えない。見えなければ省略。`,
     ),
   ],
+
+  // —— 心拍（安静時）画面（変更なし） ——
   rhr: [
     roi(
-      "rhr_spo2_rr",
-      "酸素と呼吸速度",
-      { x: 0.02, y: 0.12, w: 0.96, h: 0.32 },
+      "rhr_header_values",
+      "安静時心拍の数値",
+      { x: 0.1, y: 0.16, w: 0.8, h: 0.28 },
+      ["安静時心拍数", "平均", "最小", "最大"],
+      ["restingHeartRate", "restingHeartRateMin", "restingHeartRateMax"],
+      `${VISIBLE_ONLY} 安静時心拍の平均・最小・最大が見えるものだけ。グラフ軸は取らない。`,
+    ),
+    roi(
+      "rhr_resp_above",
+      "同画面の呼吸・酸素",
+      { x: 0.02, y: 0.08, w: 0.96, h: 0.2 },
       ["平均酸素レベル", "呼吸速度"],
       ["spo2", "respiratoryRate"],
-      "平均酸素レベルと呼吸速度が見えれば取る。",
-    ),
-    roi(
-      "rhr_values",
-      "安静時心拍の数値",
-      { x: 0.12, y: 0.42, w: 0.76, h: 0.22 },
-      ["安静時心拍数", "安静時心拍数平均", "安静時心拍数最小", "平均", "最小", "最大"],
-      ["restingHeartRate", "restingHeartRateMin", "restingHeartRateMax"],
-      "安静時心拍のみ。{label:\"安静時心拍数平均\",value:\"NN\"} と {label:\"安静時心拍数最小\",value:\"NN bpm\"} を必ず別エントリで。大きめ＝最小、小さめバッジ＝平均。",
+      `${VISIBLE_ONLY} 酸素・呼吸速度が見えるときだけ。`,
     ),
   ],
+
+  // —— HRV / heart_hrv（呼吸・酸素・安静時が同居。ROI過多は55s壁時計超過の原因） ——
   hrv: [
     roi(
-      "hrv_values",
-      "HRV平均・最大・最小",
-      // 心拍変動カード上部の平均・最大・最小だけ（下の睡眠スコア棒は含めない）
-      { x: 0.12, y: 0.15, w: 0.76, h: 0.26 },
-      ["心拍変動", "平均HRV", "最大HRV", "最小HRV", "平均", "最大", "最小"],
-      ["hrv", "hrvMax", "hrvMin"],
-      "心拍変動のみ。必ず {label:\"平均HRV\",value:\"NN ms\"}（ms必須）。最大・最小が見えれば {label:\"最大HRV\",value:\"NN\"} / {label:\"最小HRV\",value:\"NN\"}。睡眠スコアの棒グラフ数字は取らない。",
+      "hrv_vitals_full",
+      "呼吸・酸素・安静時・HRV",
+      { x: 0.02, y: 0.08, w: 0.96, h: 0.82 },
+      [
+        "平均酸素レベル",
+        "呼吸速度",
+        "安静時心拍数",
+        "安静時心拍数平均",
+        "安静時心拍数最小",
+        "平均",
+        "最小",
+        "心拍変動",
+        "平均HRV",
+        "最大HRV",
+        "最小HRV",
+      ],
+      [
+        "spo2",
+        "respiratoryRate",
+        "restingHeartRate",
+        "restingHeartRateMin",
+        "restingHeartRateMax",
+        "hrv",
+        "hrvMax",
+        "hrvMin",
+      ],
+      `${VISIBLE_ONLY}
+この切り出しに見える指標をラベルごとに全部返す（1指標に限定しない）:
+- 平均酸素レベル / SpO₂（%）→ label「平均酸素レベル」
+- 呼吸速度（rpm）→ label「呼吸速度」
+- 安静時心拍数カード:
+  - 小さめ「平均 NN」→ label「安静時心拍数平均」（bpm。ms禁止）
+  - 大きめ「最小 NN bpm」→ label「安静時心拍数最小」
+- 心拍変動カード:
+  - 平均HRV（ms）→ label「平均HRV」
+  - 最大 / 最小が見えれば最大HRV・最小HRV（ms）
+bpm と ms を取り違えない。見えなければその項目は省略。`,
     ),
   ],
+
   skin_temp: [
     roi(
       "skin_primary",
       "皮膚温度の最新値",
-      { x: 0.1, y: 0.12, w: 0.8, h: 0.28 },
-      ["皮膚温度", "最新の変化", "平均", "偏差"],
+      { x: 0.1, y: 0.12, w: 0.8, h: 0.26 },
+      ["皮膚温度", "最新の変化"],
       ["skinTemperature"],
-      "最新の変化（例: -0.9℃）または平均偏差。説明文は無視。",
+      `${VISIBLE_ONLY} 最新の変化（℃）だけ。説明文は無視。`,
     ),
   ],
+
   other: [
     roi(
-      "other_content",
-      "中央コンテンツ",
-      { x: 0.04, y: 0.14, w: 0.92, h: 0.7 },
+      "other_upper",
+      "上部コンテンツ",
+      { x: 0.04, y: 0.12, w: 0.92, h: 0.35 },
       [],
       [],
-      "見える指標のラベルと数値だけ。推測禁止。",
+      `${VISIBLE_ONLY} 見える指標のラベルと数値だけ。`,
+    ),
+    roi(
+      "other_lower",
+      "中〜下部コンテンツ",
+      { x: 0.04, y: 0.4, w: 0.92, h: 0.4 },
+      [],
+      [],
+      `${VISIBLE_ONLY} 見える指標のラベルと数値だけ。`,
     ),
   ],
 };

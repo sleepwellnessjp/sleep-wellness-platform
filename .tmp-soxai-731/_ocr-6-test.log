@@ -1,0 +1,135 @@
+npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+images=6
+ - 02_IMG_2595.PNG
+ - 03_IMG_2596.PNG
+ - 04_IMG_2597.PNG
+ - 05_IMG_2598.PNG
+ - 06_IMG_2599.PNG
+ - 07_IMG_2600.PNG
+POST http://127.0.0.1:3000/api/extract ...
+HTTP 200 in 191651ms → /Users/taka/Desktop/sleep-wellness-platform/.tmp-soxai-731/_ocr-6-test.json
+
+========== TIMING ==========
+total=191614ms concurrency=5
+  section init: 2ms {"imageCount":6}
+  section cacheLookup: 0ms {"cacheHits":0,"needVision":6}
+  section perImageOcr: 70807ms {"concurrency":5,"count":6,"apiCallsSoFar":20,"durationsMs":[{"imageIndex":0,"durationMs":15802,"screenType":"sleep_overview","error":null},{"imageIndex":1,"durationMs":0,"screenType":"other","error":"タイムアウト"},{"imageIndex":2,"durationMs":0,"screenType":"other","error":"タイムアウト"},{"imageIndex":3,"durationMs":0,"screenType":"other","error":"タイムアウト"},{"imageIndex":4,"durationMs":0,"screenType":"other","error":"タイムアウト"},{"imageIndex":5,"durationMs":0,"screenType":"other","error":"タイムアウト"}]}
+  section transientRetry: 0ms {"count":0}
+  section mergeRecover: 22ms {"collected":4,"missing":["qol","yesterdayQol","conditionScore","sleepEfficiency","sleepDebt","circadianRhythm","sleepLatency","awakenings","awakeningRate","remSleep","remSleepRate","nonRemSleep","nonRemSleepRate","lightSleep","lightSleepRate","deepSleep","deepSleepRate","respiratoryRate","spo2","restingHeartRate","restingHeartRateMin","restingHeartRateMax","hrv","hrvMax","hrvMin","skinTemperature","stress"],"missingCritical":["skinTemperature","stress","awakeningRate","remSleepRate","nonRemSleepRate","lightSleepRate","deepSleepRate","spo2","restingHeartRate","hrv"]}
+  section homeReOcr: 12ms {"missing":["yesterdayQol","conditionScore","qol"],"skipped":false,"collected":4,"stillMissingHome":["yesterdayQol","conditionScore","qol"]}
+  section criticalReOcr: 120769ms {"missing":["skinTemperature","stress","awakeningRate","remSleepRate","nonRemSleepRate","lightSleepRate","deepSleepRate","spo2","restingHeartRate","hrv","sleepEfficiency","sleepDebt","circadianRhythm","sleepLatency","respiratoryRate","hrvMax","hrvMin","awakenings","remSleep","lightSleep","deepSleep"],"skipped":false,"collected":4,"stillMissingCritical":["skinTemperature","stress","awakeningRate","remSleepRate","nonRemSleepRate","lightSleepRate","deepSleepRate","spo2","restingHeartRate","hrv"]}
+  section normalize: 1ms {"collected":4,"missing":["qol","yesterdayQol","conditionScore","sleepEfficiency","sleepDebt","circadianRhythm","sleepLatency","awakenings","awakeningRate","remSleep","remSleepRate","nonRemSleep","nonRemSleepRate","lightSleep","lightSleepRate","deepSleep","deepSleepRate","respiratoryRate","spo2","restingHeartRate","restingHeartRateMin","restingHeartRateMax","hrv","hrvMax","hrvMin","skinTemperature","stress"]}
+-- per image --
+  #0 screen=sleep_overview durationMs=15802
+  #1 screen=other durationMs=0
+  #2 screen=other durationMs=0
+  #3 screen=other durationMs=0
+  #4 screen=other durationMs=0
+  #5 screen=other durationMs=0
+    #0 firstPass: 15794ms
+    #1 firstPass: 165824ms
+    #2 firstPass: 68040ms
+    #3 firstPass: 167473ms
+    #4 firstPass: 96640ms
+
+========== RESULT ==========
+filled 4/31
+
+-- present --
+OK  [ホーム/睡眠スコア] 睡眠スコア (sleepScore) = 55
+OK  [睡眠・睡眠時間] 睡眠時間 (sleepDuration) = "5時間10分"
+OK  [睡眠・入眠(23:45付近)] 入眠時間 (bedtime) = "02:10"
+OK  [睡眠・起床(08:05付近)] 起床時間 (wakeTime) = "07:57"
+
+-- MISSING --
+MISS [概要・QoL] QoL (qol)
+MISS [概要・昨日のスコア] 昨日のスコア (yesterdayQol)
+MISS [概要・体調] 体調スコア (conditionScore)
+MISS [睡眠・睡眠効率] 睡眠効率 (sleepEfficiency)
+MISS [睡眠・睡眠負債] 睡眠負債 (sleepDebt)
+MISS [睡眠・体内時計] 体内時計 (circadianRhythm)
+MISS [睡眠・入眠潜時] 入眠潜時 (sleepLatency)
+MISS [睡眠ステージ・覚醒時間] 覚醒時間 (awakenings)
+MISS [睡眠ステージ・覚醒率] 覚醒率 (awakeningRate)
+MISS [睡眠ステージ・レム時間] レム睡眠 (remSleep)
+MISS [睡眠ステージ・レム率] レム睡眠率 (remSleepRate)
+MISS [?] ノンレム睡眠 (nonRemSleep)
+MISS [?] ノンレム睡眠率 (nonRemSleepRate)
+MISS [睡眠ステージ・浅い時間] 浅い睡眠 (lightSleep)
+MISS [睡眠ステージ・浅い率] 浅い睡眠率 (lightSleepRate)
+MISS [睡眠ステージ・深い時間] ノンレム睡眠 (deepSleep)
+MISS [睡眠ステージ・深い率] ノンレム睡眠率 (deepSleepRate)
+MISS [睡眠・呼吸速度] 呼吸速度 (respiratoryRate)
+MISS [睡眠・平均酸素レベル] 平均SpO₂ (spo2)
+MISS [睡眠・安静時心拍数] 安静時心拍数 (restingHeartRate)
+MISS [?] 安静時心拍数（最小） (restingHeartRateMin)
+MISS [?] 安静時心拍数（最大） (restingHeartRateMax)
+MISS [睡眠・心拍変動] 平均HRV (hrv)
+MISS [?] 最大HRV (hrvMax)
+MISS [?] 最小HRV (hrvMin)
+MISS [皮膚温度詳細] 皮膚温度 (skinTemperature)
+MISS [概要・ストレスモニター] ストレス (stress)
+
+-- per image --
+#0 screen=sleep_overview readings=0 ok=true err=-
+#1 screen=other readings=0 ok=true err=タイムアウト
+#2 screen=other readings=0 ok=true err=タイムアウト
+#3 screen=other readings=0 ok=true err=タイムアウト
+#4 screen=other readings=0 ok=true err=タイムアウト
+#5 screen=other readings=0 ok=true err=タイムアウト
+
+-- missing cause hints (raw readings that look related) --
+
+[qol] related readings (0):
+
+[yesterdayQol] related readings (0):
+
+[conditionScore] related readings (0):
+
+[sleepEfficiency] related readings (0):
+
+[sleepDebt] related readings (0):
+
+[circadianRhythm] related readings (0):
+
+[sleepLatency] related readings (0):
+
+[awakenings] related readings (0):
+
+[awakeningRate] related readings (0):
+
+[remSleep] related readings (0):
+
+[remSleepRate] related readings (0):
+
+[nonRemSleep] related readings (0):
+
+[nonRemSleepRate] related readings (0):
+
+[lightSleep] related readings (0):
+
+[lightSleepRate] related readings (0):
+
+[deepSleep] related readings (0):
+
+[deepSleepRate] related readings (0):
+
+[respiratoryRate] related readings (0):
+
+[spo2] related readings (0):
+
+[restingHeartRate] related readings (0):
+
+[restingHeartRateMin] related readings (0):
+
+[restingHeartRateMax] related readings (0):
+
+[hrv] related readings (0):
+
+[hrvMax] related readings (0):
+
+[hrvMin] related readings (0):
+
+[skinTemperature] related readings (0):
+
+[stress] related readings (0):
