@@ -205,7 +205,19 @@ function asNullableString(value: unknown): string | null {
 }
 
 function asStringRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  // OpenAI strict schema では array[{name,value}] 形式。fixture 互換で object も受理。
+  if (Array.isArray(value)) {
+    const out: Record<string, unknown> = {};
+    for (const item of value.slice(0, 24)) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const row = item as Record<string, unknown>;
+      const name = String(row.name ?? "").trim();
+      if (!name) continue;
+      out[name] = row.value ?? null;
+    }
+    return out;
+  }
+  if (!value || typeof value !== "object") return {};
   return { ...(value as Record<string, unknown>) };
 }
 
@@ -216,6 +228,16 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean)
     .slice(0, 20);
 }
+
+const ouraContributorItemSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "value"],
+  properties: {
+    name: { type: "string" },
+    value: { type: ["string", "number", "null"] },
+  },
+} as const;
 
 /** Vision / fixture JSON を正規化（推測で埋めない） */
 export function normalizeOuraVisionResult(raw: unknown): OuraVisionResult {
@@ -318,8 +340,15 @@ export const ouraVisionJsonSchema = {
       additionalProperties: false,
       required: ["sleepContributors", "readinessContributors", "tags", "notes"],
       properties: {
-        sleepContributors: { type: "object", additionalProperties: true },
-        readinessContributors: { type: "object", additionalProperties: true },
+        // strict:true では additionalProperties:true の object が拒否されるため配列形式にする
+        sleepContributors: {
+          type: "array",
+          items: ouraContributorItemSchema,
+        },
+        readinessContributors: {
+          type: "array",
+          items: ouraContributorItemSchema,
+        },
         tags: { type: "array", items: { type: "string" } },
         notes: { type: "array", items: { type: "string" } },
       },

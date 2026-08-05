@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:oura-phase3": "node scripts/check-oura-phase3-switch.mjs"
+    "check:oura-phase3": "node scripts/check-oura-phase3-switch.mjs",
+    "check:oura-vision": "node scripts/check-oura-vision-e2e.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
