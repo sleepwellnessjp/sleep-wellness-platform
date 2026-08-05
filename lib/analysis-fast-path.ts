@@ -5,6 +5,9 @@
  */
 
 import {
+  ouraLifestyleForRules,
+} from "@/lib/oura-analysis-input";
+import {
   aiInputFromMetricsAndLifestyle,
   evaluateAllItems,
   generateGoodPoints,
@@ -210,7 +213,11 @@ export function buildCategoryScoresFromItems(
 
 function lifestyleForRules(
   lifestyle: AnalysisRequest["lifestyle"],
+  inputSource?: AnalysisRequest["inputSource"],
 ): AiSleepAnalysisInput["lifestyle"] {
+  if (inputSource === "oura") {
+    return ouraLifestyleForRules(lifestyle);
+  }
   const caffeineParts = [
     lifestyle.caffeine,
     lifestyle.caffeineDone,
@@ -270,6 +277,7 @@ function lifestyleForRules(
 export function computeFastSleepWellnessScore(args: {
   metrics: AnalysisMetrics;
   lifestyle: AnalysisRequest["lifestyle"];
+  inputSource?: AnalysisRequest["inputSource"];
 }): {
   score: number;
   scoreBreakdown: ScoreBreakdown;
@@ -280,7 +288,7 @@ export function computeFastSleepWellnessScore(args: {
     clientName: args.lifestyle.clientName,
     measurementDate: args.lifestyle.measurementDate,
     metrics: args.metrics,
-    lifestyle: lifestyleForRules(args.lifestyle),
+    lifestyle: lifestyleForRules(args.lifestyle, args.inputSource),
   });
   const items = evaluateAllItems(input);
   const ruleOutput = generateRuleBasedAiSleepAnalysis(input);
@@ -322,13 +330,14 @@ export function buildScoreFirstAnalysisResult(
     computeFastSleepWellnessScore({
       metrics,
       lifestyle: request.lifestyle,
+      inputSource: request.inputSource,
     });
 
   const ruleInput = aiInputFromMetricsAndLifestyle({
     clientName: request.lifestyle.clientName,
     measurementDate: request.lifestyle.measurementDate,
     metrics,
-    lifestyle: lifestyleForRules(request.lifestyle),
+    lifestyle: lifestyleForRules(request.lifestyle, request.inputSource),
   });
   const ruleOutput = generateRuleBasedAiSleepAnalysis(ruleInput);
   const instructorCounseling = toInstructorCounseling(ruleOutput, ruleInput);

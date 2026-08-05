@@ -207,6 +207,15 @@ export default function InstructorDashboardPage() {
           >
             今日やることと担当クライアント、今月の運営指標を確認しましょう。
           </p>
+          <div className="mt-6">
+            <Link
+              href="/analysis/new"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-6 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:px-8 sm:hover:opacity-90"
+              style={{ backgroundColor: NAVY, boxShadow: CARD_SHADOW }}
+            >
+              新しい睡眠分析
+            </Link>
+          </div>
         </header>
 
         {ops ? (

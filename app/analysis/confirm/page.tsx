@@ -25,6 +25,7 @@ import {
   compactPreviousAnalysisForAi,
   logAnalysisAiInputInDev,
 } from "@/lib/client-profiles";
+import { buildOuraAnalysisAiInput } from "@/lib/oura-analysis-input";
 import { getClientById } from "@/lib/repositories/client-repository";
 import { graphPanelCount } from "@/lib/soxai-graphs";
 import {
@@ -667,17 +668,29 @@ export default function ConfirmExtractionPage() {
           ? (ouraVisionMetrics ?? draft.ouraVisionMetrics)
           : undefined,
         aiInput: (() => {
-          const aiInput = buildAnalysisAiInput({
-            analysisDate: draft.lifestyle.measurementDate,
-            clientId: draft.lifestyle.clientId,
-            clientName: draft.lifestyle.clientName,
-            soxaiMetrics: confirmed,
-            dayContext: draft.dayContext ?? null,
-            lifestyleForm: draft.lifestyle,
-            fixedProfile: draft.fixedProfile ?? null,
-            previousAnalysis,
-            firstAnalysis,
-          });
+          const aiInput = isOuraInput
+            ? buildOuraAnalysisAiInput({
+                analysisDate: draft.lifestyle.measurementDate,
+                clientId: draft.lifestyle.clientId,
+                clientName: draft.lifestyle.clientName,
+                soxaiMetrics: confirmed,
+                dayContext: draft.dayContext ?? null,
+                lifestyleForm: draft.lifestyle,
+                fixedProfile: draft.fixedProfile ?? null,
+                previousAnalysis,
+                firstAnalysis,
+              })
+            : buildAnalysisAiInput({
+                analysisDate: draft.lifestyle.measurementDate,
+                clientId: draft.lifestyle.clientId,
+                clientName: draft.lifestyle.clientName,
+                soxaiMetrics: confirmed,
+                dayContext: draft.dayContext ?? null,
+                lifestyleForm: draft.lifestyle,
+                fixedProfile: draft.fixedProfile ?? null,
+                previousAnalysis,
+                firstAnalysis,
+              });
           logAnalysisAiInputInDev(aiInput);
           return aiInput;
         })(),

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import AdminHqDashboardView, {
   AdminHqDashboardLoading,
@@ -53,6 +54,16 @@ export default function AdminDashboardPage() {
       title="SWIJ 本部ダッシュボード"
       description="全国認定講師・認定校・分析・改善・イベントを一元管理する Sleep Wellness Institute Japan 本部専用コンソールです。"
     >
+      <div className="mb-10">
+        <Link
+          href="/analysis/new"
+          className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-6 text-[15px] font-semibold text-white shadow-[0_20px_60px_-48px_rgba(15,23,42,0.35)] transition hover:opacity-90 sm:w-auto sm:min-h-11 sm:px-8"
+          style={{ backgroundColor: "#071426" }}
+        >
+          新しい睡眠分析
+        </Link>
+      </div>
+
       <div className="mb-10">
         {opsLoading ? (
           <HqOpsMetricsLoading />

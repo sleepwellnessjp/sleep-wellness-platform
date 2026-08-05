@@ -23,6 +23,7 @@ import {
 import type { RecoveryIndexResult } from "@/lib/recovery-index";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import { formatOuraDeviceLabel } from "@/lib/device-adapters/oura";
+import { ouraLifestyleForPdf } from "@/lib/oura-analysis-input";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -196,8 +197,9 @@ export function ClientDiagnosticPdf({
       : result.inputSource === "manual"
         ? "手入力"
         : "SOXAI Ring");
-  const model = buildClientWellnessReport(result, lifestyle);
-  const sheet = buildCounselingSheetModel(result, lifestyle);
+  const pdfLifestyle = ouraLifestyleForPdf(result.inputSource, lifestyle);
+  const model = buildClientWellnessReport(result, pdfLifestyle);
+  const sheet = buildCounselingSheetModel(result, pdfLifestyle);
   const metrics = result.metrics;
   const categoryKeys = Object.keys(
     WELLNESS_CATEGORY_LABELS,
