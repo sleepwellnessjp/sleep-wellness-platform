@@ -1,9 +1,9 @@
 /**
  * Oura Vision クライアントランナー。
- * SOXAI Vision runner とは分離。OCR / ROI は使わない。
+ * OpenAI Vision（画像全体理解）専用。OCR / ROI / 座標認識は使わない。
  */
 
-import { prepareImageForOcr } from "@/lib/soxai-image-prep";
+import { prepareImageForVision } from "@/lib/oura-image-prep";
 import {
   emptyMetrics,
   type AnalysisMetrics,
@@ -124,6 +124,21 @@ function emitProgress(
   });
 }
 
+function summarizeDataUrl(dataUrl: string): {
+  mime: string;
+  chars: number;
+  approxBytes: number;
+} {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.*)$/i);
+  const mime = match?.[1] ?? "unknown";
+  const b64 = match?.[2] ?? "";
+  return {
+    mime,
+    chars: dataUrl.length,
+    approxBytes: Math.floor((b64.length * 3) / 4),
+  };
+}
+
 /**
  * Oura 画像を /api/vision-oura へ送り、AnalysisMetrics に変換する。
  * options.fixture があれば API を呼ばず fixture JSON を使う（開発用）。
@@ -153,6 +168,15 @@ export async function resolveOuraVisionExtraction(
   if (signal?.aborted) {
     return emptyResult(images, { cancelled: true });
   }
+
+  console.info("[oura-vision-runner] start", {
+    imageCount: images.length,
+    hasFixture: Boolean(options?.fixture),
+    summaries: images.map((image, index) => ({
+      index,
+      ...summarizeDataUrl(image),
+    })),
+  });
 
   emitProgress(options?.onProgress, {
     phase: "preparing",
@@ -201,8 +225,24 @@ export async function resolveOuraVisionExtraction(
       if (signal?.aborted) {
         return emptyResult(images, { cancelled: true });
       }
-      const prep = await prepareImageForOcr(images[i]!);
+      const original = images[i]!;
+      const prep = await prepareImageForVision(original);
+      if (!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(prep)) {
+        console.error("[oura-vision-runner] invalid prepared image", {
+          index: i,
+          head: prep.slice(0, 64),
+        });
+        return emptyResult(images, {
+          error: `画像${i + 1}の data URL 生成に失敗しました（Vision送信用形式ではありません）`,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
       prepared.push(prep);
+      console.info("[oura-vision-runner] prepared image", {
+        index: i,
+        original: summarizeDataUrl(original),
+        prepared: summarizeDataUrl(prep),
+      });
       emitProgress(options?.onProgress, {
         phase: "preparing",
         message: `画像準備 ${i + 1}/${images.length}`,
@@ -230,12 +270,19 @@ export async function resolveOuraVisionExtraction(
     const onAbort = () => controller.abort();
     signal?.addEventListener("abort", onAbort);
 
+    const requestBody = JSON.stringify({ images: prepared });
+    console.info("[oura-vision-runner] POST /api/vision-oura", {
+      imageCount: prepared.length,
+      bodyChars: requestBody.length,
+      timeoutMs: OURA_VISION_CLIENT_TIMEOUT_MS,
+    });
+
     let response: Response;
     try {
       response = await fetch("/api/vision-oura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: prepared }),
+        body: requestBody,
         signal: controller.signal,
       });
     } finally {
@@ -247,7 +294,7 @@ export async function resolveOuraVisionExtraction(
       return emptyResult(images, { cancelled: true });
     }
 
-    const payload = (await response.json()) as {
+    let payload: {
       metrics?: AnalysisMetrics;
       imageKeys?: MetricFieldKey[];
       deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
@@ -256,9 +303,42 @@ export async function resolveOuraVisionExtraction(
       vision?: unknown;
       error?: string;
       errorType?: string;
+      details?: string;
     };
+    try {
+      payload = (await response.json()) as typeof payload;
+    } catch (parseError) {
+      const message =
+        parseError instanceof Error ? parseError.message : String(parseError);
+      console.error("[oura-vision-runner] response JSON parse failed", {
+        status: response.status,
+        message,
+      });
+      return emptyResult(images, {
+        error: `Oura Vision レスポンスのJSON解析に失敗しました: ${message}`,
+        elapsedMs: Date.now() - startedAt,
+      });
+    }
 
     if (!response.ok) {
+      const detail =
+        typeof payload.details === "string" && payload.details.trim()
+          ? payload.details.trim()
+          : "";
+      const type =
+        typeof payload.errorType === "string" && payload.errorType.trim()
+          ? ` [${payload.errorType}]`
+          : "";
+      const message =
+        (payload.error || "Oura Vision 解析に失敗しました") +
+        type +
+        (detail ? `: ${detail}` : "");
+      console.error("[oura-vision-runner] API error", {
+        status: response.status,
+        error: payload.error,
+        errorType: payload.errorType,
+        details: payload.details,
+      });
       emitProgress(options?.onProgress, {
         phase: "done",
         message: "Oura Vision 解析に失敗しました",
@@ -268,7 +348,7 @@ export async function resolveOuraVisionExtraction(
         status: "failed",
       });
       return emptyResult(images, {
-        error: payload.error || "Oura Vision 解析に失敗しました",
+        error: message,
         elapsedMs: Date.now() - startedAt,
       });
     }
@@ -293,6 +373,13 @@ export async function resolveOuraVisionExtraction(
           warnings: payload.warnings ?? [],
           measurementDate: null,
         };
+
+    console.info("[oura-vision-runner] success", {
+      elapsedMs: Date.now() - startedAt,
+      imageKeys: mapped.imageKeys.length,
+      ouraScores: mapped.ouraScores,
+      warnings: mapped.warnings,
+    });
 
     emitProgress(options?.onProgress, {
       phase: "done",
@@ -326,6 +413,15 @@ export async function resolveOuraVisionExtraction(
     if (signal?.aborted) {
       return emptyResult(images, { cancelled: true });
     }
+    const message = error instanceof Error ? error.message : String(error);
+    const isTimeout =
+      error instanceof Error &&
+      (error.name === "AbortError" || /aborted|timeout/i.test(message));
+    console.error("[oura-vision-runner] failed", {
+      message,
+      isTimeout,
+      elapsedMs: Date.now() - startedAt,
+    });
     emitProgress(options?.onProgress, {
       phase: "done",
       message: "Oura Vision 解析に失敗しました",
@@ -335,7 +431,9 @@ export async function resolveOuraVisionExtraction(
       status: "failed",
     });
     return emptyResult(images, {
-      error: error instanceof Error ? error.message : String(error),
+      error: isTimeout
+        ? `Oura Vision がタイムアウトしました（${OURA_VISION_CLIENT_TIMEOUT_MS}ms）: ${message}`
+        : `Oura Vision 解析に失敗しました: ${message}`,
       elapsedMs: Date.now() - startedAt,
     });
   }

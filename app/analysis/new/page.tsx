@@ -1452,11 +1452,24 @@ function NewAnalysisPageInner() {
         }
 
         if (extraction.error && extraction.imageKeys.length === 0) {
+          console.error("[oura] Vision failed:", extraction.error, {
+            elapsedMs: extraction.elapsedMs,
+            warnings: extraction.warnings,
+          });
           throw new AnalysisError(
             extraction.error ||
-              "Oura画像から睡眠データを読み取れませんでした。",
+              "Oura画像の Vision 解析に失敗しました。",
+            { errorType: "OpenAI Error", details: extraction.error },
           );
         }
+
+        console.info("[oura] Vision success → confirm", {
+          imageCount: images.length,
+          imageKeys: extraction.imageKeys.length,
+          ouraScores: extraction.ouraScores,
+          elapsedMs: extraction.elapsedMs,
+          fromFixture: extraction.fromFixture,
+        });
 
         setError(null);
         setOcrStatus("ready");

@@ -1,6 +1,6 @@
 /**
  * Oura Ring Vision API: アップロード画像をまとめて Vision へ送り構造化 JSON を返す。
- * SOXAI vision-soxai とは完全分離。OCR / ROI は使わない。
+ * SOXAI vision-soxai とは完全分離。OCR / ROI / 座標認識は使わない。
  */
 
 import OpenAI from "openai";
@@ -22,10 +22,11 @@ import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const isDev = process.env.NODE_ENV === "development";
 const VISION_MODEL = "gpt-4o" as const;
 const OPENAI_TIMEOUT_MS = 180_000;
 const MAX_IMAGES = 16;
+/** data URL 1枚あたりの安全上限（約 12MB raw） */
+const MAX_IMAGE_CHARS = 16_000_000;
 
 type VisionRequestBody = {
   images?: unknown;
@@ -43,6 +44,21 @@ function parseJsonObject(text: string): unknown {
   } catch {
     return JSON.parse(raw.replace(/,\s*([}\]])/g, "$1")) as unknown;
   }
+}
+
+function summarizeDataUrl(dataUrl: string): {
+  mime: string;
+  chars: number;
+  approxBytes: number;
+} {
+  const match = dataUrl.match(/^data:(image\/[a-z0-9.+-]+);base64,(.*)$/i);
+  const mime = match?.[1] ?? "unknown";
+  const b64 = match?.[2] ?? "";
+  return {
+    mime,
+    chars: dataUrl.length,
+    approxBytes: Math.floor((b64.length * 3) / 4),
+  };
 }
 
 function buildOuraVisionPrompt(imageCount: number): string {
@@ -77,17 +93,23 @@ OCR・ROI・座標推定は使わず、画像全体の内容理解のみで取�
 - Light を Non-REM にしない。Deep を Non-REM にしない。合算しない
 - 「ノンレム」という語は使わない
 - Contributors / tags / notes は画面にあればのみ入れる
+- sleepContributors / readinessContributors は [{ "name": "totalSleep", "value": 70 }, ...] の配列形式
 
 必須: device は必ず "oura"。metrics の全キーを返し、無いものは null。`;
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY?.trim()) {
+  const startedAt = Date.now();
+  const apiKeyPresent = Boolean(process.env.OPENAI_API_KEY?.trim());
+
+  if (!apiKeyPresent) {
+    console.error("[api/vision-oura] OPENAI_API_KEY is missing");
     return NextResponse.json(
       {
         error:
-          "画像解析APIの設定が完了していません。.env.local に OPENAI_API_KEY を設定してください。",
+          "OPENAI_API_KEY が未設定です。.env.local / Vercel 環境変数を確認してください。",
         errorType: "Config Error",
+        details: "OPENAI_API_KEY missing",
       },
       { status: 500 },
     );
@@ -96,9 +118,15 @@ export async function POST(request: Request) {
   let body: VisionRequestBody;
   try {
     body = (await request.json()) as VisionRequestBody;
-  } catch {
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    console.error("[api/vision-oura] invalid request JSON", details);
     return NextResponse.json(
-      { error: "リクエスト JSON が不正です。", errorType: "Validation Error" },
+      {
+        error: "リクエスト JSON が不正です。",
+        errorType: "Validation Error",
+        details,
+      },
       { status: 400 },
     );
   }
@@ -109,9 +137,32 @@ export async function POST(request: Request) {
     .map((item) => normalizeImageDataUrl(item))
     .filter((item) => isImageDataUrl(item));
 
+  const oversized = images.find((image) => image.length > MAX_IMAGE_CHARS);
+  console.info("[api/vision-oura] request", {
+    rawCount: imagesRaw.length,
+    validCount: images.length,
+    model: VISION_MODEL,
+    apiKeyPresent,
+    timeoutMs: OPENAI_TIMEOUT_MS,
+    maxImages: MAX_IMAGES,
+    summaries: images.map((image, index) => ({
+      index,
+      ...summarizeDataUrl(image),
+    })),
+  });
+
   if (images.length === 0) {
+    console.error("[api/vision-oura] no valid image data URLs", {
+      rawCount: imagesRaw.length,
+      sampleTypes: imagesRaw.slice(0, 3).map((item) => typeof item),
+    });
     return NextResponse.json(
-      { error: "解析する画像がありません。", errorType: "Validation Error" },
+      {
+        error:
+          "解析する画像がありません。JPEG / PNG / WEBP の data URL を送ってください。",
+        errorType: "Validation Error",
+        details: `rawCount=${imagesRaw.length}, validCount=0`,
+      },
       { status: 400 },
     );
   }
@@ -120,6 +171,19 @@ export async function POST(request: Request) {
       {
         error: `画像は最大${MAX_IMAGES}枚までです。`,
         errorType: "Validation Error",
+        details: `imageCount=${images.length}`,
+      },
+      { status: 400 },
+    );
+  }
+  if (oversized) {
+    const summary = summarizeDataUrl(oversized);
+    console.error("[api/vision-oura] image too large", summary);
+    return NextResponse.json(
+      {
+        error: "画像サイズが大きすぎます。解像度を下げて再度お試しください。",
+        errorType: "Validation Error",
+        details: `chars=${summary.chars}, approxBytes=${summary.approxBytes}, limitChars=${MAX_IMAGE_CHARS}`,
       },
       { status: 400 },
     );
@@ -132,23 +196,37 @@ export async function POST(request: Request) {
       maxRetries: 1,
     });
 
+    const content = [
+      {
+        type: "input_text" as const,
+        text: "Oura アプリのスクリーンショットから構造化 JSON を抽出してください。画像全体を見て、見える値だけを返してください。",
+      },
+      ...images.map((imageUrl) => ({
+        type: "input_image" as const,
+        image_url: imageUrl,
+        detail: "high" as const,
+      })),
+    ];
+
+    console.info("[api/vision-oura] calling OpenAI Vision", {
+      model: VISION_MODEL,
+      imageCount: images.length,
+      contentParts: content.length,
+      hasInputImages: content.some((part) => part.type === "input_image"),
+      schemaContributors:
+        // sanity: ensure array schema (strict mode)
+        (ouraVisionJsonSchema as { properties?: { deviceSpecificMetrics?: { properties?: { sleepContributors?: { type?: string } } } } })
+          .properties?.deviceSpecificMetrics?.properties?.sleepContributors
+          ?.type,
+    });
+
     const response = await client.responses.create({
       model: VISION_MODEL,
       instructions: buildOuraVisionPrompt(images.length),
       input: [
         {
           role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: "Oura アプリのスクリーンショットから構造化 JSON を抽出してください。",
-            },
-            ...images.map((imageUrl) => ({
-              type: "input_image" as const,
-              image_url: imageUrl,
-              detail: "high" as const,
-            })),
-          ],
+          content,
         },
       ],
       text: {
@@ -163,11 +241,22 @@ export async function POST(request: Request) {
 
     const usage = tokensFromUsage(response.usage);
     const outputText = response.output_text?.trim();
+    console.info("[api/vision-oura] OpenAI response", {
+      elapsedMs: Date.now() - startedAt,
+      outputChars: outputText?.length ?? 0,
+      usage,
+    });
+
     if (!outputText) {
+      console.error("[api/vision-oura] empty output_text", {
+        responseId: response.id,
+        usage,
+      });
       return NextResponse.json(
         {
           error: "Oura Vision の応答が空でした。",
           errorType: "OpenAI Error",
+          details: `response.id=${response.id ?? "unknown"}, output_text empty`,
           vision: emptyOuraVisionResult(),
           usage: { purpose: "vision-oura", model: VISION_MODEL, ...usage },
         },
@@ -179,15 +268,17 @@ export async function POST(request: Request) {
     try {
       parsed = parseJsonObject(outputText);
     } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      console.error("[api/vision-oura] JSON parse failed", {
+        details,
+        outputPreview: outputText.slice(0, 500),
+      });
       return NextResponse.json(
         {
           error: "Oura Vision JSON の解析に失敗しました。",
           errorType: "JSON Parse Error",
-          details: isDev
-            ? error instanceof Error
-              ? error.message
-              : String(error)
-            : undefined,
+          details,
+          outputPreview: outputText.slice(0, 300),
         },
         { status: 500 },
       );
@@ -196,6 +287,13 @@ export async function POST(request: Request) {
     const vision = normalizeOuraVisionResult(parsed);
     const mapped = mapOuraVisionToExtraction(vision);
     const metrics = normalizeMetricsForDisplay(mapped.metrics);
+
+    console.info("[api/vision-oura] success", {
+      elapsedMs: Date.now() - startedAt,
+      imageKeys: mapped.imageKeys.length,
+      ouraScores: mapped.ouraScores,
+      warningCount: mapped.warnings.length,
+    });
 
     return NextResponse.json({
       device: "oura",
@@ -214,12 +312,17 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[api/vision-oura] failed:", error);
+    const details = openaiErrorMessage(error);
+    console.error("[api/vision-oura] failed:", {
+      details,
+      error,
+      elapsedMs: Date.now() - startedAt,
+    });
     return NextResponse.json(
       {
-        error: "Oura画像の解析に失敗しました。しばらくしてから再度お試しください。",
+        error: "Oura画像の Vision 解析に失敗しました。",
         errorType: "OpenAI Error",
-        details: isDev ? openaiErrorMessage(error) : undefined,
+        details,
       },
       { status: 500 },
     );
