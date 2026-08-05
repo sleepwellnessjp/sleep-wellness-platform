@@ -1,15 +1,15 @@
-/**
- * Oura Ring デバイスアダプタ（分析・Recovery への入力橋渡し）。
- * SOXAI アダプタとは分離。
- */
-
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import type { RecoveryIndexInput } from "@/lib/recovery-index";
-import type { OuraDeviceSpecificMetrics } from "@/lib/oura-vision-schema";
+import type {
+  OuraDeviceSpecificMetrics,
+  OuraVisionMetrics,
+} from "@/lib/oura-vision-schema";
+import { formatOuraConfirmFieldValue } from "@/lib/oura-metrics";
 
 export type OuraAnalysisContext = {
   metrics: AnalysisMetrics;
   deviceSpecificMetrics?: OuraDeviceSpecificMetrics | null;
+  visionMetrics?: OuraVisionMetrics | null;
   readinessScore?: number | null;
   activityScore?: number | null;
   sleepScore?: number | null;
@@ -45,11 +45,41 @@ export function formatOuraSpecificForAi(ctx: OuraAnalysisContext): string {
   const lines: string[] = [];
   if (ctx.sleepScore != null) lines.push(`Oura Sleep Score: ${ctx.sleepScore}`);
   if (ctx.readinessScore != null) {
-    lines.push(`Oura Readiness Score: ${ctx.readinessScore}（参考。SWIJスコアへコピー禁止）`);
+    lines.push(
+      `Oura Readiness Score: ${ctx.readinessScore}（参考。SWIJスコアへコピー禁止）`,
+    );
   }
   if (ctx.activityScore != null) {
     lines.push(`Oura Activity Score: ${ctx.activityScore}`);
   }
+
+  const vision = ctx.visionMetrics;
+  if (vision) {
+    const extras: Array<[string, string]> = [
+      ["Time in Bed", formatOuraConfirmFieldValue("timeInBed", vision)],
+      ["Awake Time", formatOuraConfirmFieldValue("awakeTime", vision)],
+      [
+        "Breathing Regularity",
+        formatOuraConfirmFieldValue("breathingRegularity", vision),
+      ],
+      [
+        "Body Temperature Deviation",
+        formatOuraConfirmFieldValue("bodyTemperatureDeviation", vision),
+      ],
+      ["Sleep Timing", formatOuraConfirmFieldValue("sleepTiming", vision)],
+      ["Sleep Balance", formatOuraConfirmFieldValue("sleepBalance", vision)],
+      [
+        "Activity Balance",
+        formatOuraConfirmFieldValue("activityBalance", vision),
+      ],
+      ["Recovery Index", formatOuraConfirmFieldValue("recoveryIndex", vision)],
+      ["Recovery Time", formatOuraConfirmFieldValue("recoveryTime", vision)],
+    ];
+    for (const [label, value] of extras) {
+      if (value.trim()) lines.push(`${label}: ${value}`);
+    }
+  }
+
   const sleep = ctx.deviceSpecificMetrics?.sleepContributors;
   if (sleep && Object.keys(sleep).length > 0) {
     lines.push(`Sleep Contributors: ${JSON.stringify(sleep)}`);
@@ -60,6 +90,8 @@ export function formatOuraSpecificForAi(ctx: OuraAnalysisContext): string {
   }
   const tags = ctx.deviceSpecificMetrics?.tags ?? [];
   if (tags.length > 0) lines.push(`Tags: ${tags.join(", ")}`);
+  const notes = ctx.deviceSpecificMetrics?.notes ?? [];
+  if (notes.length > 0) lines.push(`Notes: ${notes.join(" / ")}`);
   if (lines.length === 0) return "";
   return `【Oura固有指標（参考・推測禁止）】\n${lines.join("\n")}`;
 }

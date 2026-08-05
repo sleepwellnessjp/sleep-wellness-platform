@@ -367,6 +367,7 @@ export function buildScoreFirstAnalysisResult(
     inputSource: request.inputSource,
     deviceSpecificMetrics: request.deviceSpecificMetrics,
     ouraScores: request.ouraScores,
+    ouraVisionMetrics: request.ouraVisionMetrics,
     clientId: request.lifestyle.clientId,
     clientName: request.lifestyle.clientName,
     measurementDate: request.lifestyle.measurementDate,
@@ -473,5 +474,7 @@ export function mergeAiNarrativeIntoScoreFirstResult(
     deviceSpecificMetrics:
       preliminary.deviceSpecificMetrics ?? ai.deviceSpecificMetrics,
     ouraScores: preliminary.ouraScores ?? ai.ouraScores,
+    ouraVisionMetrics:
+      preliminary.ouraVisionMetrics ?? ai.ouraVisionMetrics,
   });
 }

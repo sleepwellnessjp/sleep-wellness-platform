@@ -24,6 +24,12 @@ import {
   generateImprovementItems,
 } from "@/lib/ai-analysis";
 import { sanitizeAnalysisNarratives } from "@/lib/analysis-narrative";
+import { formatOuraSpecificForAi } from "@/lib/device-adapters/oura";
+import type {
+  OuraDeviceSpecificMetrics,
+  OuraVisionMetrics,
+} from "@/lib/oura-vision-schema";
+import { normalizeOuraVisionResult } from "@/lib/oura-vision-schema";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -112,6 +118,7 @@ type AnalyzeRequestBody = {
     readinessScore?: number | null;
     activityScore?: number | null;
   };
+  ouraVisionMetrics?: unknown;
 };
 
 const analysisSchema = {
@@ -681,6 +688,7 @@ function validateBody(body: unknown): {
   inputSource?: "soxai" | "manual" | "oura";
   deviceSpecificMetrics?: unknown;
   ouraScores?: AnalyzeRequestBody["ouraScores"];
+  ouraVisionMetrics?: OuraVisionMetrics;
 } | {
   ok: false;
   message: string;
@@ -701,6 +709,7 @@ function validateBody(body: unknown): {
     inputSource,
     deviceSpecificMetrics,
     ouraScores,
+    ouraVisionMetrics,
   } = body as AnalyzeRequestBody;
 
   if (!lifestyle || typeof lifestyle !== "object" || Array.isArray(lifestyle)) {
@@ -789,6 +798,15 @@ function validateBody(body: unknown): {
     deviceSpecificMetrics,
     ouraScores:
       ouraScores && typeof ouraScores === "object" ? ouraScores : undefined,
+    ouraVisionMetrics:
+      ouraVisionMetrics && typeof ouraVisionMetrics === "object"
+        ? normalizeOuraVisionResult({
+            device: "oura",
+            metrics: ouraVisionMetrics,
+            deviceSpecificMetrics: {},
+            warnings: [],
+          }).metrics
+        : undefined,
   };
 }
 
@@ -1032,7 +1050,19 @@ export async function POST(request: Request) {
   const seedCategoryScores = validated.seedCategoryScores;
   const inputSource = validated.inputSource ?? "soxai";
   const isOura = inputSource === "oura";
-  const deviceLabel = isOura ? "Oura" : "SOXAI";
+  const deviceLabel = isOura ? "Oura Ring" : "SOXAI";
+  const ouraAiBlock = isOura
+    ? formatOuraSpecificForAi({
+        metrics: confirmedMetrics ?? ({} as AnalysisMetrics),
+        deviceSpecificMetrics: validated.deviceSpecificMetrics as
+          | OuraDeviceSpecificMetrics
+          | undefined,
+        visionMetrics: validated.ouraVisionMetrics,
+        sleepScore: validated.ouraScores?.sleepScore,
+        readinessScore: validated.ouraScores?.readinessScore,
+        activityScore: validated.ouraScores?.activityScore,
+      })
+    : "";
 
   const aiInput = buildAnalysisAiInput({
     analysisDate:
@@ -1115,16 +1145,7 @@ ${
 【デバイス指定】測定デバイスは Oura Ring です。
 文章中では「SOXAIデータ」ではなく「Ouraデータ」と書いてください。
 Oura Readiness Score を Sleep Wellness Score にコピーしないでください（SWIJ独自評価を維持）。
-${
-  validated.ouraScores
-    ? `Oura参考スコア: Sleep=${validated.ouraScores.sleepScore ?? "なし"} / Readiness=${validated.ouraScores.readinessScore ?? "なし"} / Activity=${validated.ouraScores.activityScore ?? "なし"}`
-    : ""
-}
-${
-  validated.deviceSpecificMetrics
-    ? `Oura固有: ${JSON.stringify(validated.deviceSpecificMetrics)}`
-    : ""
-}`
+${ouraAiBlock}`
     : ""
 }
 

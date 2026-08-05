@@ -120,6 +120,7 @@ export type OuraMappedExtraction = {
   metrics: AnalysisMetrics;
   imageKeys: MetricFieldKey[];
   deviceSpecificMetrics: OuraDeviceSpecificMetrics;
+  visionMetrics: OuraVisionMetrics;
   ouraScores: {
     sleepScore: number | null;
     readinessScore: number | null;
@@ -155,6 +156,7 @@ export function mapOuraVisionToExtraction(
     metrics,
     imageKeys: collectedKeys(metrics),
     deviceSpecificMetrics: vision.deviceSpecificMetrics,
+    visionMetrics: vision.metrics,
     ouraScores: {
       sleepScore: vision.metrics.sleepScore,
       readinessScore: vision.metrics.readinessScore,
@@ -165,6 +167,40 @@ export function mapOuraVisionToExtraction(
   };
 }
 
+/**
+ * 共通 metrics の空欄だけ Oura Vision 編集値で埋める。
+ * すでに confirm で入っている値は上書きしない（推測・再計算なし）。
+ */
+export function fillEmptyMetricsFromOuraVision(
+  metrics: AnalysisMetrics,
+  vision: OuraVisionMetrics | null | undefined,
+): AnalysisMetrics {
+  if (!vision) return metrics;
+  const fromVision = ouraVisionToAnalysisMetrics(vision);
+  const out = { ...metrics };
+  const entries = Object.entries(fromVision) as Array<
+    [MetricFieldKey, string | number | null]
+  >;
+  for (const [key, value] of entries) {
+    if (key === "nonRemSleep" || key === "nonRemSleepRate") continue;
+    const current = out[key];
+    const currentPresent =
+      current != null &&
+      (typeof current === "number"
+        ? Number.isFinite(current)
+        : String(current).trim().length > 0);
+    if (currentPresent) continue;
+    if (value == null) continue;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) continue;
+      out[key] = value as never;
+      continue;
+    }
+    if (String(value).trim()) out[key] = value as never;
+  }
+  return out;
+}
+
 /** confirm / result 表示用の Oura 固有行 */
 export type OuraDisplayRow = {
   key: string;
@@ -172,6 +208,78 @@ export type OuraDisplayRow = {
   value: string;
   present: boolean;
 };
+
+/** confirm で編集可能な Oura 固有フィールド（共通 metrics 以外） */
+export const OURA_CONFIRM_EDITABLE_FIELDS = [
+  { key: "sleepScore", label: "Sleep Score", kind: "score" },
+  { key: "readinessScore", label: "Readiness Score", kind: "score" },
+  { key: "activityScore", label: "Activity Score", kind: "score" },
+  { key: "timeInBed", label: "Time in Bed", kind: "minutes" },
+  { key: "awakeTime", label: "Awake Time", kind: "text" },
+  { key: "breathingRegularity", label: "Breathing Regularity", kind: "text" },
+  {
+    key: "bodyTemperatureDeviation",
+    label: "Body Temperature Deviation",
+    kind: "temp",
+  },
+  { key: "sleepTiming", label: "Sleep Timing", kind: "text" },
+  { key: "sleepBalance", label: "Sleep Balance", kind: "text" },
+  { key: "activityBalance", label: "Activity Balance", kind: "text" },
+  { key: "recoveryIndex", label: "Recovery Index", kind: "score" },
+  { key: "recoveryTime", label: "Recovery Time", kind: "text" },
+] as const;
+
+export type OuraConfirmEditableKey =
+  (typeof OURA_CONFIRM_EDITABLE_FIELDS)[number]["key"];
+
+export function formatOuraConfirmFieldValue(
+  key: OuraConfirmEditableKey,
+  metrics: OuraVisionMetrics,
+): string {
+  const value = metrics[key];
+  if (value == null) return "";
+  if (typeof value === "number") {
+    if (key === "timeInBed") return minutesToDisplay(value);
+    if (key === "bodyTemperatureDeviation") return tempDevToDisplay(value);
+    return String(value);
+  }
+  return String(value).trim();
+}
+
+export function parseOuraConfirmFieldInput(
+  key: OuraConfirmEditableKey,
+  raw: string,
+): string | number | null {
+  const text = raw.trim();
+  if (!text || text === "要確認" || text === "未取得") return null;
+  const field = OURA_CONFIRM_EDITABLE_FIELDS.find((item) => item.key === key);
+  if (!field) return null;
+  if (field.kind === "text") return text;
+  if (field.kind === "minutes") {
+    const jp = text.match(/(\d+)\s*時間\s*(\d+)?\s*分?/);
+    if (jp) {
+      const h = Number(jp[1]);
+      const m = Number(jp[2] ?? 0);
+      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+    }
+    const hm = text.match(/^(\d+)[:：](\d{1,2})$/);
+    if (hm) {
+      const h = Number(hm[1]);
+      const m = Number(hm[2]);
+      if (Number.isFinite(h) && Number.isFinite(m) && m < 60) return h * 60 + m;
+    }
+    const n = Number(text.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  if (field.kind === "temp") {
+    const n = Number(text.replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(text.replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(n)) return null;
+  if (n < 0 || n > 100) return null;
+  return Math.round(n);
+}
 
 export function buildOuraSpecificDisplayRows(
   scores: OuraMappedExtraction["ouraScores"],
@@ -196,15 +304,38 @@ export function buildOuraSpecificDisplayRows(
 
   if (visionMetrics) {
     const extras: Array<[string, string, string | number | null]> = [
-      ["timeInBed", "就床時間（Time in bed）", minutesToDisplay(visionMetrics.timeInBed)],
-      ["recoveryIndex", "Recovery Index（Oura）", visionMetrics.recoveryIndex != null ? String(visionMetrics.recoveryIndex) : ""],
+      ["timeInBed", "Time in Bed", minutesToDisplay(visionMetrics.timeInBed)],
+      [
+        "awakeTime",
+        "Awake Time",
+        visionMetrics.awakeTime ?? "",
+      ],
+      [
+        "recoveryIndex",
+        "Recovery Index（Oura）",
+        visionMetrics.recoveryIndex != null
+          ? String(visionMetrics.recoveryIndex)
+          : "",
+      ],
       ["recoveryTime", "Recovery Time", visionMetrics.recoveryTime ?? ""],
       ["sleepTiming", "Sleep Timing", visionMetrics.sleepTiming ?? ""],
       ["sleepBalance", "Sleep Balance", visionMetrics.sleepBalance ?? ""],
-      ["activityBalance", "Activity Balance", visionMetrics.activityBalance ?? ""],
+      [
+        "activityBalance",
+        "Activity Balance",
+        visionMetrics.activityBalance ?? "",
+      ],
       ["restfulness", "Restfulness", visionMetrics.restfulness ?? ""],
-      ["breathingRegularity", "Breathing Regularity", visionMetrics.breathingRegularity ?? ""],
-      ["breathingDisturbances", "Breathing Disturbances", visionMetrics.breathingDisturbances ?? ""],
+      [
+        "breathingRegularity",
+        "Breathing Regularity",
+        visionMetrics.breathingRegularity ?? "",
+      ],
+      [
+        "breathingDisturbances",
+        "Breathing Disturbances",
+        visionMetrics.breathingDisturbances ?? "",
+      ],
     ];
     for (const [key, label, value] of extras) {
       const text = String(value ?? "").trim();
@@ -231,6 +362,27 @@ export function buildOuraSpecificDisplayRows(
       value: text,
       present: Boolean(text),
     });
+  }
+
+  if (specific.tags?.length) {
+    rows.push({
+      key: "tags",
+      label: "Tags",
+      value: specific.tags.join(", "),
+      present: true,
+    });
+  } else {
+    rows.push({ key: "tags", label: "Tags", value: "", present: false });
+  }
+  if (specific.notes?.length) {
+    rows.push({
+      key: "notes",
+      label: "Notes",
+      value: specific.notes.join(" / "),
+      present: true,
+    });
+  } else {
+    rows.push({ key: "notes", label: "Notes", value: "", present: false });
   }
 
   return rows;

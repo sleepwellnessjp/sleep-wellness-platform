@@ -48,7 +48,7 @@ function UnavailableCard({
         {message}
       </p>
       <p className="mt-1.5 text-[11px] leading-5 text-slate-400">
-        SOXAIのHRVと安静時心拍数が揃っている場合に算出します。
+        HRVと安静時心拍数が揃っている場合に算出します。
       </p>
     </section>
   );

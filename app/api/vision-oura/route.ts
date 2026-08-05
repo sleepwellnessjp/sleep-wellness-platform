@@ -47,20 +47,36 @@ function parseJsonObject(text: string): unknown {
 
 function buildOuraVisionPrompt(imageCount: number): string {
   return `あなたは Oura Ring アプリのスクリーンショット解析器です。
-${imageCount}枚の画像を横断して読み、見える数値だけを JSON にまとめてください。
+${imageCount}枚の画像を横断して読み、見える数値・文言だけを JSON にまとめてください。
+OCR・ROI・座標推定は使わず、画像全体の内容理解のみで取得してください。
+
+取得対象（見えるものだけ）:
+- Sleep Score / Readiness Score / Activity Score
+- Total Sleep / Time in Bed / Sleep Efficiency / Sleep Latency
+- Bedtime / Wake Time / Awake Time（時刻または中途覚醒の表記）
+- Awake / REM / Light / Deep（時間と%、別項目）
+- Resting Heart Rate / Lowest Heart Rate
+- Average HRV / Maximum HRV（Minimum が見えれば minimumHrv）
+- Respiratory Rate / Average SpO2
+- Breathing Regularity（見えれば文字列）
+- Body Temperature Deviation
+- Sleep Timing / Sleep Balance / Activity Balance
+- Recovery Index または Recovery Time（見える表記どおり）
+- Tags / Notes（deviceSpecificMetrics.tags / notes）
+- Sleep / Readiness Contributors（見える場合のみ）
 
 ルール:
 - 捏造禁止。画像に無い項目は null / 空オブジェクト / 空配列
+- 推測・補完・平均からの推定は禁止
 - 時間は分（minutes）の数値で返す（例: 7時間12分 → 432）
 - 百分率は数値のみ（例: 82% → 82）
-- 心拍は bpm の数値、HRV は ms の数値、呼吸数は回/分の数値
+- 心拍は bpm、HRV は ms、呼吸数は回/分の数値
 - 体温偏差は ℃ の数値（例: -0.4）
-- bedtime / wakeTime は画面表記の時刻文字列（例: "23:41"）
-- 睡眠ステージは Awake / REM / Light / Deep を分ける
+- bedtime / wakeTime / awakeTime は画面表記の時刻文字列（例: "23:41"）
+- 睡眠ステージは Awake / REM / Light / Deep を必ず別項目で保持
 - Light を Non-REM にしない。Deep を Non-REM にしない。合算しない
 - 「ノンレム」という語は使わない
-- Contributors が見える場合のみ deviceSpecificMetrics に入れる
-- tags / notes は画面にあれば配列で返す
+- Contributors / tags / notes は画面にあればのみ入れる
 
 必須: device は必ず "oura"。metrics の全キーを返し、無いものは null。`;
 }

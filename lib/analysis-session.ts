@@ -31,7 +31,10 @@ import type {
 } from "@/lib/client-profiles/types";
 import type { AnalysisAiInput } from "@/lib/client-profiles/ai-input";
 import type { SwsMetricEntry } from "@/lib/sws-standard";
-import type { OuraDeviceSpecificMetrics } from "@/lib/oura-vision-schema";
+import type {
+  OuraDeviceSpecificMetrics,
+  OuraVisionMetrics,
+} from "@/lib/oura-vision-schema";
 import {
   improvementTexts,
   normalizeImprovements,
@@ -175,6 +178,8 @@ export type AnalysisRequest = {
   /** Oura 固有（SOXAI では未設定） */
   deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
   ouraScores?: OuraScoresSnapshot;
+  /** confirm で確定した Oura Vision 生 metrics */
+  ouraVisionMetrics?: OuraVisionMetrics;
 };
 
 /** 複数画像で同一項目に異なる値があった場合の競合情報 */
@@ -213,6 +218,8 @@ export type ExtractionDraft = {
   deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
   ouraScores?: OuraScoresSnapshot;
   ouraWarnings?: string[];
+  /** Oura Vision 生 metrics（confirm 手修正・未取得表示用） */
+  ouraVisionMetrics?: OuraVisionMetrics;
 };
 
 /** 1〜5の星評価。Score 内訳用 */
@@ -453,6 +460,7 @@ export type AnalysisResult = {
   /** Oura 固有（inputSource=oura） */
   deviceSpecificMetrics?: OuraDeviceSpecificMetrics;
   ouraScores?: OuraScoresSnapshot;
+  ouraVisionMetrics?: OuraVisionMetrics;
   /** @deprecated 旧スキーマ互換 → 本文には使わない */
   sleepAnalysis?: string;
   /** @deprecated 旧スキーマ互換 */
@@ -1648,6 +1656,10 @@ export function normalizeAnalysisResult(
       raw.ouraScores && typeof raw.ouraScores === "object"
         ? (raw.ouraScores as OuraScoresSnapshot)
         : undefined,
+    ouraVisionMetrics:
+      raw.ouraVisionMetrics && typeof raw.ouraVisionMetrics === "object"
+        ? (raw.ouraVisionMetrics as OuraVisionMetrics)
+        : undefined,
     // 旧UI・保存互換
     sleepAnalysis,
     autonomicAssessment,
@@ -1767,6 +1779,17 @@ function readExtractionDraftFromStorage(): ExtractionDraft | null {
         : undefined,
       fixedProfile: parsed.fixedProfile,
       dayContext: parsed.dayContext,
+      inputSource:
+        parsed.inputSource === "oura" ||
+        parsed.inputSource === "manual" ||
+        parsed.inputSource === "soxai"
+          ? parsed.inputSource
+          : undefined,
+      swsMetrics: parsed.swsMetrics,
+      deviceSpecificMetrics: parsed.deviceSpecificMetrics,
+      ouraScores: parsed.ouraScores,
+      ouraWarnings: parsed.ouraWarnings,
+      ouraVisionMetrics: parsed.ouraVisionMetrics,
     };
   } catch {
     return null;
@@ -1853,6 +1876,7 @@ export function setExtractionDraft(draft: ExtractionDraft) {
     deviceSpecificMetrics: draft.deviceSpecificMetrics,
     ouraScores: draft.ouraScores,
     ouraWarnings: draft.ouraWarnings,
+    ouraVisionMetrics: draft.ouraVisionMetrics,
   };
   persistExtractionDraft(extractionDraft);
 }
@@ -1932,6 +1956,7 @@ export function setPendingAnalysisRequest(request: AnalysisRequest) {
     swsMetrics: request.swsMetrics ? [...request.swsMetrics] : undefined,
     deviceSpecificMetrics: request.deviceSpecificMetrics,
     ouraScores: request.ouraScores,
+    ouraVisionMetrics: request.ouraVisionMetrics,
   };
   inFlightAnalysis = null;
   persistPendingRequest(pendingRequest);
@@ -2574,6 +2599,7 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       seedCategoryScores: payload.seedCategoryScores,
       deviceSpecificMetrics: payload.deviceSpecificMetrics,
       ouraScores: payload.ouraScores,
+      ouraVisionMetrics: payload.ouraVisionMetrics,
     };
 
     let response: Response;
@@ -2756,6 +2782,18 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
     }
 
     result.contentStatus = "ready";
+
+    // Oura / 入力ソースは AI JSON に含まれないため、リクエスト側を正として残す
+    result.inputSource = payload.inputSource ?? result.inputSource ?? "soxai";
+    if (payload.deviceSpecificMetrics) {
+      result.deviceSpecificMetrics = payload.deviceSpecificMetrics;
+    }
+    if (payload.ouraScores) {
+      result.ouraScores = payload.ouraScores;
+    }
+    if (payload.ouraVisionMetrics) {
+      result.ouraVisionMetrics = payload.ouraVisionMetrics;
+    }
 
     clearPendingAnalysisRequest();
     clearExtractionDraft();
