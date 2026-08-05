@@ -356,3 +356,50 @@ export const ouraVisionJsonSchema = {
     warnings: { type: "array", items: { type: "string" } },
   },
 } as const;
+
+/**
+ * OpenAI strict JSON schema 向けにプレーンオブジェクトへ変換する。
+ * Vercel 本番で readonly/`as const` 由来の差分を避ける。
+ */
+export function getOuraVisionJsonSchemaForOpenAI(): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(ouraVisionJsonSchema)) as Record<
+    string,
+    unknown
+  >;
+}
+
+/**
+ * 本番で実際に落ちた invalid_json_schema をデプロイ前に検知する。
+ * sleepContributors / readinessContributors は array + additionalProperties:false 必須。
+ */
+export function assertOuraVisionSchemaStrictSafe(
+  schema: Record<string, unknown> = getOuraVisionJsonSchemaForOpenAI(),
+): void {
+  const specific = (
+    (schema.properties as Record<string, unknown> | undefined)
+      ?.deviceSpecificMetrics as { properties?: Record<string, unknown> } | undefined
+  )?.properties;
+  for (const key of ["sleepContributors", "readinessContributors"] as const) {
+    const node = specific?.[key] as
+      | { type?: string; additionalProperties?: unknown; items?: unknown }
+      | undefined;
+    if (!node || node.type !== "array") {
+      throw new Error(
+        `ouraVisionJsonSchema.${key} must be type:"array" for OpenAI strict mode (got ${JSON.stringify(node)})`,
+      );
+    }
+    if ("additionalProperties" in node && node.additionalProperties !== false) {
+      throw new Error(
+        `ouraVisionJsonSchema.${key} must not set additionalProperties:true (OpenAI strict rejects it)`,
+      );
+    }
+    const items = node.items as
+      | { additionalProperties?: unknown; type?: string }
+      | undefined;
+    if (!items || items.type !== "object" || items.additionalProperties !== false) {
+      throw new Error(
+        `ouraVisionJsonSchema.${key}.items must be object with additionalProperties:false`,
+      );
+    }
+  }
+}

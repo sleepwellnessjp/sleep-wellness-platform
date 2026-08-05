@@ -13,8 +13,9 @@ import {
 import { tokensFromUsage } from "@/lib/openai-usage";
 import {
   emptyOuraVisionResult,
+  getOuraVisionJsonSchemaForOpenAI,
+  assertOuraVisionSchemaStrictSafe,
   normalizeOuraVisionResult,
-  ouraVisionJsonSchema,
 } from "@/lib/oura-vision-schema";
 import { mapOuraVisionToExtraction } from "@/lib/oura-metrics";
 import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
@@ -208,16 +209,24 @@ export async function POST(request: Request) {
       })),
     ];
 
+    const openAiSchema = getOuraVisionJsonSchemaForOpenAI();
+    assertOuraVisionSchemaStrictSafe(openAiSchema);
+
     console.info("[api/vision-oura] calling OpenAI Vision", {
       model: VISION_MODEL,
+      runtime: "nodejs",
       imageCount: images.length,
       contentParts: content.length,
       hasInputImages: content.some((part) => part.type === "input_image"),
-      schemaContributors:
-        // sanity: ensure array schema (strict mode)
-        (ouraVisionJsonSchema as { properties?: { deviceSpecificMetrics?: { properties?: { sleepContributors?: { type?: string } } } } })
-          .properties?.deviceSpecificMetrics?.properties?.sleepContributors
-          ?.type,
+      apiKeyPresent,
+      schemaContributorsType: (
+        (
+          (openAiSchema.properties as Record<string, unknown>)
+            ?.deviceSpecificMetrics as {
+            properties?: { sleepContributors?: { type?: string } };
+          }
+        )?.properties?.sleepContributors?.type
+      ),
     });
 
     const response = await client.responses.create({
@@ -234,7 +243,7 @@ export async function POST(request: Request) {
           type: "json_schema",
           name: "oura_vision_extract",
           strict: true,
-          schema: ouraVisionJsonSchema,
+          schema: openAiSchema,
         },
       },
     });
@@ -317,10 +326,13 @@ export async function POST(request: Request) {
       details,
       error,
       elapsedMs: Date.now() - startedAt,
+      runtime: "nodejs",
+      apiKeyPresent: Boolean(process.env.OPENAI_API_KEY?.trim()),
     });
     return NextResponse.json(
       {
-        error: "Oura画像の Vision 解析に失敗しました。",
+        // 本番でも原因を隠さない（Vercel で isDev=false のため）
+        error: `Oura画像の Vision 解析に失敗しました: ${details}`,
         errorType: "OpenAI Error",
         details,
       },
