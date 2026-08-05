@@ -1,6 +1,7 @@
 /**
- * Sleep Wellness Institute Japan 公式 睡眠カウンセリングシート（A4 両面・印刷専用）。
- * SOXAI Ver1.0。Expert Report / 分析ロジックは変更しない。
+ * Sleep Wellness Institute Japan 公式 睡眠カウンセリングシート（印刷専用）。
+ * SOXAI / Oura 共通レイアウト。デバイス差は deviceName（表示名）のみ。
+ * Expert Report / 分析ロジック / Oura 固有項目の全載せは行わない。
  */
 
 "use client";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/wellness-client-report";
 import type { RecoveryIndexResult } from "@/lib/recovery-index";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
+import { formatOuraDeviceLabel } from "@/lib/device-adapters/oura";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -92,17 +94,17 @@ function PdfSectionTitle({
   return (
     <div
       className={`flex items-baseline justify-between gap-2 border-b border-[#071426]/12 ${
-        compact ? "mb-1 pb-0.5" : "mb-1.5 pb-1"
+        compact ? "mb-0.5 pb-0.5" : "mb-1 pb-0.5"
       }`}
     >
       <h2
-        className="text-[12px] font-semibold tracking-[-0.02em]"
+        className="text-[11px] font-semibold tracking-[-0.02em]"
         style={{ color: NAVY }}
       >
         {title}
       </h2>
       <p
-        className="text-[8px] font-semibold tracking-[0.16em]"
+        className="text-[7px] font-semibold tracking-[0.16em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
@@ -111,11 +113,21 @@ function PdfSectionTitle({
   );
 }
 
-function CheckboxRow({ children }: { children: ReactNode }) {
+function CheckboxRow({
+  children,
+  compact = false,
+}: {
+  children: ReactNode;
+  compact?: boolean;
+}) {
   return (
-    <div className="flex items-start gap-2">
+    <div className={`flex items-start ${compact ? "gap-1.5 py-0" : "gap-2"}`}>
       <span
-        className="mt-[1px] inline-block h-[11px] w-[11px] shrink-0 rounded-[2px] border border-[#071426]/45 bg-white"
+        className={`shrink-0 rounded-[2px] border border-[#071426]/45 bg-white ${
+          compact
+            ? "mt-[1px] h-[9px] w-[9px]"
+            : "mt-[1px] h-[11px] w-[11px]"
+        }`}
         aria-hidden
       />
       <span className="min-w-0 flex-1">{children}</span>
@@ -137,22 +149,20 @@ function WriteInField({
   return (
     <div
       className={`rounded border border-dashed border-[#071426]/35 bg-[#fafaf8] ${
-        compact ? "px-2 py-1.5" : "px-2.5 py-2.5"
+        compact ? "px-2 py-1" : "px-2.5 py-2"
       }`}
     >
       <p
-        className="text-[10px] font-semibold tracking-[0.1em]"
+        className="text-[9px] font-semibold tracking-[0.1em]"
         style={{ color: GOLD }}
       >
         {title}
       </p>
-      <div className={compact ? "mt-1.5 space-y-1.5" : "mt-2 space-y-2.5"}>
+      <div className={compact ? "mt-1 space-y-1" : "mt-1.5 space-y-2"}>
         {prompts.map((prompt) => (
           <div key={prompt}>
-            <p className="text-[9px] font-medium text-slate-500">{prompt}</p>
-            <div
-              className={compact ? "mt-0.5 space-y-1.5" : "mt-1 space-y-2.5"}
-            >
+            <p className="text-[8px] font-medium text-slate-500">{prompt}</p>
+            <div className={compact ? "mt-0.5 space-y-1" : "mt-0.5 space-y-2"}>
               {Array.from({ length: linesPerPrompt }).map((_, index) => (
                 <div
                   key={index}
@@ -171,7 +181,7 @@ function WriteInField({
 export function ClientDiagnosticPdf({
   result,
   lifestyle,
-  deviceName = "SOXAI Ring",
+  deviceName,
   recovery,
 }: {
   result: AnalysisResult;
@@ -179,6 +189,13 @@ export function ClientDiagnosticPdf({
   deviceName?: string;
   recovery: RecoveryIndexResult;
 }) {
+  const resolvedDeviceName =
+    deviceName?.trim() ||
+    (result.inputSource === "oura"
+      ? formatOuraDeviceLabel()
+      : result.inputSource === "manual"
+        ? "手入力"
+        : "SOXAI Ring");
   const model = buildClientWellnessReport(result, lifestyle);
   const sheet = buildCounselingSheetModel(result, lifestyle);
   const metrics = result.metrics;
@@ -244,115 +261,115 @@ export function ClientDiagnosticPdf({
     <div className="client-diagnostic-pdf" aria-hidden="true">
       {/* —— 1ページ目：診断結果 —— */}
       <section className="client-diagnostic-page client-diagnostic-page-front">
-        <header className="flex items-start justify-between gap-3 border-b border-[#071426]/12 pb-2">
+        <header className="flex items-start justify-between gap-2 border-b border-[#071426]/12 pb-1">
           <div className="min-w-0">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
               width={200}
               height={50}
-              className="h-auto w-[118px] object-contain"
+              className="h-auto w-[100px] object-contain"
             />
             <p
-              className="mt-1.5 text-[8px] font-semibold tracking-[0.22em]"
+              className="mt-1 text-[7px] font-semibold tracking-[0.22em]"
               style={{ color: GOLD }}
             >
               OFFICIAL COUNSELING SHEET
             </p>
             <h1
-              className="mt-0.5 text-[15px] font-semibold tracking-[-0.03em]"
+              className="mt-0.5 text-[13px] font-semibold tracking-[-0.03em]"
               style={{ color: NAVY }}
             >
               睡眠カウンセリングシート
             </h1>
-            <p className="mt-0.5 text-[9px] text-slate-500">
+            <p className="mt-0.5 text-[8px] text-slate-500">
               1ページ目 · 診断結果
             </p>
           </div>
-          <div className="shrink-0 text-right text-[9px] leading-3.5 text-slate-600">
+          <div className="shrink-0 text-right text-[8px] leading-3 text-slate-600">
             <p className="font-semibold" style={{ color: NAVY }}>
               {result.clientName || "クライアント"}
             </p>
             <p>{result.measurementDate || "測定日未設定"}</p>
-            <p>デバイス：{deviceName}</p>
-            <p className="mt-0.5 text-[8px] text-slate-400">1 / 2</p>
+            <p>デバイス：{resolvedDeviceName}</p>
+            <p className="mt-0.5 text-[7px] text-slate-400">1 / 3</p>
           </div>
         </header>
 
-        {/* 総合評価 + Recovery（最前面・強調） */}
-        <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        {/* 総合評価 + Recovery（高さ約2/3へ圧縮） */}
+        <div className="pdf-hero-row mt-1.5 grid grid-cols-2 gap-1.5">
           <div
-            className="rounded-md border-2 px-3.5 py-3.5"
+            className="pdf-hero-card rounded-md border-2 px-2.5 py-2"
             style={{ borderColor: NAVY, background: SURFACE }}
           >
             <p
-              className="text-[9px] font-semibold tracking-[0.18em]"
+              className="text-[8px] font-semibold tracking-[0.18em]"
               style={{ color: GOLD }}
             >
               OVERALL ASSESSMENT
             </p>
             <p
-              className="mt-1 text-[14px] font-semibold"
+              className="mt-0.5 text-[12px] font-semibold leading-tight"
               style={{ color: NAVY }}
             >
               今日の総合評価
             </p>
-            <div className="mt-2.5 flex items-end gap-3">
+            <div className="mt-1.5 flex items-end gap-2.5">
               <p
-                className="text-[52px] font-semibold leading-none tracking-[-0.06em]"
+                className="text-[40px] font-semibold leading-none tracking-[-0.06em]"
                 style={{ color: NAVY }}
               >
                 {model.score}
               </p>
-              <div className="pb-1.5">
+              <div className="pb-0.5">
                 <p
-                  className="text-[18px] tracking-[0.12em]"
+                  className="text-[14px] tracking-[0.12em]"
                   style={{ color: GOLD }}
                 >
                   {formatStars(model.stars)}
                 </p>
                 <p
-                  className="mt-1 text-[14px] font-semibold tracking-[-0.02em]"
+                  className="mt-0.5 text-[12px] font-semibold tracking-[-0.02em]"
                   style={{ color: NAVY }}
                 >
                   {overallStatusLabel(model.stars)}
                 </p>
               </div>
             </div>
-            <p className="mt-2 text-[9px] leading-3.5 text-slate-600">
+            <p className="mt-1 text-[8px] leading-3 text-slate-600">
               Sleep Wellness Score {Math.round(result.score)} · SWIJ独自評価
             </p>
           </div>
 
           <div
-            className="rounded-md border-2 px-3.5 py-3.5"
+            className="pdf-hero-card rounded-md border-2 px-2.5 py-2"
             style={{
               borderColor: recovery.available ? recovery.accent : NAVY,
               background: recovery.available ? recovery.accentSoft : SURFACE,
             }}
           >
             <p
-              className="text-[9px] font-semibold tracking-[0.18em]"
+              className="text-[8px] font-semibold tracking-[0.18em]"
               style={{ color: GOLD }}
             >
               RECOVERY INDEX
             </p>
             <p
-              className="mt-1 text-[14px] font-semibold"
+              className="mt-0.5 text-[12px] font-semibold leading-tight"
               style={{ color: NAVY }}
             >
               回復指数
             </p>
             {recovery.available ? (
-              <div className="mt-2.5">
+              <div className="mt-1.5">
                 <p
-                  className="text-[52px] font-semibold leading-none tracking-[-0.05em]"
+                  className="text-[40px] font-semibold leading-none tracking-[-0.05em]"
                   style={{ color: recovery.accent }}
                 >
                   {recovery.score}
                 </p>
                 <div
-                  className="mt-2.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold"
+                  className="mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
                   style={{
                     color: recovery.accent,
                     background: "#ffffff",
@@ -362,12 +379,12 @@ export function ClientDiagnosticPdf({
                   <span>{recovery.emoji}</span>
                   <span>{recovery.label}</span>
                 </div>
-                <p className="mt-2 text-[9px] leading-3.5 text-slate-700">
+                <p className="mt-1 text-[8px] leading-3 text-slate-700">
                   {clampText(recovery.summary, 68)}
                 </p>
               </div>
             ) : (
-              <p className="mt-3 text-[10px] leading-4 text-slate-500">
+              <p className="mt-1.5 text-[9px] leading-3.5 text-slate-500">
                 {recovery.message}
               </p>
             )}
@@ -376,25 +393,22 @@ export function ClientDiagnosticPdf({
 
         {/* Today's Focus */}
         <div
-          className="mt-2 rounded-md border-2 px-3.5 py-2.5"
+          className="mt-1.5 rounded-md border-2 px-2.5 py-1.5"
           style={{ borderColor: GOLD, background: GOLD_SOFT }}
         >
           <div className="flex items-baseline justify-between gap-2">
-            <p
-              className="text-[12px] font-semibold"
-              style={{ color: NAVY }}
-            >
+            <p className="text-[11px] font-semibold" style={{ color: NAVY }}>
               今回のテーマ
             </p>
             <p
-              className="text-[9px] font-semibold tracking-[0.18em]"
+              className="text-[8px] font-semibold tracking-[0.18em]"
               style={{ color: GOLD }}
             >
               TODAY&apos;S FOCUS
             </p>
           </div>
           <p
-            className="mt-1.5 text-[14px] font-semibold leading-5 tracking-[-0.02em]"
+            className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.02em]"
             style={{ color: NAVY }}
           >
             {sheet.sessionTheme}
@@ -402,28 +416,28 @@ export function ClientDiagnosticPdf({
         </div>
 
         {/* 4領域 + バー */}
-        <div className="mt-2 rounded-md border border-[#071426]/12 px-3 py-2">
-          <PdfSectionTitle title="4領域スコア" eyebrow="BALANCE" />
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
+          <PdfSectionTitle title="4領域スコア" eyebrow="BALANCE" compact />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
             {categoryKeys.map((key) => {
               const score = Math.round(result.categoryScores[key]);
               return (
                 <div key={key} className="flex items-center gap-2">
                   <p
-                    className="w-8 shrink-0 text-[10px] font-semibold"
+                    className="w-8 shrink-0 text-[9px] font-semibold"
                     style={{ color: NAVY }}
                   >
                     {WELLNESS_CATEGORY_LABELS[key]}
                   </p>
                   <p
-                    className="min-w-0 flex-1 truncate text-[11px] tracking-[-0.04em]"
+                    className="min-w-0 flex-1 truncate text-[10px] tracking-[-0.04em]"
                     style={{ color: GOLD }}
                     aria-label={`${WELLNESS_CATEGORY_LABELS[key]} ${score}`}
                   >
                     {scoreBars(score)}
                   </p>
                   <p
-                    className="w-7 shrink-0 text-right text-[13px] font-semibold tabular-nums"
+                    className="w-7 shrink-0 text-right text-[12px] font-semibold tabular-nums"
                     style={{ color: NAVY }}
                   >
                     {score}
@@ -435,19 +449,20 @@ export function ClientDiagnosticPdf({
         </div>
 
         {/* 要因 */}
-        <div className="mt-2 rounded-md border border-[#071426]/12 px-3 py-2">
+        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
           <PdfSectionTitle
             title="今日の睡眠に影響した要因"
             eyebrow="FACTORS"
+            compact
           />
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {sheet.impactFactors.slice(0, 3).map((factor, index) => (
               <div
                 key={`${factor.label}-${index}`}
-                className="flex gap-2 text-[9px] leading-3.5 text-slate-700"
+                className="flex gap-1.5 text-[8px] leading-3 text-slate-700"
               >
                 <span
-                  className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[8px] font-semibold text-white"
+                  className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-semibold text-white"
                   style={{ background: NAVY }}
                 >
                   {index + 1}
@@ -459,17 +474,17 @@ export function ClientDiagnosticPdf({
         </div>
 
         {/* Good Point + 改善優先順位カード */}
-        <div className="mt-2 grid grid-cols-[0.85fr_1.15fr] gap-2">
-          <div className="rounded-md border border-[#071426]/12 px-2.5 py-2">
-            <PdfSectionTitle title="今日のGood Point" eyebrow="GOOD" />
-            <ul className="space-y-1.5">
+        <div className="mt-1.5 grid grid-cols-[0.85fr_1.15fr] gap-1.5">
+          <div className="rounded-md border border-[#071426]/12 px-2 py-1.5">
+            <PdfSectionTitle title="今日のGood Point" eyebrow="GOOD" compact />
+            <ul className="space-y-1">
               {model.goodPoints.slice(0, 4).map((point, index) => (
                 <li
                   key={`${point}-${index}`}
-                  className="flex gap-2 text-[9px] leading-3.5 text-slate-700"
+                  className="flex gap-1.5 text-[8px] leading-3 text-slate-700"
                 >
                   <span
-                    className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]"
+                    className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px]"
                     style={{
                       color: GOLD,
                       background: GOLD_SOFT,
@@ -485,44 +500,44 @@ export function ClientDiagnosticPdf({
           </div>
 
           <div>
-            <div className="mb-1 flex items-baseline justify-between gap-2 border-b border-[#071426]/12 pb-1">
+            <div className="mb-0.5 flex items-baseline justify-between gap-2 border-b border-[#071426]/12 pb-0.5">
               <h2
-                className="text-[12px] font-semibold"
+                className="text-[11px] font-semibold"
                 style={{ color: NAVY }}
               >
                 改善優先順位
               </h2>
               <p
-                className="text-[8px] font-semibold tracking-[0.16em]"
+                className="text-[7px] font-semibold tracking-[0.16em]"
                 style={{ color: GOLD }}
               >
                 PRIORITY
               </p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {sheet.priorities.slice(0, 3).map((item) => (
                 <div
                   key={`${item.tier}-${item.content}`}
-                  className="rounded-md border border-[#071426]/12 px-2 py-1.5"
+                  className="rounded-md border border-[#071426]/12 px-2 py-1"
                   style={{ background: SURFACE }}
                 >
                   <p
-                    className="text-[8px] font-semibold tracking-[0.08em]"
+                    className="text-[7px] font-semibold tracking-[0.08em]"
                     style={{ color: GOLD }}
                   >
                     {item.tierLabel} {priorityStars(item.tier)}
                   </p>
                   <p
-                    className="mt-0.5 text-[10px] font-semibold leading-3.5"
+                    className="mt-0.5 text-[9px] font-semibold leading-3"
                     style={{ color: NAVY }}
                   >
                     {clampText(item.content, 34)}
                   </p>
-                  <p className="mt-0.5 text-[8px] leading-3 text-slate-600">
+                  <p className="mt-0.5 text-[7px] leading-[1.25] text-slate-600">
                     <span className="font-semibold text-slate-700">理由 </span>
                     {clampText(item.reason, 42)}
                   </p>
-                  <p className="text-[8px] leading-3 text-slate-600">
+                  <p className="text-[7px] leading-[1.25] text-slate-600">
                     <span className="font-semibold text-slate-700">
                       今日やること{" "}
                     </span>
@@ -535,31 +550,30 @@ export function ClientDiagnosticPdf({
         </div>
       </section>
 
-      {/* —— 2ページ目：実践シート —— */}
+      {/* —— 2〜3ページ目：実践シート —— */}
       <section className="client-diagnostic-page client-diagnostic-page-back">
-        <header className="flex items-end justify-between border-b border-[#071426]/12 pb-1">
+        <header className="flex items-end justify-between border-b border-[#071426]/12 pb-0.5">
           <div>
             <p
-              className="text-[8px] font-semibold tracking-[0.2em]"
+              className="text-[7px] font-semibold tracking-[0.2em]"
               style={{ color: GOLD }}
             >
               PRACTICE SHEET
             </p>
             <h2
-              className="mt-0.5 text-[15px] font-semibold tracking-[-0.02em]"
+              className="mt-0.5 text-[13px] font-semibold tracking-[-0.02em]"
               style={{ color: NAVY }}
             >
               実践シート
             </h2>
-            <p className="mt-0.5 text-[9px] text-slate-500">
-              2ページ目 · 今日から何をするか
+            <p className="mt-0.5 text-[8px] text-slate-500">
+              2〜3ページ目 · 今日から何をするか
             </p>
           </div>
-          <p className="text-[8px] text-slate-400">2 / 2</p>
+          <p className="text-[7px] text-slate-400">2–3 / 3</p>
         </header>
 
-        {/* 主要測定値 */}
-        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
+        <div className="mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
           <PdfSectionTitle
             title="主要測定値（厳選）"
             eyebrow="KEY METRICS"
@@ -569,12 +583,12 @@ export function ClientDiagnosticPdf({
             {KEY_METRICS.map(({ label, key }) => (
               <div
                 key={label}
-                className="rounded-md px-1 py-1 text-center"
+                className="rounded-md px-1 py-0.5 text-center"
                 style={{ background: SURFACE }}
               >
-                <p className="text-[8px] text-slate-500">{label}</p>
+                <p className="text-[7px] text-slate-500">{label}</p>
                 <p
-                  className="mt-0.5 text-[12px] font-semibold leading-3.5 tracking-[-0.03em] tabular-nums"
+                  className="mt-0.5 text-[11px] font-semibold leading-3 tracking-[-0.03em] tabular-nums"
                   style={{ color: NAVY }}
                 >
                   {displayMetric(metrics, key)}
@@ -584,8 +598,7 @@ export function ClientDiagnosticPdf({
           </div>
         </div>
 
-        {/* 各数値の分析：4ブロック */}
-        <div className="mt-1.5">
+        <div className="mt-1">
           <PdfSectionTitle title="各数値の分析" eyebrow="ANALYSIS" compact />
           <div className="grid grid-cols-2 gap-1">
             {(
@@ -602,12 +615,12 @@ export function ClientDiagnosticPdf({
                 style={{ background: SURFACE }}
               >
                 <p
-                  className="text-[10px] font-semibold"
+                  className="text-[9px] font-semibold"
                   style={{ color: NAVY }}
                 >
                   {label}
                 </p>
-                <p className="mt-0.5 text-[8px] leading-3 text-slate-600">
+                <p className="mt-0.5 text-[7px] leading-[1.3] text-slate-600">
                   {text?.trim()
                     ? clampText(text, 58)
                     : "詳細は Expert Report で確認できます"}
@@ -617,9 +630,8 @@ export function ClientDiagnosticPdf({
           </div>
         </div>
 
-        {/* メラトニンヨガ：囲み枠 + アイコン */}
         <div
-          className="mt-1.5 rounded-md border-2 px-2.5 py-1.5"
+          className="mt-1 rounded-md border-2 px-2 py-1"
           style={{ borderColor: GOLD, background: GOLD_SOFT }}
         >
           <PdfSectionTitle
@@ -631,23 +643,23 @@ export function ClientDiagnosticPdf({
             {melatoninItems.map((item) => (
               <div
                 key={item.label}
-                className="flex gap-1.5 rounded-md bg-white/80 px-1.5 py-1"
+                className="flex gap-1.5 rounded-md bg-white/80 px-1.5 py-0.5"
               >
                 <span
-                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-semibold text-white"
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[7px] font-semibold text-white"
                   style={{ background: NAVY }}
                 >
                   {item.icon}
                 </span>
                 <div className="min-w-0">
                   <p
-                    className="text-[8px] font-semibold tracking-[0.08em]"
+                    className="text-[7px] font-semibold tracking-[0.08em]"
                     style={{ color: GOLD }}
                   >
                     {item.label}
                   </p>
                   <p
-                    className="mt-0.5 text-[9px] font-semibold leading-3"
+                    className="text-[8px] font-semibold leading-3"
                     style={{ color: NAVY }}
                   >
                     {clampText(item.value, 32)}
@@ -658,17 +670,17 @@ export function ClientDiagnosticPdf({
           </div>
         </div>
 
-        {/* 次回までの目標：チェックボックス */}
-        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
+        {/* 次回までの目標：高さ約1/2へ圧縮 */}
+        <div className="pdf-next-goals mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
           <PdfSectionTitle
             title="次回までの目標"
             eyebrow="NEXT GOALS"
             compact
           />
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {goals.slice(0, 4).map((goal, index) => (
-              <CheckboxRow key={index}>
-                <span className="text-[9px] leading-3 text-slate-700">
+              <CheckboxRow key={index} compact>
+                <span className="text-[8px] leading-[1.25] text-slate-700">
                   {goal ? clampText(goal, 72) : "\u00A0"}
                 </span>
               </CheckboxRow>
@@ -676,8 +688,7 @@ export function ClientDiagnosticPdf({
           </div>
         </div>
 
-        {/* 記入欄 */}
-        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+        <div className="mt-1 grid grid-cols-2 gap-1.5">
           <WriteInField
             title="今日のリアクション（ご本人記入）"
             prompts={["・今日気付いたこと", "・今日からやること"]}
@@ -692,8 +703,7 @@ export function ClientDiagnosticPdf({
           />
         </div>
 
-        {/* 講師提案：4ブロック（5〜10%圧縮） */}
-        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2 py-1.5">
+        <div className="mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
           <PdfSectionTitle
             title="AIから認定講師への提案"
             eyebrow="FOR INSTRUCTOR"
@@ -726,19 +736,19 @@ export function ClientDiagnosticPdf({
             ).map((block) => (
               <div
                 key={block.no}
-                className="rounded-md px-1.5 py-1"
+                className="rounded-md px-1.5 py-0.5"
                 style={{ background: SURFACE }}
               >
                 <p
-                  className="text-[8px] font-semibold leading-3"
+                  className="text-[7px] font-semibold leading-3"
                   style={{ color: GOLD }}
                 >
                   {block.no} {block.title}
                 </p>
                 <div className="mt-0.5 space-y-0">
                   {block.items.map((item, index) => (
-                    <CheckboxRow key={`${block.no}-${index}`}>
-                      <span className="text-[8px] leading-[1.25] text-slate-700">
+                    <CheckboxRow key={`${block.no}-${index}`} compact>
+                      <span className="text-[7px] leading-[1.2] text-slate-700">
                         {clampText(item, 44)}
                       </span>
                     </CheckboxRow>
@@ -749,7 +759,7 @@ export function ClientDiagnosticPdf({
           </div>
         </div>
 
-        <footer className="mt-1.5 border-t border-[#071426]/12 pt-1 text-[7px] leading-[1.3] text-slate-500">
+        <footer className="mt-1 border-t border-[#071426]/12 pt-0.5 text-[7px] leading-[1.25] text-slate-500">
           <p>
             詳細データ・全グラフ・全測定値はアプリ内「Sleep Wellness Expert
             Report」にのみ掲載しています。
@@ -757,7 +767,7 @@ export function ClientDiagnosticPdf({
           <p className="mt-0.5 font-semibold" style={{ color: NAVY }}>
             Sleep Wellness Institute Japan
           </p>
-          <p className="text-[7px] leading-[1.25] text-slate-400">
+          <p className="text-[6px] leading-[1.2] text-slate-400">
             © Sleep Wellness Institute Japan · Official Counseling Sheet ·
             Version 1.0
           </p>
