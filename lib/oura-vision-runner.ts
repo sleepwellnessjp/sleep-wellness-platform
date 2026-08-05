@@ -13,10 +13,15 @@ import {
   mapOuraVisionToExtraction,
   type OuraMappedExtraction,
 } from "@/lib/oura-metrics";
-import type { OuraDeviceSpecificMetrics } from "@/lib/oura-vision-schema";
+import type {
+  OuraDeviceSpecificMetrics,
+  OuraVisionMetrics,
+} from "@/lib/oura-vision-schema";
+import { emptyOuraVisionMetrics } from "@/lib/oura-vision-schema";
 import type { OcrProgressSnapshot } from "@/lib/soxai-ocr-runner";
 
 export const OURA_VISION_CLIENT_TIMEOUT_MS = 240_000;
+/** 安全上限のみ。枚数は固定しない（ユーザーは任意枚数を追加できる） */
 export const OURA_MAX_IMAGES = 16;
 
 export type OuraVisionExtractionResult = {
@@ -24,6 +29,8 @@ export type OuraVisionExtractionResult = {
   imageKeys: MetricFieldKey[];
   deviceSpecificMetrics: OuraDeviceSpecificMetrics;
   ouraScores: OuraMappedExtraction["ouraScores"];
+  /** Vision 生 metrics（confirm の Oura 固有表示・手修正用） */
+  visionMetrics: OuraVisionMetrics;
   warnings: string[];
   conflicts: [];
   graphs: Record<string, never>;
@@ -60,6 +67,7 @@ function emptyResult(
       readinessScore: null,
       activityScore: null,
     },
+    visionMetrics: emptyOuraVisionMetrics(),
     warnings: [],
     conflicts: [],
     graphs: {},
@@ -171,6 +179,7 @@ export async function resolveOuraVisionExtraction(
         imageKeys: mapped.imageKeys,
         deviceSpecificMetrics: mapped.deviceSpecificMetrics,
         ouraScores: mapped.ouraScores,
+        visionMetrics: mapped.visionMetrics,
         warnings: mapped.warnings,
         conflicts: [],
         graphs: {},
@@ -280,6 +289,7 @@ export async function resolveOuraVisionExtraction(
             readinessScore: null,
             activityScore: null,
           },
+          visionMetrics: emptyOuraVisionMetrics(),
           warnings: payload.warnings ?? [],
           measurementDate: null,
         };
@@ -298,6 +308,7 @@ export async function resolveOuraVisionExtraction(
       imageKeys: mapped.imageKeys,
       deviceSpecificMetrics: mapped.deviceSpecificMetrics,
       ouraScores: mapped.ouraScores,
+      visionMetrics: mapped.visionMetrics,
       warnings: mapped.warnings,
       conflicts: [],
       graphs: {},

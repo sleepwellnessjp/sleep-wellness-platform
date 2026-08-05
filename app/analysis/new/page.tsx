@@ -43,6 +43,7 @@ import {
   OURA_MAX_IMAGES,
   resolveOuraVisionExtraction,
 } from "@/lib/oura-vision-runner";
+import OuraImageQueue from "@/components/analysis/OuraImageQueue";
 import { toSwsMetrics } from "@/lib/sws-standard";
 import {
   CLIENT_GENDER_OPTIONS,
@@ -1475,6 +1476,7 @@ function NewAnalysisPageInner() {
           deviceSpecificMetrics: extraction.deviceSpecificMetrics,
           ouraScores: extraction.ouraScores,
           ouraWarnings: extraction.warnings,
+          ouraVisionMetrics: extraction.visionMetrics,
         });
         flushSync(() => {
           setOcrOverlayOpen(false);
@@ -2399,79 +2401,16 @@ function NewAnalysisPageInner() {
                   Ouraアプリの睡眠・コンディション関連画面をアップロードしてください
                 </p>
                 <p className="mt-2 max-w-xl text-[13px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  同じ測定日のスクリーンショットをまとめて追加してください。画像に表示されていない値は推測せず、確認画面で手入力できます。
+                  枚数は固定しません。追加・削除・並び替えができます。画像にない値は推測せず、確認画面で手修正できます。
                 </p>
               </div>
 
-              <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
-                <input
-                  id="oura-multi-upload"
-                  type="file"
-                  multiple
-                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const selected = Array.from(event.target.files ?? []);
-                    setOuraFiles((current) => {
-                      const merged = [...current, ...selected].slice(
-                        0,
-                        OURA_MAX_IMAGES,
-                      );
-                      return merged;
-                    });
-                    event.target.value = "";
-                  }}
+              <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <OuraImageQueue
+                  files={ouraFiles}
+                  onChange={setOuraFiles}
+                  showMissing={uploadMissing}
                 />
-                <label
-                  htmlFor="oura-multi-upload"
-                  className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-[#315f68]/25 bg-white px-4 py-3 text-[14px] font-semibold text-[#071426] transition hover:border-[#315f68]/45 hover:bg-[#f4f7f7] sm:text-sm"
-                >
-                  {ouraFiles.length === 0
-                    ? "画像を選択（複数可）"
-                    : "画像を追加"}
-                </label>
-                {ouraFiles.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setOuraFiles([])}
-                    className="ml-2 inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-[13px] font-semibold text-slate-500 transition hover:text-[#071426] sm:text-sm"
-                  >
-                    すべて削除
-                  </button>
-                )}
-                <p className="text-[13px] text-slate-500">
-                  {ouraFiles.length} / {OURA_MAX_IMAGES} 枚選択中
-                </p>
-                {uploadMissing && (
-                  <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-700">
-                    Oura画像を1枚以上選択してください
-                  </p>
-                )}
-                {ouraFiles.length > 0 && (
-                  <ul className="space-y-2">
-                    {ouraFiles.map((file, index) => (
-                      <li
-                        key={`${file.name}-${index}`}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-[#fafaf8] px-3 py-2.5 text-[13px] text-slate-700"
-                      >
-                        <span className="min-w-0 truncate">
-                          {index + 1}. {file.name}
-                        </span>
-                        <button
-                          type="button"
-                          className="shrink-0 text-[12px] font-semibold text-slate-500 hover:text-[#071426]"
-                          onClick={() =>
-                            setOuraFiles((current) =>
-                              current.filter((_, i) => i !== index),
-                            )
-                          }
-                        >
-                          削除
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             </section>
           )}

@@ -15,6 +15,7 @@ import {
   type AnalysisMetrics,
   type ExtractionDraft,
   type MetricConflict,
+  type OuraScoresSnapshot,
   type SoxaiExtractSection,
   type SoxaiOcrImageStatusRecord,
 } from "@/lib/analysis-session";
@@ -50,6 +51,17 @@ import { CRITICAL_OCR_KEYS, isCriticalOcrKey, SCREEN_PRIMARY_METRICS } from "@/l
 import { toSwsMetrics } from "@/lib/sws-standard";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
 import type { OcrProgressSnapshot } from "@/lib/soxai-ocr-runner";
+import {
+  fillEmptyMetricsFromOuraVision,
+  formatOuraConfirmFieldValue,
+  OURA_CONFIRM_EDITABLE_FIELDS,
+  parseOuraConfirmFieldInput,
+  type OuraConfirmEditableKey,
+} from "@/lib/oura-metrics";
+import {
+  emptyOuraVisionMetrics,
+  type OuraVisionMetrics,
+} from "@/lib/oura-vision-schema";
 
 const SECTION_DISPLAY: Array<{
   id: SoxaiExtractSection;
@@ -164,6 +176,11 @@ export default function ConfirmExtractionPage() {
   // sessionStorage は SSR で読めないため、初回は必ず null で揃えて Hydration mismatch を防ぐ
   const [draft, setDraft] = useState<ExtractionDraft | null>(null);
   const [metrics, setMetrics] = useState<AnalysisMetrics | null>(null);
+  const [ouraVisionMetrics, setOuraVisionMetrics] =
+    useState<OuraVisionMetrics | null>(null);
+  const [ouraScores, setOuraScores] = useState<OuraScoresSnapshot | null>(null);
+  const [ouraTagsText, setOuraTagsText] = useState("");
+  const [ouraNotesText, setOuraNotesText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -214,6 +231,40 @@ export default function ConfirmExtractionPage() {
       normalizeMetrics(initialDraft.extractedMetrics),
     );
     setMetrics(normalized);
+    if (initialDraft.inputSource === "oura") {
+      const seeded = {
+        ...(initialDraft.ouraVisionMetrics ?? emptyOuraVisionMetrics()),
+      };
+      if (seeded.sleepScore == null && initialDraft.ouraScores?.sleepScore != null) {
+        seeded.sleepScore = initialDraft.ouraScores.sleepScore;
+      }
+      if (
+        seeded.readinessScore == null &&
+        initialDraft.ouraScores?.readinessScore != null
+      ) {
+        seeded.readinessScore = initialDraft.ouraScores.readinessScore;
+      }
+      if (
+        seeded.activityScore == null &&
+        initialDraft.ouraScores?.activityScore != null
+      ) {
+        seeded.activityScore = initialDraft.ouraScores.activityScore;
+      }
+      setOuraVisionMetrics(seeded);
+      setOuraScores(
+        initialDraft.ouraScores ?? {
+          sleepScore: seeded.sleepScore,
+          readinessScore: seeded.readinessScore,
+          activityScore: seeded.activityScore,
+        },
+      );
+      setOuraTagsText(
+        (initialDraft.deviceSpecificMetrics?.tags ?? []).join(", "),
+      );
+      setOuraNotesText(
+        (initialDraft.deviceSpecificMetrics?.notes ?? []).join("\n"),
+      );
+    }
     // Vision metrics を正とする。取得済みキーはすべて「画像から取得」扱いで自動入力
     const keys = collectedMetricKeys(normalized);
     const prevKeys = initialDraft.imageKeys ?? [];
@@ -310,6 +361,35 @@ export default function ConfirmExtractionPage() {
       if (!current) return current;
       return setMetricValue(current, key, value);
     });
+  };
+
+  const updateOuraEditableField = (
+    key: OuraConfirmEditableKey,
+    raw: string,
+  ) => {
+    const parsed = parseOuraConfirmFieldInput(key, raw);
+    setOuraVisionMetrics((current) => {
+      const base = current ?? emptyOuraVisionMetrics();
+      return { ...base, [key]: parsed } as OuraVisionMetrics;
+    });
+    if (key === "sleepScore" || key === "readinessScore" || key === "activityScore") {
+      setOuraScores((current) => ({
+        sleepScore: current?.sleepScore ?? null,
+        readinessScore: current?.readinessScore ?? null,
+        activityScore: current?.activityScore ?? null,
+        [key]: typeof parsed === "number" ? parsed : null,
+      }));
+    }
+    if (key === "sleepScore") {
+      setMetrics((current) => {
+        if (!current) return current;
+        return setMetricValue(
+          current,
+          "sleepScore",
+          typeof parsed === "number" ? String(parsed) : "",
+        );
+      });
+    }
   };
 
   const imageStatuses = draft?.ocrImageStatuses ?? [];
@@ -470,7 +550,11 @@ export default function ConfirmExtractionPage() {
       }
 
       // 確認画面の値（手動修正含む）を最終分析にそのまま使用
-      const confirmed = normalizeMetrics(metrics);
+      const confirmed = normalizeMetrics(
+        isOuraInput
+          ? fillEmptyMetricsFromOuraVision(metrics, ouraVisionMetrics)
+          : metrics,
+      );
 
       let previousAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
       let firstAnalysis: ReturnType<typeof compactPreviousAnalysisForAi>;
@@ -520,21 +604,68 @@ export default function ConfirmExtractionPage() {
       }
 
       resetProgressiveAnalysisJobs();
+
+      const nextDeviceSpecific = isOuraInput
+        ? {
+            sleepContributors:
+              draft.deviceSpecificMetrics?.sleepContributors ?? {},
+            readinessContributors:
+              draft.deviceSpecificMetrics?.readinessContributors ?? {},
+            tags: ouraTagsText
+              .split(/[,、\n]/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+            notes: ouraNotesText
+              .split(/\n/)
+              .map((item) => item.trim())
+              .filter(Boolean),
+            extra: draft.deviceSpecificMetrics?.extra,
+          }
+        : draft.deviceSpecificMetrics;
+
+      const nextOuraScores =
+        isOuraInput && ouraScores
+          ? ouraScores
+          : draft.ouraScores;
+
+      if (isOuraInput) {
+        const syncedDraft: ExtractionDraft = {
+          ...draft,
+          extractedMetrics: confirmed,
+          imageKeys: collectedMetricKeys(confirmed),
+          deviceSpecificMetrics: nextDeviceSpecific,
+          ouraScores: nextOuraScores,
+          ouraVisionMetrics: ouraVisionMetrics ?? draft.ouraVisionMetrics,
+        };
+        setExtractionDraft(syncedDraft);
+        setDraft(syncedDraft);
+      }
+
       setPendingAnalysisRequest({
         lifestyle: draft.lifestyle,
         // Vision方式: 分析APIは metrics のみ。巨大な画像 data URL は送らない
         // （表示用画像は extraction draft / IndexedDB 側を参照）
         images: [],
         inputSource: draft.inputSource ?? "soxai",
-        swsMetrics: draft.swsMetrics,
+        swsMetrics: toSwsMetrics(
+          confirmed,
+          draft.inputSource === "oura"
+            ? "oura"
+            : draft.inputSource === "manual"
+              ? "manual"
+              : "soxai",
+        ),
         metrics: confirmed,
         extractedMetrics: draft.extractedMetrics,
         graphs: draft.graphs,
         ocrConfidence: draft.ocrConfidence,
         fixedProfile: draft.fixedProfile,
         dayContext: draft.dayContext,
-        deviceSpecificMetrics: draft.deviceSpecificMetrics,
-        ouraScores: draft.ouraScores,
+        deviceSpecificMetrics: nextDeviceSpecific,
+        ouraScores: nextOuraScores,
+        ouraVisionMetrics: isOuraInput
+          ? (ouraVisionMetrics ?? draft.ouraVisionMetrics)
+          : undefined,
         aiInput: (() => {
           const aiInput = buildAnalysisAiInput({
             analysisDate: draft.lifestyle.measurementDate,
@@ -1012,7 +1143,7 @@ export default function ConfirmExtractionPage() {
                 </div>
               </section>
 
-              {isOuraInput && (
+              {isOuraInput && ouraVisionMetrics && (
                 <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
                   <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8">
                     <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
@@ -1022,82 +1153,163 @@ export default function ConfirmExtractionPage() {
                       Oura固有項目
                     </h2>
                     <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                      Readiness / Activity / Contributors など。未取得は要確認です（0埋めしません）。
+                      Visionで取得した値を自動入力しています。すべて手修正できます。未取得は「要確認」です（推測・0埋めしません）。
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 px-4 py-5 sm:grid-cols-2 sm:px-8 sm:py-8">
-                    {(
-                      [
-                        [
-                          "Readiness Score",
-                          draft.ouraScores?.readinessScore != null
-                            ? String(draft.ouraScores.readinessScore)
-                            : "",
-                        ],
-                        [
-                          "Activity Score",
-                          draft.ouraScores?.activityScore != null
-                            ? String(draft.ouraScores.activityScore)
-                            : "",
-                        ],
-                        [
-                          "Sleep Score（Oura）",
-                          draft.ouraScores?.sleepScore != null
-                            ? String(draft.ouraScores.sleepScore)
-                            : "",
-                        ],
-                      ] as const
-                    ).map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
-                      >
-                        <p className="text-[12px] font-semibold text-slate-500">
-                          {label}
-                        </p>
-                        <p className="mt-1 text-[15px] font-semibold text-[#071426]">
-                          {value || "要確認"}
-                        </p>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 gap-3.5 px-4 py-5 sm:grid-cols-2 sm:gap-5 sm:px-8 sm:py-8">
+                    {OURA_CONFIRM_EDITABLE_FIELDS.map((field) => {
+                      const value = formatOuraConfirmFieldValue(
+                        field.key,
+                        ouraVisionMetrics,
+                      );
+                      const present = Boolean(value);
+                      return (
+                        <label key={field.key} className="block">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                              {field.label}
+                            </span>
+                            <span
+                              className={
+                                present
+                                  ? "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]"
+                                  : "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]"
+                              }
+                            >
+                              {present ? "画像から取得" : "要確認"}
+                            </span>
+                          </span>
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={(event) =>
+                              updateOuraEditableField(
+                                field.key,
+                                event.target.value,
+                              )
+                            }
+                            className={present ? inputClass : inputEmptyClass}
+                            placeholder={present ? "" : "要確認"}
+                          />
+                        </label>
+                      );
+                    })}
+                    <label className="block sm:col-span-2">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                          Tags
+                        </span>
+                        <span
+                          className={
+                            ouraTagsText.trim()
+                              ? "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]"
+                              : "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]"
+                          }
+                        >
+                          {ouraTagsText.trim() ? "画像から取得" : "要確認"}
+                        </span>
+                      </span>
+                      <input
+                        type="text"
+                        value={ouraTagsText}
+                        onChange={(event) => setOuraTagsText(event.target.value)}
+                        className={
+                          ouraTagsText.trim() ? inputClass : inputEmptyClass
+                        }
+                        placeholder={
+                          ouraTagsText.trim()
+                            ? "カンマ区切り"
+                            : "要確認（カンマ区切りで入力可）"
+                        }
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="text-[15px] font-semibold text-[#071426] sm:text-sm">
+                          Notes
+                        </span>
+                        <span
+                          className={
+                            ouraNotesText.trim()
+                              ? "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]"
+                              : "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]"
+                          }
+                        >
+                          {ouraNotesText.trim() ? "画像から取得" : "要確認"}
+                        </span>
+                      </span>
+                      <textarea
+                        value={ouraNotesText}
+                        onChange={(event) => setOuraNotesText(event.target.value)}
+                        rows={3}
+                        className={
+                          ouraNotesText.trim() ? inputClass : inputEmptyClass
+                        }
+                        placeholder={
+                          ouraNotesText.trim() ? "" : "要確認（任意で入力可）"
+                        }
+                      />
+                    </label>
                     {Object.entries(
                       draft.deviceSpecificMetrics?.sleepContributors ?? {},
                     )
                       .slice(0, 8)
-                      .map(([key, value]) => (
-                        <div
-                          key={`sleep-${key}`}
-                          className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
-                        >
-                          <p className="text-[12px] font-semibold text-slate-500">
-                            Sleep · {key}
-                          </p>
-                          <p className="mt-1 text-[15px] font-semibold text-[#071426]">
-                            {value == null || String(value).trim() === ""
-                              ? "要確認"
-                              : String(value)}
-                          </p>
-                        </div>
-                      ))}
+                      .map(([key, value]) => {
+                        const text =
+                          value == null ? "" : String(value).trim();
+                        return (
+                          <div
+                            key={`sleep-${key}`}
+                            className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
+                          >
+                            <p className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-slate-500">
+                              Sleep · {key}
+                              <span
+                                className={
+                                  text
+                                    ? "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]"
+                                    : "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]"
+                                }
+                              >
+                                {text ? "画像から取得" : "要確認"}
+                              </span>
+                            </p>
+                            <p className="mt-1 text-[15px] font-semibold text-[#071426]">
+                              {text || "要確認"}
+                            </p>
+                          </div>
+                        );
+                      })}
                     {Object.entries(
                       draft.deviceSpecificMetrics?.readinessContributors ?? {},
                     )
                       .slice(0, 8)
-                      .map(([key, value]) => (
-                        <div
-                          key={`ready-${key}`}
-                          className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
-                        >
-                          <p className="text-[12px] font-semibold text-slate-500">
-                            Readiness · {key}
-                          </p>
-                          <p className="mt-1 text-[15px] font-semibold text-[#071426]">
-                            {value == null || String(value).trim() === ""
-                              ? "要確認"
-                              : String(value)}
-                          </p>
-                        </div>
-                      ))}
+                      .map(([key, value]) => {
+                        const text =
+                          value == null ? "" : String(value).trim();
+                        return (
+                          <div
+                            key={`ready-${key}`}
+                            className="rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3"
+                          >
+                            <p className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-slate-500">
+                              Readiness · {key}
+                              <span
+                                className={
+                                  text
+                                    ? "rounded-full bg-[#315f68]/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#315f68]"
+                                    : "rounded-full bg-[#8a6a2d]/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#8a6a2d]"
+                                }
+                              >
+                                {text ? "画像から取得" : "要確認"}
+                              </span>
+                            </p>
+                            <p className="mt-1 text-[15px] font-semibold text-[#071426]">
+                              {text || "要確認"}
+                            </p>
+                          </div>
+                        );
+                      })}
                   </div>
                 </section>
               )}
@@ -1133,7 +1345,7 @@ export default function ConfirmExtractionPage() {
                 .join(" · ") || "年齢・性別未入力（参考分析）"}
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              {isOuraInput ? "Oura" : isManualInput ? "手入力" : "SOXAI"}画像{" "}
+              {isOuraInput ? "Oura Ring" : isManualInput ? "手入力" : "SOXAI"}画像{" "}
               {draft.images.length} 枚 · 生活習慣データ付き
               {draft.lifestyle.clientId ? " · 既存クライアントに紐づけ" : ""}
             </p>

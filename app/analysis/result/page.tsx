@@ -30,6 +30,12 @@ import {
 import { useToast } from "@/components/ui/Toast";
 import { computeRecoveryIndex } from "@/lib/recovery-index";
 import {
+  formatOuraDataHeading,
+  formatOuraDeviceLabel,
+  toRecoveryIndexInputFromOura,
+} from "@/lib/device-adapters/oura";
+import { buildOuraSpecificDisplayRows } from "@/lib/oura-metrics";
+import {
   evaluateMetric,
   formatHrvRange,
   metricGuideline,
@@ -1103,25 +1109,55 @@ function ResultContent({
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const isOuraResult = result.inputSource === "oura";
   const deviceName = isOuraResult
-    ? "Oura Ring"
+    ? formatOuraDeviceLabel()
     : result.inputSource === "manual"
       ? "手入力"
       : "SOXAI Ring";
-  const dataHeading = isOuraResult ? "Ouraデータ" : "SOXAIデータ";
+  const dataHeading = isOuraResult ? formatOuraDataHeading() : "SOXAIデータ";
   const dataEyebrow = isOuraResult ? "OURA" : "SOXAI";
-  const recoveryIndex = computeRecoveryIndex({
-    sleepDuration: confirmedMetrics.sleepDuration,
-    deepSleep: confirmedMetrics.deepSleep,
-    sleepEfficiency: confirmedMetrics.sleepEfficiency,
-    hrv: confirmedMetrics.hrv,
-    stress: confirmedMetrics.stress,
-    restingHeartRate: confirmedMetrics.restingHeartRate,
-    spo2: confirmedMetrics.spo2,
-    respiratoryRate: confirmedMetrics.respiratoryRate,
-    readinessScore: isOuraResult
-      ? result.ouraScores?.readinessScore
-      : null,
-  });
+  const recoveryIndex = computeRecoveryIndex(
+    isOuraResult
+      ? toRecoveryIndexInputFromOura({
+          metrics: confirmedMetrics,
+          readinessScore: result.ouraScores?.readinessScore,
+          sleepScore: result.ouraScores?.sleepScore,
+          activityScore: result.ouraScores?.activityScore,
+          deviceSpecificMetrics: result.deviceSpecificMetrics,
+          visionMetrics: result.ouraVisionMetrics,
+        })
+      : {
+          sleepDuration: confirmedMetrics.sleepDuration,
+          deepSleep: confirmedMetrics.deepSleep,
+          sleepEfficiency: confirmedMetrics.sleepEfficiency,
+          hrv: confirmedMetrics.hrv,
+          stress: confirmedMetrics.stress,
+          restingHeartRate: confirmedMetrics.restingHeartRate,
+          spo2: confirmedMetrics.spo2,
+          respiratoryRate: confirmedMetrics.respiratoryRate,
+        },
+  );
+  const ouraDisplayRows = isOuraResult
+    ? buildOuraSpecificDisplayRows(
+        result.ouraScores ?? {
+          sleepScore: null,
+          readinessScore: null,
+          activityScore: null,
+        },
+        result.deviceSpecificMetrics ?? {
+          sleepContributors: {},
+          readinessContributors: {},
+          tags: [],
+          notes: [],
+        },
+        result.ouraVisionMetrics,
+      ).filter(
+        (row) =>
+          row.present &&
+          !["readinessScore", "activityScore"].includes(row.key) &&
+          !row.key.startsWith("sleepContributor:") &&
+          !row.key.startsWith("readinessContributor:"),
+      )
+    : [];
   const categoryScores = result.categoryScores;
   const aiPending = result.contentStatus === "pending";
   const aiFailed = result.contentStatus === "error";
@@ -1501,6 +1537,27 @@ function ResultContent({
                         style={{ color: NAVY }}
                       >
                         {value == null ? "要確認" : value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {isOuraResult && ouraDisplayRows.length > 0 ? (
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {ouraDisplayRows.map((row) => (
+                    <div
+                      key={row.key}
+                      className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5"
+                    >
+                      <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-400">
+                        {row.label}
+                      </p>
+                      <p
+                        className="mt-1 text-[0.95rem] font-semibold tracking-[-0.02em]"
+                        style={{ color: NAVY }}
+                      >
+                        {row.present ? row.value : "要確認"}
                       </p>
                     </div>
                   ))}

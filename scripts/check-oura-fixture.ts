@@ -22,6 +22,7 @@ console.log("remSleep:", mapped.metrics.remSleep);
 console.log("nonRem (internal):", mapped.metrics.nonRemSleep);
 console.log("hrv:", mapped.metrics.hrv);
 console.log("readiness:", mapped.ouraScores.readinessScore);
+console.log("timeInBed:", mapped.visionMetrics.timeInBed);
 console.log("imageKeys:", mapped.imageKeys.length);
 console.log(
   "sleep contributors:",
