@@ -179,13 +179,13 @@ html[data-theme="dark"] {
 
 @media print {
   /*
-   * 睡眠カウンセリングシート Official Ver1.0: A4 × 2 pages（両面）のみ。
+   * 睡眠カウンセリングシート Official Ver1.0: A4 × 3 pages 目標。
    * 空白ページ防止: 固定高さ / overflow:hidden / break-inside:avoid を使わない。
-   * 表面のあとだけ改ページし、裏面の後は改ページしない。
+   * 1ページ目（診断）の直後だけ改ページ。実践シートは自然に 2〜3 ページへ流す。
    */
   @page {
     size: A4 portrait;
-    margin: 6mm 8mm;
+    margin: 5mm 7mm;
   }
 
   html,
@@ -245,7 +245,6 @@ html[data-theme="dark"] {
     display: block;
     box-sizing: border-box;
     width: 100%;
-    /* 固定高さ禁止（Safariで空白ページの主因） */
     height: auto !important;
     max-height: none !important;
     min-height: 0 !important;
@@ -254,7 +253,7 @@ html[data-theme="dark"] {
     break-inside: auto;
   }
 
-  /* 1ページ目の直後だけ改ページ → 2ページ目へ */
+  /* 1ページ目の直後だけ改ページ → 実践シートへ（空白ページを挟まない） */
   .client-diagnostic-page-front {
     page-break-after: always;
     break-after: page;
@@ -262,7 +261,6 @@ html[data-theme="dark"] {
     break-before: auto;
   }
 
-  /* 2ページ目の前後に余分な改ページを入れない */
   .client-diagnostic-page-back {
     page-break-before: auto;
     break-before: auto;
@@ -271,7 +269,26 @@ html[data-theme="dark"] {
   }
 
   .client-diagnostic-pdf img {
-    max-width: 110px !important;
+    max-width: 100px !important;
+  }
+
+  /* 総合評価・Recovery: 印刷時さらに縦を詰める */
+  .client-diagnostic-pdf .pdf-hero-row {
+    gap: 1.2mm !important;
+    margin-top: 1.2mm !important;
+  }
+
+  .client-diagnostic-pdf .pdf-hero-card {
+    padding: 1.6mm 2mm !important;
+  }
+
+  /* 次回までの目標: 行高・余白を圧縮 */
+  .client-diagnostic-pdf .pdf-next-goals {
+    padding: 1.2mm 2mm !important;
+  }
+
+  .client-diagnostic-pdf .pdf-next-goals .space-y-0\.5 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.4mm !important;
   }
 }
 
