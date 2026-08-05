@@ -43,7 +43,25 @@ import {
   OURA_MAX_IMAGES,
   resolveOuraVisionExtraction,
 } from "@/lib/oura-vision-runner";
-import OuraImageQueue from "@/components/analysis/OuraImageQueue";
+import AnalysisStartButton from "@/components/analysis/AnalysisStartButton";
+import DeviceSelector from "@/components/analysis/DeviceSelector";
+import MultiImageUploader, {
+  filesFromCategoryMap,
+  soxaiSlotFilesFromCategoryMap,
+  type CategoryImageMap,
+} from "@/components/analysis/MultiImageUploader";
+import {
+  revokeWearablePreviewUrls,
+  WEARABLE_MAX_IMAGES,
+} from "@/lib/wearable-analysis";
+import type {
+  WearableDevice,
+  WearableImageCategory,
+} from "@/lib/wearable-analysis";
+import {
+  getRequiredImageSpecs,
+  listMissingRequiredCategories,
+} from "@/lib/wearable-devices";
 import { toSwsMetrics } from "@/lib/sws-standard";
 import {
   CLIENT_GENDER_OPTIONS,
@@ -83,11 +101,6 @@ const MAX_FILES = Object.values(SLOT_MAX_FILES).reduce(
   (sum, value) => sum + value,
   0,
 );
-const ALLOWED_IMAGE_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
 
 const inputClass =
   "mt-2.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-[#fafaf8] px-4 py-3.5 text-[16px] text-[#071426] outline-none transition duration-300 placeholder:text-slate-400 focus:border-[#315f68] focus:bg-white focus:ring-4 focus:ring-[#315f68]/10 sm:min-h-0 sm:px-5 sm:py-4 sm:text-base";
@@ -243,86 +256,22 @@ type CaffeineEntry = {
   amount: string;
 };
 
-type InputMethod = "soxai" | "manual" | "oura" | "garmin" | "apple";
+type InputMethod =
+  | WearableDevice
+  | "manual"
+  /** 旧値互換（DeviceSelector では apple_watch を使用） */
+  | "apple";
 
-type SoxaiUploadSlot = {
-  id: SoxaiExtractSection;
-  title: string;
-  description: string;
-  items: readonly string[];
-};
-
-const SOXAI_UPLOAD_SLOTS: SoxaiUploadSlot[] = [
-  {
-    id: "home",
-    title: "概要",
-    description: "QoL・睡眠・体調・運動のスコアが表示される画面",
-    items: [
-      "QoLスコア",
-      "睡眠スコア",
-      "体調スコア",
-      "運動スコア",
-    ],
-  },
-  {
-    id: "stress",
-    title: "ストレス",
-    description: "ストレスのスコア・評価・推移が表示される画面",
-    items: ["ストレススコア", "ストレス評価", "ストレス推移"],
-  },
-  {
-    id: "sleep_overview",
-    title: "睡眠概要",
-    description: "睡眠スコアと睡眠全体サマリーが表示される画面",
-    items: [
-      "睡眠スコア",
-      "睡眠時間",
-      "必要睡眠時間",
-      "目標達成率",
-      "就寝時刻",
-      "起床時刻",
-      "仮眠時間",
-      "全就床時間",
-    ],
-  },
-  {
-    id: "sleep_detail",
-    title: "睡眠詳細",
-    description: "睡眠の詳細指標が表示される画面",
-    items: ["入眠潜時", "睡眠効率", "睡眠負債", "体内時計"],
-  },
-  {
-    id: "sleep_stages",
-    title: "睡眠ステージ",
-    description: "睡眠ステージ内訳とグラフが表示される画面",
-    items: [
-      "覚醒時間と割合",
-      "レム睡眠時間と割合",
-      "浅い睡眠時間と割合",
-      "深い睡眠時間と割合",
-      "睡眠ステージグラフ",
-    ],
-  },
-  {
-    id: "heart_hrv",
-    title: "呼吸・心拍",
-    description: "呼吸・酸素・心拍・HRVが表示される画面",
-    items: [
-      "平均酸素レベル",
-      "呼吸速度",
-      "安静時心拍数の最小値",
-      "安静時心拍数の平均値",
-      "HRV平均値",
-      "HRV最大値",
-    ],
-  },
-  {
-    id: "skin_temp",
-    title: "皮膚温",
-    description: "皮膚温の最新変化とグラフが表示される画面",
-    items: ["皮膚温の最新変化", "皮膚温グラフ"],
-  },
-];
+const SOXAI_IMAGE_SPECS = getRequiredImageSpecs("soxai");
+const OURA_IMAGE_SPECS = getRequiredImageSpecs("oura");
+const SOXAI_UPLOAD_SLOTS = SOXAI_IMAGE_SPECS.filter(
+  (spec) => spec.soxaiSection != null,
+).map((spec) => ({
+  id: spec.soxaiSection!,
+  title: spec.label,
+  description: spec.description,
+  items: spec.metrics,
+}));
 
 function fileFingerprint(file: File): string {
   return `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
@@ -606,6 +555,11 @@ function NewAnalysisPageInner() {
     Partial<Record<SoxaiExtractSection, File[]>>
   >({});
   const [ouraFiles, setOuraFiles] = useState<File[]>([]);
+  const [soxaiImagesByCategory, setSoxaiImagesByCategory] =
+    useState<CategoryImageMap>({});
+  const [ouraImagesByCategory, setOuraImagesByCategory] =
+    useState<CategoryImageMap>({});
+  const [uploadGuideTouched, setUploadGuideTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<BackgroundOcrStatus>("idle");
   const [ocrImageCache, setOcrImageCache] = useState<{
@@ -692,23 +646,6 @@ function NewAnalysisPageInner() {
       }),
     [slotFiles],
   );
-  const previewUrls = useMemo(() => {
-    const next: Partial<Record<SoxaiExtractSection, string[]>> = {};
-    for (const slot of SOXAI_UPLOAD_SLOTS) {
-      const list = slotFiles[slot.id];
-      if (!Array.isArray(list) || list.length === 0) continue;
-      next[slot.id] = list.map((file) => URL.createObjectURL(file));
-    }
-    return next;
-  }, [slotFiles]);
-
-  useEffect(() => {
-    return () => {
-      for (const urls of Object.values(previewUrls)) {
-        urls?.forEach((url) => URL.revokeObjectURL(url));
-      }
-    };
-  }, [previewUrls]);
 
   /** 遷移・bfcache 復帰・unmount 時に OCR overlay を必ず落とす（Safari 幽霊レイヤー対策） */
   useEffect(() => {
@@ -815,59 +752,49 @@ function NewAnalysisPageInner() {
     };
   }, [queryClientId]);
 
-  const setSlotFilesForSection = (
-    slotId: SoxaiExtractSection,
-    newFiles: File[],
-  ) => {
-    if (
-      newFiles.some(
-        (file) =>
-          !(ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type),
-      )
-    ) {
-      setError("JPG / JPEG / PNG / WEBP 形式の画像のみアップロードできます。");
-      return;
-    }
-    setError(null);
-    setTouchedUpload(true);
-    setSlotFiles((current) => {
-      const maxCount = SLOT_MAX_FILES[slotId] ?? 1;
-      const existing = current[slotId] ?? [];
-      const merged =
-        maxCount === 1 ? newFiles.slice(-1) : [...existing, ...newFiles].slice(0, maxCount);
-      const next = { ...current };
-      if (merged.length > 0) {
-        next[slotId] = merged;
-      } else {
-        delete next[slotId];
-      }
-      return next;
-    });
-  };
-
-  const removeSlotFile = (slotId: SoxaiExtractSection, fileIndex: number) => {
-    setSlotFiles((current) => {
-      const existing = current[slotId] ?? [];
-      if (fileIndex < 0 || fileIndex >= existing.length) return current;
-      const updated = existing.filter((_, index) => index !== fileIndex);
-      const next = { ...current };
-      if (updated.length > 0) {
-        next[slotId] = updated;
-      } else {
-        delete next[slotId];
-      }
-      return next;
-    });
-  };
-
   const clearAllFiles = () => {
     beginNewSoxaiAnalysisSession();
     resetProgressiveAnalysisJobs();
     setOcrImageCache(null);
     setOcrStatus("idle");
+    revokeWearablePreviewUrls(
+      Object.values(soxaiImagesByCategory).flatMap((list) => list ?? []),
+    );
+    setSoxaiImagesByCategory({});
     setSlotFiles({});
     setError(null);
   };
+
+  const handleSoxaiImagesChange = (next: CategoryImageMap) => {
+    setUploadGuideTouched(true);
+    setTouchedUpload(true);
+    setSoxaiImagesByCategory(next);
+    setSlotFiles(soxaiSlotFilesFromCategoryMap(SOXAI_IMAGE_SPECS, next));
+    setError(null);
+  };
+
+  const handleOuraImagesChange = (next: CategoryImageMap) => {
+    setUploadGuideTouched(true);
+    setTouchedUpload(true);
+    setOuraImagesByCategory(next);
+    const nextFiles = filesFromCategoryMap(OURA_IMAGE_SPECS, next).slice(
+      0,
+      Math.min(WEARABLE_MAX_IMAGES, OURA_MAX_IMAGES),
+    );
+    setOuraFiles(nextFiles);
+    setError(null);
+  };
+
+  const ouraMissingRequired = useMemo(
+    () =>
+      listMissingRequiredCategories({
+        device: "oura",
+        filledCategories: Object.entries(ouraImagesByCategory)
+          .filter(([, list]) => (list?.length ?? 0) > 0)
+          .map(([category]) => category as WearableImageCategory),
+      }),
+    [ouraImagesByCategory],
+  );
 
   const handleClientSelect = async (value: string) => {
     if (!value) {
@@ -1010,7 +937,7 @@ function NewAnalysisPageInner() {
 
     setError(null);
     setTouchedUpload(true);
-    if (inputMethod === "garmin" || inputMethod === "apple") {
+    if (inputMethod === "garmin" || inputMethod === "apple" || inputMethod === "apple_watch" || inputMethod === "fitbit" || inputMethod === "other") {
       setError("現在開発中です。今後のアップデートで対応予定です。");
       return;
     }
@@ -1020,9 +947,18 @@ function NewAnalysisPageInner() {
       return;
     }
 
-    if (inputMethod === "oura" && ouraFiles.length === 0) {
-      setError("Oura画像を1枚以上アップロードしてください。");
-      return;
+    if (inputMethod === "oura") {
+      if (ouraMissingRequired.length > 0) {
+        setUploadGuideTouched(true);
+        setError(
+          `分析に必要な画像があと${ouraMissingRequired.length}種類不足しています。`,
+        );
+        return;
+      }
+      if (ouraFiles.length === 0) {
+        setError("Oura画像をアップロードしてください。");
+        return;
+      }
     }
 
     const form = event.currentTarget;
@@ -1033,8 +969,8 @@ function NewAnalysisPageInner() {
       return;
     }
 
-    if (inputMethod === "oura" && ouraFiles.length > OURA_MAX_IMAGES) {
-      setError(`Oura画像は最大${OURA_MAX_IMAGES}枚までです。`);
+    if (inputMethod === "oura" && ouraFiles.length > WEARABLE_MAX_IMAGES) {
+      setError(`画像は最大${WEARABLE_MAX_IMAGES}枚までです。`);
       return;
     }
 
@@ -1819,10 +1755,16 @@ function NewAnalysisPageInner() {
 
   const uploadMissing =
     (inputMethod === "soxai" && touchedUpload && files.length === 0) ||
-    (inputMethod === "oura" && touchedUpload && ouraFiles.length === 0);
+    (inputMethod === "oura" &&
+      uploadGuideTouched &&
+      ouraMissingRequired.length > 0);
 
   const methodPending =
-    inputMethod === "garmin" || inputMethod === "apple";
+    inputMethod === "garmin" ||
+    inputMethod === "apple" ||
+    inputMethod === "apple_watch" ||
+    inputMethod === "fitbit" ||
+    inputMethod === "other";
 
   const handleMethodContinue = () => {
     setError(null);
@@ -1830,6 +1772,7 @@ function NewAnalysisPageInner() {
       setError("現在開発中です。今後のアップデートで対応予定です。");
       return;
     }
+    setUploadGuideTouched(false);
     setFlowStep("input");
   };
 
@@ -1882,84 +1825,15 @@ function NewAnalysisPageInner() {
         </div>
 
         {flowStep === "method" ? (
-          <div className="mx-auto max-w-2xl">
-            <header className="text-center">
-              <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
-                INPUT METHOD
-              </p>
-              <h1 className="mt-3 break-words text-[1.65rem] font-semibold leading-tight tracking-[-0.05em] text-[#071426] sm:mt-5 sm:text-4xl sm:leading-normal">
-                睡眠データの入力方法を選択してください
-              </h1>
-              <p className="mx-auto mt-3 max-w-xl text-[14px] leading-6 text-slate-600 sm:mt-5 sm:text-base sm:leading-8">
-                ご利用のデバイスに合わせて入力方法を選択してください。
-              </p>
-            </header>
-
-            <section className="mt-8 overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)] sm:mt-10">
-              <div className="space-y-3 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
-                {(
-                  [
-                    ["soxai", "SOXAI Ring（対応済み）"],
-                    ["oura", "Oura Ring（画像アップロード）"],
-                    ["garmin", "Garmin（近日対応予定）"],
-                    ["apple", "Apple Watch / ヘルスケア（近日対応予定）"],
-                    ["manual", "手入力（対応済み）"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <label
-                    key={value}
-                    className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3.5 transition ${
-                      inputMethod === value
-                        ? "border-[#315f68]/35 bg-[#f4f7f7]"
-                        : "border-slate-200 bg-[#fafaf8]"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="inputMethod"
-                      value={value}
-                      checked={inputMethod === value}
-                      onChange={() => {
-                        setInputMethod(value);
-                        setError(null);
-                      }}
-                      className="h-4 w-4 border-slate-300 text-[#315f68] focus:ring-[#315f68]/40"
-                    />
-                    <span className="text-[14px] font-medium text-[#071426] sm:text-sm">
-                      {label}
-                    </span>
-                  </label>
-                ))}
-
-                {methodPending && (
-                  <p className="rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-3 text-[13px] text-amber-900">
-                    現在開発中です。今後のアップデートで対応予定です。
-                  </p>
-                )}
-
-                {error && (
-                  <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-700">
-                    {error}
-                  </p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleMethodContinue}
-                  disabled={methodPending}
-                  className="mt-2 inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#071426] px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {inputMethod === "soxai"
-                    ? "SOXAIアップロードへ進む"
-                    : inputMethod === "oura"
-                      ? "Ouraアップロードへ進む"
-                      : inputMethod === "manual"
-                        ? "手入力へ進む"
-                        : "選択してください"}
-                </button>
-              </div>
-            </section>
-          </div>
+          <DeviceSelector
+            value={inputMethod === "apple" ? "apple_watch" : inputMethod}
+            onChange={(next) => {
+              setInputMethod(next);
+              setError(null);
+            }}
+            onContinue={handleMethodContinue}
+            error={error}
+          />
         ) : (
           <>
         <header className="mx-auto max-w-2xl text-center">
@@ -2259,144 +2133,43 @@ function NewAnalysisPageInner() {
             <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
               <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
                 <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                  01 · SOXAI DATA
+                  STEP 2 · SOXAI DATA
                 </p>
                 <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                  SOXAI専用アップロード
+                  必要なスクリーンショットをアップロード
                 </h2>
                 <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  画面の種類ごとに画像を指定してアップロードしてください。すべて必須ではありませんが、1枚以上必要です。未指定の項目は確認画面で未取得と表示されます。
+                  画面の種類ごとに画像を割り当ててください。各項目は任意ですが、分析開始には合計1枚以上が必要です。未指定の項目は確認画面で未取得と表示されます。
                 </p>
               </div>
 
-              <div className="space-y-4 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
-                {SOXAI_UPLOAD_SLOTS.map((slot, index) => {
-                  const filesInSlot = slotFiles[slot.id] ?? [];
-                  const hasFile = filesInSlot.length > 0;
-                  const maxFilesInSlot = SLOT_MAX_FILES[slot.id] ?? 1;
-                  const canPickMore = filesInSlot.length < maxFilesInSlot;
-                  const inputId = `soxai-slot-${slot.id}`;
-                  return (
-                    <div
-                      key={slot.id}
-                      className="rounded-2xl border border-slate-200 bg-[#fafaf8] p-4 transition sm:p-5"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-[14px] font-semibold text-[#071426] sm:text-sm">
-                            {slot.title}
-                          </p>
-                          <p className="mt-1 text-[13px] leading-6 text-slate-500 sm:text-xs sm:leading-5">
-                            {slot.description}
-                          </p>
-                          <ul className="mt-2.5 space-y-1 text-[12px] leading-5 text-slate-500 sm:text-[11px]">
-                            {slot.items.map((item) => (
-                              <li key={item} className="flex items-start gap-2">
-                                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#8a6a2d]" />
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        {hasFile ? (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-[#315f68]/12 px-2.5 py-1 text-[11px] font-semibold text-[#315f68]">
-                            {filesInSlot.length}/{maxFilesInSlot} 枚
-                          </span>
-                        ) : (
-                          <span className="inline-flex shrink-0 items-center rounded-full bg-slate-200/60 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                            未選択
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
-                        <input
-                          id={inputId}
-                          type="file"
-                          multiple={maxFilesInSlot > 1}
-                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                          className="sr-only"
-                          onChange={(event) => {
-                            const selected = Array.from(event.target.files ?? []);
-                            setSlotFilesForSection(slot.id, selected);
-                            event.target.value = "";
-                          }}
-                        />
-                        <label
-                          htmlFor={inputId}
-                          className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-[#315f68]/25 bg-white px-4 py-3 text-[14px] font-semibold text-[#071426] transition hover:border-[#315f68]/45 hover:bg-[#f4f7f7] sm:text-sm"
-                        >
-                          {!hasFile
-                            ? "画像を選択"
-                            : canPickMore
-                              ? "画像を追加"
-                              : "画像を差し替えるには削除してください"}
-                        </label>
-                        {hasFile && (
-                          <button
-                            type="button"
-                            onClick={() => setSlotFilesForSection(slot.id, [])}
-                            className="inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-[13px] font-semibold text-slate-500 transition hover:text-[#071426] sm:text-sm"
-                          >
-                            削除
-                          </button>
-                        )}
-                      </div>
-
-                      {hasFile && (
-                        <div className="mt-3 space-y-3">
-                          {filesInSlot.map((slotFile, fileIndex) => {
-                            const preview = previewUrls[slot.id]?.[fileIndex];
-                            return (
-                              <div key={`${slotFile.name}-${slotFile.lastModified}-${fileIndex}`}>
-                                <div className="flex items-center gap-2">
-                                  <p className="truncate text-[13px] text-slate-600 sm:text-sm">
-                                    {slotFile.name}
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeSlotFile(slot.id, fileIndex)}
-                                    className="shrink-0 text-[12px] font-semibold text-slate-400 transition hover:text-[#071426]"
-                                  >
-                                    削除
-                                  </button>
-                                </div>
-                                {preview && (
-                                  <div className="relative mt-2 aspect-[9/16] max-w-[220px] overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                    <Image
-                                      src={preview}
-                                      alt={`${slot.title} ${fileIndex + 1}`}
-                                      fill
-                                      unoptimized
-                                      className="object-cover"
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-slate-400">
-                    {files.length} / {SOXAI_UPLOAD_SLOTS.length} 枚選択中
-                  </p>
-                  <button
-                    type="button"
-                    onClick={clearAllFiles}
-                    className="text-xs font-semibold text-slate-500"
-                  >
-                    すべてクリア
-                  </button>
-                </div>
-                {uploadMissing && (
-                  <p className="text-sm font-medium text-rose-600">
+              <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <MultiImageUploader
+                  deviceType="soxai"
+                  specs={SOXAI_IMAGE_SPECS}
+                  imagesByCategory={soxaiImagesByCategory}
+                  onChange={handleSoxaiImagesChange}
+                  showMissingAlert={uploadMissing}
+                />
+                {uploadMissing ? (
+                  <p className="mt-4 text-sm font-medium text-rose-600">
                     SOXAI画像を1枚以上選択してください
                   </p>
-                )}
+                ) : null}
+                {files.length > 0 ? (
+                  <div className="mt-4 flex items-center justify-between">
+                    <p className="text-xs text-slate-400">
+                      {files.length} 枚選択中（既存 Vision API へ送信）
+                    </p>
+                    <button
+                      type="button"
+                      onClick={clearAllFiles}
+                      className="text-xs font-semibold text-slate-500"
+                    >
+                      すべてクリア
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </section>
           )}
@@ -2405,24 +2178,23 @@ function NewAnalysisPageInner() {
             <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
               <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
                 <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
-                  01 · OURA DATA
+                  STEP 2 · OURA DATA
                 </p>
                 <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                  Oura Ring 画像アップロード
+                  必要なスクリーンショットをアップロード
                 </h2>
                 <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  Ouraアプリの睡眠・コンディション関連画面をアップロードしてください
-                </p>
-                <p className="mt-2 max-w-xl text-[13px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  枚数は固定しません。追加・削除・並び替えができます。画像にない値は推測せず、確認画面で手修正できます。
+                  必須5種類を各項目へ割り当ててください。まとめて追加すると AI が画面種類を自動分類します（OCRではありません）。レジリエンスは任意です。
                 </p>
               </div>
 
               <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
-                <OuraImageQueue
-                  files={ouraFiles}
-                  onChange={setOuraFiles}
-                  showMissing={uploadMissing}
+                <MultiImageUploader
+                  deviceType="oura"
+                  specs={OURA_IMAGE_SPECS}
+                  imagesByCategory={ouraImagesByCategory}
+                  onChange={handleOuraImagesChange}
+                  showMissingAlert={uploadGuideTouched && ouraMissingRequired.length > 0}
                 />
               </div>
             </section>
@@ -3360,7 +3132,7 @@ function NewAnalysisPageInner() {
                 {inputMethod === "manual"
                   ? "SOXAI画像なしで、手入力データを確認画面に渡します。"
                   : inputMethod === "oura"
-                    ? "必須：Oura画像（1枚以上）・対象者名・測定日・年齢・性別。画像に無い値は確認画面で手入力できます。"
+                    ? "必須：Oura必須5種類の画像・対象者名・測定日・年齢・性別。レジリエンスは任意です。"
                     : ocrStatus === "ready"
                       ? "選択したSOXAI画像の解析は完了しています。必須項目を入力して確認画面へ進んでください。"
                       : ocrStatus === "running"
@@ -3368,39 +3140,37 @@ function NewAnalysisPageInner() {
                         : "必須：SOXAI画像（1枚以上）・対象者名・測定日・年齢・性別。未選択の画面項目は確認画面で未取得と表示されます。"}
               </p>
 
-              <button
-                type="submit"
-                disabled={
-                  isSubmitting ||
-                  (inputMethod === "soxai" && files.length === 0) ||
-                  (inputMethod === "oura" && ouraFiles.length === 0)
-                }
-                className="group mt-7 inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-base font-semibold text-[#071426] shadow-[0_18px_50px_-20px_rgba(255,255,255,0.55)] transition duration-500 active:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-60 sm:mt-8 sm:w-auto sm:px-12 sm:py-5 sm:text-lg sm:hover:-translate-y-1 sm:hover:bg-[#f4f4f4] sm:active:translate-y-0 disabled:sm:hover:translate-y-0"
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#071426]/20 border-t-[#071426]" />
-                    {inputMethod === "manual"
+              <div className="mt-7 sm:mt-8">
+                <AnalysisStartButton
+                  disabled={
+                    isSubmitting ||
+                    (inputMethod === "soxai" && files.length === 0) ||
+                    (inputMethod === "oura" && ouraMissingRequired.length > 0)
+                  }
+                  busy={isSubmitting}
+                  label={
+                    inputMethod === "manual"
+                      ? "手入力の確認へ進む"
+                      : inputMethod === "oura"
+                        ? "分析を開始する"
+                        : "OCR解析へ進む"
+                  }
+                  busyLabel={
+                    inputMethod === "manual"
                       ? "確認画面へ移動中..."
                       : inputMethod === "oura"
                         ? "Oura Vision解析中..."
                         : ocrStatus === "ready"
                           ? "確認画面へ移動中..."
-                          : "SOXAIデータ取得を完了中..."}
-                  </>
-                ) : (
-                  <>
-                    {inputMethod === "manual"
-                      ? "手入力の確認へ進む"
-                      : inputMethod === "oura"
-                        ? "Oura Vision解析へ進む"
-                        : "OCR解析へ進む"}
-                    <span className="transition-transform duration-500 group-hover:translate-x-1">
-                      →
-                    </span>
-                  </>
-                )}
-              </button>
+                          : "SOXAIデータ取得を完了中..."
+                  }
+                  hint={
+                    inputMethod === "oura" && ouraMissingRequired.length > 0
+                      ? `分析に必要な画像があと${ouraMissingRequired.length}種類不足しています`
+                      : undefined
+                  }
+                />
+              </div>
 
               <p className="mx-auto mt-6 max-w-lg text-xs leading-6 text-white/40 sm:text-sm sm:leading-7">
                 本システムは睡眠ウェルネス支援を目的としており、

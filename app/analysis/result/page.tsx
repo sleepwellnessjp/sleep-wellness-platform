@@ -1355,6 +1355,16 @@ function ResultContent({
                       デバイス：{deviceName}
                     </span>
                   </p>
+                  <Link
+                    href={
+                      result.analysisId
+                        ? `/analysis/sleep-wellness-report?analysisId=${encodeURIComponent(result.analysisId)}`
+                        : "/analysis/sleep-wellness-report"
+                    }
+                    className="mt-3 inline-flex min-h-11 items-center rounded-full border border-[rgba(138,106,45,0.35)] bg-white px-4 text-[12px] font-semibold tracking-[0.04em] text-[#8a6a2d] transition hover:bg-[#fffdf8] print:hidden"
+                  >
+                    Sleep Wellness Report を開く
+                  </Link>
                 </div>
 
                 <div className="report-score-block flex shrink-0 gap-5 text-right sm:gap-7">
