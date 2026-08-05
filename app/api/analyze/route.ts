@@ -23,8 +23,14 @@ import {
   generateGoodPoints,
   generateImprovementItems,
 } from "@/lib/ai-analysis";
-import { sanitizeAnalysisNarratives } from "@/lib/analysis-narrative";
 import { formatOuraSpecificForAi } from "@/lib/device-adapters/oura";
+import {
+  buildOuraAnalysisAiInput,
+  hasExplicitOuraLifestyleInput,
+  ouraLifestyleForRules,
+  ouraLifestylePromptBlock,
+  sanitizeOuraAnalysisNarratives,
+} from "@/lib/oura-analysis-input";
 import type {
   OuraDeviceSpecificMetrics,
   OuraVisionMetrics,
@@ -1064,21 +1070,40 @@ export async function POST(request: Request) {
       })
     : "";
 
-  const aiInput = buildAnalysisAiInput({
-    analysisDate:
-      validated.aiInput?.analysisDate ?? lifestyle.measurementDate,
-    clientId: validated.aiInput?.clientId,
-    clientName:
-      validated.aiInput?.clientName ?? lifestyle.clientName,
-    soxaiMetrics: confirmedMetrics ?? null,
-    dayContext: validated.aiInput?.dayContext
-      ? (validated.aiInput.dayContext as AnalysisDayContext)
-      : validated.dayContext ?? null,
-    lifestyleForm: lifestyle,
-    fixedProfile: validated.fixedProfile ?? null,
-    previousAnalysis: validated.aiInput?.previousAnalysis ?? null,
-    firstAnalysis: validated.aiInput?.firstAnalysis ?? null,
-  });
+  const aiInput = isOura
+    ? buildOuraAnalysisAiInput({
+        analysisDate:
+          validated.aiInput?.analysisDate ?? lifestyle.measurementDate,
+        clientId: validated.aiInput?.clientId,
+        clientName:
+          validated.aiInput?.clientName ?? lifestyle.clientName,
+        soxaiMetrics: confirmedMetrics ?? null,
+        dayContext: validated.aiInput?.dayContext
+          ? (validated.aiInput.dayContext as AnalysisDayContext)
+          : validated.dayContext ?? null,
+        lifestyleForm: lifestyle,
+        fixedProfile: validated.fixedProfile ?? null,
+        previousAnalysis: validated.aiInput?.previousAnalysis ?? null,
+        firstAnalysis: validated.aiInput?.firstAnalysis ?? null,
+      })
+    : buildAnalysisAiInput({
+        analysisDate:
+          validated.aiInput?.analysisDate ?? lifestyle.measurementDate,
+        clientId: validated.aiInput?.clientId,
+        clientName:
+          validated.aiInput?.clientName ?? lifestyle.clientName,
+        soxaiMetrics: confirmedMetrics ?? null,
+        dayContext: validated.aiInput?.dayContext
+          ? (validated.aiInput.dayContext as AnalysisDayContext)
+          : validated.dayContext ?? null,
+        lifestyleForm: lifestyle,
+        fixedProfile: validated.fixedProfile ?? null,
+        previousAnalysis: validated.aiInput?.previousAnalysis ?? null,
+        firstAnalysis: validated.aiInput?.firstAnalysis ?? null,
+      });
+  const hasOuraLifestyleEvidence = isOura
+    ? hasExplicitOuraLifestyleInput(lifestyle)
+    : true;
 
   // クライアント側で付けた要約・構造化プロフィールがあれば優先
   if (validated.aiInput?.fixedProfileSummary) {
@@ -1110,10 +1135,12 @@ ${JSON.stringify(aiInput.fixedProfile ?? {}, null, 2)}`
     : `【③ 固定プロフィール】
 未取得または未入力のため、固定プロフィールに基づく言及は行わない。`;
 
-  const dayContextBlock = aiInput.dayContext
-    ? `【② 当日の生活習慣（day_context。固定プロフィールの「普段」と混同しない）】
+  const dayContextBlock = isOura
+    ? ouraLifestylePromptBlock(lifestyle)
+    : aiInput.dayContext
+      ? `【② 当日の生活習慣（day_context。固定プロフィールの「普段」と混同しない）】
 ${JSON.stringify(aiInput.dayContext, null, 2)}`
-    : `【② 当日の生活習慣（構造化）】
+      : `【② 当日の生活習慣（構造化）】
 構造化 day_context は未取得。下記のフォーム入力を当日情報として使う。`;
 
   const previousBlock = aiInput.previousAnalysis
@@ -1204,7 +1231,11 @@ ${previousBlock}
 【文章品質】フィールド間で同じ数値フレーズを繰り返さない。『ノンレム』禁止。固定テンプレ禁止。
 
 【クライアント基本情報＋生活習慣フォーム】
-${formatLifestyle(lifestyle)}`,
+${
+  isOura && !hasOuraLifestyleEvidence
+    ? "生活習慣フォーム: 明示入力なし（Oura画像からは取得不可）。触れない。"
+    : formatLifestyle(lifestyle)
+}`,
             },
             ...(confirmedMetrics
               ? []
@@ -1288,15 +1319,20 @@ ${formatLifestyle(lifestyle)}`,
               ? lifestyle.measurementDate
               : undefined,
           metrics: confirmedMetrics,
-          lifestyle: {},
+          lifestyle: isOura
+            ? ouraLifestyleForRules(lifestyle)
+            : {},
         });
         const items = evaluateAllItems(insightInput);
         record.goodPoints = generateGoodPoints(items);
         record.improvements = generateImprovementItems(items);
-        sanitizeAnalysisNarratives(record);
+        sanitizeOuraAnalysisNarratives(record, hasOuraLifestyleEvidence);
       }
     } else if (analysis && typeof analysis === "object") {
-      sanitizeAnalysisNarratives(analysis as Record<string, unknown>);
+      sanitizeOuraAnalysisNarratives(
+        analysis as Record<string, unknown>,
+        hasOuraLifestyleEvidence,
+      );
     }
 
     if (typeof seedScore === "number" && analysis && typeof analysis === "object") {

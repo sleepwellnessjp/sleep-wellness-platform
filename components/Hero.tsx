@@ -1,7 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 
-export default function Hero() {
+type HeroProps = {
+  dashboardHref?: string | null;
+};
+
+export default function Hero({ dashboardHref = null }: HeroProps) {
   return (
     <section className="relative flex min-h-[88vh] overflow-hidden bg-[#071426] sm:min-h-screen">
       <div className="absolute inset-0">
@@ -44,12 +48,21 @@ export default function Hero() {
           </p>
 
           <div className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center">
-            <Link
-              href="/login"
-              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
-            >
-              プラットフォームに入る
-            </Link>
+            {dashboardHref ? (
+              <Link
+                href={dashboardHref}
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
+              >
+                ダッシュボード
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
+              >
+                プラットフォームに入る
+              </Link>
+            )}
 
             <Link
               href="/analysis/new"

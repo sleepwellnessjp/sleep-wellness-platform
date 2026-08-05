@@ -12,7 +12,7 @@ export default function InstructorPublicShell({
     <div className="min-h-screen bg-[#f7f7f5] text-[#071426]">
       <header className="border-b border-[#071426]/10 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <Link href="/welcome" className="inline-flex items-center gap-3">
+          <Link href="/" className="inline-flex items-center gap-3">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"

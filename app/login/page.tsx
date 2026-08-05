@@ -409,7 +409,7 @@ function LoginForm() {
     <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
       <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
-          <Link href="/welcome" className="flex min-h-11 items-center gap-3">
+          <Link href="/" className="flex min-h-11 items-center gap-3">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
@@ -640,10 +640,10 @@ function LoginForm() {
 
         <p className="mt-8 text-center text-sm text-slate-400">
           <Link
-            href="/welcome"
+            href="/"
             className="inline-flex min-h-11 items-center justify-center font-medium transition active:text-slate-600 sm:min-h-0 sm:hover:text-slate-600 sm:active:text-slate-400"
           >
-            ← ブランドサイトへ戻る
+            ← トップページへ戻る
           </Link>
         </p>
       </div>

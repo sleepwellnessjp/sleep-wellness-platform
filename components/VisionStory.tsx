@@ -82,7 +82,7 @@ export default function VisionStory() {
         </div>
 
         <div className="absolute left-6 top-6 z-20 sm:left-8 sm:top-8 lg:left-12 lg:top-10">
-          <Link href="/welcome" aria-label="Sleep Wellness Institute Japan トップへ">
+          <Link href="/" aria-label="Sleep Wellness Institute Japan トップへ">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
