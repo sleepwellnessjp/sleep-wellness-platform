@@ -436,6 +436,11 @@ const QUICK_ACTIONS = [
     description: "Community / 通知向けの告知準備",
   },
   {
+    href: "/admin/instructor-activity-schedules",
+    label: "活動予定",
+    description: "活動予定の確認・代理登録・編集・削除・公開切替",
+  },
+  {
     href: "/admin/academy",
     label: "教材更新",
     description: "Academy 認定・教材の管理",
