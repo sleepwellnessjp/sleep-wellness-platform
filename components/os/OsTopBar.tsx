@@ -5,8 +5,10 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import OsGlobalSearch from "@/components/os/OsGlobalSearch";
 import OsNotificationCenter from "@/components/os/OsNotificationCenter";
+import SiteNavMenu from "@/components/site/SiteNavMenu";
 import { FOCUS_RING, GOLD, NAVY } from "@/components/ui/tokens";
 import { useAuth } from "@/lib/auth/use-auth";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 import {
   homePathForRole,
 } from "@/lib/safe-redirect";
@@ -62,7 +64,16 @@ export default function OsTopBar({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-2.5">
+        <Link
+          href={HOME_TOP_HREF}
+          className={`inline-flex w-fit min-h-9 items-center rounded-full px-3 text-[12px] font-semibold transition hover:bg-[color:var(--sw-surface)] ${FOCUS_RING}`}
+          style={{ color: GOLD }}
+        >
+          ← トップページへ戻る
+        </Link>
+
+        <div className="flex items-center justify-between gap-3">
         <Link
           href={resolvedHome}
           className={`flex shrink-0 items-center gap-3 rounded-xl ${FOCUS_RING}`}
@@ -187,6 +198,9 @@ export default function OsTopBar({
               </div>
             ) : null}
           </div>
+
+          <SiteNavMenu />
+        </div>
         </div>
       </div>
 

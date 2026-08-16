@@ -207,7 +207,7 @@ export default function InstructorDashboardPage() {
           >
             今日やることと担当クライアント、今月の運営指標を確認しましょう。
           </p>
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/analysis/new"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-6 text-[15px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:px-8 sm:hover:opacity-90"
@@ -217,6 +217,45 @@ export default function InstructorDashboardPage() {
             </Link>
           </div>
         </header>
+
+        <section
+          className="mt-8 animate-fade-up rounded-3xl border bg-white px-5 py-6 sm:mt-10 sm:px-7 sm:py-7"
+          style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
+          aria-labelledby="event-manage-title"
+        >
+          <p
+            className="text-[10px] font-semibold tracking-[0.22em]"
+            style={{ color: GOLD }}
+          >
+            EVENTS
+          </p>
+          <h2
+            id="event-manage-title"
+            className="mt-2 text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+            style={{ color: NAVY }}
+          >
+            イベント・活動管理
+          </h2>
+          <p className="mt-2 text-[13px] leading-6 sm:text-[14px]" style={{ color: MUTED }}>
+            ご自身のワークショップやイベントを登録すると、認定インストラクターの活動として紹介されます。
+          </p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <Link
+              href="/instructor/activities/new"
+              className="inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:hover:opacity-90"
+              style={{ backgroundColor: NAVY }}
+            >
+              ＋ 新しいイベントを登録
+            </Link>
+            <Link
+              href="/instructor/activities"
+              className="inline-flex min-h-12 items-center justify-center rounded-2xl border px-5 text-[15px] font-semibold transition active:opacity-90 sm:min-h-11"
+              style={{ borderColor: BORDER, color: NAVY }}
+            >
+              登録済みイベントを管理
+            </Link>
+          </div>
+        </section>
 
         <section
           className="mt-8 animate-fade-up rounded-3xl border bg-white px-5 py-6 sm:mt-10 sm:px-7 sm:py-7"
@@ -239,7 +278,7 @@ export default function InstructorDashboardPage() {
           <p className="mt-2 text-[13px] leading-6 sm:text-[14px]" style={{ color: MUTED }}>
             日付・タイトル・短い説明・外部リンクを登録すると、トップページの「認定インストラクターの活動予定」に文字だけで表示されます。
           </p>
-          <div className="mt-5">
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <Link
               href="/instructor/activity-schedules"
               className="inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:hover:opacity-90"

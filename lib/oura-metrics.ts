@@ -73,6 +73,22 @@ export function ouraVisionToAnalysisMetrics(
   out.bedtime = metrics.bedtime?.trim() || "";
   out.wakeTime = metrics.wakeTime?.trim() || "";
   out.awakenings = minutesToDisplay(metrics.awakeDuration);
+  if (!out.awakenings && metrics.awakeTime) {
+    // 「3時間43分」など時間表記が awakeTime に入っている場合
+    const awakeAsDuration = minutesToDisplay(
+      (() => {
+        const text = metrics.awakeTime.trim();
+        const jp = text.match(/(\d+)\s*時間\s*(\d+)?\s*分?/);
+        if (jp) {
+          const h = Number(jp[1]);
+          const m = Number(jp[2] ?? 0);
+          if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+        }
+        return null;
+      })(),
+    );
+    if (awakeAsDuration) out.awakenings = awakeAsDuration;
+  }
   out.awakeningRate = percentToDisplay(metrics.awakePercent);
   out.remSleep = minutesToDisplay(metrics.remDuration);
   out.remSleepRate = percentToDisplay(metrics.remPercent);
@@ -111,8 +127,9 @@ export function ouraVisionToAnalysisMetrics(
   out.respiratoryRate = rpmToDisplay(metrics.respiratoryRate);
   out.spo2 = percentToDisplay(metrics.averageSpO2);
   out.skinTemperature = tempDevToDisplay(metrics.bodyTemperatureDeviation);
+  out.sleepDebt = minutesToDisplay(metrics.sleepDebtMinutes);
+  out.stress = minutesToDisplay(metrics.daytimeStressMinutes);
 
-  // Oura にストレス数値がない場合は空のまま（推測禁止）
   return out;
 }
 

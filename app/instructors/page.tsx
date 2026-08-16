@@ -2,38 +2,29 @@ import type { Metadata } from "next";
 import Footer from "@/components/Footer";
 import InstructorPublicShell from "@/components/instructors/InstructorPublicShell";
 import InstructorsDirectory from "@/components/instructors/InstructorsDirectory";
+import { mergePublicInstructorsWithRoster } from "@/lib/instructors/certified-roster";
 import { listPublicInstructors } from "@/lib/instructors/instructor-profile-service";
 import {
   CERTIFIED_INSTRUCTOR_TITLE,
   type InstructorPublicCard,
 } from "@/lib/instructors/types";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const metadata: Metadata = {
   title: `${CERTIFIED_INSTRUCTOR_TITLE} | Sleep Wellness Institute Japan`,
   description:
-    "メラトニンヨガ™認定講師の一覧。活動地域・オンライン対応・指導分野から認定講師を探せます。",
+    "メラトニンヨガ™認定講師の一覧。名前から認定講師を探せます。",
 };
 
 export const dynamic = "force-dynamic";
 
 export default async function InstructorsPage() {
   let instructors: InstructorPublicCard[] = [];
-  let loadError: string | null = null;
 
-  if (!isSupabaseConfigured()) {
-    loadError = "現在、講師一覧を表示できません。";
-  } else {
-    try {
-      instructors = await listPublicInstructors();
-    } catch (error) {
-      console.error("[instructors page]", error);
-      loadError =
-        error instanceof Error
-          ? error.message
-          : "講師一覧の取得に失敗しました。";
-      instructors = [];
-    }
+  try {
+    instructors = await listPublicInstructors();
+  } catch (error) {
+    console.error("[instructors page]", error);
+    instructors = mergePublicInstructorsWithRoster([]);
   }
 
   return (
@@ -51,15 +42,6 @@ export default async function InstructorsPage() {
             が認定する講師をご紹介します。医療行為ではなく、睡眠ウェルネスの実践を支える認定講師です。
           </p>
         </div>
-
-        {loadError ? (
-          <div className="mt-10 rounded-[24px] border border-[#a33a3a]/20 bg-white px-5 py-4 text-sm text-[#a33a3a]">
-            {loadError}
-            {loadError.includes("column") || loadError.includes("does not exist")
-              ? " — supabase/instructor-public-profiles.sql を SQL Editor で実行してください。"
-              : null}
-          </div>
-        ) : null}
 
         <div className="mt-10">
           <InstructorsDirectory initialInstructors={instructors} />

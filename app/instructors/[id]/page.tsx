@@ -4,17 +4,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Footer from "@/components/Footer";
 import InstructorPublicShell from "@/components/instructors/InstructorPublicShell";
+import ActivityCard from "@/components/instructor-activities/ActivityCard";
+import { listPublishedActivities, toPublicCard } from "@/lib/instructor-activities/service";
 import { getPublicInstructor } from "@/lib/instructors/instructor-profile-service";
 import { CERTIFIED_INSTRUCTOR_TITLE } from "@/lib/instructors/types";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id } = await params;
-  if (!isSupabaseConfigured()) {
-    return { title: CERTIFIED_INSTRUCTOR_TITLE };
-  }
   try {
     const instructor = await getPublicInstructor(id);
     if (!instructor) return { title: CERTIFIED_INSTRUCTOR_TITLE };
@@ -48,9 +46,23 @@ function Section({
   );
 }
 
+function photoObjectPosition(name: string): string {
+  switch (name) {
+    case "若林貴久":
+      return "object-top";
+    case "加地史佳":
+      return "object-top";
+    case "矢田朝美":
+      return "object-[center_12%]";
+    case "若林香織":
+      return "object-[center_22%]";
+    default:
+      return "object-[center_18%]";
+  }
+}
+
 export default async function InstructorDetailPage({ params }: Params) {
   const { id } = await params;
-  if (!isSupabaseConfigured()) notFound();
 
   let instructor = null;
   try {
@@ -61,14 +73,19 @@ export default async function InstructorDetailPage({ params }: Params) {
   }
   if (!instructor) notFound();
 
-  const contactHref = instructor.contactEmail
-    ? `mailto:${instructor.contactEmail}?subject=${encodeURIComponent(`${instructor.activityName} へのお問い合わせ`)}`
-    : null;
+  const instructorEvents = await listPublishedActivities({
+    instructorId: instructor.id,
+  });
 
   const teaching = [
     ...instructor.yogaSpecialties,
     ...instructor.pilatesSpecialties,
   ];
+
+  const headlineLines = instructor.headline
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   return (
     <InstructorPublicShell title="認定講師詳細">
@@ -89,7 +106,7 @@ export default async function InstructorDetailPage({ params }: Params) {
                   alt={instructor.activityName}
                   fill
                   priority
-                  className="object-cover"
+                  className={`object-cover ${photoObjectPosition(instructor.activityName)}`}
                   sizes="(min-width:1024px) 40vw, 100vw"
                 />
               ) : (
@@ -102,14 +119,12 @@ export default async function InstructorDetailPage({ params }: Params) {
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {contactHref ? (
-                <a
-                  href={contactHref}
-                  className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-[#071426] px-5 text-sm font-semibold text-white transition hover:bg-[#0d2238] sm:flex-none"
-                >
-                  問い合わせる
-                </a>
-              ) : null}
+              <Link
+                href="/contact"
+                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-[#071426] px-5 text-sm font-semibold text-white transition hover:bg-[#0d2238] sm:flex-none"
+              >
+                問い合わせ
+              </Link>
               {instructor.instagramUrl ? (
                 <a
                   href={instructor.instagramUrl}
@@ -145,10 +160,17 @@ export default async function InstructorDetailPage({ params }: Params) {
                 {instructor.legalName}
               </p>
             ) : null}
-            {instructor.headline ? (
-              <p className="mt-4 text-lg leading-8 text-[#071426]/85">
-                {instructor.headline}
-              </p>
+            {headlineLines.length > 0 ? (
+              <div className="mt-4 space-y-1">
+                {headlineLines.map((line) => (
+                  <p
+                    key={line}
+                    className="text-lg leading-8 text-[#071426]/85"
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
             ) : null}
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -160,11 +182,11 @@ export default async function InstructorDetailPage({ params }: Params) {
                   活動地域: {instructor.activityArea}
                 </span>
               ) : null}
-              <span className="rounded-full border border-[#071426]/10 bg-white px-3 py-1.5 text-xs font-medium text-[#071426]/80">
-                {instructor.onlineAvailable
-                  ? "オンライン対応可"
-                  : "オンライン非対応"}
-              </span>
+              {instructor.onlineAvailable ? (
+                <span className="rounded-full border border-[#071426]/10 bg-white px-3 py-1.5 text-xs font-medium text-[#071426]/80">
+                  オンライン対応可
+                </span>
+              ) : null}
             </div>
 
             <div className="mt-8 space-y-6">
@@ -179,8 +201,16 @@ export default async function InstructorDetailPage({ params }: Params) {
                 </Section>
               ) : null}
               {instructor.bio ? (
-                <Section title="自己紹介">
-                  <p className="whitespace-pre-wrap">{instructor.bio}</p>
+                <Section title="プロフィール">
+                  <div className="space-y-4 whitespace-pre-wrap">
+                    {instructor.bio
+                      .split(/\n+/)
+                      .map((p) => p.trim())
+                      .filter(Boolean)
+                      .map((p) => (
+                        <p key={p.slice(0, 32)}>{p}</p>
+                      ))}
+                  </div>
                 </Section>
               ) : null}
               {instructor.specialties.length > 0 ? (
@@ -223,6 +253,19 @@ export default async function InstructorDetailPage({ params }: Params) {
             </div>
           </div>
         </div>
+
+        {instructorEvents.length > 0 ? (
+          <section className="mt-12 border-t border-[#071426]/08 pt-8">
+            <h2 className="text-xs font-semibold tracking-[0.22em] text-[#8a6a2d]">
+              このインストラクターのイベント
+            </h2>
+            <div className="mt-4 grid grid-cols-1 gap-4 min-[420px]:grid-cols-2">
+              {instructorEvents.map((activity) => (
+                <ActivityCard key={activity.id} activity={toPublicCard(activity)} />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </main>
       <Footer />
     </InstructorPublicShell>

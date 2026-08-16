@@ -12,7 +12,7 @@ export default function Founder() {
   return (
     <section
       id="founder"
-      className="relative overflow-hidden bg-[#071426] py-16 sm:py-20 lg:py-24"
+      className="relative overflow-hidden bg-[#071426] py-24 sm:py-20 lg:py-24"
     >
       <div className="absolute -left-40 top-0 h-[320px] w-[320px] rounded-full bg-cyan-300/8 blur-3xl" />
       <div className="absolute -right-40 bottom-0 h-[360px] w-[360px] rounded-full bg-amber-300/8 blur-3xl" />
@@ -22,10 +22,10 @@ export default function Founder() {
           <div className="relative overflow-hidden rounded-[32px] shadow-[0_40px_120px_-50px_rgba(0,0,0,0.65)]">
             <div className="relative aspect-[4/5] min-h-[360px] sm:min-h-[440px]">
               <Image
-                src="/taka-photo.jpg"
+                src="/taka-photo-v2.jpg"
                 alt="若林貴久"
                 fill
-                className="object-cover object-top"
+                className="object-cover object-[center_85%]"
                 sizes="(min-width:1024px) 40vw,100vw"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-transparent to-[#071426]/10" />

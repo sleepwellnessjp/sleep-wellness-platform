@@ -56,3 +56,9 @@ export async function prepareImageForVision(dataUrl: string): Promise<string> {
     return dataUrl;
   }
 }
+
+export async function prepareImagesForVision(
+  images: string[],
+): Promise<string[]> {
+  return Promise.all(images.map((image) => prepareImageForVision(image)));
+}

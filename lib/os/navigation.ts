@@ -21,6 +21,7 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/evidence", label: "実証データ", match: "/admin/evidence" },
   { href: "/admin/roles", label: "権限", match: "/admin/roles" },
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
+  { href: "/admin/instructor-activities", label: "講師イベント", match: "/admin/instructor-activities" },
   { href: "/admin/instructor-activity-schedules", label: "活動予定", match: "/admin/instructor-activity-schedules" },
   { href: "/admin/schools", label: "認定校", match: "/admin/schools" },
   { href: "/admin/licenses", label: "License", match: "/admin/licenses" },
@@ -32,7 +33,7 @@ const ADMIN_NAV: OsNavItem[] = [
 
 /** Version 2.2 — 認定校ナビゲーション */
 const SCHOOL_NAV: OsNavItem[] = [
-  { href: "/school", label: "校ダッシュボード", match: "/school" },
+  { href: "/portal/school", label: "校ダッシュボード", match: "/portal/school" },
   { href: "/admin/schools", label: "校情報", match: "/admin/schools" },
   { href: "/billing", label: "プラン", match: "/billing" },
   { href: "/notifications", label: "通知", match: "/notifications" },
@@ -44,6 +45,7 @@ const INSTRUCTOR_NAV: OsNavItem[] = [
   { href: "/dashboard", label: "Dashboard", match: "/dashboard" },
   { href: "/clients", label: "Clients", match: "/clients" },
   { href: "/analysis/new", label: "Analysis", match: "/analysis" },
+  { href: "/instructor/activities", label: "イベント・活動管理", match: "/instructor/activities" },
   { href: "/instructor/activity-schedules", label: "活動予定", match: "/instructor/activity-schedules" },
   { href: "/journey", label: "Journey", match: "/journey" },
   { href: "/homework", label: "Homework", match: "/homework" },
@@ -115,6 +117,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         title: "認定講師管理",
         description: "レベル・更新・停止・退会を運営します。",
         href: "/admin/certification",
+      },
+      {
+        id: "instructor-activities",
+        eyebrow: "EVENTS",
+        title: "認定講師イベント管理",
+        description: "認定インストラクターが登録したイベントの公開・編集・削除。",
+        href: "/admin/instructor-activities",
       },
       {
         id: "instructor-activity-schedules",
@@ -203,7 +212,7 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         eyebrow: "SCHOOL",
         title: "認定校ダッシュボード",
         description: "所属講師・受講状況・プランを確認します。",
-        href: "/school",
+        href: "/portal/school",
       },
       {
         id: "billing",
@@ -237,6 +246,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         title: "Analysis",
         description: "睡眠分析ワークスペースを開きます。",
         href: "/analysis/new",
+      },
+      {
+        id: "instructor-activities",
+        eyebrow: "EVENTS",
+        title: "イベント・活動管理",
+        description: "自分のワークショップやイベントを登録し、プラットフォームで紹介します。",
+        href: "/instructor/activities",
       },
       {
         id: "instructor-activity-schedules",
@@ -522,8 +538,10 @@ export function isNavItemActive(pathname: string, item: OsNavItem): boolean {
   if (item.match === "/license") {
     return pathname === "/license" || pathname.startsWith("/license/");
   }
-  if (item.match === "/school") {
-    return pathname === "/school" || pathname.startsWith("/school/");
+  if (item.match === "/portal/school") {
+    return (
+      pathname === "/portal/school" || pathname.startsWith("/portal/school/")
+    );
   }
   if (item.match.includes("#")) {
     const base = item.match.split("#")[0] ?? item.match;

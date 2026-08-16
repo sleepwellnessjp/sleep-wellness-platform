@@ -59,10 +59,25 @@ function fromVision(vision: OuraVisionMetrics): Partial<SleepAnalysisData> {
     temperatureDeviation: vision.bodyTemperatureDeviation,
     spo2: vision.averageSpO2,
     recoveryMinutes: (() => {
+      if (
+        vision.daytimeRecoveryMinutes != null &&
+        Number.isFinite(vision.daytimeRecoveryMinutes)
+      ) {
+        return Math.round(vision.daytimeRecoveryMinutes);
+      }
       const raw = vision.recoveryTime?.trim();
       if (!raw) return null;
       return parseMetricMinutes(raw);
     })(),
+    sleepDebt:
+      vision.sleepDebtMinutes != null && Number.isFinite(vision.sleepDebtMinutes)
+        ? Math.round(vision.sleepDebtMinutes)
+        : null,
+    stressMinutes:
+      vision.daytimeStressMinutes != null &&
+      Number.isFinite(vision.daytimeStressMinutes)
+        ? Math.round(vision.daytimeStressMinutes)
+        : null,
     resilienceScore: null,
   };
 }

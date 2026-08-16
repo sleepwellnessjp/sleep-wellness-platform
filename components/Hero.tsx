@@ -1,5 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
+import SiteNavMenu from "@/components/site/SiteNavMenu";
+import JapanNightBackdrop from "@/components/site/JapanNightBackdrop";
+import SleepWordsBanner from "@/components/home/SleepWordsBanner";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 type HeroProps = {
   dashboardHref?: string | null;
@@ -7,76 +11,96 @@ type HeroProps = {
 
 export default function Hero({ dashboardHref = null }: HeroProps) {
   return (
-    <section className="relative flex min-h-[88vh] overflow-hidden bg-[#071426] sm:min-h-screen">
-      <div className="absolute inset-0">
-        <Image
-          src="/melatonin-yoga.jpg"
-          alt="Melatonin Yoga"
-          fill
-          priority
-          className="object-cover"
-          sizes="100vw"
-        />
-        <div className="absolute inset-0 bg-[#071426]/55" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#071426]/95 via-[#071426]/75 to-[#071426]/35" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#071426]/40 via-transparent to-[#071426]/90" />
+    <section
+      data-swij-hero=""
+      className="relative flex min-h-[90vh] overflow-hidden bg-[#040c18] sm:min-h-screen"
+    >
+      {/* 日本の夜の世界観（完成イメージ方向・1枚貼り付けではない） */}
+      <JapanNightBackdrop />
+
+      {/* スマホ: ロゴ帯・ハンバーガーを月の下へ（重なり回避） / PCは従来位置 */}
+      <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+2.25rem)] z-20 flex items-center justify-between max-sm:top-[calc(env(safe-area-inset-top,0px)+9.5rem)] sm:left-8 sm:right-8 sm:top-8 lg:left-12 lg:right-12 lg:top-10">
+        <Link
+          href={HOME_TOP_HREF}
+          className="inline-flex min-h-11 min-w-11 items-center py-1.5 pr-2 sm:min-h-0 sm:py-0 sm:pr-0"
+        >
+          <Image
+            src="/swij-logo-horizontal-on-dark.png"
+            alt="Sleep Wellness Institute Japan"
+            width={200}
+            height={50}
+            priority
+            className="h-auto w-[148px] bg-transparent sm:w-[168px] lg:w-[188px]"
+          />
+        </Link>
+        <SiteNavMenu tone="light" />
       </div>
 
-      <div className="absolute left-6 top-6 z-20 animate-fade-in sm:left-8 sm:top-8 lg:left-12 lg:top-10">
-        <Image
-          src="/swij-logo-horizontal.png"
-          alt="Sleep Wellness Institute Japan"
-          width={190}
-          height={48}
-          priority
-          className="h-auto w-[150px] sm:w-[170px] lg:w-[190px]"
-        />
-      </div>
-
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center px-6 pt-28 pb-28 sm:px-8 lg:px-10 lg:pb-32">
-        <div className="max-w-4xl animate-fade-up">
-          <h1 className="text-[2.75rem] font-semibold leading-[1.02] tracking-[-0.06em] text-white sm:text-6xl lg:text-8xl">
-            睡眠を、
-            <br />
-            日本の新しい文化へ。
-          </h1>
-
-          <p className="mt-8 max-w-xl text-base leading-8 text-white/75 sm:mt-10 sm:text-lg lg:text-xl lg:leading-9">
-            睡眠科学・ヨガ・データ分析を融合した、
-            <br className="hidden sm:block" />
-            日本初の Sleep Wellness Platform。
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-28 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+14rem)] max-sm:pb-[calc(var(--sw-beta-chrome-offset)+2.25rem)]">
+        <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
+          <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
+            SLEEP WELLNESS METHOD™
           </p>
 
-          <div className="mt-10 flex w-full max-w-md flex-col gap-3 sm:mt-12 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center">
+          <h1 className="mt-6 text-[clamp(1.7rem,4.6vw+0.55rem,3.55rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:mt-7 max-sm:tracking-[-0.03em]">
+            睡眠を、
+            <br />
+            <span className="whitespace-nowrap">日本の新しい文化へ。</span>
+          </h1>
+
+          <p className="mx-auto mt-7 max-w-lg text-base leading-8 text-white/72 sm:mt-9 sm:text-lg sm:leading-9 max-sm:mt-8 max-sm:max-w-sm max-sm:text-[15px] max-sm:leading-8 max-sm:text-white/70">
+            データから優先順位を決め、昼と夜の実践で整える。
+            <br className="hidden sm:block" />
+            Sleep Wellness Institute Japan の Method です。
+          </p>
+
+          {/* スマホ: 縦積みフル幅 / PC: 既存の2列（中央寄せ・右の行灯と重なりすぎない幅） */}
+          <div className="mx-auto mt-9 grid w-full max-w-md grid-cols-1 gap-x-4 gap-y-2 sm:mt-11 sm:w-fit sm:max-w-none sm:grid-cols-2 max-sm:mt-10 max-sm:w-full max-sm:max-w-none max-sm:grid-cols-1 max-sm:gap-y-4">
             {dashboardHref ? (
               <Link
                 href={dashboardHref}
-                className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
+                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-8 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-0.5 hover:bg-[#f4f4f4] sm:text-base"
               >
-                ダッシュボード
+                認定講師専用ページ
               </Link>
             ) : (
               <Link
                 href="/login"
-                className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-1 hover:bg-[#f4f4f4] hover:shadow-[0_20px_40px_-20px_rgba(255,255,255,0.45)] sm:text-base"
+                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-8 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-0.5 hover:bg-[#f4f4f4] sm:text-base"
               >
-                プラットフォームに入る
+                認定講師専用ページ
               </Link>
             )}
 
             <Link
-              href="/analysis/new"
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-1 hover:border-white/40 hover:bg-white/20 sm:text-base"
+              href={
+                dashboardHref
+                  ? "/analysis/new"
+                  : "/login?redirect=%2Fanalysis%2Fnew"
+              }
+              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-white/30 bg-white/10 px-8 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-0.5 hover:border-white/45 hover:bg-white/18 sm:text-base"
             >
-              睡眠分析を受ける
+              クライアントの分析
             </Link>
 
+            <span className="hidden sm:block" aria-hidden="true" />
+            <p className="px-1 text-center text-[11px] leading-5 text-white/50 sm:text-xs sm:leading-5 max-sm:mt-1 max-sm:pt-1">
+              認定講師専用
+            </p>
+          </div>
+
+          <p className="mt-8 max-sm:mt-8 max-sm:mb-2">
             <Link
               href="/academy/certified-instructor"
-              className="inline-flex min-h-12 items-center justify-center px-3 py-3.5 text-sm font-semibold text-white/80 transition duration-300 hover:text-white sm:text-base"
+              className="text-sm font-medium text-white/65 transition hover:text-white"
             >
               認定講師になる →
             </Link>
+          </p>
+
+          {/* 「認定講師になる →」直下：睡眠のための言葉 */}
+          <div className="mx-auto mt-5 w-full max-w-md sm:mt-6 sm:max-w-lg max-sm:mt-5">
+            <SleepWordsBanner tone="onDark" />
           </div>
         </div>
       </div>

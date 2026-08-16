@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GOLD, NAVY } from "@/components/ui/tokens";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 export default function NotFoundPage() {
   return (
@@ -22,7 +23,7 @@ export default function NotFoundPage() {
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Link
-            href="/"
+            href={HOME_TOP_HREF}
             className="inline-flex min-h-12 w-full items-center justify-center rounded-full px-6 text-[14px] font-semibold text-white transition active:opacity-90 sm:w-auto sm:min-h-11 sm:hover:opacity-90 sm:active:opacity-100"
             style={{ backgroundColor: NAVY }}
           >

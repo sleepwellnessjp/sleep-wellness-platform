@@ -4,25 +4,25 @@ import Link from "next/link";
 const services = [
   {
     number: "01",
-    title: "メラトニンヨガ™",
-    description: "ヨガ・呼吸・瞑想で、夜の休息へ導く実践プログラム。",
-    image: "/melatonin-yoga.jpg",
-    href: "#contact",
-    cta: "体験を相談する",
+    title: "間のヨガ™",
+    description: "昼の切り替えを整え、夜の休息へつなぐ Method の一部。",
+    image: "/yogafest2.jpg",
+    href: "/ma-no-yoga",
+    cta: "昼のプログラムを見る",
   },
   {
     number: "02",
-    title: "Sleep Analysis",
-    description: "睡眠データと生活習慣から、改善の優先順位を可視化。",
-    image: "/sleep-analysis.jpg",
-    href: "/analysis/new",
-    cta: "睡眠分析を受ける",
+    title: "メラトニンヨガ™",
+    description: "就寝前に、活動から休息へ穏やかに切り替える夜の実践。",
+    image: "/melatonin-yoga.jpg",
+    href: "/melatonin-yoga",
+    cta: "夜プログラムを見る",
   },
   {
     number: "03",
     title: "Academy",
-    description: "NavigatorからInstructorへ。睡眠ウェルネスを伝える人材を育成。",
-    image: "/soxai-taka.jpg",
+    description: "認定講師が Method を伝え、社会へ広げていく。",
+    image: "/academy.jpg",
     href: "/academy/certified-instructor",
     cta: "認定講師になる",
   },
@@ -32,61 +32,59 @@ export default function Services() {
   return (
     <section
       id="services"
-      className="relative overflow-hidden bg-[#fafaf8] py-16 sm:py-20 lg:py-24"
+      className="relative scroll-mt-6 overflow-hidden bg-[#071426] py-28 sm:scroll-mt-8 sm:py-24 lg:py-28"
     >
-      <div className="absolute -left-40 top-0 h-[320px] w-[320px] rounded-full bg-cyan-100/40 blur-3xl" />
-      <div className="absolute -right-40 bottom-0 h-[360px] w-[360px] rounded-full bg-amber-100/35 blur-3xl" />
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#d8b36a]/25 to-transparent" />
+      <div className="absolute -right-48 top-10 h-[380px] w-[380px] rounded-full bg-cyan-300/8 blur-3xl" />
+      <div className="absolute -left-48 bottom-0 h-[360px] w-[360px] rounded-full bg-amber-300/8 blur-3xl" />
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-xs font-semibold tracking-[0.30em] text-[#8a6a2d]">
-            SERVICES
+        <div className="max-w-2xl">
+          <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
+            PRACTICE
           </p>
 
-          <h2 className="mt-4 text-3xl font-semibold tracking-[-0.05em] text-[#071426] sm:text-4xl lg:text-5xl">
-            3つのサービス
+          <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl">
+            昼と夜で、眠りを整える
           </h2>
 
-          <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-slate-600">
-            実践・分析・育成で、睡眠ウェルネスを届けます。
+          <p className="mt-5 max-w-xl text-base leading-8 text-white/70">
+            Sleep Wellness Method™ は、分析結果を実践へつなぐための流れです。
           </p>
         </div>
 
-        <div className="mt-12 grid gap-5 lg:mt-14 lg:grid-cols-3">
+        <div className="mt-14 grid gap-6 lg:grid-cols-3 lg:gap-7">
           {services.map((service) => (
             <article
               key={service.title}
-              className="group overflow-hidden rounded-[28px] bg-white shadow-[0_24px_70px_-45px_rgba(15,23,42,0.18)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_32px_80px_-40px_rgba(15,23,42,0.22)]"
+              className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
             >
               <div className="relative aspect-[16/10] overflow-hidden">
                 <Image
                   src={service.image}
                   alt={service.title}
                   fill
-                  className="object-cover transition-transform duration-700 group-hover:scale-105"
+                  className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
                   sizes="(min-width:1024px) 30vw, 100vw"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/55 via-transparent to-transparent" />
-                <p className="absolute left-5 bottom-4 text-xs font-bold tracking-[0.22em] text-amber-200">
+                <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-[#071426]/20 to-transparent" />
+                <p className="absolute bottom-4 left-5 text-xs font-semibold tracking-[0.2em] text-[#d8b36a]">
                   {service.number}
                 </p>
               </div>
 
-              <div className="p-6 sm:p-7">
-                <h3 className="text-xl font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+              <div className="px-6 py-7 sm:px-7">
+                <h3 className="text-xl font-semibold tracking-[-0.03em] text-white">
                   {service.title}
                 </h3>
-
-                <p className="mt-3 text-sm leading-7 text-slate-600">
+                <p className="mt-3 text-[14px] leading-7 text-white/65">
                   {service.description}
                 </p>
-
                 <Link
                   href={service.href}
-                  className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#315f68] transition-colors hover:text-[#8a6a2d]"
+                  className="mt-5 inline-flex text-sm font-semibold text-[#d8b36a] transition hover:text-white"
                 >
-                  {service.cta}
-                  <span aria-hidden="true">→</span>
+                  {service.cta} →
                 </Link>
               </div>
             </article>

@@ -1,11 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  getRosterInstructor,
+  mergePublicInstructorsWithRoster,
+} from "@/lib/instructors/certified-roster";
+import {
   matchesDirectoryFilters,
   toEditableProfile,
   toPublicCard,
   toPublicDetail,
   type CertifiedInstructorRow,
 } from "@/lib/instructors/mappers";
+import { resolveCertifiedInstructorPublicSelect } from "@/lib/instructors/public-profile-columns";
 import type {
   InstructorDirectoryFilters,
   InstructorProfileEditable,
@@ -15,11 +20,9 @@ import type {
 } from "@/lib/instructors/types";
 import type { Database } from "@/lib/supabase/database.types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type Client = SupabaseClient<Database>;
-
-const PUBLIC_SELECT =
-  "id, user_id, school_id, level_id, instructor_number, display_name, email, status, certified_at, renews_at, usage_start_date, suspended_at, withdrawn_at, last_renewed_at, status_history, admin_memo, created_at, updated_at, profile_image_url, public_name, public_display_name, legal_name, show_legal_name, headline, bio, career, activity_area, service_area, online_available, yoga_specialties, pilates_specialties, specialties, available_programs, instagram_url, website_url, contact_email, is_public, recommendation_note, display_order, profile_updated_at";
 
 async function requireClient(): Promise<Client> {
   const supabase = await createServerSupabaseClient();
@@ -31,47 +34,120 @@ function asRow(data: unknown): CertifiedInstructorRow {
   return data as CertifiedInstructorRow;
 }
 
+function withPublicDefaults(row: CertifiedInstructorRow): CertifiedInstructorRow {
+  return {
+    ...row,
+    profile_image_url: row.profile_image_url ?? null,
+    public_display_name: row.public_display_name ?? "",
+    legal_name: row.legal_name ?? "",
+    show_legal_name: row.show_legal_name ?? false,
+    headline: row.headline ?? "",
+    bio: row.bio ?? "",
+    career: row.career ?? "",
+    activity_area: row.activity_area ?? "",
+    service_area: row.service_area ?? "",
+    online_available: row.online_available ?? false,
+    yoga_specialties: row.yoga_specialties ?? [],
+    pilates_specialties: row.pilates_specialties ?? [],
+    specialties: row.specialties ?? [],
+    available_programs: row.available_programs ?? [],
+    instagram_url: row.instagram_url ?? "",
+    website_url: row.website_url ?? "",
+    contact_email: row.contact_email ?? "",
+    is_public: row.is_public ?? false,
+    recommendation_note: row.recommendation_note ?? "",
+    display_order: row.display_order ?? 1000,
+    profile_updated_at: row.profile_updated_at ?? null,
+  };
+}
+
 export async function listPublicInstructors(
   filters: InstructorDirectoryFilters = {},
   client?: Client,
 ): Promise<InstructorPublicCard[]> {
-  const supabase = client ?? (await requireClient());
-  const { data, error } = await supabase
-    .from("certified_instructors")
-    .select(PUBLIC_SELECT)
-    .eq("is_public", true)
-    .eq("status", "active")
-    .order("display_order", { ascending: true })
-    .order("public_display_name", { ascending: true });
+  const applyFilters = (cards: InstructorPublicCard[]) =>
+    cards.filter((card) => matchesDirectoryFilters(card, filters));
 
-  if (error) {
-    console.error("[instructors] listPublicInstructors:", error.message);
-    throw new Error(error.message);
+  if (!client && !isSupabaseConfigured()) {
+    return applyFilters(mergePublicInstructorsWithRoster([]));
   }
 
-  const cards = (data ?? []).map((row) => toPublicCard(asRow(row)));
-  return cards.filter((card) => matchesDirectoryFilters(card, filters));
+  try {
+    const supabase = client ?? (await requireClient());
+    const schema = await resolveCertifiedInstructorPublicSelect(supabase);
+
+    // 公開フラグ列が未適用のときは名簿のみ返す
+    if (!schema.hasIsPublic) {
+      return applyFilters(mergePublicInstructorsWithRoster([]));
+    }
+
+    let query = supabase
+      .from("certified_instructors")
+      .select(schema.select)
+      .eq("is_public", true)
+      .eq("status", "active");
+
+    if (schema.hasDisplayOrder) {
+      query = query.order("display_order", { ascending: true });
+    }
+    if (schema.hasPublicDisplayName) {
+      query = query.order("public_display_name", { ascending: true });
+    } else {
+      query = query.order("display_name", { ascending: true });
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("[instructors] listPublicInstructors:", error.message);
+      return applyFilters(mergePublicInstructorsWithRoster([]));
+    }
+
+    const cards = (data ?? []).map((row) =>
+      toPublicCard(withPublicDefaults(asRow(row))),
+    );
+    return applyFilters(mergePublicInstructorsWithRoster(cards));
+  } catch (error) {
+    console.error("[instructors] listPublicInstructors fallback:", error);
+    return applyFilters(mergePublicInstructorsWithRoster([]));
+  }
 }
 
 export async function getPublicInstructor(
   id: string,
   client?: Client,
 ): Promise<InstructorPublicDetail | null> {
-  const supabase = client ?? (await requireClient());
-  const { data, error } = await supabase
-    .from("certified_instructors")
-    .select(PUBLIC_SELECT)
-    .eq("id", id)
-    .eq("is_public", true)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (error) {
-    console.error("[instructors] getPublicInstructor:", error.message);
-    throw new Error(error.message);
+  const rosterHit = getRosterInstructor(id);
+  if (!client && !isSupabaseConfigured()) {
+    return rosterHit;
   }
-  if (!data) return null;
-  return toPublicDetail(asRow(data));
+
+  try {
+    const supabase = client ?? (await requireClient());
+    const schema = await resolveCertifiedInstructorPublicSelect(supabase);
+
+    if (!schema.hasIsPublic) {
+      return rosterHit;
+    }
+
+    const { data, error } = await supabase
+      .from("certified_instructors")
+      .select(schema.select)
+      .eq("id", id)
+      .eq("is_public", true)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (error) {
+      console.error("[instructors] getPublicInstructor:", error.message);
+      return rosterHit;
+    }
+    if (!data) return rosterHit;
+    return toPublicDetail(withPublicDefaults(asRow(data)));
+  } catch (error) {
+    console.error("[instructors] getPublicInstructor fallback:", error);
+    return rosterHit;
+  }
 }
 
 export async function getOwnInstructorProfile(
@@ -83,9 +159,10 @@ export async function getOwnInstructorProfile(
   } = await supabase.auth.getUser();
   if (!user) return null;
 
+  const schema = await resolveCertifiedInstructorPublicSelect(supabase);
   const { data, error } = await supabase
     .from("certified_instructors")
-    .select(PUBLIC_SELECT)
+    .select(schema.select)
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -94,7 +171,7 @@ export async function getOwnInstructorProfile(
     throw new Error(error.message);
   }
   if (!data) return null;
-  return toEditableProfile(asRow(data));
+  return toEditableProfile(withPublicDefaults(asRow(data)));
 }
 
 function normalizeUrl(value: string | undefined): string | undefined {
@@ -186,11 +263,12 @@ export async function updateOwnInstructorProfile(
     patch.profile_image_url = input.profileImageUrl;
   }
 
+  const schema = await resolveCertifiedInstructorPublicSelect(supabase);
   const { data, error } = await supabase
     .from("certified_instructors")
     .update(patch)
     .eq("user_id", user.id)
-    .select(PUBLIC_SELECT)
+    .select(schema.select)
     .maybeSingle();
 
   if (error) {
@@ -202,7 +280,7 @@ export async function updateOwnInstructorProfile(
       "認定講師レコードが見つかりません。本部にお問い合わせください。",
     );
   }
-  return toEditableProfile(asRow(data));
+  return toEditableProfile(withPublicDefaults(asRow(data)));
 }
 
 /** 管理者: 任意の講師プロフィールを更新（運営上書き防止のため明示 API 経由のみ） */
@@ -289,14 +367,15 @@ export async function updateInstructorProfileAsAdmin(
     patch.profile_image_url = input.profileImageUrl;
   }
 
+  const schema = await resolveCertifiedInstructorPublicSelect(supabase);
   const { data, error } = await supabase
     .from("certified_instructors")
     .update(patch)
     .eq("id", instructorId)
-    .select(PUBLIC_SELECT)
+    .select(schema.select)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!data) throw new Error("認定講師が見つかりません");
-  return toEditableProfile(asRow(data));
+  return toEditableProfile(withPublicDefaults(asRow(data)));
 }

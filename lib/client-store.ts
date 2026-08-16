@@ -271,8 +271,12 @@ function patchDemoClientAnalyses(clients: StoredClient[]): StoredClient[] {
 
 function writeClients(clients: StoredClient[]) {
   if (!canUseStorage()) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
-  window.dispatchEvent(new Event("swij-clients-updated"));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    window.dispatchEvent(new Event("swij-clients-updated"));
+  } catch (error) {
+    console.error("Failed to persist clients:", error);
+  }
 }
 
 function buildSeedClients(): StoredClient[] {

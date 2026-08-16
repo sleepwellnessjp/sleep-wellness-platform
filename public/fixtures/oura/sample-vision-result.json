@@ -43,7 +43,18 @@
     "totalSleepScore": 70,
     "remSleepScore": 78,
     "deepSleepScore": 82,
-    "efficiencyScore": 88
+    "efficiencyScore": 88,
+    "sleepDebtMinutes": null,
+    "sleepNeedMinutes": null,
+    "daytimeStressMinutes": null,
+    "daytimeRecoveryMinutes": null,
+    "daytimeRelaxMinutes": null,
+    "hrvBalance": null,
+    "hrvBalanceScore": null,
+    "sleepRegularity": null,
+    "caloriesBurned": null,
+    "activityTimeMinutes": null,
+    "steps": null
   },
   "deviceSpecificMetrics": {
     "sleepContributors": {
@@ -64,8 +75,14 @@
       "previousNight": 74,
       "activityBalance": 82
     },
-    "tags": ["late_meal"],
-    "notes": ["fixture for development only"]
+    "tags": [
+      "late_meal"
+    ],
+    "notes": [
+      "fixture for development only"
+    ]
   },
-  "warnings": ["This is a development fixture, not a real Oura reading."]
+  "warnings": [
+    "This is a development fixture, not a real Oura reading."
+  ]
 }

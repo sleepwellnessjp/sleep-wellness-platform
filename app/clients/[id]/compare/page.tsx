@@ -23,6 +23,7 @@ import {
   type StoredAnalysis,
   type StoredClient,
 } from "@/lib/repositories/client-repository";
+import { isUnsafePrintEnvironment } from "@/lib/print-counseling-sheet";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -601,7 +602,15 @@ export default function ClientComparePage() {
           {canCompare && comparison && (
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => {
+                if (isUnsafePrintEnvironment()) {
+                  window.alert(
+                    "このブラウザでは印刷ダイアログを開けません。ChromeまたはSafariで開いてPDFにしてください。",
+                  );
+                  return;
+                }
+                window.print();
+              }}
               className="inline-flex min-h-12 items-center justify-center rounded-full px-8 py-3.5 text-base font-semibold text-white transition hover:opacity-90"
               style={{ backgroundColor: NAVY }}
             >

@@ -25,7 +25,7 @@ export function appPathname(path: string): string {
 export function homePathForRole(role: string | null | undefined): string {
   if (role === "client") return "/client";
   if (role === "enterprise") return "/enterprise";
-  if (role === "school") return "/school";
+  if (role === "school") return "/portal/school";
   if (role === "admin" || role === "super_admin") return "/admin";
   return "/dashboard";
 }
@@ -42,7 +42,7 @@ export function isEnterpriseOnlyPath(pathname: string): boolean {
 
 export function isSchoolOnlyPath(pathname: string): boolean {
   const path = appPathname(pathname);
-  return path === "/school" || path.startsWith("/school/");
+  return path === "/portal/school" || path.startsWith("/portal/school/");
 }
 
 export function isInstructorOnlyPath(pathname: string): boolean {
@@ -79,6 +79,7 @@ export function isInstructorOnlyPath(pathname: string): boolean {
     "/license",
     "/invitations",
     "/billing",
+    "/instructor",
   ];
   return prefixes.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),

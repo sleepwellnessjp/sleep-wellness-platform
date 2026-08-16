@@ -178,12 +178,13 @@ export const WEARABLE_DEVICES: readonly WearableDeviceConfig[] = [
   {
     id: "oura",
     displayName: "Oura Ring",
-    shortDescription: "必須5種類のスクリーンショットを割り当て",
+    shortDescription: "複数画像をまとめて解析（不足は個別追加）",
     available: true,
     iconName: "ring-oura",
     recommendedImageCount: 5,
     requiredImageKinds: OURA_REQUIRED_IMAGES,
-    minTotalImages: 5,
+    /** 一括解析: カテゴリ未充足でも合計1枚以上で開始可 */
+    minTotalImages: 1,
   },
   {
     id: "apple_watch",

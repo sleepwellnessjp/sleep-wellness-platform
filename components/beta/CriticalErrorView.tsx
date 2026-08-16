@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GOLD, NAVY } from "@/components/ui/tokens";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 type Props = {
   title?: string;
@@ -53,7 +54,7 @@ export default function CriticalErrorView({
           </button>
         ) : null}
         <Link
-          href="/"
+          href={HOME_TOP_HREF}
           className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-[#8a6a2d]/30 bg-white px-6 text-[14px] font-semibold transition active:bg-[#faf7f1] sm:w-auto sm:min-h-11 sm:hover:bg-[#faf7f1]"
           style={{ color: GOLD }}
         >

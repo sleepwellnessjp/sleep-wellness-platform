@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import VisionFadeUp from "@/components/VisionFadeUp";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 const NAVY = "#0F172A";
 
@@ -82,7 +83,7 @@ export default function VisionStory() {
         </div>
 
         <div className="absolute left-6 top-6 z-20 sm:left-8 sm:top-8 lg:left-12 lg:top-10">
-          <Link href="/" aria-label="Sleep Wellness Institute Japan トップへ">
+          <Link href={HOME_TOP_HREF} aria-label="Sleep Wellness Institute Japan トップへ">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
@@ -377,10 +378,10 @@ export default function VisionStory() {
               <div className="relative overflow-hidden rounded-[36px]">
                 <div className="relative aspect-[4/5] min-h-[400px]">
                   <Image
-                    src="/taka-photo.jpg"
+                    src="/taka-photo-v2.jpg"
                     alt="若林貴久"
                     fill
-                    className="object-cover object-top"
+                    className="object-cover object-[center_85%]"
                     sizes="(min-width:1024px) 42vw, 100vw"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/75 via-transparent to-transparent" />
