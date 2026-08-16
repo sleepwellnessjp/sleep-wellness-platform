@@ -2797,7 +2797,17 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
 
     clearPendingAnalysisRequest();
     clearExtractionDraft();
-    sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
+    try {
+      sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
+    } catch (persistError) {
+      console.error("Failed to persist analysis result:", persistError);
+      try {
+        sessionStorage.removeItem(IMAGES_KEY);
+        sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
+      } catch {
+        // in-memory result still used via notify
+      }
+    }
     storeImages(payload.images);
     storeGraphs(result.graphs);
     notifyAnalysisSessionListeners(result);
@@ -2866,7 +2876,17 @@ export function hydrateAnalysisSession(
   options?: { images?: string[]; notify?: boolean },
 ): AnalysisResult {
   const normalized = normalizeAnalysisResult(result);
-  sessionStorage.setItem(RESULT_KEY, JSON.stringify(normalized));
+  try {
+    sessionStorage.setItem(RESULT_KEY, JSON.stringify(normalized));
+  } catch (persistError) {
+    console.error("Failed to persist analysis session:", persistError);
+    try {
+      sessionStorage.removeItem(IMAGES_KEY);
+      sessionStorage.setItem(RESULT_KEY, JSON.stringify(normalized));
+    } catch {
+      // keep in-memory only
+    }
+  }
   storeGraphs(normalizeGraphBundle(normalized.graphs));
   if (options?.images && options.images.length > 0) {
     storeImages(options.images);

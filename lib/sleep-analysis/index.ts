@@ -81,5 +81,86 @@ export {
   analysisResultToSleepAnalysisData,
   buildDemoSleepAnalysisData,
   buildDemoSleepWellnessReport,
+  buildDemoSleepWellnessReportBundle,
+  buildSleepWellnessReportBundleFromAnalysisResult,
   buildSleepWellnessReportFromAnalysisResult,
 } from "@/lib/sleep-analysis/from-analysis-result";
+
+export {
+  getPriorityCounselingCopy,
+  PRIORITY_COUNSELING_COPY,
+  type CounselingEnrichment,
+} from "@/lib/sleep-analysis/sleep-wellness-counseling-copy";
+
+export {
+  buildCounselingViewModel,
+  type CounselingActionItem,
+  type CounselingMetricCard,
+  type CounselingPriorityCard,
+  type CounselingTodaySummary,
+  type CounselingViewModel,
+  type PriorityLevel,
+} from "@/lib/sleep-analysis/counseling-view-model";
+
+export {
+  resolveMelatoninYogaPhase,
+  type MelatoninYogaPhase,
+  type MelatoninYogaPhaseResult,
+} from "@/lib/sleep-analysis/melatonin-yoga-phase";
+
+export {
+  EMPTY_INSTRUCTOR_SESSION_NOTES,
+  INSTRUCTOR_SESSION_NOTE_FIELDS,
+  readInstructorSessionNotes,
+  writeInstructorSessionNotes,
+  type InstructorSessionNotes,
+} from "@/lib/sleep-analysis/instructor-session-notes";
+
+export {
+  buildFollowUpItems,
+  buildHomeworkItems,
+  buildSessionProgress,
+  buildTodayTheme,
+  guideChecksForPriority,
+  guideForSection,
+  type ConversationGuideBlock,
+  type HomeworkItem,
+  type SessionProgressStep,
+  type TodayTheme,
+} from "@/lib/sleep-analysis/session-guide";
+
+export {
+  buildPrescriptionSlots,
+  type PrescriptionSlot,
+  type PrescriptionSlotId,
+} from "@/lib/sleep-analysis/prescription-slots";
+
+export {
+  getAidaNoYogaGuidance,
+  getMelatoninYogaGuidance,
+  loadOfficialAidaNoYogaText,
+  loadOfficialMelatoninYogaText,
+  type SwmYogaContentSource,
+  type SwmYogaGuidance,
+} from "@/lib/sleep-analysis/swm-yoga-content";
+
+export {
+  buildInstructorReadAloud,
+  buildScoreLeadCopy,
+  buildTodayActionLines,
+  buildYogaWhyToday,
+  factorEvalLabel,
+  factorWhyLine,
+  prescriptionStars,
+  prescriptionTodayAction,
+  shortenReason,
+} from "@/lib/sleep-analysis/demo-report-copy";
+
+
+export {
+  DEMO_INSTRUCTOR_COMMENT_FIELDS,
+  EMPTY_DEMO_INSTRUCTOR_COMMENTS,
+  readDemoInstructorComments,
+  writeDemoInstructorComments,
+  type DemoInstructorComments,
+} from "@/lib/sleep-analysis/demo-instructor-comments";

@@ -113,7 +113,7 @@ export function matchesDirectoryFilters(
     sleepWellnessCert?: boolean;
   },
 ): boolean {
-  const q = (filters.query ?? "").trim().toLowerCase();
+  const q = (filters.query ?? "").trim().toLowerCase().replace(/\s+/g, "");
   if (q) {
     const haystack = [
       card.activityName,
@@ -125,8 +125,9 @@ export function matchesDirectoryFilters(
       ...card.pilatesSpecialties,
       ...card.specialties,
     ]
-      .join(" ")
-      .toLowerCase();
+      .join("")
+      .toLowerCase()
+      .replace(/\s+/g, "");
     if (!haystack.includes(q)) return false;
   }
 

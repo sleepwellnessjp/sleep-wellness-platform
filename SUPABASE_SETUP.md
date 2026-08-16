@@ -147,7 +147,16 @@ OPENAI_API_KEY=sk-xxxxxxxx
    - **Site URL:** ローカルなら `http://localhost:3000`、本番なら Vercel の URL
    - **Redirect URLs:** 次を追加
      - `http://localhost:3000/auth/callback`
+     - `http://localhost:3000/auth/callback?flow=recovery`
      - `https://あなたのドメイン/auth/callback`
+     - `https://あなたのドメイン/auth/callback?flow=recovery`
+     - （推奨）`https://*.vercel.app/auth/callback**`
+
+パスワード再設定メールのリンク先は `/auth/callback?flow=recovery` です。スマホのメールアプリ内プレビューではなく、Safari / Chrome 本体で開いてください。
+
+任意: メールテンプレートを `token_hash` 形式にする場合
+`{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery&flow=recovery`
+（PKCE なしでスマホでも安定しやすい）
 
 新規登録時は確認メールが送信されます。リンクをクリックすると `/auth/callback` 経由でログイン完了し、`/dashboard` へ移動します。
 

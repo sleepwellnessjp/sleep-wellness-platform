@@ -18,7 +18,7 @@ import {
 
 /**
  * 未認証でもアクセス可能なパス。
- * /login・OAuth・認定講師公開ページ。それ以外のページはログイン必須。
+ * /login・OAuth・認定講師公開ページ・料金・紹介ページ。それ以外のページはログイン必須。
  */
 function isPublicPath(pathname: string): boolean {
   if (pathname === "/") return true;
@@ -26,7 +26,36 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/login") return true;
   if (pathname.startsWith("/auth/")) return true;
   if (pathname === "/contact" || pathname.startsWith("/contact/")) return true;
+  if (pathname === "/pricing" || pathname.startsWith("/pricing/")) return true;
+  if (pathname === "/ma-no-sho" || pathname.startsWith("/ma-no-sho/")) {
+    return true;
+  }
+  if (pathname === "/ma-no-yoga" || pathname.startsWith("/ma-no-yoga/")) {
+    return true;
+  }
+  if (
+    pathname === "/melatonin-yoga" ||
+    pathname.startsWith("/melatonin-yoga/")
+  ) {
+    return true;
+  }
+  if (pathname === "/sleep-words" || pathname.startsWith("/sleep-words/")) {
+    return true;
+  }
+  if (pathname === "/about" || pathname.startsWith("/about/")) return true;
+  if (pathname === "/evidence" || pathname.startsWith("/evidence/")) {
+    return true;
+  }
+  if (pathname === "/school" || pathname.startsWith("/school/")) return true;
+  if (pathname === "/retreat" || pathname.startsWith("/retreat/")) return true;
+  if (pathname === "/research" || pathname.startsWith("/research/")) return true;
   if (pathname === "/instructors" || pathname.startsWith("/instructors/")) {
+    return true;
+  }
+  if (
+    pathname === "/instructor-activities" ||
+    pathname.startsWith("/instructor-activities/")
+  ) {
     return true;
   }
   if (pathname === "/license/verify" || pathname.startsWith("/license/verify/")) {
@@ -35,13 +64,6 @@ function isPublicPath(pathname: string): boolean {
   if (
     pathname === "/academy/certified-instructor" ||
     pathname.startsWith("/academy/certified-instructor/")
-  ) {
-    return true;
-  }
-  // 開発時のみ: 分析UIの表示確認（本番ではログイン必須）
-  if (
-    process.env.NODE_ENV === "development" &&
-    (pathname === "/analysis" || pathname.startsWith("/analysis/"))
   ) {
     return true;
   }
@@ -88,6 +110,7 @@ function needsApiSessionRefresh(pathname: string): boolean {
     pathname.startsWith("/api/journey") ||
     pathname.startsWith("/api/ai-intelligence") ||
     pathname.startsWith("/api/instructor/profile") ||
+    pathname.startsWith("/api/instructor/activities") ||
     pathname.startsWith("/api/instructor/activity-schedules")
   );
 }
@@ -98,7 +121,6 @@ function needsSessionRefresh(pathname: string): boolean {
     return needsApiSessionRefresh(pathname);
   }
   // ページは公開パスでも Cookie セッションを更新する
-  // （開発時の /analysis 公開でも、ログイン済みならセッションを維持）
   return true;
 }
 
@@ -301,6 +323,6 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // 静的アセット以外をすべて対象にし、新規ページもデフォルトで認証必須にする
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest|SVG|PNG|JPG|JPEG|GIF|WEBP|ICO|TXT|XML)$).*)",
   ],
 };

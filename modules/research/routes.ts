@@ -1,3 +1,3 @@
 export const RESEARCH_ROUTES = {
-  home: "/research",
+  home: "/portal/research",
 } as const;

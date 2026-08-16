@@ -28,6 +28,12 @@ const ITEMS: NavItem[] = [
     hqOnly: true,
   },
   {
+    href: "/admin/instructor-activities",
+    label: "認定講師イベント管理",
+    match: "prefix",
+    hqOnly: true,
+  },
+  {
     href: "/admin/instructor-activity-schedules",
     label: "活動予定",
     match: "prefix",

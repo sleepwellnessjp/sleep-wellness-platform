@@ -37,6 +37,15 @@ export function readSupabaseError(error: unknown): FormattedSupabaseError {
   };
 }
 
+export function isMissingColumnError(error: unknown): boolean {
+  const e = readSupabaseError(error);
+  return (
+    e.code === "PGRST204" ||
+    /column .* does not exist/i.test(e.message) ||
+    /Could not find the .* column/i.test(e.message)
+  );
+}
+
 export function isMissingTableError(error: unknown): boolean {
   const e = readSupabaseError(error);
   return (

@@ -65,20 +65,29 @@ function summarizeDataUrl(dataUrl: string): {
 function buildOuraVisionPrompt(imageCount: number): string {
   return `あなたは Oura Ring アプリのスクリーンショット解析器です。
 ${imageCount}枚の画像を横断して読み、見える数値・文言だけを JSON にまとめてください。
-OCR・ROI・座標推定は使わず、画像全体の内容理解のみで取得してください。
+画面種類の分類は不要です。OCR・ROI・座標推定は使わず、画像全体の内容理解のみで取得してください。
 
 取得対象（見えるものだけ）:
 - Sleep Score / Readiness Score / Activity Score
 - Total Sleep / Time in Bed / Sleep Efficiency / Sleep Latency
 - Bedtime / Wake Time / Awake Time（時刻または中途覚醒の表記）
 - Awake / REM / Light / Deep（時間と%、別項目）
-- Resting Heart Rate / Lowest Heart Rate
+- Sleep Debt（睡眠負債）→ sleepDebtMinutes（分）
+- Sleep Need / 必要な睡眠量 → sleepNeedMinutes（分）
+- Restfulness / 安眠度 → restfulness（画面表記どおり）
+- Resting Heart Rate / Lowest Heart Rate / Average Heart Rate（別項目）
 - Average HRV / Maximum HRV（Minimum が見えれば minimumHrv）
-- Respiratory Rate / Average SpO2
-- Breathing Regularity（見えれば文字列）
-- Body Temperature Deviation
+- HRV Balance / 心拍変動バランス → hrvBalance（文言）または hrvBalanceScore（数値）
+- Sleep Regularity / 睡眠規則性 → sleepRegularity
+- Respiratory Rate / Average SpO2（平均血中酸素ウェルネス）
+- Breathing Regularity / 夜間の呼吸状態（見えれば文字列）
+- Body Temperature Deviation / 体表温
+- Daytime Stress の集計「ストレス ○分」→ daytimeStressMinutes
+- Daytime Stress の集計「回復 ○分」→ daytimeRecoveryMinutes（および recoveryTime 文字列）
+- Daytime Stress の集計「リラックス ○分」→ daytimeRelaxMinutes
+- Recovery Index / 回復指数
+- Activity: caloriesBurned / activityTimeMinutes / steps（画面にあれば）
 - Sleep Timing / Sleep Balance / Activity Balance
-- Recovery Index または Recovery Time（見える表記どおり）
 - Tags / Notes（deviceSpecificMetrics.tags / notes）
 - Sleep / Readiness Contributors（見える場合のみ）
 
@@ -93,6 +102,15 @@ OCR・ROI・座標推定は使わず、画像全体の内容理解のみで取�
 - 睡眠ステージは Awake / REM / Light / Deep を必ず別項目で保持
 - Light を Non-REM にしない。Deep を Non-REM にしない。合算しない
 - 「ノンレム」という語は使わない
+- 睡眠スコアとコンディションスコア（Readiness）は別指標。値が同じでも統合しない
+- 最低心拍・平均心拍・安静時心拍を取り違えない
+- 平均HRV と 最大HRV を取り違えない
+- 睡眠負債・必要睡眠量・合計睡眠を取り違えない
+- 日中ストレスの分数はグラフ形状から推測しない。画面上の「ストレス ○分」「回復 ○分」「リラックス ○分」などの集計値だけ取る
+- 夜間睡眠と昼寝を混同しない。対象日の夜間睡眠を基本とし、昼寝は notes に補足してよい
+- 「今日の値」と「通常値／平均値」が並ぶ場合は今日（対象セッション）の値だけ採用
+- 項目が見えない・読めない場合は必ず null。画面に「0」と明示されている場合のみ 0 を返す（推測で 0 を入れない）
+- 覚醒時間（Awake の合計分）は awakeDuration。時刻表記の Awake Time は awakeTime
 - Contributors / tags / notes は画面にあればのみ入れる
 - sleepContributors / readinessContributors は [{ "name": "totalSleep", "value": 70 }, ...] の配列形式
 

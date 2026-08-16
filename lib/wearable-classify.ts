@@ -8,13 +8,18 @@ import type {
   WearableImageCategory,
 } from "@/lib/wearable-analysis";
 
-/** AI が返す標準カテゴリ（Oura 必要画像セットと一致） */
+/**
+ * AI が返す標準カテゴリ。
+ * SOXAI の睡眠詳細・皮膚温を誤って概要へ寄せないよう独立カテゴリを持つ。
+ */
 export const CLASSIFY_IMAGE_CATEGORIES = [
   "sleep_summary",
+  "sleep_detail",
   "sleep_stages",
   "heart_rate_hrv",
   "key_metrics",
   "daytime_stress",
+  "skin_temperature",
   "resilience",
   "unknown",
 ] as const;
@@ -74,31 +79,44 @@ export function assignmentModeForConfidence(
 }
 
 /**
- * 標準カテゴリ → SOXAI スロット。
+ * 標準カテゴリ → デバイス別スロット。
  * SOXAI UI は soxai_* を使うため写像する。
  */
 export function mapClassifyCategoryForDevice(
   device: WearableDevice,
   category: ClassifyImageCategory,
 ): WearableImageCategory {
-  if (device !== "soxai") {
-    return category;
+  if (device === "soxai") {
+    switch (category) {
+      case "key_metrics":
+        return "soxai_home";
+      case "daytime_stress":
+        return "soxai_stress";
+      case "sleep_summary":
+        return "soxai_sleep_overview";
+      case "sleep_detail":
+        return "soxai_sleep_detail";
+      case "sleep_stages":
+        return "soxai_sleep_stages";
+      case "heart_rate_hrv":
+        return "soxai_heart_hrv";
+      case "skin_temperature":
+        return "soxai_skin_temp";
+      case "resilience":
+        return "unknown";
+      default:
+        return "unknown";
+    }
   }
+
+  // Oura など: 追加カテゴリは近い既存スロットへ寄せる
   switch (category) {
-    case "sleep_summary":
-      return "soxai_sleep_overview";
-    case "sleep_stages":
-      return "soxai_sleep_stages";
-    case "heart_rate_hrv":
-      return "soxai_heart_hrv";
-    case "key_metrics":
-      return "soxai_home";
-    case "daytime_stress":
-      return "soxai_stress";
-    case "resilience":
-      return "unknown";
+    case "sleep_detail":
+      return "sleep_summary";
+    case "skin_temperature":
+      return "key_metrics";
     default:
-      return "unknown";
+      return category;
   }
 }
 

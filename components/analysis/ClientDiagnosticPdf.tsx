@@ -1,180 +1,111 @@
 /**
- * Sleep Wellness Institute Japan 公式 睡眠カウンセリングシート（印刷専用）。
- * SOXAI / Oura 共通レイアウト。デバイス差は deviceName（表示名）のみ。
- * Expert Report / 分析ロジック / Oura 固有項目の全載せは行わない。
+ * Sleep Wellness Institute Japan
+ * 睡眠ウェルネス・カウンセリングレポート（A4縦・2ページ固定）
+ * 分析画面は変更しない。取得できた指標だけを掲載する。
  */
 
 "use client";
 
 import Image from "next/image";
-import type { ReactNode } from "react";
-import {
-  WELLNESS_CATEGORY_LABELS,
-  type AnalysisResult,
-  type ScoreStars,
-  type WellnessCategoryKey,
-} from "@/lib/analysis-session";
-import { buildCounselingSheetModel } from "@/lib/counseling-sheet";
-import {
-  buildClientWellnessReport,
-  formatStars,
-  type LifestyleSnapshot,
-} from "@/lib/wellness-client-report";
+import type { AnalysisResult } from "@/lib/analysis-session";
+import { buildCounselingReportContent } from "@/lib/counseling-report";
+import type { CounselingKeyMetric } from "@/lib/counseling-report";
+import type { LifestyleSnapshot } from "@/lib/wellness-client-report";
 import type { RecoveryIndexResult } from "@/lib/recovery-index";
-import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import { formatOuraDeviceLabel } from "@/lib/device-adapters/oura";
 import { ouraLifestyleForPdf } from "@/lib/oura-analysis-input";
+import { selectOfficialTextPrescription } from "@/lib/prescription-knowledge/select-prescription";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
 const GOLD_SOFT = "#fbf9f4";
 const SURFACE = "#fafaf8";
 
-const GOOD_ICONS = ["✓", "🌙", "⭐", "✦"] as const;
-
-const KEY_METRICS: Array<{ label: string; key: keyof AnalysisMetrics }> = [
-  { label: "睡眠時間", key: "sleepDuration" },
-  { label: "睡眠効率", key: "sleepEfficiency" },
-  { label: "入眠潜時", key: "sleepLatency" },
-  { label: "覚醒時間", key: "awakenings" },
-  { label: "レム睡眠", key: "remSleep" },
-  { label: "深い睡眠", key: "deepSleep" },
-  { label: "HRV", key: "hrv" },
-  { label: "安静時心拍", key: "restingHeartRate" },
-  { label: "SpO₂", key: "spo2" },
-  { label: "呼吸数", key: "respiratoryRate" },
-];
-
-function displayMetric(
-  metrics: AnalysisMetrics,
-  key: keyof AnalysisMetrics,
-): string {
-  const value = metrics[key];
-  if (value == null) return "—";
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? String(value) : "—";
-  }
-  const text = String(value).trim();
-  return text || "—";
-}
-
-function clampText(text: string, max: number): string {
-  const t = text.trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1).trimEnd()}…`;
-}
-
-function overallStatusLabel(stars: ScoreStars): string {
-  if (stars >= 5) return "Excellent";
-  if (stars === 4) return "Overall Good";
-  if (stars === 3) return "Fair";
-  if (stars === 2) return "Needs Care";
-  return "Needs Rest";
-}
-
-function priorityStars(tier: "highest" | "next" | "optional"): string {
-  if (tier === "highest") return "★★★★★";
-  if (tier === "next") return "★★★★☆";
-  return "★★★☆☆";
-}
-
-function scoreBars(score: number): string {
-  const filled = Math.max(0, Math.min(10, Math.round(score / 10)));
-  return `${"■".repeat(filled)}${"□".repeat(10 - filled)}`;
-}
-
-function PdfSectionTitle({
-  title,
+function SectionEyebrow({
   eyebrow,
-  compact = false,
+  title,
 }: {
-  title: string;
   eyebrow: string;
-  compact?: boolean;
+  title: string;
 }) {
   return (
-    <div
-      className={`flex items-baseline justify-between gap-2 border-b border-[#071426]/12 ${
-        compact ? "mb-0.5 pb-0.5" : "mb-1 pb-0.5"
-      }`}
-    >
-      <h2
-        className="text-[11px] font-semibold tracking-[-0.02em]"
-        style={{ color: NAVY }}
-      >
-        {title}
-      </h2>
+    <div className="mb-1.5 border-b border-[#071426]/10 pb-1">
       <p
-        className="text-[7px] font-semibold tracking-[0.16em]"
+        className="text-[9px] font-semibold tracking-[0.18em]"
         style={{ color: GOLD }}
       >
         {eyebrow}
       </p>
+      <h2
+        className="mt-0.5 text-[13px] font-semibold tracking-[-0.02em]"
+        style={{ color: NAVY }}
+      >
+        {title}
+      </h2>
     </div>
   );
 }
 
-function CheckboxRow({
-  children,
-  compact = false,
-}: {
-  children: ReactNode;
-  compact?: boolean;
-}) {
+function BrandFooter() {
   return (
-    <div className={`flex items-start ${compact ? "gap-1.5 py-0" : "gap-2"}`}>
-      <span
-        className={`shrink-0 rounded-[2px] border border-[#071426]/45 bg-white ${
-          compact
-            ? "mt-[1px] h-[9px] w-[9px]"
-            : "mt-[1px] h-[11px] w-[11px]"
-        }`}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1">{children}</span>
-    </div>
+    <footer className="mt-auto border-t border-[#071426]/10 pt-2 text-center">
+      <p
+        className="text-[10px] font-semibold tracking-[0.04em]"
+        style={{ color: NAVY }}
+      >
+        Sleep Wellness Institute Japan
+      </p>
+      <p className="mt-0.5 text-[10px] leading-4" style={{ color: GOLD }}>
+        睡眠を、人生の土台へ。
+      </p>
+      <p className="text-[8px] tracking-[0.08em] text-slate-400">
+        Sleep as the Foundation of Life.
+      </p>
+    </footer>
   );
 }
 
-function WriteInField({
-  title,
-  prompts,
-  linesPerPrompt = 3,
+function metricGridClass(count: number): string {
+  if (count === 6 || count <= 3) return "grid-cols-3";
+  return "grid-cols-4";
+}
+
+function MetricGuideTile({
+  item,
   compact = false,
 }: {
-  title: string;
-  prompts: string[];
-  linesPerPrompt?: number;
+  item: CounselingKeyMetric;
   compact?: boolean;
 }) {
   return (
     <div
-      className={`rounded border border-dashed border-[#071426]/35 bg-[#fafaf8] ${
-        compact ? "px-2 py-1" : "px-2.5 py-2"
-      }`}
+      className={compact ? "rounded-md px-2 py-1.5" : "rounded-lg px-2.5 py-2"}
+      style={{ background: SURFACE }}
     >
+      <p className="text-[8px] tracking-[0.04em] text-slate-500">{item.label}</p>
       <p
-        className="text-[9px] font-semibold tracking-[0.1em]"
-        style={{ color: GOLD }}
+        className={`mt-0.5 font-semibold leading-snug tracking-[-0.02em] ${
+          compact ? "text-[12px]" : "text-[13px]"
+        }`}
+        style={{ color: NAVY }}
       >
-        {title}
+        {item.value}
       </p>
-      <div className={compact ? "mt-1 space-y-1" : "mt-1.5 space-y-2"}>
-        {prompts.map((prompt) => (
-          <div key={prompt}>
-            <p className="text-[8px] font-medium text-slate-500">{prompt}</p>
-            <div className={compact ? "mt-0.5 space-y-1" : "mt-0.5 space-y-2"}>
-              {Array.from({ length: linesPerPrompt }).map((_, index) => (
-                <div
-                  key={index}
-                  className="h-0 border-b border-[#071426]/20"
-                  aria-hidden
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {item.starsLabel ? (
+        <p className="mt-0.5 text-[8px] leading-3" style={{ color: GOLD }}>
+          {item.starsLabel}
+          {item.evalLabel ? (
+            <span className="ml-1 font-medium text-slate-500">{item.evalLabel}</span>
+          ) : null}
+        </p>
+      ) : null}
+      {item.guide ? (
+        <p className="mt-1 text-[8px] leading-[1.35] text-slate-400">
+          一般的な目安
+          <br />
+          {item.guide}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -184,11 +115,13 @@ export function ClientDiagnosticPdf({
   lifestyle,
   deviceName,
   recovery,
+  preview = false,
 }: {
   result: AnalysisResult;
   lifestyle?: LifestyleSnapshot | null;
   deviceName?: string;
   recovery: RecoveryIndexResult;
+  preview?: boolean;
 }) {
   const resolvedDeviceName =
     deviceName?.trim() ||
@@ -198,582 +131,520 @@ export function ClientDiagnosticPdf({
         ? "手入力"
         : "SOXAI Ring");
   const pdfLifestyle = ouraLifestyleForPdf(result.inputSource, lifestyle);
-  const model = buildClientWellnessReport(result, pdfLifestyle);
-  const sheet = buildCounselingSheetModel(result, pdfLifestyle);
-  const metrics = result.metrics;
-  const categoryKeys = Object.keys(
-    WELLNESS_CATEGORY_LABELS,
-  ) as WellnessCategoryKey[];
-  const rationales = result.categoryScoreRationales;
-
-  const nextGoals = (result.recommendationsUntilNext ?? [])
-    .map((item) => (item?.text ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 4);
-
-  const fallbackGoals =
-    nextGoals.length > 0
-      ? nextGoals
-      : (result.todaysRecommendations ?? [])
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .slice(0, 4);
-
-  const priorityActions = sheet.priorities
-    .map((p) => p.action)
-    .filter(Boolean)
-    .slice(0, 4);
-
-  const goals: string[] = [
-    ...(fallbackGoals.length > 0
-      ? fallbackGoals
-      : priorityActions.length > 0
-        ? priorityActions
-        : [
-            "今夜できる小さな一歩を1つ実践する",
-            "就寝・起床時刻をできるだけそろえる",
-            "寝る30分前から画面を見ない",
-            "朝起きたら光を取り入れる",
-          ]),
-  ];
-  while (goals.length < 4) goals.push("");
-
-  const melatonin = result.melatoninYogaPlan
-    ? {
-        phase: result.melatoninYogaPlan.recommendedPhase,
-        breathing: result.melatoninYogaPlan.breathing,
-        bathing: result.melatoninYogaPlan.bathing,
-        morning: result.melatoninYogaPlan.morningAction,
-      }
-    : {
-        phase: model.melatoninYoga.phase,
-        breathing: model.melatoninYoga.breathing,
-        bathing: model.melatoninYoga.bathing,
-        morning: model.melatoninYoga.morningAction,
-      };
-
-  const melatoninItems = [
-    { icon: "①", label: "Phase", value: melatonin.phase || "要確認" },
-    { icon: "②", label: "呼吸", value: melatonin.breathing || "要確認" },
-    { icon: "③", label: "入浴", value: melatonin.bathing || "要確認" },
-    { icon: "④", label: "朝", value: melatonin.morning || "要確認" },
-  ];
+  const report = buildCounselingReportContent(result, pdfLifestyle);
+  const officialPrescription = selectOfficialTextPrescription(
+    result,
+    pdfLifestyle,
+  );
+  const score = Math.max(0, Math.min(100, Math.round(result.score)));
 
   return (
-    <div className="client-diagnostic-pdf" aria-hidden="true">
-      {/* —— 1ページ目：診断結果 —— */}
-      <section className="client-diagnostic-page client-diagnostic-page-front">
-        <header className="flex items-start justify-between gap-2 border-b border-[#071426]/12 pb-1">
+    <div
+      id={preview ? "client-diagnostic-pdf-preview" : "client-diagnostic-pdf"}
+      className={
+        preview
+          ? "client-diagnostic-pdf client-diagnostic-pdf-preview"
+          : "client-diagnostic-pdf"
+      }
+      aria-hidden={preview ? undefined : "true"}
+    >
+      <section className="client-diagnostic-page client-diagnostic-page-front flex flex-col">
+        <header className="flex items-start justify-between gap-4 border-b border-[#071426]/12 pb-3">
           <div className="min-w-0">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
-              width={200}
-              height={50}
-              className="h-auto w-[100px] object-contain"
+              width={220}
+              height={55}
+              className="h-auto w-[136px] object-contain"
             />
             <p
-              className="mt-1 text-[7px] font-semibold tracking-[0.22em]"
+              className="mt-2 text-[9px] font-semibold tracking-[0.2em]"
               style={{ color: GOLD }}
             >
-              OFFICIAL COUNSELING SHEET
+              SLEEP WELLNESS COUNSELING REPORT
             </p>
             <h1
-              className="mt-0.5 text-[13px] font-semibold tracking-[-0.03em]"
+              className="mt-1 text-[16px] font-semibold leading-snug tracking-[-0.03em]"
               style={{ color: NAVY }}
             >
-              睡眠カウンセリングシート
+              あなたの睡眠の現在地
             </h1>
-            <p className="mt-0.5 text-[8px] text-slate-500">
-              1ページ目 · 診断結果
-            </p>
           </div>
-          <div className="shrink-0 text-right text-[8px] leading-3 text-slate-600">
+          <div className="shrink-0 pt-1 text-right text-[10px] leading-5 text-slate-600">
             <p className="font-semibold" style={{ color: NAVY }}>
-              {result.clientName || "クライアント"}
+              {result.clientName?.trim() || "クライアント"}
             </p>
-            <p>{result.measurementDate || "測定日未設定"}</p>
+            <p>{result.measurementDate || "分析日未設定"}</p>
             <p>デバイス：{resolvedDeviceName}</p>
-            <p className="mt-0.5 text-[7px] text-slate-400">1 / 3</p>
+            <p className="mt-1 text-[9px] text-slate-400">1 / 2</p>
           </div>
         </header>
 
-        {/* 総合評価 + Recovery（高さ約2/3へ圧縮） */}
-        <div className="pdf-hero-row mt-1.5 grid grid-cols-2 gap-1.5">
-          <div
-            className="pdf-hero-card rounded-md border-2 px-2.5 py-2"
-            style={{ borderColor: NAVY, background: SURFACE }}
-          >
-            <p
-              className="text-[8px] font-semibold tracking-[0.18em]"
-              style={{ color: GOLD }}
-            >
-              OVERALL ASSESSMENT
-            </p>
-            <p
-              className="mt-0.5 text-[12px] font-semibold leading-tight"
-              style={{ color: NAVY }}
-            >
-              今日の総合評価
-            </p>
-            <div className="mt-1.5 flex items-end gap-2.5">
-              <p
-                className="text-[40px] font-semibold leading-none tracking-[-0.06em]"
-                style={{ color: NAVY }}
-              >
-                {model.score}
-              </p>
-              <div className="pb-0.5">
-                <p
-                  className="text-[14px] tracking-[0.12em]"
-                  style={{ color: GOLD }}
-                >
-                  {formatStars(model.stars)}
-                </p>
-                <p
-                  className="mt-0.5 text-[12px] font-semibold tracking-[-0.02em]"
-                  style={{ color: NAVY }}
-                >
-                  {overallStatusLabel(model.stars)}
-                </p>
-              </div>
-            </div>
-            <p className="mt-1 text-[8px] leading-3 text-slate-600">
-              Sleep Wellness Score {Math.round(result.score)} · SWIJ独自評価
-            </p>
-          </div>
-
-          <div
-            className="pdf-hero-card rounded-md border-2 px-2.5 py-2"
-            style={{
-              borderColor: recovery.available ? recovery.accent : NAVY,
-              background: recovery.available ? recovery.accentSoft : SURFACE,
-            }}
-          >
-            <p
-              className="text-[8px] font-semibold tracking-[0.18em]"
-              style={{ color: GOLD }}
-            >
-              RECOVERY INDEX
-            </p>
-            <p
-              className="mt-0.5 text-[12px] font-semibold leading-tight"
-              style={{ color: NAVY }}
-            >
-              回復指数
-            </p>
-            {recovery.available ? (
-              <div className="mt-1.5">
-                <p
-                  className="text-[40px] font-semibold leading-none tracking-[-0.05em]"
-                  style={{ color: recovery.accent }}
-                >
-                  {recovery.score}
-                </p>
-                <div
-                  className="mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  style={{
-                    color: recovery.accent,
-                    background: "#ffffff",
-                    border: `1px solid ${recovery.accent}55`,
-                  }}
-                >
-                  <span>{recovery.emoji}</span>
-                  <span>{recovery.label}</span>
-                </div>
-                <p className="mt-1 text-[8px] leading-3 text-slate-700">
-                  {clampText(recovery.summary, 68)}
-                </p>
-              </div>
-            ) : (
-              <p className="mt-1.5 text-[9px] leading-3.5 text-slate-500">
-                {recovery.message}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Today's Focus */}
-        <div
-          className="mt-1.5 rounded-md border-2 px-2.5 py-1.5"
-          style={{ borderColor: GOLD, background: GOLD_SOFT }}
-        >
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="text-[11px] font-semibold" style={{ color: NAVY }}>
-              今回のテーマ
-            </p>
-            <p
-              className="text-[8px] font-semibold tracking-[0.18em]"
-              style={{ color: GOLD }}
-            >
-              TODAY&apos;S FOCUS
-            </p>
-          </div>
-          <p
-            className="mt-1 text-[13px] font-semibold leading-4 tracking-[-0.02em]"
-            style={{ color: NAVY }}
-          >
-            {sheet.sessionTheme}
-          </p>
-        </div>
-
-        {/* 4領域 + バー */}
-        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
-          <PdfSectionTitle title="4領域スコア" eyebrow="BALANCE" compact />
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-            {categoryKeys.map((key) => {
-              const score = Math.round(result.categoryScores[key]);
-              return (
-                <div key={key} className="flex items-center gap-2">
-                  <p
-                    className="w-8 shrink-0 text-[9px] font-semibold"
-                    style={{ color: NAVY }}
-                  >
-                    {WELLNESS_CATEGORY_LABELS[key]}
-                  </p>
-                  <p
-                    className="min-w-0 flex-1 truncate text-[10px] tracking-[-0.04em]"
-                    style={{ color: GOLD }}
-                    aria-label={`${WELLNESS_CATEGORY_LABELS[key]} ${score}`}
-                  >
-                    {scoreBars(score)}
-                  </p>
-                  <p
-                    className="w-7 shrink-0 text-right text-[12px] font-semibold tabular-nums"
-                    style={{ color: NAVY }}
-                  >
-                    {score}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 要因 */}
-        <div className="mt-1.5 rounded-md border border-[#071426]/12 px-2.5 py-1.5">
-          <PdfSectionTitle
-            title="今日の睡眠に影響した要因"
-            eyebrow="FACTORS"
-            compact
+        <section className="mt-3">
+          <SectionEyebrow
+            eyebrow="① TODAY'S SLEEP WELLNESS"
+            title="今回の総合評価"
           />
-          <div className="space-y-0.5">
-            {sheet.impactFactors.slice(0, 3).map((factor, index) => (
-              <div
-                key={`${factor.label}-${index}`}
-                className="flex gap-1.5 text-[8px] leading-3 text-slate-700"
-              >
-                <span
-                  className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[7px] font-semibold text-white"
-                  style={{ background: NAVY }}
-                >
-                  {index + 1}
-                </span>
-                <span>{factor.reason}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Good Point + 改善優先順位カード */}
-        <div className="mt-1.5 grid grid-cols-[0.85fr_1.15fr] gap-1.5">
-          <div className="rounded-md border border-[#071426]/12 px-2 py-1.5">
-            <PdfSectionTitle title="今日のGood Point" eyebrow="GOOD" compact />
-            <ul className="space-y-1">
-              {model.goodPoints.slice(0, 4).map((point, index) => (
-                <li
-                  key={`${point}-${index}`}
-                  className="flex gap-1.5 text-[8px] leading-3 text-slate-700"
-                >
-                  <span
-                    className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px]"
-                    style={{
-                      color: GOLD,
-                      background: GOLD_SOFT,
-                      border: `1px solid ${GOLD}55`,
-                    }}
-                  >
-                    {GOOD_ICONS[index % GOOD_ICONS.length]}
-                  </span>
-                  <span className="pt-0.5">{clampText(point, 40)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <div className="mb-0.5 flex items-baseline justify-between gap-2 border-b border-[#071426]/12 pb-0.5">
-              <h2
-                className="text-[11px] font-semibold"
-                style={{ color: NAVY }}
-              >
-                改善優先順位
-              </h2>
+          <div
+            className={`grid gap-2 ${recovery.available ? "grid-cols-2" : "grid-cols-1"}`}
+          >
+            <div
+              className="rounded-lg px-3 py-2.5"
+              style={{ background: SURFACE, border: `1px solid ${NAVY}14` }}
+            >
               <p
-                className="text-[7px] font-semibold tracking-[0.16em]"
+                className="text-[9px] font-semibold tracking-[0.16em]"
                 style={{ color: GOLD }}
               >
-                PRIORITY
+                SLEEP WELLNESS SCORE
+              </p>
+              <div className="mt-1 flex items-end gap-2">
+                <p
+                  className="text-[34px] font-semibold leading-none tracking-[-0.06em]"
+                  style={{ color: NAVY }}
+                >
+                  {score}
+                </p>
+                <p className="pb-1 text-[11px] text-slate-400">/ 100</p>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-4 text-slate-500">
+                生活・環境・測定を総合した独自指標
               </p>
             </div>
-            <div className="space-y-1">
-              {sheet.priorities.slice(0, 3).map((item) => (
-                <div
-                  key={`${item.tier}-${item.content}`}
-                  className="rounded-md border border-[#071426]/12 px-2 py-1"
-                  style={{ background: SURFACE }}
-                >
-                  <p
-                    className="text-[7px] font-semibold tracking-[0.08em]"
-                    style={{ color: GOLD }}
-                  >
-                    {item.tierLabel} {priorityStars(item.tier)}
-                  </p>
-                  <p
-                    className="mt-0.5 text-[9px] font-semibold leading-3"
-                    style={{ color: NAVY }}
-                  >
-                    {clampText(item.content, 34)}
-                  </p>
-                  <p className="mt-0.5 text-[7px] leading-[1.25] text-slate-600">
-                    <span className="font-semibold text-slate-700">理由 </span>
-                    {clampText(item.reason, 42)}
-                  </p>
-                  <p className="text-[7px] leading-[1.25] text-slate-600">
-                    <span className="font-semibold text-slate-700">
-                      今日やること{" "}
-                    </span>
-                    {clampText(item.action, 38)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* —— 2〜3ページ目：実践シート —— */}
-      <section className="client-diagnostic-page client-diagnostic-page-back">
-        <header className="flex items-end justify-between border-b border-[#071426]/12 pb-0.5">
-          <div>
-            <p
-              className="text-[7px] font-semibold tracking-[0.2em]"
-              style={{ color: GOLD }}
-            >
-              PRACTICE SHEET
-            </p>
-            <h2
-              className="mt-0.5 text-[13px] font-semibold tracking-[-0.02em]"
-              style={{ color: NAVY }}
-            >
-              実践シート
-            </h2>
-            <p className="mt-0.5 text-[8px] text-slate-500">
-              2〜3ページ目 · 今日から何をするか
-            </p>
-          </div>
-          <p className="text-[7px] text-slate-400">2–3 / 3</p>
-        </header>
-
-        <div className="mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
-          <PdfSectionTitle
-            title="主要測定値（厳選）"
-            eyebrow="KEY METRICS"
-            compact
-          />
-          <div className="grid grid-cols-5 gap-1">
-            {KEY_METRICS.map(({ label, key }) => (
+            {recovery.available ? (
               <div
-                key={label}
-                className="rounded-md px-1 py-0.5 text-center"
-                style={{ background: SURFACE }}
-              >
-                <p className="text-[7px] text-slate-500">{label}</p>
-                <p
-                  className="mt-0.5 text-[11px] font-semibold leading-3 tracking-[-0.03em] tabular-nums"
-                  style={{ color: NAVY }}
-                >
-                  {displayMetric(metrics, key)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-1">
-          <PdfSectionTitle title="各数値の分析" eyebrow="ANALYSIS" compact />
-          <div className="grid grid-cols-2 gap-1">
-            {(
-              [
-                ["身体", rationales?.body],
-                ["心", rationales?.mind],
-                ["生活", rationales?.lifestyle],
-                ["環境", rationales?.environment],
-              ] as const
-            ).map(([label, text]) => (
-              <div
-                key={label}
-                className="rounded-md border border-[#071426]/10 px-2 py-1"
-                style={{ background: SURFACE }}
+                className="rounded-lg px-3 py-2.5"
+                style={{
+                  background: recovery.accentSoft,
+                  border: `1px solid ${recovery.accent}33`,
+                }}
               >
                 <p
-                  className="text-[9px] font-semibold"
-                  style={{ color: NAVY }}
-                >
-                  {label}
-                </p>
-                <p className="mt-0.5 text-[7px] leading-[1.3] text-slate-600">
-                  {text?.trim()
-                    ? clampText(text, 58)
-                    : "詳細は Expert Report で確認できます"}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="mt-1 rounded-md border-2 px-2 py-1"
-          style={{ borderColor: GOLD, background: GOLD_SOFT }}
-        >
-          <PdfSectionTitle
-            title="メラトニンヨガ™提案"
-            eyebrow="MELATONIN YOGA"
-            compact
-          />
-          <div className="grid grid-cols-2 gap-1">
-            {melatoninItems.map((item) => (
-              <div
-                key={item.label}
-                className="flex gap-1.5 rounded-md bg-white/80 px-1.5 py-0.5"
-              >
-                <span
-                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[7px] font-semibold text-white"
-                  style={{ background: NAVY }}
-                >
-                  {item.icon}
-                </span>
-                <div className="min-w-0">
-                  <p
-                    className="text-[7px] font-semibold tracking-[0.08em]"
-                    style={{ color: GOLD }}
-                  >
-                    {item.label}
-                  </p>
-                  <p
-                    className="text-[8px] font-semibold leading-3"
-                    style={{ color: NAVY }}
-                  >
-                    {clampText(item.value, 32)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 次回までの目標：高さ約1/2へ圧縮 */}
-        <div className="pdf-next-goals mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
-          <PdfSectionTitle
-            title="次回までの目標"
-            eyebrow="NEXT GOALS"
-            compact
-          />
-          <div className="space-y-0.5">
-            {goals.slice(0, 4).map((goal, index) => (
-              <CheckboxRow key={index} compact>
-                <span className="text-[8px] leading-[1.25] text-slate-700">
-                  {goal ? clampText(goal, 72) : "\u00A0"}
-                </span>
-              </CheckboxRow>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-1 grid grid-cols-2 gap-1.5">
-          <WriteInField
-            title="今日のリアクション（ご本人記入）"
-            prompts={["・今日気付いたこと", "・今日からやること"]}
-            linesPerPrompt={2}
-            compact
-          />
-          <WriteInField
-            title="認定講師コメント"
-            prompts={["・次回までの宿題", "・講師からの一言"]}
-            linesPerPrompt={2}
-            compact
-          />
-        </div>
-
-        <div className="mt-1 rounded-md border border-[#071426]/12 px-2 py-1">
-          <PdfSectionTitle
-            title="AIから認定講師への提案"
-            eyebrow="FOR INSTRUCTOR"
-            compact
-          />
-          <div className="grid grid-cols-2 gap-1">
-            {(
-              [
-                {
-                  no: "①",
-                  title: "最初に褒める",
-                  items: [sheet.instructorBlocks.praise],
-                },
-                {
-                  no: "②",
-                  title: "確認する質問",
-                  items: sheet.instructorBlocks.questions,
-                },
-                {
-                  no: "③",
-                  title: "生活改善提案",
-                  items: sheet.instructorBlocks.lifestyle,
-                },
-                {
-                  no: "④",
-                  title: "次回評価ポイント",
-                  items: [sheet.instructorBlocks.nextEval],
-                },
-              ] as const
-            ).map((block) => (
-              <div
-                key={block.no}
-                className="rounded-md px-1.5 py-0.5"
-                style={{ background: SURFACE }}
-              >
-                <p
-                  className="text-[7px] font-semibold leading-3"
+                  className="text-[9px] font-semibold tracking-[0.16em]"
                   style={{ color: GOLD }}
                 >
-                  {block.no} {block.title}
+                  RECOVERY INDEX
                 </p>
-                <div className="mt-0.5 space-y-0">
-                  {block.items.map((item, index) => (
-                    <CheckboxRow key={`${block.no}-${index}`} compact>
-                      <span className="text-[7px] leading-[1.2] text-slate-700">
-                        {clampText(item, 44)}
-                      </span>
-                    </CheckboxRow>
+                <div className="mt-1 flex items-end gap-2">
+                  <p
+                    className="text-[34px] font-semibold leading-none tracking-[-0.06em]"
+                    style={{ color: recovery.accent }}
+                  >
+                    {recovery.score}
+                  </p>
+                  <p className="pb-1 text-[11px] text-slate-400">/ 100</p>
+                </div>
+                <p
+                  className="mt-1.5 text-[11px] font-semibold"
+                  style={{ color: recovery.accent }}
+                >
+                  {recovery.label}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          {report.overallComment ? (
+            <p
+              className="mt-2 text-[11px] leading-[1.6]"
+              style={{ color: "rgba(7,20,38,0.82)" }}
+            >
+              {report.overallComment}
+            </p>
+          ) : null}
+        </section>
+
+        {report.keyMetrics.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow eyebrow="② KEY DATA" title="重要な睡眠指標" />
+            <div className={`grid gap-1.5 ${metricGridClass(report.keyMetrics.length)}`}>
+              {report.keyMetrics.map((item) => (
+                <MetricGuideTile key={item.label} item={item} />
+              ))}
+            </div>
+            {report.analysisGuideMetrics.length > 0 ? (
+              <div className="mt-2.5">
+                <p
+                  className="mb-1.5 text-[9px] font-semibold tracking-[0.12em]"
+                  style={{ color: GOLD }}
+                >
+                  一般的な指標
+                </p>
+                <div
+                  className={`grid gap-1.5 ${metricGridClass(report.analysisGuideMetrics.length)}`}
+                >
+                  {report.analysisGuideMetrics.map((item) => (
+                    <MetricGuideTile key={item.label} item={item} compact />
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            ) : null}
+          </section>
+        ) : report.analysisGuideMetrics.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow eyebrow="② KEY DATA" title="重要な睡眠指標" />
+            <div
+              className={`grid gap-1.5 ${metricGridClass(report.analysisGuideMetrics.length)}`}
+            >
+              {report.analysisGuideMetrics.map((item) => (
+                <MetricGuideTile key={item.label} item={item} />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <footer className="mt-1 border-t border-[#071426]/12 pt-0.5 text-[7px] leading-[1.25] text-slate-500">
-          <p>
-            詳細データ・全グラフ・全測定値はアプリ内「Sleep Wellness Expert
-            Report」にのみ掲載しています。
+        {report.stages.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow eyebrow="③ SLEEP BALANCE" title="睡眠バランス" />
+            <div
+              className="flex h-4 overflow-hidden rounded-full"
+              style={{ background: "rgba(7,20,38,0.06)" }}
+            >
+              {report.stages.map((stage) => (
+                <div
+                  key={stage.id}
+                  style={{
+                    width: `${Math.max(stage.percent, 4)}%`,
+                    backgroundColor: stage.color,
+                  }}
+                  title={`${stage.label} ${stage.valueText}`}
+                />
+              ))}
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
+              {report.stages.map((stage) => (
+                <div key={stage.id} className="flex items-baseline justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[10px]" style={{ color: NAVY }}>
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: stage.color }}
+                      aria-hidden
+                    />
+                    {stage.label}
+                  </p>
+                  <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
+                    {stage.valueText}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {report.goodPoints.length > 0 || report.attentionPoints.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow
+              eyebrow="④ GOOD / ATTENTION"
+              title="今回の良かった点・気になる点"
+            />
+            <div
+              className={`grid gap-3 ${
+                report.goodPoints.length > 0 && report.attentionPoints.length > 0
+                  ? "grid-cols-2"
+                  : "grid-cols-1"
+              }`}
+            >
+              {report.goodPoints.length > 0 ? (
+              <div
+                className="rounded-lg px-3 py-2"
+                style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}33` }}
+              >
+                <p
+                  className="text-[9px] font-semibold tracking-[0.14em]"
+                  style={{ color: GOLD }}
+                >
+                  GOOD POINTS
+                </p>
+                <p className="mt-0.5 text-[11px] font-semibold" style={{ color: NAVY }}>
+                  今回良かったところ
+                </p>
+                <ol className="mt-1.5 space-y-1">
+                  {report.goodPoints.map((point, index) => (
+                    <li
+                      key={`good-${index}`}
+                      className="flex gap-2 text-[10px] leading-[1.45]"
+                      style={{ color: "rgba(7,20,38,0.8)" }}
+                    >
+                      <span className="font-semibold" style={{ color: GOLD }}>
+                        {index + 1}
+                      </span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              ) : null}
+              {report.attentionPoints.length > 0 ? (
+              <div
+                className="rounded-lg px-3 py-2"
+                style={{ background: SURFACE, border: "1px solid rgba(7,20,38,0.08)" }}
+              >
+                <p
+                  className="text-[9px] font-semibold tracking-[0.14em]"
+                  style={{ color: GOLD }}
+                >
+                  ATTENTION
+                </p>
+                <p className="mt-0.5 text-[11px] font-semibold" style={{ color: NAVY }}>
+                  今回注目したいところ
+                </p>
+                <ol className="mt-1.5 space-y-1">
+                  {report.attentionPoints.map((point, index) => (
+                    <li
+                      key={`attn-${index}`}
+                      className="flex gap-2 text-[10px] leading-[1.45]"
+                      style={{ color: "rgba(7,20,38,0.8)" }}
+                    >
+                      <span className="font-semibold" style={{ color: NAVY }}>
+                        {index + 1}
+                      </span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <BrandFooter />
+      </section>
+
+      <section className="client-diagnostic-page client-diagnostic-page-back flex flex-col">
+        <header className="flex items-end justify-between border-b border-[#071426]/12 pb-3">
+          <div>
+            <p
+              className="text-[9px] font-semibold tracking-[0.2em]"
+              style={{ color: GOLD }}
+            >
+              COUNSELING
+            </p>
+            <h1
+              className="mt-1 text-[16px] font-semibold tracking-[-0.03em]"
+              style={{ color: NAVY }}
+            >
+              分析から分かったこと・これからの改善
+            </h1>
+          </div>
+          <p className="text-[9px] text-slate-400">2 / 2</p>
+        </header>
+
+        {report.expertPoints.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow
+              eyebrow="⑤ EXPERT ANALYSIS"
+              title="睡眠ウェルネス分析"
+            />
+            <div className="space-y-1.5">
+              {report.expertPoints.map((point) => (
+                <div key={point.index} className="flex gap-3">
+                  <p
+                    className="w-7 shrink-0 text-[10px] font-semibold tracking-[0.08em]"
+                    style={{ color: GOLD }}
+                  >
+                    {point.index}
+                  </p>
+                  <div className="min-w-0">
+                    <p
+                      className="text-[12px] font-semibold leading-snug"
+                      style={{ color: NAVY }}
+                    >
+                      {point.title}
+                    </p>
+                    <p
+                      className="mt-0.5 text-[11px] leading-[1.65]"
+                      style={{ color: "rgba(7,20,38,0.78)" }}
+                    >
+                      {point.body}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {report.lifestyleConnection ? (
+          <section className="mt-3">
+            <SectionEyebrow eyebrow="⑥ LIFESTYLE" title="生活とのつながり" />
+            <p
+              className="text-[11px] leading-[1.7]"
+              style={{ color: "rgba(7,20,38,0.8)" }}
+            >
+              {report.lifestyleConnection}
+            </p>
+          </section>
+        ) : null}
+
+        {report.actions.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow
+              eyebrow="⑦ YOUR ACTION PLAN"
+              title="あなたへの改善提案"
+            />
+            <p className="mb-2 text-[10px] text-slate-500">
+              まず取り組みたい3つ
+            </p>
+            <div className="space-y-2">
+              {report.actions.map((item) => (
+                <div
+                  key={item.rank}
+                  className="flex gap-3 rounded-lg px-3 py-1.5"
+                  style={{ background: SURFACE }}
+                >
+                  <p
+                    className="text-[18px] font-semibold leading-none"
+                    style={{ color: GOLD }}
+                  >
+                    {item.rank}
+                  </p>
+                  <div className="min-w-0">
+                    <p
+                      className="text-[12px] font-semibold leading-snug"
+                      style={{ color: NAVY }}
+                    >
+                      {item.what}
+                    </p>
+                    <p
+                      className="mt-0.5 text-[10px] leading-[1.6] text-slate-600"
+                    >
+                      {item.why}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {report.nextSteps.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow
+              eyebrow="⑧ NEXT STEP"
+              title="次回までのポイント"
+            />
+            <p className="mb-1.5 text-[10px] text-slate-500">
+              次回までに意識すること
+            </p>
+            <ul className="space-y-1">
+              {report.nextSteps.map((step, index) => (
+                <li
+                  key={`${step}-${index}`}
+                  className="flex gap-2 text-[10px] leading-[1.5]"
+                  style={{ color: "rgba(7,20,38,0.8)" }}
+                >
+                  <span style={{ color: GOLD }}>・</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <section className="mt-3">
+          <SectionEyebrow
+            eyebrow="⑨ MELATONIN YOGA"
+            title="メラトニンヨガ™の処方・アドバイス"
+          />
+          <p className="mb-1.5 text-[9px] leading-4 text-slate-500">
+            Sleep Wellness Institute Japan 独自メソッド。本日の睡眠状態に合わせた処方箋です。公式テキスト（メラトニンヨガ™・間のヨガ・『間の書』）に基づきます。
           </p>
-          <p className="mt-0.5 font-semibold" style={{ color: NAVY }}>
-            Sleep Wellness Institute Japan
-          </p>
-          <p className="text-[6px] leading-[1.2] text-slate-400">
-            © Sleep Wellness Institute Japan · Official Counseling Sheet ·
-            Version 1.0
-          </p>
-        </footer>
+          {officialPrescription.safetyAlert ? (
+            <div
+              className="mb-1.5 rounded-lg px-3 py-2"
+              style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}55` }}
+            >
+              <p
+                className="text-[8px] font-semibold tracking-[0.12em]"
+                style={{ color: GOLD }}
+              >
+                安全確認
+              </p>
+              <p
+                className="mt-0.5 text-[9px] leading-[1.45]"
+                style={{ color: "rgba(7,20,38,0.8)" }}
+              >
+                {officialPrescription.safetyAlert.body.replace(
+                  /^([^。]+。).*$/u,
+                  "$1",
+                )}
+              </p>
+            </div>
+          ) : null}
+          <div
+            className="rounded-lg px-3 py-2"
+            style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}33` }}
+          >
+            <p
+              className="text-[8px] font-semibold tracking-[0.12em]"
+              style={{ color: GOLD }}
+            >
+              最終テーマ
+            </p>
+            <p
+              className="mt-0.5 text-[12px] font-semibold leading-snug"
+              style={{ color: NAVY }}
+            >
+              {officialPrescription.finalThemeLabel}
+            </p>
+            <p
+              className="mt-1 text-[9px] leading-[1.45]"
+              style={{ color: "rgba(7,20,38,0.75)" }}
+            >
+              {officialPrescription.themeReason}
+            </p>
+          </div>
+          <div className="mt-1.5 space-y-0.5">
+            <div className="flex gap-2 border-b border-[#071426]/08 py-0.5">
+              <p
+                className="w-[4.2rem] shrink-0 text-[8px] font-semibold"
+                style={{ color: GOLD }}
+              >
+                今日の一本
+              </p>
+              <p
+                className="min-w-0 text-[8px] leading-[1.35]"
+                style={{ color: "rgba(7,20,38,0.8)" }}
+              >
+                {officialPrescription.todaysOne.name}：
+                {officialPrescription.todaysOne.action.replace(
+                  /^([^。]+。).*$/u,
+                  "$1",
+                )}
+              </p>
+            </div>
+            {(
+              [
+                ["呼吸", officialPrescription.breathing],
+                ["ヨガ", officialPrescription.yoga],
+                ["間", officialPrescription.ma],
+                ["入浴", officialPrescription.bathing],
+                ["夜", officialPrescription.night],
+                ["昼寝", officialPrescription.napNote],
+              ] as Array<[string, (typeof officialPrescription)["breathing"]]>
+            )
+              .flatMap(([label, block]) => (block ? [{ label, block }] : []))
+              .map(({ label, block }) => (
+                <div key={label} className="flex gap-2 border-b border-[#071426]/08 py-0.5 last:border-b-0">
+                  <p
+                    className="w-[4.2rem] shrink-0 text-[8px] font-semibold"
+                    style={{ color: GOLD }}
+                  >
+                    {label}
+                  </p>
+                  <p
+                    className="min-w-0 text-[8px] leading-[1.35]"
+                    style={{ color: "rgba(7,20,38,0.8)" }}
+                  >
+                    {block.body.replace(/^([^。]+。).*$/u, "$1")}
+                  </p>
+                </div>
+              ))}
+          </div>
+        </section>
+
+        <BrandFooter />
       </section>
     </div>
   );

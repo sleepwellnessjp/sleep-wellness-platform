@@ -56,37 +56,53 @@ export function buildSleepWellnessReportFromAnalysisResult(
   });
 }
 
-/** UI デモ用の充実したサンプルデータ */
+/** 画面表示用：共通モデル + レポートをセットで返す */
+export function buildSleepWellnessReportBundleFromAnalysisResult(
+  result: AnalysisResult,
+): { data: SleepAnalysisData; report: SleepWellnessReport } {
+  const data = analysisResultToSleepAnalysisData(result);
+  const report = buildSleepWellnessReport({
+    data,
+    generatedAt: new Date().toISOString(),
+  });
+  return { data, report };
+}
+
+/** UI デモ用サンプル — 金曜日デモ向けの自然なストーリー */
 export function buildDemoSleepAnalysisData(): SleepAnalysisData {
   const base = emptySleepAnalysisData("oura");
   return {
     ...base,
-    sleepScore: 78,
-    readinessScore: 72,
-    activityScore: 80,
-    totalSleepMinutes: 398,
-    timeInBedMinutes: 468,
-    sleepEfficiency: 78,
-    sleepLatencyMinutes: 38,
-    awakeMinutes: 52,
-    remMinutes: 62,
-    lightMinutes: 220,
-    deepMinutes: 48,
-    lowestHeartRate: 52,
-    averageHeartRate: 58,
-    restingHeartRate: 56,
-    hrv: 32,
-    respiratoryRate: 15.2,
-    temperatureDeviation: 0.35,
-    spo2: 96,
-    stressMinutes: 140,
-    recoveryMinutes: 45,
-    resilienceScore: 58,
-    sleepDebt: 55,
+    sleepScore: 72,
+    readinessScore: 68,
+    activityScore: 78,
+    // 約6時間40分睡眠 / ベッド8時間 → 効率低下が主因
+    totalSleepMinutes: 400,
+    timeInBedMinutes: 480,
+    sleepEfficiency: 67,
+    // 入眠潜時は閾値未満にし、Priority を効率・HRV・深睡眠に集中
+    sleepLatencyMinutes: 16,
+    awakeMinutes: 64,
+    remMinutes: 72,
+    lightMinutes: 296,
+    // 深睡眠やや不足（総睡眠の約8%）
+    deepMinutes: 32,
+    lowestHeartRate: 54,
+    averageHeartRate: 60,
+    restingHeartRate: 58,
+    // HRV 低め → Priority 2
+    hrv: 28,
+    respiratoryRate: 14.8,
+    temperatureDeviation: 0.22,
+    spo2: 97,
+    stressMinutes: 125,
+    recoveryMinutes: 52,
+    resilienceScore: 61,
+    sleepDebt: 48,
     warningMessages: [],
-    rawMetrics: { demo: true },
+    rawMetrics: { demo: true, story: "efficiency-hrv-deep" },
     sourceImages: [],
-    confidence: 88,
+    confidence: 90,
   };
 }
 
@@ -95,4 +111,18 @@ export function buildDemoSleepWellnessReport(): SleepWellnessReport {
     data: buildDemoSleepAnalysisData(),
     generatedAt: new Date().toISOString(),
   });
+}
+
+export function buildDemoSleepWellnessReportBundle(): {
+  data: SleepAnalysisData;
+  report: SleepWellnessReport;
+} {
+  const data = buildDemoSleepAnalysisData();
+  return {
+    data,
+    report: buildSleepWellnessReport({
+      data,
+      generatedAt: new Date().toISOString(),
+    }),
+  };
 }

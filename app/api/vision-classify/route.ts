@@ -58,29 +58,74 @@ function buildClassifyPrompt(
     ? `ユーザーが選択した機種ヒント: ${expectedDevice}（ヒントが明らかに違う場合は detectedDevice を優先）`
     : "機種ヒントなし。画像から推定してください。";
 
+  const soxaiRules =
+    expectedDevice === "soxai"
+      ? `
+【SOXAI 専用・誤分類防止（最重要）】
+SOXAI では次の区別を厳守してください。
+
+1) key_metrics（概要 / ホーム）
+- QoL・睡眠・体調・運動など「複数の総合スコア」が並ぶホーム画面のみ。
+- 皮膚温だけの画面は絶対に key_metrics にしない。
+- 睡眠サマリーだけの画面も key_metrics にしない。
+
+2) sleep_summary（睡眠概要）
+- 睡眠スコア、総睡眠時間、睡眠効率、入眠潜時、睡眠負債、就床/起床など、睡眠全体のサマリーが主役の画面。
+- ホーム概要（QoL等が並ぶ画面）を sleep_summary にしない。
+- 皮膚温画面を sleep_summary にしない。
+- 入眠潜時・睡眠効率・睡眠負債などの「詳細指標カード」が主役なら sleep_detail を優先。
+
+3) sleep_detail（睡眠詳細）
+- 入眠潜時、睡眠効率、睡眠負債、体内時計、覚醒、詳細グラフなど、睡眠の詳細指標が中心の画面。
+- ホーム概要や睡眠ステージ円グラフだけの画面ではない。
+- sleep_summary と迷う場合: 詳細指標・詳細グラフが主なら sleep_detail。
+
+4) skin_temperature（皮膚温）
+- 「皮膚温」「温度」「℃」「基準との差」など体表温度が主役の画面。
+- 温度の推移グラフや最新変化が中心。
+- 皮膚温画面を key_metrics / sleep_summary / sleep_detail に分類しない。
+
+5) daytime_stress / sleep_stages / heart_rate_hrv
+- 既存どおり。ストレス・ステージ・心拍呼吸が明確ならそのカテゴリ。
+`
+      : `
+【一般ルール】
+- key_metrics: 主要指標の一覧（心拍・HRV・体表温などが並ぶ画面を含む場合あり）
+- sleep_summary: 睡眠スコア・合計睡眠・効率などのサマリー
+- sleep_detail: 睡眠の詳細指標・詳細グラフが中心の画面
+- skin_temperature: 皮膚温・体表温が主役の画面（可能な場合は独立カテゴリを使う）
+`;
+
   return `あなたはウェアラブル健康アプリのスクリーンショット分類器です。
-OCRで数値を読み取る必要はありません。画像全体を見て「どの画面か」を判定してください。
+OCRで数値を拾うことより、「画面タイトル・主要ラベル・グラフ種類・画面全体の意味」から画面種類を判定してください。
 
 ${imageCount}枚の画像それぞれについて分類してください。
 ${deviceHint}
+${soxaiRules}
 
 detectedDevice（機種）:
 - soxai / oura / apple_watch / garmin / fitbit / other / unknown
 
 imageCategory（画面種類）は次のいずれかのみ:
-- sleep_summary … 睡眠スコア・合計睡眠・効率・REM/深い睡眠・入眠潜時などのサマリー
+- key_metrics … 総合概要（QoL・睡眠・体調・運動など複数スコアが並ぶホーム）。皮膚温専用画面は不可。
+- daytime_stress … ストレスのスコア・評価・推移が中心
+- sleep_summary … 睡眠全体のサマリー（睡眠スコア・睡眠時間・効率・潜時・負債など）
+- sleep_detail … 睡眠の詳細指標・詳細グラフが中心（概要ホームやステージ専用画面ではない）
 - sleep_stages … 覚醒/REM/浅い/深い の内訳や睡眠ステージグラフ
-- heart_rate_hrv … 夜間心拍・最低心拍・平均HRV・心拍/HRVグラフ
-- key_metrics … 安静時心拍・HRV・体表温・呼吸など主要指標の一覧
-- daytime_stress … 日中ストレス時間・回復時間・時系列
+- heart_rate_hrv … 心拍・HRV・呼吸・血中酸素など循環呼吸が中心
+- skin_temperature … 皮膚温・温度変化・基準との差が中心（概要にも睡眠概要にも入れない）
 - resilience … レジリエンス画面
 - unknown … 判別不能・無関係・不鮮明
 
-confidence は 0〜100 の整数感覚で。画面ラベルやレイアウトが明確なら高く。
-analyzable は睡眠・回復分析に使える画面なら true。
-reason は短い日本語（例: 「Sleep Score とステージ円グラフが見える」）。
+禁止:
+- 「数字が多い」「睡眠という文字がある」だけで sleep_summary に寄せない
+- 皮膚温画面を key_metrics / sleep_summary に入れない
+- 睡眠詳細画面を sleep_summary に誤分類しない
+- 確信が低いとき別カテゴリへ無理に入れない → unknown + 低 confidence
 
-推測で無理にカテゴリを当てない。確信が低い場合は unknown + 低 confidence。`;
+confidence は 0〜100。画面ラベルやレイアウトが明確なら高く。
+analyzable は睡眠・回復分析に使える画面なら true。
+reason は短い日本語（例: 「皮膚温の最新変化と温度グラフ」）。`;
 }
 
 function normalizeDetectedDevice(
@@ -229,7 +274,8 @@ export async function POST(request: Request) {
             ...images.map((imageUrl) => ({
               type: "input_image" as const,
               image_url: imageUrl,
-              detail: "low" as const,
+              // 皮膚温と概要などの類似画面を見分けるため、分類は詳細度を上げる
+              detail: "high" as const,
             })),
           ],
         },

@@ -12,6 +12,7 @@ import {
   type NextActionGoal,
 } from "@/lib/analysis-session";
 import { updateAnalysisRecommendationsUntilNext } from "@/lib/repositories/client-repository";
+import { mergeHomeworkDisplayGoals } from "@/lib/homework-goals";
 
 function createGoalId(): string {
   try {
@@ -100,6 +101,8 @@ type Props = {
   description?: string;
   /** false のときテキスト編集 UI を隠す（クライアントマイページ向け） */
   allowEdit?: boolean;
+  /** 今日のアクションなど、宿題リストへ統合する追加項目（重複は除外） */
+  seedActions?: string[];
 };
 
 /**
@@ -114,10 +117,11 @@ export default function RecommendationsUntilNextCard({
   embedded = false,
   description = "次回の分析までに取り組む宿題です（今日／今週／継続）。できたものからチェックを入れてください。達成率はカルテに保存され、次回の比較に使われます。",
   allowEdit = true,
+  seedActions,
 }: Props) {
   const { success, error: toastError } = useToast();
   const [goals, setGoals] = useState<NextActionGoal[]>(() =>
-    normalizeRecommendationsUntilNext(result.recommendationsUntilNext),
+    mergeHomeworkDisplayGoals(result.recommendationsUntilNext, seedActions),
   );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<NextActionGoal[]>(goals);
@@ -125,13 +129,15 @@ export default function RecommendationsUntilNextCard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const seedKey = (seedActions ?? []).join("\n");
   useEffect(() => {
-    const next = normalizeRecommendationsUntilNext(
+    const next = mergeHomeworkDisplayGoals(
       result.recommendationsUntilNext,
+      seedKey ? seedKey.split("\n") : undefined,
     );
     setGoals(next);
     if (!editing) setDraft(next);
-  }, [result.recommendationsUntilNext, result.analysisId, editing]);
+  }, [result.recommendationsUntilNext, result.analysisId, editing, seedKey]);
 
   const displayItems = editing ? draft : goals;
   const achievement = computeHomeworkAchievement(displayItems);

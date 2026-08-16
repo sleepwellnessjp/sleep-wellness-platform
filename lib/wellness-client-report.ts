@@ -60,6 +60,9 @@ export type MelatoninYogaDisplay = {
   morningAction: string;
 };
 
+/** 分析結果ページとカウンセリングシートで共有するメラトニンヨガ™処方箋 */
+export type MelatoninYogaPrescription = MelatoninYogaDisplay;
+
 export type ClientWellnessReportModel = {
   score: number;
   stars: ScoreStars;
@@ -654,6 +657,12 @@ function buildMelatoninYoga(
     return "Phase2";
   };
 
+  const PHASE_LABEL: Record<"Phase1" | "Phase2" | "Phase3", string> = {
+    Phase1: "Phase1（メンテ）",
+    Phase2: "Phase2（整える）",
+    Phase3: "Phase3（回復）",
+  };
+
   let phase: "Phase1" | "Phase2" | "Phase3" = "Phase2";
   if (plan?.recommendedPhase?.trim()) {
     phase = normalizePhase(plan.recommendedPhase);
@@ -691,9 +700,9 @@ function buildMelatoninYoga(
   const total = breathMin + yogaMin + meditationMin;
 
   return {
-    phase,
+    phase: PHASE_LABEL[phase],
     phaseReason,
-    breathing: `呼吸 ${breathMin}分`,
+    breathing: `腹式呼吸 ${breathMin}分`,
     yogaMinutes: `ヨガ ${yogaMin}分`,
     meditationMinutes: `瞑想 ${meditationMin}分`,
     totalMinutes: `合計 ${total}分`,
@@ -852,6 +861,14 @@ function buildLifestyleStars(
     { label: "飲酒", stars: alcohol },
     { label: "入浴", stars: bathing },
   ];
+}
+
+/** 分析結果ページと PDF シートで同一のメラトニンヨガ™処方箋を返す */
+export function buildMelatoninYogaPrescription(
+  result: AnalysisResult,
+  lifestyle?: LifestyleSnapshot | null,
+): MelatoninYogaPrescription {
+  return buildMelatoninYoga(result, lifestyle ?? undefined);
 }
 
 export function buildClientWellnessReport(

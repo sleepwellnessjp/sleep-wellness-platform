@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { enableDemoSession } from "@/lib/auth/demo-session";
+import { getPublicAppOrigin } from "@/lib/auth/password-recovery";
 import { evaluateClosedBetaLoginAccess } from "@/lib/closed-beta/beta-access-service";
 import {
   appPathname,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/safe-redirect";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -134,7 +136,8 @@ async function resolvePostAuthDestination(
     return home;
   }
   if (
-    (redirectPath === "/school" || redirectPath.startsWith("/school/")) &&
+    (redirectPath === "/portal/school" ||
+      redirectPath.startsWith("/portal/school/")) &&
     role &&
     role !== "school" &&
     role !== "admin" &&
@@ -165,6 +168,90 @@ function LoginForm() {
     safeSearchParamMessage(queryError),
   );
   const [busy, setBusy] = useState(false);
+  const [recoveryReady, setRecoveryReady] = useState(false);
+
+  // スマホメールアプリ経由でも、hash / PASSWORD_RECOVERY / code を拾って再設定画面へ進める
+  useEffect(() => {
+    if (!supabaseEnabled) return;
+    const supabase = createBrowserClient();
+    if (!supabase) return;
+
+    let cancelled = false;
+
+    const ensureUpdatePasswordMode = () => {
+      if (cancelled) return;
+      if (searchParams.get("mode") === "update-password") {
+        setRecoveryReady(true);
+        return;
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.set("mode", "update-password");
+      url.hash = "";
+      router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+      setRecoveryReady(true);
+    };
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        ensureUpdatePasswordMode();
+      }
+    });
+
+    void (async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+        const tokenHash = url.searchParams.get("token_hash");
+        const type = url.searchParams.get("type");
+
+        if (tokenHash && type === "recovery") {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery",
+          });
+          if (!error) {
+            ensureUpdatePasswordMode();
+            return;
+          }
+        }
+
+        if (code && url.pathname === "/login") {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (!error) {
+            ensureUpdatePasswordMode();
+            return;
+          }
+        }
+
+        // 旧形式: #access_token=...&type=recovery
+        if (url.hash.includes("type=recovery") || url.hash.includes("access_token")) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session) {
+            ensureUpdatePasswordMode();
+            return;
+          }
+        }
+
+        if (searchParams.get("mode") === "update-password") {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user) setRecoveryReady(true);
+        }
+      } catch {
+        // ignore — ユーザー操作で再送可能
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [supabaseEnabled, router, searchParams]);
 
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
@@ -247,7 +334,7 @@ function LoginForm() {
         email: trimmedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+          emailRedirectTo: `${getPublicAppOrigin() || window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
         },
       });
 
@@ -315,10 +402,12 @@ function LoginForm() {
         return;
       }
 
+      const origin = getPublicAppOrigin() || window.location.origin;
+      // ネストした ?redirect=/login?mode=... はメールクライアントで壊れやすいため flow=recovery に一本化
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
         {
-          redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent("/login?mode=update-password")}`,
+          redirectTo: `${origin}/auth/callback?flow=recovery`,
         },
       );
 
@@ -327,7 +416,9 @@ function LoginForm() {
         return;
       }
 
-      setMessage("パスワード再設定メールを送信しました。");
+      setMessage(
+        "パスワード再設定メールを送信しました。メール内のリンクは、この画面を開いている同じブラウザで開いてください（別アプリのプレビューだと失敗することがあります）。",
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -368,7 +459,7 @@ function LoginForm() {
       } = await supabase.auth.getUser();
       if (!user) {
         setError(
-          "再設定用のセッションが見つかりません。メールのリンクから再度お試しください。",
+          "再設定用のセッションが見つかりません。メールのリンクを、再設定メールを依頼した同じブラウザで開き直してください。",
         );
         return;
       }
@@ -377,7 +468,16 @@ function LoginForm() {
         password,
       });
       if (updateError) {
-        setError(updateError.message);
+        const msg = updateError.message || "";
+        if (/same password|should be different/i.test(msg)) {
+          setError("現在と同じパスワードは使えません。別のパスワードを設定してください。");
+        } else if (/weak|at least|characters/i.test(msg)) {
+          setError(
+            `パスワードは${MIN_PASSWORD_LENGTH}文字以上で、より複雑なものを設定してください。`,
+          );
+        } else {
+          setError(msg);
+        }
         return;
       }
 
@@ -409,7 +509,7 @@ function LoginForm() {
     <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
       <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
-          <Link href="/" className="flex min-h-11 items-center gap-3">
+          <Link href={HOME_TOP_HREF} className="flex min-h-11 items-center gap-3">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
@@ -483,6 +583,11 @@ function LoginForm() {
             onSubmit={handleUpdatePassword}
             className="mx-auto mt-10 grid w-full max-w-md grid-cols-1 gap-5 rounded-[28px] border border-slate-200/90 bg-white px-5 py-7 shadow-[0_24px_80px_-48px_rgba(15,23,42,0.2)] sm:px-8 sm:py-8"
           >
+            {!recoveryReady ? (
+              <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                メール内のリンクから開くと、ここに再設定用セッションが渡ります。リンクは再設定メールを送った同じブラウザで開いてください。
+              </p>
+            ) : null}
             <label className="block">
               <span className="text-sm font-semibold" style={{ color: NAVY }}>
                 新しいパスワード
@@ -640,7 +745,7 @@ function LoginForm() {
 
         <p className="mt-8 text-center text-sm text-slate-400">
           <Link
-            href="/"
+            href={HOME_TOP_HREF}
             className="inline-flex min-h-11 items-center justify-center font-medium transition active:text-slate-600 sm:min-h-0 sm:hover:text-slate-600 sm:active:text-slate-400"
           >
             ← トップページへ戻る

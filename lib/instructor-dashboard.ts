@@ -94,11 +94,15 @@ export const INSTRUCTOR_QUICK_LINKS: InstructorQuickLink[] = [
     href: "/clients/new",
     emphasize: true,
   },
+  {
+    id: "instructor-activities",
+    label: "イベント・活動管理",
+    href: "/instructor/activities",
+  },
   { id: "analysis", label: "Analysis", href: "/analysis/new" },
   { id: "journey", label: "Journey", href: "/journey" },
   { id: "homework", label: "Homework", href: "/homework" },
   { id: "reports", label: "Report", href: "/reports" },
-  { id: "vision", label: "Vision", href: "/vision" },
 ];
 
 /** 開発・デモ用ダミー（Supabase 未設定かつローカルデータなしのときのみ） */

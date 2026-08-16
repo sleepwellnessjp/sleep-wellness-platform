@@ -19,10 +19,13 @@ import {
 import { listMissingRequiredCategories } from "@/lib/wearable-devices";
 import { classifyWearableImages } from "@/lib/wearable-classify-runner";
 import {
-  CLASSIFY_CONFIDENCE_AUTO,
-  CLASSIFY_CONFIDENCE_CANDIDATE,
   formatConfidencePercent,
 } from "@/lib/wearable-classify";
+import { resolveSoxaiVisionExtraction } from "@/lib/soxai-vision-runner";
+import {
+  buildBulkExtractSummary,
+  type BulkExtractSummary,
+} from "@/lib/soxai-bulk-extract-summary";
 
 export type CategoryImageMap = Partial<
   Record<WearableImageCategory, WearableUploadedImage[]>
@@ -44,57 +47,32 @@ function allFiles(map: CategoryImageMap): File[] {
   return flattenImages(map).map((image) => image.file);
 }
 
-function roomInCategory(
-  map: CategoryImageMap,
-  category: WearableImageCategory,
-  maxFiles: number,
-): number {
-  const existing = map[category] ?? [];
-  return Math.max(0, maxFiles - existing.length);
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("failed to read file"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("read error"));
+    reader.readAsDataURL(file);
+  });
 }
 
-function placeImage(
-  map: CategoryImageMap,
-  image: WearableUploadedImage,
-  specs: readonly WearableRequiredImageSpec[],
-): { map: CategoryImageMap; overflow: boolean } {
-  const category = image.imageCategory;
-  if (category === "unknown") {
-    return {
-      map: {
-        ...map,
-        unknown: [...(map.unknown ?? []), image],
-      },
-      overflow: false,
-    };
-  }
-  const spec = specs.find((s) => s.category === category);
-  const maxFiles = spec?.maxFiles ?? 2;
-  const room = roomInCategory(map, category, maxFiles);
-  if (room <= 0) {
-    return {
-      map: {
-        ...map,
-        unknown: [
-          ...(map.unknown ?? []),
-          {
-            ...image,
-            imageCategory: "unknown",
-            status: "needs_manual",
-            errorMessage: "該当カテゴリの枠が埋まっているため要手動割当",
-          },
-        ],
-      },
-      overflow: true,
-    };
-  }
-  return {
-    map: {
-      ...map,
-      [category]: [...(map[category] ?? []), image],
-    },
-    overflow: false,
-  };
+/** 一括解析セット（カテゴリ未割当・解析用）。要手動とは status で区別する */
+function isBulkAnalysisImage(image: WearableUploadedImage): boolean {
+  return (
+    image.imageCategory === "unknown" &&
+    image.status !== "needs_manual" &&
+    image.status !== "error"
+  );
+}
+
+function isNeedsManualImage(image: WearableUploadedImage): boolean {
+  return (
+    image.imageCategory === "unknown" &&
+    (image.status === "needs_manual" || image.status === "error")
+  );
 }
 
 export default function MultiImageUploader({
@@ -107,8 +85,13 @@ export default function MultiImageUploader({
   const [dragOver, setDragOver] = useState(false);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
   const [classifying, setClassifying] = useState(false);
-  const [classifySummary, setClassifySummary] = useState<string | null>(null);
-  const classifyAbortRef = useRef<AbortController | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractPhase, setExtractPhase] = useState<string | null>(null);
+  const [slotNote, setSlotNote] = useState<string | null>(null);
+  const [bulkExtractSummary, setBulkExtractSummary] =
+    useState<BulkExtractSummary | null>(null);
+  const [bulkExtractError, setBulkExtractError] = useState<string | null>(null);
+  const bulkAbortRef = useRef<AbortController | null>(null);
 
   const filledCategories = useMemo(() => {
     const set = new Set<WearableImageCategory>();
@@ -128,7 +111,15 @@ export default function MultiImageUploader({
     [deviceType, filledCategories],
   );
 
-  const unknownImages = imagesByCategory.unknown ?? [];
+  const unknownList = imagesByCategory.unknown ?? [];
+  const bulkAnalysisImages = useMemo(
+    () => unknownList.filter(isBulkAnalysisImage),
+    [unknownList],
+  );
+  const needsManualImages = useMemo(
+    () => unknownList.filter(isNeedsManualImage),
+    [unknownList],
+  );
   const totalCount = flattenImages(imagesByCategory).length;
 
   const commitMap = useCallback(
@@ -136,6 +127,58 @@ export default function MultiImageUploader({
       onChange(next);
     },
     [onChange],
+  );
+
+  /**
+   * SOXAI 一括解析専用: 画面種類の事前分類は行わない。
+   * （Oura は OuraAnalysisPanel を使用。このコンポーネントでは扱わない）
+   */
+  const runBulkVisionOnMap = useCallback(
+    async (map: CategoryImageMap, signal: AbortSignal) => {
+      if (deviceType !== "soxai") return;
+      const allForExtract = flattenImages(map).map((image) => image.file);
+      if (allForExtract.length === 0) return;
+
+      setBulkExtractSummary(null);
+      setBulkExtractError(null);
+      setExtractPhase(`${allForExtract.length}枚の画像を解析中…`);
+      setExtracting(true);
+
+      try {
+        const dataUrls = await Promise.all(allForExtract.map(fileToDataUrl));
+        if (signal.aborted) return;
+
+        setExtractPhase("データを抽出しています…");
+        const vision = await resolveSoxaiVisionExtraction(dataUrls, [], {
+          signal,
+        });
+        if (signal.aborted) return;
+        if (vision.cancelled) return;
+
+        setExtractPhase("抽出結果を統合しています…");
+        const summary = buildBulkExtractSummary({
+          metrics: vision.metrics,
+          imageCount: allForExtract.length,
+        });
+        setBulkExtractSummary(summary);
+        if (vision.error) setBulkExtractError(vision.error);
+        else if (summary.confirmedCount === 0) {
+          setBulkExtractError(
+            "数値を取得できませんでした。画像が鮮明か、下の1〜7から不足項目だけ追加してください。",
+          );
+        }
+      } catch (extractError) {
+        setBulkExtractError(
+          extractError instanceof Error
+            ? extractError.message
+            : String(extractError),
+        );
+      } finally {
+        setExtracting(false);
+        setExtractPhase(null);
+      }
+    },
+    [deviceType],
   );
 
   const ingestBulkFiles = useCallback(
@@ -151,47 +194,40 @@ export default function MultiImageUploader({
       }
 
       setLocalErrors(errors);
-      setClassifying(true);
-      setClassifySummary(null);
-      classifyAbortRef.current?.abort();
+      setSlotNote(null);
+      bulkAbortRef.current?.abort();
       const controller = new AbortController();
-      classifyAbortRef.current = controller;
+      bulkAbortRef.current = controller;
 
-      const { items, elapsedMs, successRate, error } =
-        await classifyWearableImages({
-          files: accepted,
+      // 分類せず解析セットへ追加（カテゴリ確定はしない）
+      const created: WearableUploadedImage[] = accepted.map((file) => ({
+        ...toWearableUploadedImage({
+          file,
           deviceType,
-          signal: controller.signal,
-        });
+          imageCategory: "unknown",
+          required: false,
+        }),
+        status: "ready",
+        confidence: null,
+        errorMessage: null,
+      }));
 
-      if (controller.signal.aborted) return;
-
-      let next: CategoryImageMap = { ...imagesByCategory };
-      let overflowCount = 0;
-      for (const item of items) {
-        const placed = placeImage(next, item.image, specs);
-        next = placed.map;
-        if (placed.overflow) overflowCount += 1;
-      }
-
-      const autoCount = items.filter((i) => i.mode === "auto").length;
-      const candidateCount = items.filter((i) => i.mode === "candidate").length;
-      const manualCount = items.filter((i) => i.mode === "manual").length;
-
-      setClassifySummary(
-        `分類完了: 自動${autoCount} / 候補${candidateCount} / 要手動${manualCount} · 成功率 ${successRate}% · ${elapsedMs}ms` +
-          (error ? ` · ${error}` : ""),
-      );
-      if (overflowCount > 0) {
-        setLocalErrors((prev) => [
-          ...prev,
-          `${overflowCount}枚はカテゴリ枠が埋まっていたため「要手動」に移しました。`,
-        ]);
-      }
-      setClassifying(false);
+      const next: CategoryImageMap = {
+        ...imagesByCategory,
+        unknown: [...(imagesByCategory.unknown ?? []), ...created],
+      };
       commitMap(next);
+
+      if (deviceType === "soxai") {
+        await runBulkVisionOnMap(next, controller.signal);
+        return;
+      }
+
+      setSlotNote(
+        `${accepted.length}枚を解析セットに追加しました。分析開始でデータを読み取ります。`,
+      );
     },
-    [commitMap, deviceType, imagesByCategory, specs],
+    [commitMap, deviceType, imagesByCategory, runBulkVisionOnMap],
   );
 
   const addFilesToCategory = useCallback(
@@ -230,8 +266,8 @@ export default function MultiImageUploader({
         status: "ready" as const,
       }));
 
-      setClassifySummary(
-        `枠指定で登録: ${created.length}枚 · 参考成功率 ${successRate}% · ${elapsedMs}ms`,
+      setSlotNote(
+        `「${spec?.label ?? category}」に ${created.length}枚を追加しました（参考成功率 ${successRate}% · ${elapsedMs}ms）`,
       );
       commitMap({
         ...imagesByCategory,
@@ -270,6 +306,39 @@ export default function MultiImageUploader({
       setLocalErrors(errors);
       if (accepted[0] == null) return;
 
+      const spec = specs.find((s) => s.category === category);
+      const list = imagesByCategory[category] ?? [];
+      const current = list.find((img) => img.id === imageId);
+
+      // 一括解析セット（unknown）の差し替えは分類しない
+      if (category === "unknown" && current && isBulkAnalysisImage(current)) {
+        revokeWearablePreviewUrls([current]);
+        const replaced = {
+          ...toWearableUploadedImage({
+            file: accepted[0],
+            deviceType,
+            imageCategory: "unknown",
+            required: false,
+          }),
+          status: "ready" as const,
+          confidence: null,
+          errorMessage: null,
+        };
+        const nextList = list.map((item) =>
+          item.id === imageId ? replaced : item,
+        );
+        const next: CategoryImageMap = {
+          ...imagesByCategory,
+          unknown: nextList,
+        };
+        commitMap(next);
+        bulkAbortRef.current?.abort();
+        const controller = new AbortController();
+        bulkAbortRef.current = controller;
+        void runBulkVisionOnMap(next, controller.signal);
+        return;
+      }
+
       setClassifying(true);
       const { items } = await classifyWearableImages({
         files: [accepted[0]],
@@ -278,8 +347,6 @@ export default function MultiImageUploader({
       setClassifying(false);
 
       const classified = items[0]?.image;
-      const spec = specs.find((s) => s.category === category);
-      const list = imagesByCategory[category] ?? [];
       const nextList = list.map((item) => {
         if (item.id !== imageId) return item;
         revokeWearablePreviewUrls([item]);
@@ -300,7 +367,7 @@ export default function MultiImageUploader({
       });
       commitMap({ ...imagesByCategory, [category]: nextList });
     },
-    [commitMap, deviceType, imagesByCategory, specs],
+    [commitMap, deviceType, imagesByCategory, runBulkVisionOnMap, specs],
   );
 
   const assignUnknownCategory = useCallback(
@@ -309,13 +376,7 @@ export default function MultiImageUploader({
       const target = unknownList.find((item) => item.id === imageId);
       if (!target) return;
       const spec = specs.find((s) => s.category === category);
-      const maxFiles = spec?.maxFiles ?? 2;
-      if (roomInCategory(imagesByCategory, category, maxFiles) <= 0) {
-        setLocalErrors([
-          `「${spec?.label ?? category}」の枠が埋まっています。先に不要な画像を削除してください。`,
-        ]);
-        return;
-      }
+      // 一括フローでは同一カテゴリ複数枚を許可（枠埋まりで拒否しない）
       const remainingUnknown = unknownList.filter((item) => item.id !== imageId);
       const assigned: WearableUploadedImage = {
         ...target,
@@ -337,11 +398,15 @@ export default function MultiImageUploader({
   );
 
   const clearAll = useCallback(() => {
-    classifyAbortRef.current?.abort();
+    bulkAbortRef.current?.abort();
     revokeWearablePreviewUrls(flattenImages(imagesByCategory));
     setLocalErrors([]);
-    setClassifySummary(null);
+    setSlotNote(null);
+    setBulkExtractSummary(null);
+    setBulkExtractError(null);
     setClassifying(false);
+    setExtracting(false);
+    setExtractPhase(null);
     commitMap({});
   }, [commitMap, imagesByCategory]);
 
@@ -375,15 +440,13 @@ export default function MultiImageUploader({
         }`}
       >
         <p className="text-[14px] font-semibold text-[#071426]">
-          複数画像をまとめて追加（AI自動分類）
+          複数画像をまとめて解析
         </p>
         <p className="mt-2 text-[13px] leading-6 text-slate-500">
-          ドラッグ＆ドロップ、またはファイル選択（PNG / JPG / JPEG / WEBP · 1枚10MBまで ·
-          最大{WEARABLE_MAX_IMAGES}枚）
+          複数のスクリーンショットをまとめて追加すると、AIが画像全体を解析し、睡眠分析に必要なデータを抽出します。
         </p>
         <p className="mt-1 text-[12px] text-slate-400">
-          {CLASSIFY_CONFIDENCE_AUTO}%以上は自動登録 · {CLASSIFY_CONFIDENCE_CANDIDATE}〜
-          {CLASSIFY_CONFIDENCE_AUTO - 1}%は候補 · 未満は要手動選択
+          PNG / JPG / JPEG / WEBP · 1枚10MBまで · 最大{WEARABLE_MAX_IMAGES}枚
         </p>
         <input
           id={`wearable-bulk-${deviceType}`}
@@ -391,7 +454,7 @@ export default function MultiImageUploader({
           multiple
           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
           className="sr-only"
-          disabled={classifying}
+          disabled={classifying || extracting}
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
             if (files.length > 0) void ingestBulkFiles(files);
@@ -401,10 +464,14 @@ export default function MultiImageUploader({
         <label
           htmlFor={`wearable-bulk-${deviceType}`}
           className={`mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-[#315f68]/25 bg-white px-4 py-3 text-[14px] font-semibold text-[#071426] transition hover:border-[#315f68]/45 hover:bg-white ${
-            classifying ? "cursor-wait opacity-60" : "cursor-pointer"
+            classifying || extracting
+              ? "cursor-wait opacity-60"
+              : "cursor-pointer"
           }`}
         >
-          {classifying ? "AI分類中…" : "画像を選択（複数可）"}
+          {extracting || classifying
+            ? "解析中…"
+            : "画像を選択（複数可）"}
         </label>
         <p className="mt-3 text-[12px] text-slate-400">
           {totalCount} / {WEARABLE_MAX_IMAGES} 枚
@@ -420,15 +487,99 @@ export default function MultiImageUploader({
         ) : null}
       </div>
 
-      {classifying ? (
+      {extracting || classifying ? (
         <p className="rounded-2xl border border-[#315f68]/20 bg-[#f4f7f7] px-4 py-3 text-[13px] text-[#315f68]">
-          画像を理解して画面種類を分類しています（OCRではありません）…
+          {extractPhase ??
+            (classifying
+              ? "画像を登録しています…"
+              : "画像を解析しています…")}
         </p>
       ) : null}
 
-      {classifySummary ? (
+      {slotNote ? (
         <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-600">
-          {classifySummary}
+          {slotNote}
+        </p>
+      ) : null}
+
+      {bulkExtractSummary ? (
+        <div className="rounded-2xl border border-[#315f68]/20 bg-white px-4 py-4 sm:px-5">
+          <p className="text-[14px] font-semibold text-[#071426]">
+            解析完了
+          </p>
+          <p className="mt-1 text-[13px] text-slate-600">
+            {bulkExtractSummary.imageCount}枚の画像を解析しました
+          </p>
+          <p className="mt-1.5 text-[13px] font-medium text-[#071426]">
+            取得済み {bulkExtractSummary.confirmedCount} /{" "}
+            {bulkExtractSummary.confirmedCount +
+              bulkExtractSummary.reviewCount +
+              bulkExtractSummary.missingCount}
+            項目
+            {bulkExtractSummary.reviewCount > 0
+              ? ` · 要確認 ${bulkExtractSummary.reviewCount}項目`
+              : ""}
+            {bulkExtractSummary.missingCount > 0
+              ? ` · 未取得 ${bulkExtractSummary.missingCount}項目`
+              : ""}
+          </p>
+          {bulkExtractSummary.missingCount > 0 ? (
+            <p className="mt-2 text-[12px] leading-5 text-slate-500">
+              未取得がある場合は、下の1〜7から不足項目の画面だけ追加してください。
+            </p>
+          ) : null}
+          <ul className="mt-3 max-h-64 space-y-1.5 overflow-y-auto text-[13px]">
+            {bulkExtractSummary.items
+              .filter((item) => item.status !== "missing")
+              .map((item) => (
+                <li
+                  key={item.key}
+                  className="flex items-start gap-2 text-[#071426]"
+                >
+                  <span className="mt-0.5 shrink-0 font-semibold text-[#315f68]">
+                    {item.status === "review" ? "△" : "✓"}
+                  </span>
+                  <span>
+                    {item.label}
+                    {item.displayValue ? (
+                      <span className="text-slate-600">
+                        {"　"}
+                        {item.displayValue}
+                      </span>
+                    ) : null}
+                    {item.status === "review" ? (
+                      <span className="ml-1 text-[12px] text-amber-700">
+                        要確認
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            {bulkExtractSummary.items
+              .filter((item) => item.status === "missing")
+              .map((item) => (
+                <li
+                  key={item.key}
+                  className="flex items-start gap-2 text-slate-400"
+                >
+                  <span className="mt-0.5 shrink-0">×</span>
+                  <span>
+                    {item.label}
+                    <span className="ml-1 text-[12px]">未取得</span>
+                  </span>
+                </li>
+              ))}
+          </ul>
+          {bulkExtractError ? (
+            <p className="mt-3 text-[12px] text-amber-700">{bulkExtractError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {bulkExtractError && !bulkExtractSummary ? (
+        <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
+          データ読み取りで問題がありました: {bulkExtractError}
+          （画像は登録済みです。下の1〜7から不足項目を追加できます）
         </p>
       ) : null}
 
@@ -442,16 +593,39 @@ export default function MultiImageUploader({
 
       {showMissingAlert ? <MissingImagesAlert missing={missing} /> : null}
 
-      {unknownImages.length > 0 ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
+      {bulkAnalysisImages.length > 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-[#fafaf8] p-4 sm:p-5">
           <p className="text-[14px] font-semibold text-[#071426]">
-            要手動選択（unknown）
+            一括解析セット（{bulkAnalysisImages.length}枚）
           </p>
           <p className="mt-1 text-[13px] text-slate-500">
-            信頼度が低い、または判別できなかった画像です。画面種類を選んでください。
+            カテゴリ分けせず、これらの画像全体から睡眠データを読み取ります。不足があれば下の1〜7から追加できます。
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
-            {unknownImages.map((image) => (
+            {bulkAnalysisImages.map((image) => (
+              <UploadedImageCard
+                key={image.id}
+                image={image}
+                label="解析セット"
+                replaceInputId={`replace-bulk-${image.id}`}
+                onRemove={() => removeImage("unknown", image.id)}
+                onReplace={(file) => void replaceImage("unknown", image.id, file)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {needsManualImages.length > 0 ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
+          <p className="text-[14px] font-semibold text-[#071426]">
+            要手動選択
+          </p>
+          <p className="mt-1 text-[13px] text-slate-500">
+            画面種類を選んでください（個別補完用）。
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {needsManualImages.map((image) => (
               <UploadedImageCard
                 key={image.id}
                 image={image}
@@ -518,7 +692,9 @@ export default function MultiImageUploader({
                     }`}
                   >
                     {hasFile
-                      ? `アップロード済み ${images.length}/${spec.maxFiles}`
+                      ? images.length > spec.maxFiles
+                        ? `登録 ${images.length}枚`
+                        : `アップロード済み ${images.length}/${spec.maxFiles}`
                       : "未登録"}
                   </span>
                 </div>
@@ -593,12 +769,15 @@ export function filesFromCategoryMap(
   specs: readonly WearableRequiredImageSpec[],
   map: CategoryImageMap,
 ): File[] {
-  return specs.flatMap((spec) =>
+  const fromSpecs = specs.flatMap((spec) =>
     (map[spec.category] ?? []).map((image) => image.file),
   );
+  // 一括解析セット（unknown）も提出対象に含める
+  const fromBulk = (map.unknown ?? []).map((image) => image.file);
+  return [...fromSpecs, ...fromBulk];
 }
 
-/** SOXAI 用: category map → slot Files */
+/** SOXAI 用: category map → slot Files（一括解析セット unknown も含める） */
 export function soxaiSlotFilesFromCategoryMap(
   specs: readonly WearableRequiredImageSpec[],
   map: CategoryImageMap,
@@ -612,6 +791,16 @@ export function soxaiSlotFilesFromCategoryMap(
     if (!spec.soxaiSection) continue;
     const files = (map[spec.category] ?? []).map((image) => image.file);
     if (files.length > 0) out[spec.soxaiSection] = files;
+  }
+  // 一括解析セット（カテゴリ未割当）も Vision 解析から除外しない
+  const unknownFiles = (map.unknown ?? []).map((image) => image.file);
+  if (unknownFiles.length > 0) {
+    const anchor =
+      specs.find((s) => s.soxaiSection === "sleep_overview")?.soxaiSection ??
+      specs.find((s) => s.soxaiSection)?.soxaiSection;
+    if (anchor) {
+      out[anchor] = [...(out[anchor] ?? []), ...unknownFiles];
+    }
   }
   return out;
 }

@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Link from "next/link";
 
 const principles = [
   {
@@ -8,13 +8,13 @@ const principles = [
   },
   {
     number: "02",
-    title: "Practice",
-    subtitle: "身体から眠りを整える",
+    title: "Priority",
+    subtitle: "今日の順番を決める",
   },
   {
     number: "03",
-    title: "Design",
-    subtitle: "続けられる仕組みをつくる",
+    title: "Practice",
+    subtitle: "昼と夜で実践する",
   },
 ];
 
@@ -22,68 +22,64 @@ export default function About() {
   return (
     <section
       id="about"
-      className="relative overflow-hidden bg-[#f4f1e9] py-16 text-[#0b1b31] sm:py-20 lg:py-24"
+      className="relative scroll-mt-6 overflow-hidden bg-[#071426] py-28 text-white sm:scroll-mt-8 sm:py-24 lg:py-28"
     >
-      <div className="absolute -left-40 top-0 h-[320px] w-[320px] rounded-full bg-cyan-100/50 blur-3xl" />
-      <div className="absolute -right-40 bottom-0 h-[360px] w-[360px] rounded-full bg-amber-100/45 blur-3xl" />
+      <div className="absolute -left-40 top-10 h-[360px] w-[360px] rounded-full bg-cyan-300/8 blur-3xl" />
+      <div className="absolute -right-48 bottom-0 h-[380px] w-[380px] rounded-full bg-amber-300/8 blur-3xl" />
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:gap-16">
-          <div>
-            <div className="mb-5 flex items-center gap-4">
-              <span className="h-px w-12 bg-[#b89242]" />
-              <p className="text-xs font-semibold tracking-[0.28em] text-[#8a6a2d]">
-                ABOUT
-              </p>
-            </div>
+        <div className="max-w-3xl">
+          <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
+            METHOD
+          </p>
 
-            <h2 className="text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl lg:text-5xl">
-              Sleep Wellnessとは
-            </h2>
+          <h2 className="mt-5 text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl lg:text-5xl">
+            Sleep Wellness Method™
+          </h2>
 
-            <p className="mt-6 max-w-xl text-base leading-8 text-slate-700 sm:text-lg">
-              睡眠を、健康・働き方・人生の質を支える土台として捉え、
-              科学と身体実践をつなぐアプローチです。
+          <div className="mt-8 space-y-5 text-[15px] leading-7 text-white/70 sm:mt-9 sm:space-y-6 sm:text-base sm:leading-8">
+            <p>
+              データを見て終わるのではなく、睡眠の状態をAIで分析し、改善の優先順位を明確に。
+              その結果をもとに、認定講師が一人ひとりに合わせたヨガ・呼吸・生活習慣などの実践へつなげます。
             </p>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {principles.map((item) => (
-                <article
-                  key={item.number}
-                  className="rounded-[20px] border border-[#0b1b31]/10 bg-white/75 px-5 py-5 backdrop-blur"
-                >
-                  <p className="text-xs font-bold tracking-[0.2em] text-[#8a6a2d]">
-                    {item.number}
-                  </p>
-                  <h3 className="mt-3 text-lg font-semibold tracking-[-0.03em]">
-                    {item.title}
-                  </h3>
-                  <p className="mt-1 text-sm text-[#52717a]">{item.subtitle}</p>
-                </article>
-              ))}
-            </div>
+            <p>
+              さらにSleep Wellness Institute Japanでは、ヨガインストラクターがクライアントの睡眠データをAIで分析し、その結果をヨガのメニュー作成や日々の指導へ活用できる独自システムを開発。
+            </p>
+            <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-5 text-white/80 backdrop-blur-sm sm:px-6 sm:py-6">
+              「睡眠を測る」だけではなく、
+              <br />
+              データ → 分析 → 指導 → 実践 → 再評価
+              <br />
+              までをつなぐ。
+              <br className="hidden sm:block" />
+              それがSleep Wellness Method™です。
+            </p>
           </div>
 
-          <div className="relative overflow-hidden rounded-[32px] bg-[#071426] shadow-[0_40px_100px_-45px_rgba(15,23,42,0.35)]">
-            <div className="relative aspect-[16/11] lg:aspect-[4/3]">
-              <Image
-                src="/yogafest2.jpg"
-                alt="Sleep Wellness Institute Japanの活動風景"
-                fill
-                className="object-cover object-center"
-                sizes="(min-width: 1024px) 50vw, 100vw"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/85 via-[#071426]/10 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
-                <p className="text-xs font-semibold tracking-[0.28em] text-amber-200">
-                  OUR APPROACH
-                </p>
-                <p className="mt-3 max-w-md text-xl font-medium leading-snug tracking-[-0.03em] text-white sm:text-2xl">
-                  感覚だけに頼らず、データだけにも偏らない。
-                </p>
-              </div>
-            </div>
+          <div className="relative z-10 mt-9 sm:mt-10">
+            <Link
+              href="/pricing"
+              className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-full border border-[#d8b36a]/40 bg-white/[0.03] px-6 text-sm font-semibold text-[#d8b36a] transition hover:border-[#d8b36a]/70 hover:bg-white/[0.07]"
+            >
+              料金・プログラムを見る
+            </Link>
           </div>
+        </div>
+
+        <div className="mt-14 grid gap-6 border-t border-white/10 pt-10 sm:grid-cols-3 sm:gap-8">
+          {principles.map((item) => (
+            <article key={item.number} className="space-y-3">
+              <p className="text-xs font-semibold tracking-[0.22em] text-[#d8b36a]">
+                {item.number}
+              </p>
+              <h3 className="text-xl font-semibold tracking-[-0.03em] text-white">
+                {item.title}
+              </h3>
+              <p className="text-[15px] leading-7 text-white/55">
+                {item.subtitle}
+              </p>
+            </article>
+          ))}
         </div>
       </div>
     </section>

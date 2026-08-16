@@ -18,6 +18,7 @@ import {
   type StoredAnalysis,
 } from "@/lib/repositories/client-repository";
 import type { AnalysisResult } from "@/lib/analysis-session";
+import { isUnsafePrintEnvironment } from "@/lib/print-counseling-sheet";
 
 function wellnessScoreOf(analysis: StoredAnalysis | null | undefined): number | null {
   if (!analysis) return null;
@@ -88,6 +89,7 @@ function ClientAnalysisDetailInner() {
 
   useEffect(() => {
     if (!ready || !analysis || !result || !autoPrint) return;
+    if (isUnsafePrintEnvironment()) return;
     const timer = window.setTimeout(() => window.print(), 400);
     return () => window.clearTimeout(timer);
   }, [ready, analysis, result, autoPrint]);
@@ -211,7 +213,15 @@ function ClientAnalysisDetailInner() {
         <div className="no-print mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => {
+              if (isUnsafePrintEnvironment()) {
+                window.alert(
+                  "このブラウザでは印刷ダイアログを開けません。ChromeまたはSafariで開いてPDFにしてください。",
+                );
+                return;
+              }
+              window.print();
+            }}
             className="inline-flex min-h-11 items-center justify-center rounded-full px-6 text-[14px] font-semibold text-white"
             style={{ backgroundColor: NAVY }}
           >

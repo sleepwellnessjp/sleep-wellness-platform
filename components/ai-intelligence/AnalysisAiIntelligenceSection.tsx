@@ -35,19 +35,17 @@ function pickMetrics(metrics: AnalysisMetrics | undefined) {
   };
 }
 
+export type AnalysisAiIntelligenceParts = "assistant" | "predictive";
+
 /**
  * 分析結果画面向け Instructor Assistant + Predictive Analysis。
  * ロジックは lib/ai-intelligence（ルールベース / 将来 GPT 差し替え可）。
  */
-export default function AnalysisAiIntelligenceSection({
-  result,
-  previousSleepScore = null,
-  previousMetrics = null,
-}: {
-  result: AnalysisResult;
-  previousSleepScore?: number | null;
-  previousMetrics?: AnalysisMetrics | null;
-}) {
+export function useAnalysisAiIntelligence(
+  result: AnalysisResult,
+  previousSleepScore: number | null = null,
+  previousMetrics: AnalysisMetrics | null = null,
+) {
   const [assistant, setAssistant] = useState<InstructorAssistantBriefing | null>(
     null,
   );
@@ -180,7 +178,26 @@ export default function AnalysisAiIntelligenceSection({
     };
   }, [result, previousSleepScore, previousMetrics]);
 
-  if (loading && !assistant) {
+  return { assistant, predictive, loading, error };
+}
+
+export function AnalysisAiIntelligenceView({
+  assistant,
+  predictive,
+  loading,
+  error,
+  parts = ["assistant", "predictive"],
+}: {
+  assistant: InstructorAssistantBriefing | null;
+  predictive: PredictiveAnalysis | null;
+  loading: boolean;
+  error: string | null;
+  parts?: AnalysisAiIntelligenceParts[];
+}) {
+  const showAssistant = parts.includes("assistant");
+  const showPredictive = parts.includes("predictive");
+
+  if (loading && !assistant && !predictive) {
     return (
       <div className="mt-5 space-y-3 sm:mt-6">
         <SoftSkeleton variant="coach" />
@@ -188,7 +205,7 @@ export default function AnalysisAiIntelligenceSection({
     );
   }
 
-  if (error && !assistant) {
+  if (error && !assistant && !predictive) {
     return (
       <p className="mt-5 text-[13px] text-[#a33a3a] sm:mt-6" role="alert">
         {error}
@@ -198,8 +215,31 @@ export default function AnalysisAiIntelligenceSection({
 
   return (
     <div className="mt-5 space-y-5 sm:mt-6">
-      {assistant ? <InstructorAssistantPanel briefing={assistant} /> : null}
-      {predictive ? <PredictiveAnalysisCard analysis={predictive} compact /> : null}
+      {showAssistant && assistant ? (
+        <InstructorAssistantPanel briefing={assistant} />
+      ) : null}
+      {showPredictive && predictive ? (
+        <PredictiveAnalysisCard analysis={predictive} compact />
+      ) : null}
     </div>
   );
+}
+
+export default function AnalysisAiIntelligenceSection({
+  result,
+  previousSleepScore = null,
+  previousMetrics = null,
+  parts = ["assistant", "predictive"],
+}: {
+  result: AnalysisResult;
+  previousSleepScore?: number | null;
+  previousMetrics?: AnalysisMetrics | null;
+  parts?: AnalysisAiIntelligenceParts[];
+}) {
+  const intelligence = useAnalysisAiIntelligence(
+    result,
+    previousSleepScore,
+    previousMetrics,
+  );
+  return <AnalysisAiIntelligenceView {...intelligence} parts={parts} />;
 }

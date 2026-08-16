@@ -14,7 +14,9 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import AnalysisFlow from "@/components/AnalysisFlow";
+import SiteNavMenu from "@/components/site/SiteNavMenu";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 import {
   AnalysisError,
   beginNewSoxaiAnalysisSession,
@@ -43,25 +45,20 @@ import {
   OURA_MAX_IMAGES,
   resolveOuraVisionExtraction,
 } from "@/lib/oura-vision-runner";
+import { prepareImagesForVision } from "@/lib/oura-image-prep";
 import AnalysisStartButton from "@/components/analysis/AnalysisStartButton";
 import DeviceSelector from "@/components/analysis/DeviceSelector";
 import MultiImageUploader, {
-  filesFromCategoryMap,
   soxaiSlotFilesFromCategoryMap,
   type CategoryImageMap,
 } from "@/components/analysis/MultiImageUploader";
+import OuraAnalysisPanel from "@/components/analysis/OuraAnalysisPanel";
 import {
   revokeWearablePreviewUrls,
   WEARABLE_MAX_IMAGES,
 } from "@/lib/wearable-analysis";
-import type {
-  WearableDevice,
-  WearableImageCategory,
-} from "@/lib/wearable-analysis";
-import {
-  getRequiredImageSpecs,
-  listMissingRequiredCategories,
-} from "@/lib/wearable-devices";
+import type { WearableDevice } from "@/lib/wearable-analysis";
+import { getRequiredImageSpecs } from "@/lib/wearable-devices";
 import { toSwsMetrics } from "@/lib/sws-standard";
 import {
   CLIENT_GENDER_OPTIONS,
@@ -263,7 +260,6 @@ type InputMethod =
   | "apple";
 
 const SOXAI_IMAGE_SPECS = getRequiredImageSpecs("soxai");
-const OURA_IMAGE_SPECS = getRequiredImageSpecs("oura");
 const SOXAI_UPLOAD_SLOTS = SOXAI_IMAGE_SPECS.filter(
   (spec) => spec.soxaiSection != null,
 ).map((spec) => ({
@@ -557,8 +553,6 @@ function NewAnalysisPageInner() {
   const [ouraFiles, setOuraFiles] = useState<File[]>([]);
   const [soxaiImagesByCategory, setSoxaiImagesByCategory] =
     useState<CategoryImageMap>({});
-  const [ouraImagesByCategory, setOuraImagesByCategory] =
-    useState<CategoryImageMap>({});
   const [uploadGuideTouched, setUploadGuideTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<BackgroundOcrStatus>("idle");
@@ -773,28 +767,14 @@ function NewAnalysisPageInner() {
     setError(null);
   };
 
-  const handleOuraImagesChange = (next: CategoryImageMap) => {
+  const handleOuraFilesChange = (nextFiles: File[]) => {
     setUploadGuideTouched(true);
     setTouchedUpload(true);
-    setOuraImagesByCategory(next);
-    const nextFiles = filesFromCategoryMap(OURA_IMAGE_SPECS, next).slice(
-      0,
-      Math.min(WEARABLE_MAX_IMAGES, OURA_MAX_IMAGES),
+    setOuraFiles(
+      nextFiles.slice(0, Math.min(WEARABLE_MAX_IMAGES, OURA_MAX_IMAGES)),
     );
-    setOuraFiles(nextFiles);
     setError(null);
   };
-
-  const ouraMissingRequired = useMemo(
-    () =>
-      listMissingRequiredCategories({
-        device: "oura",
-        filledCategories: Object.entries(ouraImagesByCategory)
-          .filter(([, list]) => (list?.length ?? 0) > 0)
-          .map(([category]) => category as WearableImageCategory),
-      }),
-    [ouraImagesByCategory],
-  );
 
   const handleClientSelect = async (value: string) => {
     if (!value) {
@@ -948,15 +928,8 @@ function NewAnalysisPageInner() {
     }
 
     if (inputMethod === "oura") {
-      if (ouraMissingRequired.length > 0) {
-        setUploadGuideTouched(true);
-        setError(
-          `分析に必要な画像があと${ouraMissingRequired.length}種類不足しています。`,
-        );
-        return;
-      }
       if (ouraFiles.length === 0) {
-        setError("Oura画像をアップロードしてください。");
+        setError("Oura画像を1枚以上アップロードしてください。");
         return;
       }
     }
@@ -1410,9 +1383,13 @@ function NewAnalysisPageInner() {
         setError(null);
         setOcrStatus("ready");
         const extractedMetrics = extraction.metrics;
+        const storedImages = await prepareImagesForVision(images);
+        if (!adoptSubmitGeneration(submitGeneration, submitGenerationRef)) {
+          return;
+        }
         setExtractionDraft({
           lifestyle,
-          images,
+          images: storedImages,
           inputSource: "oura",
           extractedMetrics,
           imageKeys: extraction.imageKeys,
@@ -1755,9 +1732,7 @@ function NewAnalysisPageInner() {
 
   const uploadMissing =
     (inputMethod === "soxai" && touchedUpload && files.length === 0) ||
-    (inputMethod === "oura" &&
-      uploadGuideTouched &&
-      ouraMissingRequired.length > 0);
+    (inputMethod === "oura" && uploadGuideTouched && ouraFiles.length === 0);
 
   const methodPending =
     inputMethod === "garmin" ||
@@ -1794,9 +1769,12 @@ function NewAnalysisPageInner() {
           onBackToUpload={handleBackToUploadFromOcr}
         />
       )}
-      <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3.5 sm:px-8 sm:py-4">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
+      <div className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pb-3 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] sm:px-8 sm:py-4 sm:pt-4">
+          <Link
+            href={HOME_TOP_HREF}
+            className="flex min-h-11 min-w-0 items-center gap-3 py-1.5 pr-2 sm:min-h-0 sm:py-0 sm:pr-0"
+          >
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"
@@ -1808,13 +1786,14 @@ function NewAnalysisPageInner() {
           <div className="flex shrink-0 items-center gap-3 sm:gap-6">
             <Link
               href="/clients"
-              className="inline-flex min-h-11 items-center text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition active:text-[#071426] sm:min-h-10 sm:text-xs sm:hover:text-[#071426] sm:active:text-slate-500"
+              className="hidden min-h-11 items-center text-[11px] font-semibold tracking-[0.18em] text-slate-500 transition active:text-[#071426] sm:inline-flex sm:min-h-10 sm:text-xs sm:hover:text-[#071426] sm:active:text-slate-500"
             >
               CLIENTS
             </Link>
-            <p className="text-[10px] font-semibold tracking-[0.22em] text-[#8a6a2d] sm:text-xs sm:tracking-[0.28em]">
+            <p className="hidden text-[10px] font-semibold tracking-[0.22em] text-[#8a6a2d] sm:block sm:text-xs sm:tracking-[0.28em]">
               AI ANALYSIS
             </p>
+            <SiteNavMenu />
           </div>
         </div>
       </div>
@@ -2139,7 +2118,7 @@ function NewAnalysisPageInner() {
                   必要なスクリーンショットをアップロード
                 </h2>
                 <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  画面の種類ごとに画像を割り当ててください。各項目は任意ですが、分析開始には合計1枚以上が必要です。未指定の項目は確認画面で未取得と表示されます。
+                  上部から複数画像をまとめて解析できます。不足がある場合のみ、下の1〜7から画面を追加してください。分析開始には合計1枚以上が必要です。
                 </p>
               </div>
 
@@ -2181,20 +2160,18 @@ function NewAnalysisPageInner() {
                   STEP 2 · OURA DATA
                 </p>
                 <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
-                  必要なスクリーンショットをアップロード
+                  Ouraスクリーンショットを解析
                 </h2>
                 <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
-                  必須5種類を各項目へ割り当ててください。まとめて追加すると AI が画面種類を自動分類します（OCRではありません）。レジリエンスは任意です。
+                  Oura Ringのスクリーンショットをまとめて追加すると、AIが画像全体を解析し、睡眠・回復・ストレスに必要なデータを抽出します。画面種類の指定は不要です。
                 </p>
               </div>
 
               <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
-                <MultiImageUploader
-                  deviceType="oura"
-                  specs={OURA_IMAGE_SPECS}
-                  imagesByCategory={ouraImagesByCategory}
-                  onChange={handleOuraImagesChange}
-                  showMissingAlert={uploadGuideTouched && ouraMissingRequired.length > 0}
+                <OuraAnalysisPanel
+                  files={ouraFiles}
+                  onChange={handleOuraFilesChange}
+                  showMissing={uploadGuideTouched && ouraFiles.length === 0}
                 />
               </div>
             </section>
@@ -2221,12 +2198,7 @@ function NewAnalysisPageInner() {
               >
                 <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 sm:gap-5">
                   <Field label="測定日" required>
-                    <input
-                      name="measurementDate"
-                      type="date"
-                      required
-                      className={inputClass}
-                    />
+                    <DatePickerField name="measurementDate" required />
                   </Field>
                 </div>
               </FormGroup>
@@ -3132,7 +3104,7 @@ function NewAnalysisPageInner() {
                 {inputMethod === "manual"
                   ? "SOXAI画像なしで、手入力データを確認画面に渡します。"
                   : inputMethod === "oura"
-                    ? "必須：Oura必須5種類の画像・対象者名・測定日・年齢・性別。レジリエンスは任意です。"
+                    ? "必須：Oura画像（1枚以上）・対象者名・測定日・年齢・性別。不足項目は下の個別アップロードで補完できます。"
                     : ocrStatus === "ready"
                       ? "選択したSOXAI画像の解析は完了しています。必須項目を入力して確認画面へ進んでください。"
                       : ocrStatus === "running"
@@ -3145,7 +3117,7 @@ function NewAnalysisPageInner() {
                   disabled={
                     isSubmitting ||
                     (inputMethod === "soxai" && files.length === 0) ||
-                    (inputMethod === "oura" && ouraMissingRequired.length > 0)
+                    (inputMethod === "oura" && ouraFiles.length === 0)
                   }
                   busy={isSubmitting}
                   label={
@@ -3165,8 +3137,8 @@ function NewAnalysisPageInner() {
                           : "SOXAIデータ取得を完了中..."
                   }
                   hint={
-                    inputMethod === "oura" && ouraMissingRequired.length > 0
-                      ? `分析に必要な画像があと${ouraMissingRequired.length}種類不足しています`
+                    inputMethod === "oura" && ouraFiles.length === 0
+                      ? "Oura画像を1枚以上アップロードしてください"
                       : undefined
                   }
                 />
@@ -3246,6 +3218,67 @@ function RadioOptions({
           </label>
         );
       })}
+    </div>
+  );
+}
+
+function DatePickerField({
+  name,
+  required,
+  defaultValue,
+}: {
+  name: string;
+  required?: boolean;
+  defaultValue?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const openCalendar = () => {
+    const input = inputRef.current;
+    if (!input) return;
+    try {
+      if (typeof input.showPicker === "function") {
+        input.showPicker();
+        return;
+      }
+    } catch {
+      // showPicker が使えない環境ではネイティブの date 操作にフォールバック
+    }
+    input.focus();
+  };
+
+  return (
+    <div className="relative mt-2.5">
+      <input
+        ref={inputRef}
+        name={name}
+        type="date"
+        required={required}
+        defaultValue={defaultValue}
+        className={`${inputClass} mt-0 cursor-pointer pr-12 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-12 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0`}
+        onClick={openCalendar}
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="カレンダーから日付を選ぶ"
+        className="absolute right-3 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#8a6a2d] transition hover:bg-[#8a6a2d]/10"
+        onClick={openCalendar}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+          <path d="M8 3.5v4M16 3.5v4M3.5 10h17" />
+        </svg>
+      </button>
     </div>
   );
 }

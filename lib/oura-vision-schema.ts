@@ -35,6 +35,28 @@ export type OuraVisionMetrics = {
   bodyTemperatureDeviation: number | null; // °C
   recoveryIndex: number | null;
   recoveryTime: string | null;
+  /** 睡眠負債（分）。必要睡眠量・合計睡眠と別項目 */
+  sleepDebtMinutes: number | null;
+  /** 必要な睡眠量（分） */
+  sleepNeedMinutes: number | null;
+  /** 日中ストレス時間（分）。グラフ推測禁止・集計値優先 */
+  daytimeStressMinutes: number | null;
+  /** 日中回復時間（分）。recoveryTime 文字列と併用可 */
+  daytimeRecoveryMinutes: number | null;
+  /** 日中リラックス時間（分） */
+  daytimeRelaxMinutes: number | null;
+  /** 心拍変動バランス（画面表記） */
+  hrvBalance: string | null;
+  /** 心拍変動バランスが数値スコアの場合 */
+  hrvBalanceScore: number | null;
+  /** 睡眠規則性（画面表記） */
+  sleepRegularity: string | null;
+  /** 消費カロリー */
+  caloriesBurned: number | null;
+  /** 活動時間（分） */
+  activityTimeMinutes: number | null;
+  /** 歩数 */
+  steps: number | null;
   sleepTiming: string | null;
   sleepBalance: string | null;
   activityBalance: string | null;
@@ -97,6 +119,17 @@ export const OURA_VISION_METRIC_KEYS = [
   "bodyTemperatureDeviation",
   "recoveryIndex",
   "recoveryTime",
+  "sleepDebtMinutes",
+  "sleepNeedMinutes",
+  "daytimeStressMinutes",
+  "daytimeRecoveryMinutes",
+  "daytimeRelaxMinutes",
+  "hrvBalance",
+  "hrvBalanceScore",
+  "sleepRegularity",
+  "caloriesBurned",
+  "activityTimeMinutes",
+  "steps",
   "sleepTiming",
   "sleepBalance",
   "activityBalance",
@@ -143,6 +176,17 @@ export function emptyOuraVisionMetrics(): OuraVisionMetrics {
     bodyTemperatureDeviation: null,
     recoveryIndex: null,
     recoveryTime: null,
+    sleepDebtMinutes: null,
+    sleepNeedMinutes: null,
+    daytimeStressMinutes: null,
+    daytimeRecoveryMinutes: null,
+    daytimeRelaxMinutes: null,
+    hrvBalance: null,
+    hrvBalanceScore: null,
+    sleepRegularity: null,
+    caloriesBurned: null,
+    activityTimeMinutes: null,
+    steps: null,
     sleepTiming: null,
     sleepBalance: null,
     activityBalance: null,
@@ -259,6 +303,8 @@ export function normalizeOuraVisionResult(raw: unknown): OuraVisionResult {
       key === "breathingRegularity" ||
       key === "breathingDisturbances" ||
       key === "recoveryTime" ||
+      key === "hrvBalance" ||
+      key === "sleepRegularity" ||
       key === "sleepTiming" ||
       key === "sleepBalance" ||
       key === "activityBalance" ||
@@ -323,6 +369,8 @@ export const ouraVisionJsonSchema = {
             key === "breathingRegularity" ||
             key === "breathingDisturbances" ||
             key === "recoveryTime" ||
+            key === "hrvBalance" ||
+            key === "sleepRegularity" ||
             key === "sleepTiming" ||
             key === "sleepBalance" ||
             key === "activityBalance" ||

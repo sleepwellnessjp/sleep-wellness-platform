@@ -1192,8 +1192,61 @@ export async function listAdminCertifiedInstructors(): Promise<
   });
 }
 
+type LicenseClient = NonNullable<
+  Awaited<ReturnType<typeof createServerSupabaseClient>>
+>;
+
+function uniqueNames(...values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map((value) => (value ?? "").trim()).filter(Boolean))];
+}
+
+async function syncInstructorNameOnActivities(
+  supabase: LicenseClient,
+  instructorId: string,
+  publicName: string,
+  previousNames: string[] = [],
+): Promise<void> {
+  const { error: activityError } = await supabase
+    .from("instructor_activities" as never)
+    .update({ instructor_name: publicName } as never)
+    .eq("instructor_id", instructorId);
+  if (activityError && !isMissingRelationError(activityError.message)) {
+    console.warn(
+      "[certified-instructors] instructor_activities name sync:",
+      activityError.message,
+    );
+  }
+
+  const { data: instructor } = await supabase
+    .from("certified_instructors")
+    .select("user_id")
+    .eq("id", instructorId)
+    .maybeSingle();
+  const userId = String(
+    (instructor as { user_id?: string | null } | null)?.user_id ?? "",
+  ).trim();
+  if (!userId) return;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, display_name")
+    .eq("id", userId)
+    .maybeSingle();
+  const currentName = String(
+    (profile as { display_name?: string | null } | null)?.display_name ?? "",
+  ).trim();
+  if (!currentName) return;
+  const shouldRename = previousNames.includes(currentName);
+  if (!shouldRename) return;
+
+  await supabase
+    .from("profiles")
+    .update({ display_name: publicName })
+    .eq("id", userId);
+}
+
 async function resolveProfileIdByEmail(
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  supabase: LicenseClient,
   email: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
@@ -1331,6 +1384,21 @@ export async function upsertAdminCertifiedInstructor(
     throw new Error("認定番号を入力してください");
   }
 
+  let previousNames: string[] = [];
+  if (!isNew) {
+    const { data: existing } = await supabase
+      .from("certified_instructors")
+      .select("display_name, public_name, public_display_name, legal_name")
+      .eq("id", input.id?.trim() ?? "")
+      .maybeSingle();
+    previousNames = uniqueNames(
+      (existing as LicenseRow | null)?.display_name as string | undefined,
+      (existing as LicenseRow | null)?.public_name as string | undefined,
+      (existing as LicenseRow | null)?.public_display_name as string | undefined,
+      (existing as LicenseRow | null)?.legal_name as string | undefined,
+    );
+  }
+
   const requiredEducationHours = Number(input.requiredEducationHours ?? 0);
   const completedEducationHours = Number(input.completedEducationHours ?? 0);
   if (
@@ -1346,9 +1414,9 @@ export async function upsertAdminCertifiedInstructor(
     throw new Error("継続教育の修了時間は0以上で入力してください");
   }
 
-  // display_name は既存互換のため更新時は触らない（新規のみ設定）
   const basePayload = {
     email,
+    display_name: displayName,
     public_name: publicName,
     public_display_name: publicName,
     legal_name: legalName,
@@ -1410,6 +1478,13 @@ export async function upsertAdminCertifiedInstructor(
     }
     instructorId = String((data as LicenseRow).id);
   }
+
+  await syncInstructorNameOnActivities(
+    supabase,
+    instructorId,
+    publicName,
+    previousNames,
+  );
 
   if (input.issueLicense) {
     const existing = await supabase

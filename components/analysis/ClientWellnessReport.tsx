@@ -105,9 +105,11 @@ function writeSavedComment(result: AnalysisResult, value: string) {
 export function InstructorCommentEditor({
   result,
   numbered = true,
+  title,
 }: {
   result: AnalysisResult;
   numbered?: boolean;
+  title?: string;
 }) {
   const [instructorComment, setInstructorComment] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
@@ -129,7 +131,9 @@ export function InstructorCommentEditor({
   return (
     <ReportCard className="report-instructor-comment-field">
       <SectionLabel
-        title={numbered ? "⑦ 認定講師コメント" : "認定講師コメント"}
+        title={
+          title ?? (numbered ? "⑦ 認定講師コメント" : "認定講師コメント")
+        }
         eyebrow="INSTRUCTOR"
       />
       <p className="mb-3 text-[13px] leading-6 text-slate-500 sm:text-[14px]">

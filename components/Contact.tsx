@@ -26,17 +26,17 @@ export default function Contact() {
   return (
     <section
       id="contact"
-      className="relative overflow-hidden bg-white py-16 text-[#0b1b31] sm:py-20 lg:py-24"
+      className="relative overflow-hidden bg-[#071426] py-24 text-white sm:py-20 lg:py-24"
     >
-      <div className="absolute left-0 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-100/50 blur-3xl" />
-      <div className="absolute bottom-0 right-0 h-[360px] w-[360px] translate-x-1/3 translate-y-1/3 rounded-full bg-amber-100/45 blur-3xl" />
+      <div className="absolute left-0 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-300/8 blur-3xl" />
+      <div className="absolute bottom-0 right-0 h-[360px] w-[360px] translate-x-1/3 translate-y-1/3 rounded-full bg-amber-300/8 blur-3xl" />
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
         <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">
           <div>
             <div className="mb-5 flex items-center gap-4">
-              <span className="h-px w-12 bg-[#b89242]" />
-              <p className="text-xs font-semibold tracking-[0.28em] text-[#8a6a2d]">
+              <span className="h-px w-12 bg-[#d8b36a]" />
+              <p className="text-xs font-semibold tracking-[0.28em] text-[#d8b36a]">
                 CONTACT
               </p>
             </div>
@@ -45,7 +45,7 @@ export default function Contact() {
               お問い合わせ
             </h2>
 
-            <p className="mt-5 max-w-md text-base leading-8 text-slate-700">
+            <p className="mt-5 max-w-md text-base leading-8 text-white/70">
               認定講師・睡眠分析・企業導入など、ご相談を受け付けています。
             </p>
 
@@ -60,8 +60,8 @@ export default function Contact() {
                     onClick={() => setInquiryType(item)}
                     className={`rounded-full border px-4 py-2 text-sm font-medium transition duration-300 ${
                       active
-                        ? "border-[#071426] bg-[#071426] text-white"
-                        : "border-[#0b1b31]/10 bg-[#f8f8f6] text-[#315f68] hover:border-[#315f68]/35 hover:bg-white"
+                        ? "border-[#d8b36a] bg-[#d8b36a] text-[#071426]"
+                        : "border-white/12 bg-white/[0.04] text-white/70 hover:border-white/25 hover:bg-white/[0.08]"
                     }`}
                   >
                     {item}
@@ -71,7 +71,7 @@ export default function Contact() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[2rem] bg-[#071426] p-[1px] shadow-[0_40px_100px_-40px_rgba(7,20,38,0.55)]">
+          <div className="relative overflow-hidden rounded-[2rem] bg-[#0c1e37] p-[1px] shadow-[0_40px_100px_-40px_rgba(0,0,0,0.65)]">
             <div
               className="pointer-events-none absolute inset-0 opacity-80"
               aria-hidden="true"
@@ -81,7 +81,7 @@ export default function Contact() {
               }}
             />
 
-            <div className="relative overflow-hidden rounded-[calc(2rem-1px)] bg-[#071426]">
+            <div className="relative overflow-hidden rounded-[calc(2rem-1px)] bg-[#0c1e37]">
               <div className="relative p-6 sm:p-8 lg:p-10">
                 {submitted ? (
                   <div className="flex min-h-[320px] flex-col items-center justify-center text-center">

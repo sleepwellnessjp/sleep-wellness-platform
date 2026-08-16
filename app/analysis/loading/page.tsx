@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import { AnalysisError } from "@/lib/analysis-session";
 import { bootstrapScoreFirstAnalysis } from "@/lib/analysis-progressive";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -61,7 +62,7 @@ export default function AnalysisLoadingPage() {
       <main className="min-h-screen overflow-x-hidden bg-[#f7f7f5]">
         <div className="border-b border-slate-200/80 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-md">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
-            <Link href="/" className="inline-flex min-h-11 items-center">
+            <Link href={HOME_TOP_HREF} className="inline-flex min-h-11 items-center">
               <Image
                 src="/swij-logo-horizontal.png"
                 alt="Sleep Wellness Institute Japan"
@@ -126,7 +127,7 @@ export default function AnalysisLoadingPage() {
 
       <div className="relative z-10 border-b border-white/10 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3.5 sm:px-8 sm:py-4">
-          <Link href="/" className="inline-flex min-h-11 items-center">
+          <Link href={HOME_TOP_HREF} className="inline-flex min-h-11 items-center">
             <Image
               src="/swij-logo-horizontal.png"
               alt="Sleep Wellness Institute Japan"

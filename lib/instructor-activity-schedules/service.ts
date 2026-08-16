@@ -26,7 +26,9 @@ const SUMMARY_MAX = 160;
 const URL_MAX = 500;
 
 function schedulesFrom(client: Client) {
-  return client.from("instructor_activity_schedules" as never);
+  return (client as unknown as SupabaseClient).from(
+    "instructor_activity_schedules",
+  );
 }
 
 function tokyoToday(): string {
@@ -234,7 +236,7 @@ export async function listHomeActivitySchedules(
         .order("activity_date", { ascending: true })
         .order("created_at", { ascending: false })
         .limit(limit);
-      data = fallback.data;
+      data = fallback.data as typeof data;
       error = fallback.error;
     }
     if (error) {
@@ -271,7 +273,7 @@ export async function listOwnActivitySchedules(
       .eq("created_by", user.id)
       .order("created_at", { ascending: false })
       .order("activity_date", { ascending: false });
-    data = fallback.data;
+    data = fallback.data as typeof data;
     error = fallback.error;
   }
   if (error) throw dbSetupError(error.message);
@@ -298,7 +300,7 @@ async function getOwnScheduleById(
       .eq("id", id)
       .eq("created_by", user.id)
       .maybeSingle();
-    data = fallback.data;
+    data = fallback.data as typeof data;
     error = fallback.error;
   }
   if (error) throw new Error(error.message);
@@ -389,7 +391,7 @@ async function getScheduleRowById(
       .select(SCHEDULE_SELECT_BASE)
       .eq("id", id)
       .maybeSingle();
-    data = fallback.data;
+    data = fallback.data as typeof data;
     error = fallback.error;
   }
   if (error) throw dbSetupError(error.message);
@@ -411,7 +413,7 @@ export async function listAllSchedulesForAdmin(): Promise<
       .select(SCHEDULE_SELECT_BASE)
       .order("created_at", { ascending: false })
       .order("activity_date", { ascending: false });
-    data = fallback.data;
+    data = fallback.data as typeof data;
     error = fallback.error;
   }
   if (error) throw dbSetupError(error.message);

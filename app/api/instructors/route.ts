@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
 import { listPublicInstructors } from "@/lib/instructors/instructor-profile-service";
 import type { InstructorDirectoryFilters } from "@/lib/instructors/types";
-import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export async function GET(request: Request) {
   try {
-    if (!isSupabaseConfigured()) {
-      return NextResponse.json(
-        { error: "Supabase が設定されていません", instructors: [] },
-        { status: 503 },
-      );
-    }
-
     const { searchParams } = new URL(request.url);
     const filters: InstructorDirectoryFilters = {
       query: searchParams.get("q") ?? undefined,

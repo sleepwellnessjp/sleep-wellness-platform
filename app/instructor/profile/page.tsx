@@ -237,6 +237,13 @@ export default function InstructorProfileEditPage() {
           <p className="mt-2 text-sm leading-7 text-slate-600">
             自分のプロフィールのみ編集できます。保存しても「公開する」がOFFの間は公開ページに表示されません。
           </p>
+          <Link
+            href="/instructor/activities"
+            className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold"
+            style={{ color: GOLD }}
+          >
+            イベント・活動管理 →
+          </Link>
         </div>
 
         {loading ? (

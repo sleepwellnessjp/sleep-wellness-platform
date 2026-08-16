@@ -70,8 +70,13 @@ const PATH_RESOURCES: Array<{
     min: "view",
   },
   {
-    test: (p) => p === "/school" || p.startsWith("/school/"),
+    test: (p) => p === "/portal/school" || p.startsWith("/portal/school/"),
     resource: "school_dashboard",
+    min: "view",
+  },
+  {
+    test: (p) => p === "/instructor" || p.startsWith("/instructor/"),
+    resource: "instructor_dashboard",
     min: "view",
   },
   {
@@ -162,12 +167,34 @@ export function decidePathAccess(
     path === "/forbidden" ||
     path === "/contact" ||
     path.startsWith("/contact/") ||
+    path === "/pricing" ||
+    path.startsWith("/pricing/") ||
+    path === "/school" ||
+    path.startsWith("/school/") ||
+    path === "/retreat" ||
+    path.startsWith("/retreat/") ||
+    path === "/research" ||
+    path.startsWith("/research/") ||
     path === "/invite" ||
     path.startsWith("/invite/") ||
     path === "/demo" ||
     path.startsWith("/demo/") ||
     path === "/instructors" ||
     path.startsWith("/instructors/") ||
+    path === "/instructor-activities" ||
+    path.startsWith("/instructor-activities/") ||
+    path === "/ma-no-sho" ||
+    path.startsWith("/ma-no-sho/") ||
+    path === "/ma-no-yoga" ||
+    path.startsWith("/ma-no-yoga/") ||
+    path === "/melatonin-yoga" ||
+    path.startsWith("/melatonin-yoga/") ||
+    path === "/sleep-words" ||
+    path.startsWith("/sleep-words/") ||
+    path === "/about" ||
+    path.startsWith("/about/") ||
+    path === "/evidence" ||
+    path.startsWith("/evidence/") ||
     path === "/license/verify" ||
     path.startsWith("/license/verify/") ||
     path === "/academy/certified-instructor" ||
@@ -229,7 +256,7 @@ export function homePathForAuthority(
   authority: PlatformAuthority | null,
 ): string {
   if (authority === "hq") return "/admin";
-  if (authority === "school") return "/school";
+  if (authority === "school") return "/portal/school";
   if (authority === "instructor") return "/dashboard";
   if (authority === "client") return "/client";
   return "/dashboard";

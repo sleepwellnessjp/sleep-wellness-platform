@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Footer from "@/components/Footer";
 import InstructorPublicShell from "@/components/instructors/InstructorPublicShell";
+import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 export const metadata: Metadata = {
   title: "認定講師養成講座 | Sleep Wellness Institute Japan",
@@ -458,10 +459,10 @@ export default function CertifiedInstructorProgramPage() {
             <div className="mt-8 grid items-start gap-8 sm:mt-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
               <div className="relative mx-auto aspect-[4/5] w-full max-w-sm overflow-hidden rounded-[28px] shadow-[0_30px_80px_-48px_rgba(7,20,38,0.55)] lg:mx-0">
                 <Image
-                  src="/taka-photo.jpg"
+                  src="/taka-photo-v2.jpg"
                   alt="若林貴久"
                   fill
-                  className="object-cover object-top"
+                  className="object-cover object-[center_85%]"
                   sizes="(min-width:1024px) 28vw, 80vw"
                 />
               </div>
@@ -541,7 +542,7 @@ export default function CertifiedInstructorProgramPage() {
                 認定講座について問い合わせる
               </Link>
               <Link
-                href="/"
+                href={HOME_TOP_HREF}
                 className="text-sm font-semibold text-white/70 transition hover:text-white"
               >
                 トップページへ戻る
