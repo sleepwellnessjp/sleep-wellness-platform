@@ -209,6 +209,38 @@ export default function InstructorDashboardPage() {
           </p>
         </header>
 
+        <section
+          className="mt-8 animate-fade-up rounded-3xl border bg-white px-5 py-6 sm:mt-10 sm:px-7 sm:py-7"
+          style={{ borderColor: BORDER, boxShadow: CARD_SHADOW }}
+          aria-labelledby="schedule-manage-title"
+        >
+          <p
+            className="text-[10px] font-semibold tracking-[0.22em]"
+            style={{ color: GOLD }}
+          >
+            SCHEDULE
+          </p>
+          <h2
+            id="schedule-manage-title"
+            className="mt-2 text-lg font-semibold tracking-[-0.03em] sm:text-xl"
+            style={{ color: NAVY }}
+          >
+            活動予定
+          </h2>
+          <p className="mt-2 text-[13px] leading-6 sm:text-[14px]" style={{ color: MUTED }}>
+            日付・タイトル・短い説明・外部リンクを登録すると、トップページの「認定インストラクターの活動予定」に文字だけで表示されます。
+          </p>
+          <div className="mt-5">
+            <Link
+              href="/instructor/activity-schedules"
+              className="inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-[15px] font-semibold text-white transition active:opacity-90 sm:min-h-11 sm:hover:opacity-90"
+              style={{ backgroundColor: NAVY }}
+            >
+              活動予定を登録・管理
+            </Link>
+          </div>
+        </section>
+
         {ops ? (
           <div className="mt-8 animate-fade-up sm:mt-10">
             <InstructorOpsMetrics data={ops} />
