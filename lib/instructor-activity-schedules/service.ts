@@ -26,7 +26,9 @@ const SUMMARY_MAX = 160;
 const URL_MAX = 500;
 
 function schedulesFrom(client: Client) {
-  return client.from("instructor_activity_schedules" as never);
+  return (client as unknown as SupabaseClient).from(
+    "instructor_activity_schedules",
+  );
 }
 
 function tokyoToday(): string {
