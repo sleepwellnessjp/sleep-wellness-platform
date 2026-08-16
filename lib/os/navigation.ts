@@ -21,6 +21,7 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/evidence", label: "実証データ", match: "/admin/evidence" },
   { href: "/admin/roles", label: "権限", match: "/admin/roles" },
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
+  { href: "/admin/instructor-activity-schedules", label: "活動予定", match: "/admin/instructor-activity-schedules" },
   { href: "/admin/schools", label: "認定校", match: "/admin/schools" },
   { href: "/admin/licenses", label: "License", match: "/admin/licenses" },
   { href: "/admin/license", label: "課金License", match: "/admin/license-exact" },
@@ -43,6 +44,7 @@ const INSTRUCTOR_NAV: OsNavItem[] = [
   { href: "/dashboard", label: "Dashboard", match: "/dashboard" },
   { href: "/clients", label: "Clients", match: "/clients" },
   { href: "/analysis/new", label: "Analysis", match: "/analysis" },
+  { href: "/instructor/activity-schedules", label: "活動予定", match: "/instructor/activity-schedules" },
   { href: "/journey", label: "Journey", match: "/journey" },
   { href: "/homework", label: "Homework", match: "/homework" },
   { href: "/invitations", label: "招待", match: "/invitations" },
@@ -113,6 +115,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         title: "認定講師管理",
         description: "レベル・更新・停止・退会を運営します。",
         href: "/admin/certification",
+      },
+      {
+        id: "instructor-activity-schedules",
+        eyebrow: "SCHEDULE",
+        title: "認定インストラクターの活動予定",
+        description: "活動予定の確認・代理登録・編集・削除・公開切替。",
+        href: "/admin/instructor-activity-schedules",
       },
       {
         id: "schools",
@@ -228,6 +237,13 @@ export function homeModulesForRole(role: OsRole): OsHomeModule[] {
         title: "Analysis",
         description: "睡眠分析ワークスペースを開きます。",
         href: "/analysis/new",
+      },
+      {
+        id: "instructor-activity-schedules",
+        eyebrow: "SCHEDULE",
+        title: "活動予定",
+        description: "日付・タイトル・短い説明・外部リンクを登録し、トップページに文字で紹介します。",
+        href: "/instructor/activity-schedules",
       },
       {
         id: "journey",

@@ -87,7 +87,8 @@ function needsApiSessionRefresh(pathname: string): boolean {
     pathname.startsWith("/api/ops") ||
     pathname.startsWith("/api/journey") ||
     pathname.startsWith("/api/ai-intelligence") ||
-    pathname.startsWith("/api/instructor/profile")
+    pathname.startsWith("/api/instructor/profile") ||
+    pathname.startsWith("/api/instructor/activity-schedules")
   );
 }
 
