@@ -294,14 +294,30 @@ export default function SiteNavMenu({
               </nav>
 
               <div className="shrink-0 border-t border-[rgba(7,20,38,0.08)] px-3 pb-[calc(env(safe-area-inset-bottom,0px)+20px)] pt-2 sm:px-4 sm:pb-2.5 sm:pt-2.5">
-                <Link
-                  href="/contact"
-                  onClick={() => setOpen(false)}
-                  className={`inline-flex min-h-9 w-full items-center justify-center rounded-full text-[13px] font-semibold text-white transition hover:opacity-90 sm:min-h-10 sm:text-sm ${FOCUS_RING}`}
-                  style={{ background: NAVY }}
-                >
-                  お問い合わせ
-                </Link>
+                <div className="flex gap-2">
+                  <Link
+                    href="/sleep/science"
+                    onClick={() => setOpen(false)}
+                    className={`inline-flex min-h-9 flex-1 items-center justify-center rounded-full border text-[13px] font-semibold transition hover:opacity-90 sm:min-h-10 sm:text-sm ${FOCUS_RING}`}
+                    style={{
+                      borderColor: "rgba(7,20,38,0.18)",
+                      color: NAVY,
+                      background: isActivePath(pathname, "/sleep/science", hash)
+                        ? "rgba(138,106,45,0.08)"
+                        : "transparent",
+                    }}
+                  >
+                    睡眠学
+                  </Link>
+                  <Link
+                    href="/contact"
+                    onClick={() => setOpen(false)}
+                    className={`inline-flex min-h-9 flex-1 items-center justify-center rounded-full text-[13px] font-semibold text-white transition hover:opacity-90 sm:min-h-10 sm:text-sm ${FOCUS_RING}`}
+                    style={{ background: NAVY }}
+                  >
+                    お問い合わせ
+                  </Link>
+                </div>
               </div>
             </aside>
           </div>,
