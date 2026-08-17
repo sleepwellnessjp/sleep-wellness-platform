@@ -19,6 +19,7 @@ import type { RecoveryIndexResult } from "@/lib/recovery-index";
 import { formatOuraDeviceLabel } from "@/lib/device-adapters/oura";
 import { ouraLifestyleForPdf } from "@/lib/oura-analysis-input";
 import {
+  getExpertAnalysis,
   getPrescription,
   toPracticeMetrics,
   type PrescriptionCard,
@@ -91,16 +92,6 @@ function clampPdfComment(text: string, maxSentences = 2): string {
   const parts = trimmed.match(/[^.!?。！？]+[.!?。！？]?/g);
   if (!parts || parts.length <= maxSentences) return trimmed;
   return parts.slice(0, maxSentences).join("").trim();
-}
-
-function summarizeExpertPoints(
-  points: Array<{ body: string }>,
-): string {
-  return points
-    .map((point) => clampPdfComment(point.body, 1))
-    .filter(Boolean)
-    .slice(0, 3)
-    .join("");
 }
 
 function MetricGuideTile({
@@ -238,12 +229,11 @@ export function ClientDiagnosticPdf({
         : "SOXAI Ring");
   const pdfLifestyle = ouraLifestyleForPdf(result.inputSource, lifestyle);
   const report = buildCounselingReportContent(result, pdfLifestyle);
-  const practicePrescription = getPrescription(
-    toPracticeMetrics(result.metrics),
-  );
+  const practiceMetrics = toPracticeMetrics(result.metrics);
+  const practicePrescription = getPrescription(practiceMetrics);
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const scoreComment = clampPdfComment(result.scoreComment);
-  const expertSummary = summarizeExpertPoints(report.expertPoints);
+  const expertParagraphs = getExpertAnalysis(practiceMetrics);
 
   return (
     <div
@@ -560,18 +550,23 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        {expertSummary ? (
+        {expertParagraphs.length >= 2 ? (
           <section className="mt-3">
             <SectionEyebrow
               eyebrow="⑤ EXPERT ANALYSIS"
               title="睡眠ウェルネス分析"
             />
-            <p
-              className="text-[10px] leading-[1.55]"
-              style={{ color: "rgba(7,20,38,0.78)" }}
-            >
-              {expertSummary}
-            </p>
+            <div className="space-y-1.5">
+              {expertParagraphs.map((paragraph) => (
+                <p
+                  key={paragraph}
+                  className="text-[10px] leading-[1.55]"
+                  style={{ color: "rgba(7,20,38,0.78)" }}
+                >
+                  {paragraph}
+                </p>
+              ))}
+            </div>
           </section>
         ) : null}
 
