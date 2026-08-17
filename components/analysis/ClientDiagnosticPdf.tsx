@@ -1,6 +1,6 @@
 /**
  * Sleep Wellness Institute Japan
- * 睡眠ウェルネス・カウンセリングレポート（A4縦・2ページ固定）
+ * 睡眠ウェルネス・カウンセリングレポート（A4縦・3ページ）
  * 分析画面は変更しない。取得できた指標だけを掲載する。
  */
 
@@ -8,18 +8,33 @@
 
 import Image from "next/image";
 import type { AnalysisResult } from "@/lib/analysis-session";
+import {
+  WELLNESS_CATEGORY_LABELS,
+  type WellnessCategoryKey,
+} from "@/lib/analysis-session";
 import { buildCounselingReportContent } from "@/lib/counseling-report";
 import type { CounselingKeyMetric } from "@/lib/counseling-report";
 import type { LifestyleSnapshot } from "@/lib/wellness-client-report";
 import type { RecoveryIndexResult } from "@/lib/recovery-index";
 import { formatOuraDeviceLabel } from "@/lib/device-adapters/oura";
 import { ouraLifestyleForPdf } from "@/lib/oura-analysis-input";
-import { selectOfficialTextPrescription } from "@/lib/prescription-knowledge/select-prescription";
+import {
+  getPrescription,
+  toPracticeMetrics,
+  type PrescriptionCard,
+} from "@/lib/data/practice";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
 const GOLD_SOFT = "#fbf9f4";
 const SURFACE = "#fafaf8";
+
+const CATEGORY_ORDER: WellnessCategoryKey[] = [
+  "body",
+  "mind",
+  "lifestyle",
+  "environment",
+];
 
 function SectionEyebrow({
   eyebrow,
@@ -70,6 +85,24 @@ function metricGridClass(count: number): string {
   return "grid-cols-4";
 }
 
+function clampPdfComment(text: string, maxSentences = 2): string {
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  if (!trimmed) return "";
+  const parts = trimmed.match(/[^.!?。！？]+[.!?。！？]?/g);
+  if (!parts || parts.length <= maxSentences) return trimmed;
+  return parts.slice(0, maxSentences).join("").trim();
+}
+
+function summarizeExpertPoints(
+  points: Array<{ body: string }>,
+): string {
+  return points
+    .map((point) => clampPdfComment(point.body, 1))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join("");
+}
+
 function MetricGuideTile({
   item,
   compact = false,
@@ -110,6 +143,79 @@ function MetricGuideTile({
   );
 }
 
+function PdfPrescriptionCard({ card }: { card: PrescriptionCard }) {
+  return (
+    <div
+      className="flex min-h-0 flex-col rounded-lg px-2 py-1.5"
+      style={{
+        background: card.emphasized ? GOLD_SOFT : SURFACE,
+        border: card.emphasized
+          ? `1px solid ${GOLD}33`
+          : "1px solid rgba(7,20,38,0.08)",
+      }}
+    >
+      <p
+        className="text-[8px] font-semibold tracking-[0.12em]"
+        style={{ color: GOLD }}
+      >
+        {card.title}
+        {card.emphasized ? (
+          <span className="ml-1.5">今日からこれ</span>
+        ) : null}
+      </p>
+      <p
+        className="mt-0.5 text-[8px] leading-[1.35]"
+        style={{ color: "rgba(7,20,38,0.7)" }}
+      >
+        {card.philosophy}
+      </p>
+      <ol
+        className="mt-1 list-decimal space-y-0.5 pl-3.5 text-[8px] leading-[1.35]"
+        style={{ color: "rgba(7,20,38,0.8)" }}
+      >
+        {card.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <div className="mt-1 flex flex-wrap gap-0.5">
+        {card.dosageBadges.map((badge) => (
+          <span
+            key={badge}
+            className="rounded-full px-1.5 py-px text-[8px] leading-[1.3]"
+            style={{
+              border: `1px solid ${GOLD}40`,
+              color: "rgba(7,20,38,0.7)",
+            }}
+          >
+            {badge}
+          </span>
+        ))}
+      </div>
+      <div className="mt-1">
+        <p
+          className="text-[8px] font-semibold tracking-[0.1em]"
+          style={{ color: GOLD }}
+        >
+          注意
+        </p>
+        <ul
+          className="mt-0.5 list-disc space-y-px pl-3.5 text-[8px] leading-[1.35]"
+          style={{ color: "rgba(7,20,38,0.7)" }}
+        >
+          {card.cautions.map((caution) => (
+            <li key={caution}>{caution}</li>
+          ))}
+        </ul>
+      </div>
+      {card.sourceNote ? (
+        <p className="mt-1 text-[7px] leading-[1.35] text-slate-400">
+          出典：{card.sourceNote}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function ClientDiagnosticPdf({
   result,
   lifestyle,
@@ -132,11 +238,12 @@ export function ClientDiagnosticPdf({
         : "SOXAI Ring");
   const pdfLifestyle = ouraLifestyleForPdf(result.inputSource, lifestyle);
   const report = buildCounselingReportContent(result, pdfLifestyle);
-  const officialPrescription = selectOfficialTextPrescription(
-    result,
-    pdfLifestyle,
+  const practicePrescription = getPrescription(
+    toPracticeMetrics(result.metrics),
   );
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
+  const scoreComment = clampPdfComment(result.scoreComment);
+  const expertSummary = summarizeExpertPoints(report.expertPoints);
 
   return (
     <div
@@ -177,7 +284,7 @@ export function ClientDiagnosticPdf({
             </p>
             <p>{result.measurementDate || "分析日未設定"}</p>
             <p>デバイス：{resolvedDeviceName}</p>
-            <p className="mt-1 text-[9px] text-slate-400">1 / 2</p>
+            <p className="mt-1 text-[9px] text-slate-400">1 / 3</p>
           </div>
         </header>
 
@@ -259,34 +366,6 @@ export function ClientDiagnosticPdf({
             <SectionEyebrow eyebrow="② KEY DATA" title="重要な睡眠指標" />
             <div className={`grid gap-1.5 ${metricGridClass(report.keyMetrics.length)}`}>
               {report.keyMetrics.map((item) => (
-                <MetricGuideTile key={item.label} item={item} />
-              ))}
-            </div>
-            {report.analysisGuideMetrics.length > 0 ? (
-              <div className="mt-2.5">
-                <p
-                  className="mb-1.5 text-[9px] font-semibold tracking-[0.12em]"
-                  style={{ color: GOLD }}
-                >
-                  一般的な指標
-                </p>
-                <div
-                  className={`grid gap-1.5 ${metricGridClass(report.analysisGuideMetrics.length)}`}
-                >
-                  {report.analysisGuideMetrics.map((item) => (
-                    <MetricGuideTile key={item.label} item={item} compact />
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </section>
-        ) : report.analysisGuideMetrics.length > 0 ? (
-          <section className="mt-3">
-            <SectionEyebrow eyebrow="② KEY DATA" title="重要な睡眠指標" />
-            <div
-              className={`grid gap-1.5 ${metricGridClass(report.analysisGuideMetrics.length)}`}
-            >
-              {report.analysisGuideMetrics.map((item) => (
                 <MetricGuideTile key={item.label} item={item} />
               ))}
             </div>
@@ -427,41 +506,72 @@ export function ClientDiagnosticPdf({
               分析から分かったこと・これからの改善
             </h1>
           </div>
-          <p className="text-[9px] text-slate-400">2 / 2</p>
+          <p className="text-[9px] text-slate-400">2 / 3</p>
         </header>
 
-        {report.expertPoints.length > 0 ? (
+        <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <section>
+          <SectionEyebrow
+            eyebrow="WELLNESS SCORE"
+            title="Sleep Wellness Score（4領域）"
+          />
+          {scoreComment ? (
+            <p
+              className="mb-1.5 text-[9px] leading-[1.45]"
+              style={{ color: "rgba(7,20,38,0.78)" }}
+            >
+              {scoreComment}
+            </p>
+          ) : null}
+          <ul className="grid grid-cols-4 gap-1.5">
+            {CATEGORY_ORDER.map((key) => (
+              <li
+                key={key}
+                className="rounded-lg px-2 py-1.5"
+                style={{ background: SURFACE }}
+              >
+                <p className="text-[8px] tracking-[0.04em] text-slate-500">
+                  {WELLNESS_CATEGORY_LABELS[key]}
+                </p>
+                <p
+                  className="mt-0.5 text-[13px] font-semibold leading-none tracking-[-0.02em]"
+                  style={{ color: NAVY }}
+                >
+                  {result.categoryScores[key]}
+                  <span className="ml-0.5 text-[8px] font-medium text-slate-400">
+                    /100
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {report.analysisGuideMetrics.length > 0 ? (
+          <section className="mt-3">
+            <SectionEyebrow eyebrow="KEY DATA" title="一般的な指標" />
+            <div
+              className={`grid gap-1.5 ${metricGridClass(report.analysisGuideMetrics.length)}`}
+            >
+              {report.analysisGuideMetrics.map((item) => (
+                <MetricGuideTile key={item.label} item={item} compact />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {expertSummary ? (
           <section className="mt-3">
             <SectionEyebrow
               eyebrow="⑤ EXPERT ANALYSIS"
               title="睡眠ウェルネス分析"
             />
-            <div className="space-y-1.5">
-              {report.expertPoints.map((point) => (
-                <div key={point.index} className="flex gap-3">
-                  <p
-                    className="w-7 shrink-0 text-[10px] font-semibold tracking-[0.08em]"
-                    style={{ color: GOLD }}
-                  >
-                    {point.index}
-                  </p>
-                  <div className="min-w-0">
-                    <p
-                      className="text-[12px] font-semibold leading-snug"
-                      style={{ color: NAVY }}
-                    >
-                      {point.title}
-                    </p>
-                    <p
-                      className="mt-0.5 text-[11px] leading-[1.65]"
-                      style={{ color: "rgba(7,20,38,0.78)" }}
-                    >
-                      {point.body}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p
+              className="text-[10px] leading-[1.55]"
+              style={{ color: "rgba(7,20,38,0.78)" }}
+            >
+              {expertSummary}
+            </p>
           </section>
         ) : null}
 
@@ -476,17 +586,18 @@ export function ClientDiagnosticPdf({
             </p>
           </section>
         ) : null}
+        </div>
 
         {report.actions.length > 0 ? (
-          <section className="mt-3">
+          <section className="mt-3 shrink-0">
             <SectionEyebrow
               eyebrow="⑦ YOUR ACTION PLAN"
               title="あなたへの改善提案"
             />
-            <p className="mb-2 text-[10px] text-slate-500">
+            <p className="mb-1.5 text-[10px] text-slate-500">
               まず取り組みたい3つ
             </p>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {report.actions.map((item) => (
                 <div
                   key={item.rank}
@@ -494,20 +605,20 @@ export function ClientDiagnosticPdf({
                   style={{ background: SURFACE }}
                 >
                   <p
-                    className="text-[18px] font-semibold leading-none"
+                    className="text-[16px] font-semibold leading-none"
                     style={{ color: GOLD }}
                   >
                     {item.rank}
                   </p>
                   <div className="min-w-0">
                     <p
-                      className="text-[12px] font-semibold leading-snug"
+                      className="text-[11px] font-semibold leading-snug"
                       style={{ color: NAVY }}
                     >
                       {item.what}
                     </p>
                     <p
-                      className="mt-0.5 text-[10px] leading-[1.6] text-slate-600"
+                      className="mt-0.5 text-[9px] leading-[1.5] text-slate-600"
                     >
                       {item.why}
                     </p>
@@ -519,7 +630,7 @@ export function ClientDiagnosticPdf({
         ) : null}
 
         {report.nextSteps.length > 0 ? (
-          <section className="mt-3">
+          <section className="mt-3 shrink-0">
             <SectionEyebrow
               eyebrow="⑧ NEXT STEP"
               title="次回までのポイント"
@@ -542,106 +653,41 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        <section className="mt-3">
-          <SectionEyebrow
-            eyebrow="⑨ MELATONIN YOGA"
-            title="メラトニンヨガ™の処方・アドバイス"
-          />
-          <p className="mb-1.5 text-[9px] leading-4 text-slate-500">
-            Sleep Wellness Institute Japan 独自メソッド。本日の睡眠状態に合わせた処方箋です。公式テキスト（メラトニンヨガ™・間のヨガ・『間の書』）に基づきます。
-          </p>
-          {officialPrescription.safetyAlert ? (
-            <div
-              className="mb-1.5 rounded-lg px-3 py-2"
-              style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}55` }}
-            >
-              <p
-                className="text-[8px] font-semibold tracking-[0.12em]"
-                style={{ color: GOLD }}
-              >
-                安全確認
-              </p>
-              <p
-                className="mt-0.5 text-[9px] leading-[1.45]"
-                style={{ color: "rgba(7,20,38,0.8)" }}
-              >
-                {officialPrescription.safetyAlert.body.replace(
-                  /^([^。]+。).*$/u,
-                  "$1",
-                )}
-              </p>
-            </div>
-          ) : null}
-          <div
-            className="rounded-lg px-3 py-2"
-            style={{ background: GOLD_SOFT, border: `1px solid ${GOLD}33` }}
-          >
+        <BrandFooter />
+      </section>
+
+      <section className="client-diagnostic-page client-diagnostic-page-prescription flex flex-col">
+        <header className="flex items-end justify-between border-b border-[#071426]/12 pb-3">
+          <div>
             <p
-              className="text-[8px] font-semibold tracking-[0.12em]"
+              className="text-[9px] font-semibold tracking-[0.2em]"
               style={{ color: GOLD }}
             >
-              最終テーマ
+              PRACTICE
             </p>
-            <p
-              className="mt-0.5 text-[12px] font-semibold leading-snug"
+            <h1
+              className="mt-1 text-[16px] font-semibold tracking-[-0.03em]"
               style={{ color: NAVY }}
             >
-              {officialPrescription.finalThemeLabel}
-            </p>
-            <p
-              className="mt-1 text-[9px] leading-[1.45]"
-              style={{ color: "rgba(7,20,38,0.75)" }}
-            >
-              {officialPrescription.themeReason}
-            </p>
+              今夜からの実践
+            </h1>
           </div>
-          <div className="mt-1.5 space-y-0.5">
-            <div className="flex gap-2 border-b border-[#071426]/08 py-0.5">
-              <p
-                className="w-[4.2rem] shrink-0 text-[8px] font-semibold"
-                style={{ color: GOLD }}
-              >
-                今日の一本
-              </p>
-              <p
-                className="min-w-0 text-[8px] leading-[1.35]"
-                style={{ color: "rgba(7,20,38,0.8)" }}
-              >
-                {officialPrescription.todaysOne.name}：
-                {officialPrescription.todaysOne.action.replace(
-                  /^([^。]+。).*$/u,
-                  "$1",
-                )}
-              </p>
-            </div>
-            {(
-              [
-                ["呼吸", officialPrescription.breathing],
-                ["ヨガ", officialPrescription.yoga],
-                ["間", officialPrescription.ma],
-                ["入浴", officialPrescription.bathing],
-                ["夜", officialPrescription.night],
-                ["昼寝", officialPrescription.napNote],
-              ] as Array<[string, (typeof officialPrescription)["breathing"]]>
-            )
-              .flatMap(([label, block]) => (block ? [{ label, block }] : []))
-              .map(({ label, block }) => (
-                <div key={label} className="flex gap-2 border-b border-[#071426]/08 py-0.5 last:border-b-0">
-                  <p
-                    className="w-[4.2rem] shrink-0 text-[8px] font-semibold"
-                    style={{ color: GOLD }}
-                  >
-                    {label}
-                  </p>
-                  <p
-                    className="min-w-0 text-[8px] leading-[1.35]"
-                    style={{ color: "rgba(7,20,38,0.8)" }}
-                  >
-                    {block.body.replace(/^([^。]+。).*$/u, "$1")}
-                  </p>
-                </div>
-              ))}
+          <p className="text-[9px] text-slate-400">3 / 3</p>
+        </header>
+
+        <section className="mt-3 flex min-h-0 flex-1 flex-col">
+          <SectionEyebrow
+            eyebrow="MELATONIN YOGA"
+            title="メラトニンヨガ™処方"
+          />
+          <div className="mt-1.5 grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-1.5">
+            {practicePrescription.cards.map((card) => (
+              <PdfPrescriptionCard key={card.id} card={card} />
+            ))}
           </div>
+          <p className="mt-2 text-[8px] leading-[1.4] text-slate-400">
+            睡眠の状態が続けて気になる場合は、医療機関にご相談ください。本ページは医療的な診断・治療ではなく、生活上の実践の提案です。
+          </p>
         </section>
 
         <BrandFooter />

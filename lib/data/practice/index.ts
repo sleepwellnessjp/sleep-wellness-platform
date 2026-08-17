@@ -51,6 +51,8 @@ export {
   MEDITATION_PRACTICES,
 } from "@/lib/data/practice/meditation";
 
+export { toPracticeMetrics } from "@/lib/data/practice/from-analysis-metrics";
+
 export {
   CHALLENGE_TYPE_LABEL,
   detectChallengeTypes,
