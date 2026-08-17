@@ -65,7 +65,18 @@ import {
   formatStars,
   type LifestyleSnapshot,
 } from "@/lib/wellness-client-report";
-import { selectOfficialTextPrescription } from "@/lib/prescription-knowledge/select-prescription";
+import {
+  CHALLENGE_TYPE_LABEL,
+  getPrescription,
+  type PracticeMetrics,
+  type PrescriptionCard,
+} from "@/lib/data/practice";
+import { CHALLENGE_TYPE_DESCRIPTION } from "@/lib/data/practice/prescriptions";
+import {
+  parseMetricMinutes,
+  parseMetricPercent,
+  parseMetricWithUnit,
+} from "@/lib/sleep-analysis/parse-metric-value";
 import { buildHomeworkSeedActions } from "@/lib/homework-goals";
 import { startProgressiveAnalysisBackground } from "@/lib/analysis-progressive";
 import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
@@ -336,6 +347,79 @@ function ReportLead({ children }: { children: ReactNode }) {
     <p className="report-lead mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
       {children}
     </p>
+  );
+}
+
+function toPracticeMetrics(metrics: AnalysisMetrics): PracticeMetrics {
+  return {
+    sleepLatencyMinutes: parseMetricMinutes(metrics.sleepLatency),
+    sleepEfficiencyPercent: parseMetricPercent(metrics.sleepEfficiency),
+    deepSleepRatioPercent: parseMetricPercent(metrics.deepSleepRate),
+    remRatioPercent: parseMetricPercent(metrics.remSleepRate),
+    wakeMinutes: parseMetricMinutes(metrics.awakenings),
+    restingHrBpm: parseMetricWithUnit(metrics.restingHeartRate),
+    hrvMs: parseMetricWithUnit(metrics.hrv),
+    respiratoryRate: parseMetricWithUnit(metrics.respiratoryRate),
+  };
+}
+
+function PracticePrescriptionCardView({ card }: { card: PrescriptionCard }) {
+  return (
+    <div
+      className={
+        card.emphasized
+          ? "rounded-xl border border-[#8a6a2d]/45 bg-[#f7f3ea] px-3.5 py-3.5"
+          : "rounded-xl border border-[#8a6a2d]/18 bg-white/90 px-3.5 py-3"
+      }
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p
+          className="text-[11px] font-semibold tracking-[0.12em]"
+          style={{ color: GOLD }}
+        >
+          {card.title}
+        </p>
+        {card.emphasized ? (
+          <p
+            className="text-[11px] font-semibold tracking-[0.12em]"
+            style={{ color: GOLD }}
+          >
+            今日からこれ
+          </p>
+        ) : null}
+      </div>
+      <p className="mt-1.5 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+        {card.philosophy}
+      </p>
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+        {card.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {card.dosageBadges.map((badge) => (
+          <span
+            key={badge}
+            className="rounded-full border border-[#8a6a2d]/25 bg-white px-2 py-0.5 text-[11px] text-slate-600"
+          >
+            {badge}
+          </span>
+        ))}
+      </div>
+      <div className="mt-2.5">
+        <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-400">
+          注意
+        </p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+          {card.cautions.map((caution) => (
+            <li key={caution}>{caution}</li>
+          ))}
+        </ul>
+      </div>
+      {card.sourceNote ? (
+        <p className="mt-1.5 text-[11px] text-slate-400">出典：{card.sourceNote}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -1332,9 +1416,8 @@ function ResultContent({
     }
   })();
   const wellnessModel = buildClientWellnessReport(result, pendingLifestyle);
-  const officialPrescription = selectOfficialTextPrescription(
-    result,
-    pendingLifestyle,
+  const practicePrescription = getPrescription(
+    toPracticeMetrics(result.metrics),
   );
   const homeworkSeedActions = buildHomeworkSeedActions({
     todaysActions: wellnessModel.todaysActions,
@@ -2116,113 +2199,33 @@ function ResultContent({
                 eyebrow="MELATONIN YOGA"
               />
               <ReportLead>
-                Sleep Wellness Institute Japan 独自メソッド。本日の睡眠状態に合わせた処方箋です。
+                Sleep Wellness Institute Japan 独自メソッド。本日の睡眠状態に合わせた実践の提案です。
               </ReportLead>
-              {officialPrescription.safetyAlert ? (
-                <div className="mb-3 rounded-xl border border-[#8a6a2d]/35 bg-[#f7f3ea] px-3.5 py-3.5">
-                  <p
-                    className="text-[11px] font-semibold tracking-[0.12em]"
-                    style={{ color: GOLD }}
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {practicePrescription.challengeTypes.map((typeId) => (
+                  <span
+                    key={typeId}
+                    className="rounded-full border border-[#8a6a2d]/25 bg-white px-2 py-0.5 text-[11px] text-slate-600"
                   >
-                    安全確認
-                  </p>
-                  <p
-                    className="mt-1 text-[14px] font-medium leading-6 sm:text-[15px]"
-                    style={{ color: NAVY }}
-                  >
-                    {officialPrescription.safetyAlert.title}
-                  </p>
-                  <p className="mt-1 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                    {officialPrescription.safetyAlert.body}
-                  </p>
-                  <p className="mt-1.5 text-[11px] text-slate-400">
-                    出典：{officialPrescription.safetyAlert.sourceLabel}
-                  </p>
-                </div>
-              ) : null}
-              <div className="mb-3 rounded-xl border border-[#8a6a2d]/18 bg-white/90 px-3.5 py-3.5">
-                <p
-                  className="text-[11px] font-semibold tracking-[0.12em]"
-                  style={{ color: GOLD }}
-                >
-                  最終テーマ
-                </p>
-                <p
-                  className="mt-1 text-[15px] font-semibold leading-6 sm:text-[16px]"
-                  style={{ color: NAVY }}
-                >
-                  {officialPrescription.finalThemeLabel}
-                </p>
-                <p className="mt-2 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                  {officialPrescription.themeReason}
-                </p>
+                    {CHALLENGE_TYPE_LABEL[typeId]}
+                  </span>
+                ))}
               </div>
+              {practicePrescription.challengeTypes.map((typeId) => {
+                const description = CHALLENGE_TYPE_DESCRIPTION[typeId];
+                if (!description) return null;
+                return (
+                  <p key={`${typeId}-description`} className="mb-3 text-[11px] text-slate-600">
+                    {description}
+                  </p>
+                );
+              })}
               <div className="space-y-2.5">
-                <div className="rounded-xl border border-[#8a6a2d]/18 bg-white/90 px-3.5 py-3">
-                  <p
-                    className="text-[11px] font-semibold tracking-[0.12em]"
-                    style={{ color: GOLD }}
-                  >
-                    今日の一本
-                  </p>
-                  <p
-                    className="mt-1 text-[14px] font-medium leading-6 sm:text-[15px]"
-                    style={{ color: NAVY }}
-                  >
-                    {officialPrescription.todaysOne.name}
-                  </p>
-                  <p className="mt-1 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                    {officialPrescription.todaysOne.reason}
-                  </p>
-                  <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                    <span className="font-semibold text-slate-700">
-                      行動：
-                    </span>
-                    {officialPrescription.todaysOne.action}
-                  </p>
-                </div>
-                {(
-                  [
-                    ["呼吸", officialPrescription.breathing],
-                    ["ヨガ", officialPrescription.yoga],
-                    ["間", officialPrescription.ma],
-                    ["入浴", officialPrescription.bathing],
-                    ["夜", officialPrescription.night],
-                    ["昼寝", officialPrescription.napNote],
-                  ] as Array<
-                    [string, (typeof officialPrescription)["breathing"]]
-                  >
-                )
-                  .flatMap(([label, block]) =>
-                    block ? [{ label, block }] : [],
-                  )
-                  .map(({ label, block }) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-[#8a6a2d]/18 bg-white/90 px-3.5 py-3"
-                    >
-                      <p
-                        className="text-[11px] font-semibold tracking-[0.12em]"
-                        style={{ color: GOLD }}
-                      >
-                        {label}
-                      </p>
-                      <p
-                        className="mt-1 text-[14px] font-medium leading-6 sm:text-[15px]"
-                        style={{ color: NAVY }}
-                      >
-                        {block.title}
-                      </p>
-                      <p className="mt-1 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                        {block.body}
-                      </p>
-                      <p className="mt-1.5 text-[11px] text-slate-400">
-                        出典：{block.sourceLabel}
-                      </p>
-                    </div>
-                  ))}
+                {practicePrescription.cards.map((card) => (
+                  <PracticePrescriptionCardView key={card.id} card={card} />
+                ))}
                 <p className="text-[11px] leading-5 text-slate-400">
-                  医療的な診断・治療ではなく、公式テキストに基づく生活上の処方です。8つの柱を同時に始めず、一本から。
+                  睡眠の状態が続けて気になる場合は、医療機関にご相談ください。本ページは医療的な診断・治療ではなく、生活上の実践の提案です。
                 </p>
               </div>
             </section>
