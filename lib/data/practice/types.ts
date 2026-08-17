@@ -154,6 +154,8 @@ export type PracticeMetrics = {
   /** 覚醒時間（分）。回数ではない */
   wakeMinutes?: number | null;
   sleepLatencyMinutes?: number | null;
+  /** 深い睡眠の時間（分） */
+  deepSleepMinutes?: number | null;
   restingHrBpm?: number | null;
   hrvMs?: number | null;
   respiratoryRate?: number | null;

@@ -14,6 +14,7 @@ export function toPracticeMetrics(metrics: AnalysisMetrics): PracticeMetrics {
     deepSleepRatioPercent: parseMetricPercent(metrics.deepSleepRate),
     remRatioPercent: parseMetricPercent(metrics.remSleepRate),
     wakeMinutes: parseMetricMinutes(metrics.awakenings),
+    deepSleepMinutes: parseMetricMinutes(metrics.deepSleep),
     restingHrBpm: parseMetricWithUnit(metrics.restingHeartRate),
     hrvMs: parseMetricWithUnit(metrics.hrv),
     respiratoryRate: parseMetricWithUnit(metrics.respiratoryRate),

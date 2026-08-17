@@ -54,6 +54,11 @@ export {
 export { toPracticeMetrics } from "@/lib/data/practice/from-analysis-metrics";
 
 export {
+  getExpertAnalysis,
+  type ExpertAnalysisTemplate,
+} from "@/lib/data/practice/expert-analysis";
+
+export {
   CHALLENGE_TYPE_LABEL,
   detectChallengeTypes,
   getPrescription,
