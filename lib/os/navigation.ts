@@ -23,6 +23,7 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
   { href: "/admin/instructor-activities", label: "講師イベント", match: "/admin/instructor-activities" },
   { href: "/admin/instructor-activity-schedules", label: "活動予定", match: "/admin/instructor-activity-schedules" },
+  { href: "/admin/sleep-content", label: "睡眠コンテンツ", match: "/admin/sleep-content" },
   { href: "/admin/schools", label: "認定校", match: "/admin/schools" },
   { href: "/admin/licenses", label: "License", match: "/admin/licenses" },
   { href: "/admin/license", label: "課金License", match: "/admin/license-exact" },

@@ -40,6 +40,12 @@ const ITEMS: NavItem[] = [
     hqOnly: true,
   },
   {
+    href: "/admin/sleep-content",
+    label: "睡眠コンテンツ",
+    match: "prefix",
+    hqOnly: true,
+  },
+  {
     href: "/admin/schools",
     label: "認定校",
     match: "prefix",
