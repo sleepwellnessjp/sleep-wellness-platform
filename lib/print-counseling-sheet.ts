@@ -114,9 +114,9 @@ export async function generateCounselingSheetPdf(
 
   const pages = Array.from(
     previewRoot.querySelectorAll<HTMLElement>(".client-diagnostic-page"),
-  ).slice(0, 2);
-  if (pages.length < 2) {
-    throw new Error("A4 counseling report must have exactly 2 pages");
+  );
+  if (pages.length !== 3) {
+    throw new Error("A4 counseling report must have exactly 3 pages");
   }
   const targets = pages;
 

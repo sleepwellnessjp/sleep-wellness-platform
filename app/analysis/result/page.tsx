@@ -68,15 +68,10 @@ import {
 import {
   CHALLENGE_TYPE_LABEL,
   getPrescription,
-  type PracticeMetrics,
+  toPracticeMetrics,
   type PrescriptionCard,
 } from "@/lib/data/practice";
 import { CHALLENGE_TYPE_DESCRIPTION } from "@/lib/data/practice/prescriptions";
-import {
-  parseMetricMinutes,
-  parseMetricPercent,
-  parseMetricWithUnit,
-} from "@/lib/sleep-analysis/parse-metric-value";
 import { buildHomeworkSeedActions } from "@/lib/homework-goals";
 import { startProgressiveAnalysisBackground } from "@/lib/analysis-progressive";
 import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
@@ -348,19 +343,6 @@ function ReportLead({ children }: { children: ReactNode }) {
       {children}
     </p>
   );
-}
-
-function toPracticeMetrics(metrics: AnalysisMetrics): PracticeMetrics {
-  return {
-    sleepLatencyMinutes: parseMetricMinutes(metrics.sleepLatency),
-    sleepEfficiencyPercent: parseMetricPercent(metrics.sleepEfficiency),
-    deepSleepRatioPercent: parseMetricPercent(metrics.deepSleepRate),
-    remRatioPercent: parseMetricPercent(metrics.remSleepRate),
-    wakeMinutes: parseMetricMinutes(metrics.awakenings),
-    restingHrBpm: parseMetricWithUnit(metrics.restingHeartRate),
-    hrvMs: parseMetricWithUnit(metrics.hrv),
-    respiratoryRate: parseMetricWithUnit(metrics.respiratoryRate),
-  };
 }
 
 function PracticePrescriptionCardView({ card }: { card: PrescriptionCard }) {
@@ -2478,7 +2460,7 @@ function ResultContent({
                     ? "PDF準備中…"
                     : aiFailed
                       ? "カウンセリングレポート（スコア版）"
-                      : "カウンセリングレポート（A4・2ページ）"}
+                      : "カウンセリングレポート（A4・3ページ）"}
                 </button>
 
                 <Link
@@ -2509,7 +2491,7 @@ function ResultContent({
           </div>
         </article>
 
-        {/* ===== クライアント向けカウンセリングレポート PDF（A4縦・2ページ。画面には出さない） ===== */}
+        {/* ===== クライアント向けカウンセリングレポート PDF（A4縦・3ページ。画面には出さない） ===== */}
         <ClientDiagnosticPdf
           result={result}
           lifestyle={pendingLifestyle}
@@ -2534,10 +2516,10 @@ function ResultContent({
                       className="text-[15px] font-semibold"
                       style={{ color: NAVY }}
                     >
-                      睡眠ウェルネス・カウンセリングレポート（A4・2ページ）
+                      睡眠ウェルネス・カウンセリングレポート（A4・3ページ）
                     </h2>
                     <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                      クライアントへお渡しするカウンセリング資料です。A4縦・全2ページでPDF保存できます。
+                      クライアントへお渡しするカウンセリング資料です。A4縦・全3ページでPDF保存できます。
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

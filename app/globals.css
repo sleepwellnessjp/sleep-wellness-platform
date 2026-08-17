@@ -280,6 +280,13 @@ html[data-theme="dark"] {
     break-after: auto;
   }
 
+  .client-diagnostic-page-prescription {
+    page-break-before: always;
+    break-before: page;
+    page-break-after: auto;
+    break-after: auto;
+  }
+
   .client-diagnostic-pdf img {
     max-width: 100px !important;
   }
@@ -358,6 +365,11 @@ html[data-theme="dark"] {
   page-break-before: always;
   break-before: page;
   border-top: 1px dashed #8a6a2d;
+}
+
+.client-diagnostic-pdf-preview .client-diagnostic-page-prescription {
+  page-break-before: always;
+  break-before: page;
 }
 
 @media print {
