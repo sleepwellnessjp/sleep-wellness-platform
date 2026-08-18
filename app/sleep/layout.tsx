@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 export default function SleepLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <div className="pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
+      <div className="pb-[calc(180px+env(safe-area-inset-bottom,0px))] sm:pb-0">
         {children}
       </div>
       <MobileSleepTabBar />
