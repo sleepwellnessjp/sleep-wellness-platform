@@ -59,7 +59,7 @@ export default async function SleepSciencePage({ searchParams }: Search) {
       eyebrow="SLEEP SCIENCE"
       title="睡眠学"
       lead="自律神経、ホルモン、暮らし、仕事まで。睡眠の基礎をわかりやすく解説します。"
-      contentClassName="pb-[calc(120px+env(safe-area-inset-bottom,0px))] sm:pb-[5rem]"
+      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] sm:pb-[5rem]"
     >
       {filterOptions.length > 0 ? (
         <div className="mb-8 flex flex-wrap gap-2">
