@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { FOCUS_RING } from "@/components/ui/tokens";
 
 const ACTIVE = "#F5F2EA";
-const INACTIVE = "rgba(245, 242, 234, 0.62)";
+const INACTIVE = "rgba(245, 242, 234, 0.72)";
 const FROST_BG = "rgba(16, 28, 54, 0.62)";
-const FROST_BORDER = "rgba(198, 168, 106, 0.28)";
+const FROST_BORDER = "rgba(198, 168, 106, 0.38)";
 const FROST_SHADOW = "0 8px 28px rgba(10, 18, 36, 0.28)";
 const FROST_FILTER = "blur(16px) saturate(1.3)";
 
