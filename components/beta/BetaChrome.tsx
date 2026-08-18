@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { APP_VERSION_LABEL } from "@/lib/app-version";
-import { FOCUS_RING, GOLD, NAVY } from "@/components/ui/tokens";
+import { FOCUS_RING, GOLD } from "@/components/ui/tokens";
+
+const FROST_TEXT = "#F5F2EA";
+const FROST_BG = "rgba(16, 28, 54, 0.62)";
+const FROST_BORDER = "rgba(198, 168, 106, 0.28)";
+const FROST_SHADOW = "0 8px 28px rgba(10, 18, 36, 0.28)";
+const FROST_FILTER = "blur(16px) saturate(1.3)";
 
 function feedbackHref(pathname: string): string {
   const params = new URLSearchParams();
@@ -47,8 +53,12 @@ export default function BetaChrome() {
       <div
         className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/50 px-3 py-1.5 backdrop-blur-md backdrop-saturate-150"
         style={{
-          background: "rgba(255, 255, 255, 0.72)",
-          boxShadow: "0 8px 24px rgba(16, 24, 40, 0.12)",
+          color: FROST_TEXT,
+          background: FROST_BG,
+          borderColor: FROST_BORDER,
+          backdropFilter: FROST_FILTER,
+          WebkitBackdropFilter: FROST_FILTER,
+          boxShadow: FROST_SHADOW,
         }}
       >
         <span
@@ -60,7 +70,7 @@ export default function BetaChrome() {
         </span>
         <span
           className="text-[11px] font-semibold tabular-nums tracking-[-0.01em]"
-          style={{ color: NAVY }}
+          style={{ color: FROST_TEXT }}
         >
           {`v${APP_VERSION_LABEL}`}
         </span>
@@ -72,11 +82,12 @@ export default function BetaChrome() {
           href={feedbackHref(pathname)}
           className={`pointer-events-auto inline-flex min-h-11 items-center justify-center rounded-full border border-white/50 px-4 text-[12px] font-semibold transition active:scale-[0.98] sm:min-h-10 sm:px-5 sm:text-[13px] sm:hover:opacity-90 ${FOCUS_RING}`}
           style={{
-            color: NAVY,
-            background: "rgba(255, 255, 255, 0.72)",
-            backdropFilter: "blur(14px) saturate(1.4)",
-            WebkitBackdropFilter: "blur(14px) saturate(1.4)",
-            boxShadow: "0 8px 24px rgba(16, 24, 40, 0.12)",
+            color: FROST_TEXT,
+            background: FROST_BG,
+            borderColor: FROST_BORDER,
+            backdropFilter: FROST_FILTER,
+            WebkitBackdropFilter: FROST_FILTER,
+            boxShadow: FROST_SHADOW,
           }}
         >
           フィードバックを送る
