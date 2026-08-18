@@ -38,12 +38,13 @@ create table if not exists public.sleep_contents (
       'talk_video',
       'nature_sound',
       'practice_video',
+      'sleep_music',
       'article',
       'interview'
     )),
   constraint sleep_contents_category_kind_check
     check (
-      (category = 'rest' and kind in ('talk_video', 'nature_sound', 'practice_video'))
+      (category = 'rest' and kind in ('talk_video', 'nature_sound', 'practice_video', 'sleep_music'))
       or (category = 'science' and kind = 'article')
       or (category = 'interview' and kind = 'interview')
     ),
@@ -68,7 +69,7 @@ comment on column public.sleep_contents.category is
 comment on column public.sleep_contents.subcategory is
   '睡眠学のみ: basic / practice / life / women / men / work';
 comment on column public.sleep_contents.kind is
-  'talk_video / nature_sound / practice_video / article / interview';
+  'talk_video / nature_sound / practice_video / sleep_music / article / interview';
 comment on column public.sleep_contents.body_blocks is
   '記事本文のブロック配列。type は heading / paragraph / figure / list / callout';
 comment on column public.sleep_contents.youtube_url is
@@ -265,3 +266,33 @@ values
   ('interview-b', 'interview', null, 'interview', 'インタビュー B', 2, 'draft'),
   ('interview-c', 'interview', null, 'interview', 'インタビュー C', 3, 'draft')
 on conflict (slug) do nothing;
+
+-- 既存DB向け: sleep_music を kind 制約に追加（idempotent）
+alter table public.sleep_contents
+  drop constraint if exists sleep_contents_kind_check;
+
+alter table public.sleep_contents
+  add constraint sleep_contents_kind_check
+  check (kind in (
+    'talk_video',
+    'nature_sound',
+    'practice_video',
+    'sleep_music',
+    'article',
+    'interview'
+  ));
+
+alter table public.sleep_contents
+  drop constraint if exists sleep_contents_category_kind_check;
+
+alter table public.sleep_contents
+  add constraint sleep_contents_category_kind_check
+  check (
+    (
+      category = 'rest'
+      and kind in ('talk_video', 'nature_sound', 'practice_video', 'sleep_music')
+    )
+    or (category = 'science' and kind = 'article')
+    or (category = 'interview' and kind = 'interview')
+  );
+
