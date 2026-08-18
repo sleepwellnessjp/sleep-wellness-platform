@@ -32,6 +32,7 @@ export default async function SleepScienceArticlePage({ params }: Params) {
       eyebrow="SLEEP SCIENCE"
       title={article.title}
       lead={article.summary || "睡眠の基礎をわかりやすく解説します。"}
+      contentClassName="pb-[calc(120px+env(safe-area-inset-bottom,0px))] sm:pb-[5rem]"
     >
       <ScienceArticleBody blocks={article.bodyBlocks} />
       <div className="max-w-2xl">
