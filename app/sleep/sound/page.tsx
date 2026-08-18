@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import PublicIntroLayout from "@/components/site/PublicIntroLayout";
-import SleepContentSection from "@/components/sleep-content/SleepContentSection";
+import SleepAudioSection from "@/components/sleep-content/SleepAudioSection";
 import { listPublishedRestContentByKind } from "@/lib/sleep-content/service";
 
 export const dynamic = "force-dynamic";
@@ -24,16 +24,19 @@ export default async function SleepSoundPage() {
       contentClassName="pb-[calc(120px+env(safe-area-inset-bottom,0px))] sm:pb-[5rem]"
     >
       <div className="space-y-16">
-        <SleepContentSection
+        <SleepAudioSection
           title="入眠音楽"
           items={music}
           emptyMessage="コンテンツを準備中です。公開までしばらくお待ちください。"
+          defaultLoop={false}
         />
-        <SleepContentSection
+        <SleepAudioSection
           title="自然音"
           items={nature}
           emptyMessage="コンテンツを準備中です。公開までしばらくお待ちください。"
+          defaultLoop={true}
         />
+        <p className="text-right text-xs text-slate-500">Music: Pixabay</p>
       </div>
     </PublicIntroLayout>
   );
