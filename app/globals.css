@@ -109,12 +109,9 @@ html[data-theme="dark"] {
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
   }
   to {
     opacity: 1;
-    /* none — translateY(0) でも containing block になり fixed overlay が閉じ込められる */
-    transform: none;
   }
 }
 
@@ -542,6 +539,7 @@ body {
 
 .sw-page-enter {
   animation: page-enter var(--sw-duration-page) var(--sw-ease-out) both;
+  transform: none;
 }
 
 .sw-card {

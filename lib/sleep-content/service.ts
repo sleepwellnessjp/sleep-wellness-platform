@@ -375,6 +375,31 @@ export async function listPublishedScienceArticles(): Promise<SleepContent[]> {
   }
 }
 
+export async function listPublishedRestContentByKind(
+  kind: "talk_video" | "nature_sound" | "practice_video",
+): Promise<SleepContent[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const supabase = await requireClient();
+    const { data, error } = await contentsFrom(supabase)
+      .select(CONTENT_SELECT)
+      .eq("published", true)
+      .eq("status", "published")
+      .eq("category", "rest")
+      .eq("kind", kind)
+      .order("sort_order", { ascending: true });
+    if (error) {
+      if (isMissingTable(error.message)) return [];
+      console.error("[sleep-content] listPublishedRestByKind:", error.message);
+      return [];
+    }
+    return ((data as unknown[]) ?? []).map((row) => mapContent(asRow(row)));
+  } catch (error) {
+    console.error("[sleep-content] listPublishedRestByKind:", error);
+    return [];
+  }
+}
+
 export async function getPublishedScienceArticleBySlug(
   slug: string,
 ): Promise<SleepContent | null> {
