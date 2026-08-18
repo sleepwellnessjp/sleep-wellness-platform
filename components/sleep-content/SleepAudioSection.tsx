@@ -92,16 +92,9 @@ export default function SleepAudioSection({
         }
       });
     };
-
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") stopAll();
-    };
-
-    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", stopAll);
     window.addEventListener("beforeunload", stopAll);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", stopAll);
       window.removeEventListener("beforeunload", stopAll);
     };
