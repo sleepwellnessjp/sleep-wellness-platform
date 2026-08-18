@@ -9,6 +9,8 @@ type PublicIntroLayoutProps = {
   title: string;
   lead: string;
   children: ReactNode;
+  /** メインコンテンツ div に追加する Tailwind クラス（例: モバイルタブバー分の余白） */
+  contentClassName?: string;
 };
 
 /**
@@ -19,6 +21,7 @@ export default function PublicIntroLayout({
   title,
   lead,
   children,
+  contentClassName = "",
 }: PublicIntroLayoutProps) {
   return (
     <main className="min-h-screen bg-[#f7f7f5] text-[#071426]">
@@ -54,7 +57,7 @@ export default function PublicIntroLayout({
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-6 py-12 sm:px-8 sm:py-16 lg:px-10 lg:py-20">
+      <div className={`mx-auto max-w-7xl px-6 py-12 sm:px-8 sm:py-16 lg:px-10 lg:py-20 ${contentClassName}`.trimEnd()}>
         {children}
       </div>
 
