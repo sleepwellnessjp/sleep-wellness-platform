@@ -102,7 +102,7 @@ export default function MobileSleepTabBar() {
   return (
     <nav
       aria-label="睡眠コンテンツ"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] px-4 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-4 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden"
     >
       <div
         className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-1 rounded-full border border-white/50 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150"

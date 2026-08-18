@@ -121,7 +121,7 @@ export default function SleepAudioSection({
       <h2 className="text-xl font-semibold tracking-[-0.03em] sm:text-2xl" style={titleStyle}>
         {title}
       </h2>
-      <p className="mt-2 text-xs text-slate-500">再生は手動開始です。画面を閉じる/非表示にすると停止します。</p>
+      <p className="mt-2 text-xs text-slate-500">再生は手動開始です。画面を消しても再生は続きます。</p>
       <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => {
           const loop = loopById[item.id] ?? defaultLoop;
