@@ -18,6 +18,7 @@ import {
   type SleepContentStatus,
   type SleepContentSubcategory,
 } from "@/lib/sleep-content/types";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 const inputClass =
   "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[16px] text-[#071426] outline-none transition focus:border-[#8a6a2d] focus:ring-4 focus:ring-[#8a6a2d]/15";
@@ -167,6 +168,26 @@ export default function SleepContentForm({
     }
   };
 
+  const parseJsonOrThrow = async (
+    response: Response,
+    fallback: string,
+  ): Promise<Record<string, unknown>> => {
+    const raw = await response.text();
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      const snippet = raw.replace(/\s+/g, " ").slice(0, 180);
+      console.error("[sleep-content audio] non-JSON response", {
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        snippet,
+      });
+      throw new Error(
+        `${fallback}（HTTP ${response.status}${snippet ? `: ${snippet}` : ""}）`,
+      );
+    }
+  };
+
   const onPickAudio = async (file: File | undefined) => {
     if (!file) {
       setAudioError("音声ファイルの選択に失敗しました。もう一度お試しください。");
@@ -174,27 +195,58 @@ export default function SleepContentForm({
     }
     setError(null);
     setAudioError(null);
-    setAudioInfo(`選択中: ${file.name} (${Math.round(file.size / 1024 / 1024 * 100) / 100}MB)`);
+    setAudioInfo(
+      `選択中: ${file.name} (${Math.round((file.size / 1024 / 1024) * 100) / 100}MB)`,
+    );
     setUploading(true);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/admin/sleep-content/audio", {
+      // ファイル本体は Vercel のボディ上限を避けるため API に送らない。
+      const signResponse = await fetch("/api/admin/sleep-content/audio", {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        }),
       });
-      let json: { url?: string; error?: string } = {};
-      try {
-        json = (await response.json()) as { url?: string; error?: string };
-      } catch {
-        json = {
-          error: "サーバーから不正な応答を受け取りました。時間をおいて再試行してください。",
-        };
+      const signJson = await parseJsonOrThrow(
+        signResponse,
+        "アップロード用 URL の取得に失敗しました",
+      );
+      if (!signResponse.ok) {
+        throw new Error(
+          typeof signJson.error === "string"
+            ? signJson.error
+            : "アップロード用 URL の取得に失敗しました",
+        );
       }
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "音声のアップロードに失敗しました");
+      const path = typeof signJson.path === "string" ? signJson.path : "";
+      const token = typeof signJson.token === "string" ? signJson.token : "";
+      const publicUrl =
+        typeof signJson.publicUrl === "string" ? signJson.publicUrl : "";
+      const bucket =
+        typeof signJson.bucket === "string" ? signJson.bucket : "";
+      const contentType =
+        typeof signJson.contentType === "string"
+          ? signJson.contentType
+          : file.type;
+      if (!path || !token || !publicUrl || !bucket) {
+        throw new Error("アップロード用 URL の応答が不完全です");
       }
-      setField("audioUrl", json.url);
+
+      const supabase = createBrowserClient();
+      if (!supabase) {
+        throw new Error("Supabase が設定されていません");
+      }
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .uploadToSignedUrl(path, token, file, { contentType });
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      setField("audioUrl", publicUrl);
       setAudioInfo("アップロード完了");
     } catch (err) {
       const message =
