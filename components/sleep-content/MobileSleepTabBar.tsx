@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FOCUS_RING, NAVY } from "@/components/ui/tokens";
+import { FOCUS_RING } from "@/components/ui/tokens";
 
-const ACTIVE = NAVY;
-const INACTIVE = "rgba(7, 20, 38, 0.55)";
+const ACTIVE = "#F5F2EA";
+const INACTIVE = "rgba(245, 242, 234, 0.62)";
+const FROST_BG = "rgba(16, 28, 54, 0.62)";
+const FROST_BORDER = "rgba(198, 168, 106, 0.28)";
+const FROST_SHADOW = "0 8px 28px rgba(10, 18, 36, 0.28)";
+const FROST_FILTER = "blur(16px) saturate(1.3)";
 
 const TABS = [
   {
@@ -103,7 +107,11 @@ export default function MobileSleepTabBar() {
       <div
         className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-1 rounded-full border border-white/50 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150"
         style={{
-          background: "rgba(255, 255, 255, 0.72)",
+          background: FROST_BG,
+          borderColor: FROST_BORDER,
+          backdropFilter: FROST_FILTER,
+          WebkitBackdropFilter: FROST_FILTER,
+          boxShadow: FROST_SHADOW,
         }}
       >
         {TABS.map((tab) => {
@@ -116,7 +124,7 @@ export default function MobileSleepTabBar() {
               className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 transition duration-200 active:opacity-90 ${FOCUS_RING}`}
               style={{
                 backgroundColor: active
-                  ? "rgba(7, 20, 38, 0.07)"
+                  ? "rgba(255, 255, 255, 0.12)"
                   : "transparent",
               }}
               aria-current={active ? "page" : undefined}
