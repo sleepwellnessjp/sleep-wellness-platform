@@ -123,6 +123,8 @@ export default function SleepContentForm({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [audioInfo, setAudioInfo] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -163,8 +165,13 @@ export default function SleepContentForm({
   };
 
   const onPickAudio = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file) {
+      setAudioError("音声ファイルの選択に失敗しました。もう一度お試しください。");
+      return;
+    }
     setError(null);
+    setAudioError(null);
+    setAudioInfo(`選択中: ${file.name} (${Math.round(file.size / 1024 / 1024 * 100) / 100}MB)`);
     setUploading(true);
     try {
       const body = new FormData();
@@ -173,13 +180,25 @@ export default function SleepContentForm({
         method: "POST",
         body,
       });
-      const json = (await response.json()) as { url?: string; error?: string };
+      let json: { url?: string; error?: string } = {};
+      try {
+        json = (await response.json()) as { url?: string; error?: string };
+      } catch {
+        json = {
+          error: "サーバーから不正な応答を受け取りました。時間をおいて再試行してください。",
+        };
+      }
       if (!response.ok || !json.url) {
         throw new Error(json.error ?? "音声のアップロードに失敗しました");
       }
       setField("audioUrl", json.url);
+      setAudioInfo("アップロード完了");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "音声の処理に失敗しました");
+      const message =
+        err instanceof Error ? err.message : "音声の処理に失敗しました";
+      setError(message);
+      setAudioError(message);
+      setAudioInfo(null);
     } finally {
       setUploading(false);
     }
@@ -405,9 +424,22 @@ export default function SleepContentForm({
               type="file"
               accept="audio/mpeg,audio/mp3,audio/mp4,audio/wav,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm"
               className="sr-only"
-              onChange={(event) => void onPickAudio(event.target.files?.[0])}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                void onPickAudio(file);
+                // 同じファイルを再選択しても onChange が発火するようにする
+                event.currentTarget.value = "";
+              }}
             />
           </label>
+          {audioInfo ? (
+            <p className="mt-2 text-xs text-slate-500">{audioInfo}</p>
+          ) : null}
+          {audioError ? (
+            <p className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {audioError}
+            </p>
+          ) : null}
           {form.audioUrl ? (
             <p className="mt-2 break-all text-xs text-slate-500">{form.audioUrl}</p>
           ) : null}

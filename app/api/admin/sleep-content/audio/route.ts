@@ -8,6 +8,16 @@ import {
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
+function mimeFromFilename(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".m4a") || lower.endsWith(".mp4")) return "audio/mp4";
+  if (lower.endsWith(".wav")) return "audio/wav";
+  if (lower.endsWith(".ogg")) return "audio/ogg";
+  if (lower.endsWith(".webm")) return "audio/webm";
+  return "";
+}
+
 function normalizeAudioMime(type: string): string {
   const lower = type.toLowerCase();
   if (lower === "audio/mp3") return "audio/mpeg";
@@ -60,9 +70,13 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!isAllowedMime(file.type)) {
+    const detectedMime = normalizeAudioMime(file.type || mimeFromFilename(file.name));
+    if (!isAllowedMime(detectedMime)) {
       return NextResponse.json(
-        { error: "対応形式は MP3 / M4A / WAV / OGG / WEBM のみです" },
+        {
+          error:
+            "対応形式は MP3 / M4A / WAV / OGG / WEBM のみです（ファイル形式を確認してください）",
+        },
         { status: 400 },
       );
     }
@@ -75,7 +89,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const mime = normalizeAudioMime(file.type);
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    if (bucketsError) {
+      throw new Error(`バケット一覧の取得に失敗しました: ${bucketsError.message}`);
+    }
+    if (!buckets?.some((bucket) => bucket.id === SLEEP_CONTENT_AUDIO_BUCKET)) {
+      return NextResponse.json(
+        {
+          error:
+            "Storage バケット 'sleep-content-audio' が見つかりません。supabase/sleep-content.sql の Storage セクションを実行してください。",
+        },
+        { status: 500 },
+      );
+    }
+
+    const mime = detectedMime;
     const path = `${user.id}/${crypto.randomUUID()}.${extensionForMime(mime)}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     const { error: uploadError } = await supabase.storage
