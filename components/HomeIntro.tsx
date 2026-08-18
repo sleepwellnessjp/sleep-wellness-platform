@@ -1,5 +1,6 @@
 "use client";
 
+import { getImageProps } from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { pickMaNoShoQuote } from "@/lib/home-intro-quotes";
 import { homeIntroHash, shouldSkipHomeIntro } from "@/lib/home-intro";
@@ -26,7 +27,6 @@ const MIN_HOLD_MS = 6000;
 const MAX_FADE_START_MS = MIN_HOLD_MS + 200;
 const FADE_MS = 900;
 
-const HERO_IMAGE = "/melatonin-yoga.jpg";
 const MARK_IMAGE = "/swij-logo-mark-round.png";
 /** スマホ用：正式ロゴ（円形・透明背景）。演出レイヤーは CSS/SVG で重ねる */
 const MARK_IMAGE_MOBILE = "/swij-logo-mark-round-clear.png";
@@ -60,6 +60,24 @@ export default function HomeIntro() {
   const [fading, setFading] = useState(false);
   const [quote, setQuote] = useState("");
   const doneRef = useRef(false);
+  const {
+    props: { srcSet: mobileMarkSrcSet },
+  } = getImageProps({
+    src: MARK_IMAGE_MOBILE,
+    alt: "Sleep Wellness Institute Japan",
+    width: 220,
+    height: 220,
+    sizes: "(max-width: 767px) 220px, 0px",
+    quality: 75,
+  });
+  const { props: desktopMarkProps } = getImageProps({
+    src: MARK_IMAGE,
+    alt: "Sleep Wellness Institute Japan",
+    width: 220,
+    height: 220,
+    sizes: "(min-width: 768px) 220px, 0px",
+    quality: 75,
+  });
 
   useEffect(() => {
     const hash = homeIntroHash();
@@ -102,7 +120,7 @@ export default function HomeIntro() {
     document.documentElement.classList.add("swij-intro-active");
 
     const timers: number[] = [];
-    const state = { minHold: false, heroReady: false, fadeStarted: false };
+    const state = { minHold: false, assetsReady: true, fadeStarted: false };
 
     const finish = () => {
       if (doneRef.current) return;
@@ -127,30 +145,8 @@ export default function HomeIntro() {
     };
 
     const maybeFade = () => {
-      if (state.minHold && state.heroReady) beginFade();
+      if (state.minHold && state.assetsReady) beginFade();
     };
-
-    const markHeroReady = () => {
-      state.heroReady = true;
-      maybeFade();
-    };
-    try {
-      const img = new window.Image();
-      img.onload = markHeroReady;
-      img.onerror = markHeroReady;
-      img.src = HERO_IMAGE;
-      if (img.complete && img.naturalWidth > 0) markHeroReady();
-    } catch {
-      state.heroReady = true;
-    }
-
-    // 正式ロゴを先読み（未デコード時のフラッシュ防止）
-    try {
-      const logo = new window.Image();
-      logo.src = MARK_IMAGE_MOBILE;
-    } catch {
-      // ignore
-    }
 
     timers.push(
       window.setTimeout(() => {
@@ -1401,15 +1397,16 @@ export default function HomeIntro() {
           </svg>
           <div className="intro-logo-mark">
             <picture>
-              <source media="(max-width: 767px)" srcSet={MARK_IMAGE_MOBILE} />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <source media="(max-width: 767px)" srcSet={mobileMarkSrcSet} />
               <img
-                src={MARK_IMAGE}
+                {...desktopMarkProps}
                 alt="Sleep Wellness Institute Japan"
-                width={220}
-                height={220}
-                decoding="async"
-                style={{ background: "transparent", backgroundColor: "transparent" }}
+                fetchPriority="high"
+                style={{
+                  ...desktopMarkProps.style,
+                  background: "transparent",
+                  backgroundColor: "transparent",
+                }}
               />
             </picture>
           </div>
