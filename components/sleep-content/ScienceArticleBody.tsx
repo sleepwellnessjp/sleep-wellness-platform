@@ -2,6 +2,23 @@ import type { ReactNode } from "react";
 import { GOLD, NAVY } from "@/components/ui/tokens";
 import type { SleepContentBlock } from "@/lib/sleep-content/types";
 
+/** モバイル: 見出し直後は詰め、段落間は行高より広く。sm+ は従来どおり */
+function blockTopSpacing(
+  index: number,
+  blocks: SleepContentBlock[],
+): string {
+  if (index === 0) return "";
+  const prev = blocks[index - 1];
+  if (prev?.type === "heading") {
+    return "mt-3 sm:mt-6";
+  }
+  // 16px × 1.8 ≈ 29px 行送り → 段落間 ~1.6倍（48px）
+  return "mt-12 sm:mt-6";
+}
+
+const BODY_MOBILE = "text-[16px] leading-[1.8] text-[#071426]";
+const BODY_DESKTOP = "sm:leading-9";
+
 function renderEmphasis(text: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, index) => {
@@ -15,17 +32,19 @@ function renderEmphasis(text: string): ReactNode[] {
 function Callout({
   children,
   quiet = false,
+  className = "my-6 sm:my-8",
 }: {
   children: ReactNode;
   quiet?: boolean;
+  className?: string;
 }) {
   return (
     <aside
-      className={
+      className={`rounded-2xl px-4 py-4 sm:px-5 sm:py-5 ${className} ${
         quiet
-          ? "my-8 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-500 sm:px-5 sm:py-5"
-          : "my-8 rounded-2xl border border-[#8a6a2d]/25 bg-[#fbf9f4] px-4 py-4 text-[15px] leading-8 text-[#071426] sm:px-5 sm:py-5"
-      }
+          ? "border border-slate-200 bg-slate-50 text-sm leading-[1.75] text-slate-500 sm:leading-7"
+          : "border border-[#8a6a2d]/25 bg-[#fbf9f4] text-[15px] leading-[1.8] text-[#071426] sm:leading-8"
+      }`}
     >
       {children}
     </aside>
@@ -46,13 +65,15 @@ export default function ScienceArticleBody({
   blocks: SleepContentBlock[];
 }) {
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl -mx-1.5 sm:mx-0">
       {blocks.map((block, index) => {
+        const topSpacing = blockTopSpacing(index, blocks);
+
         if (block.type === "heading") {
           return (
             <h2
               key={index}
-              className="mt-10 text-[1.35rem] font-semibold leading-snug tracking-[-0.03em] first:mt-0 sm:mt-12 sm:text-2xl"
+              className={`${index === 0 ? "" : "mt-8 sm:mt-12"} text-[1.35rem] font-semibold leading-snug tracking-[-0.03em] sm:text-2xl`}
               style={{ color: NAVY }}
             >
               {block.text}
@@ -63,7 +84,7 @@ export default function ScienceArticleBody({
           return (
             <p
               key={index}
-              className="mt-5 text-[16px] leading-8 text-[#071426] sm:mt-6 sm:leading-9"
+              className={`${topSpacing} ${BODY_MOBILE} ${BODY_DESKTOP}`}
             >
               {renderEmphasis(block.text)}
             </p>
@@ -72,7 +93,7 @@ export default function ScienceArticleBody({
         if (block.type === "figure") {
           if (!block.image_url) return null;
           return (
-            <figure key={index} className="my-8 sm:my-10">
+            <figure key={index} className={`${topSpacing} mb-6 sm:mb-10`}>
               <img
                 src={block.image_url}
                 alt={block.alt || block.caption || ""}
@@ -95,7 +116,7 @@ export default function ScienceArticleBody({
           return (
             <ul
               key={index}
-              className="mt-5 list-disc space-y-2 pl-5 text-[16px] leading-8 text-[#071426] sm:mt-6 sm:leading-9"
+              className={`${topSpacing} list-disc space-y-2 pl-5 ${BODY_MOBILE} ${BODY_DESKTOP}`}
             >
               {items.map((item, itemIndex) => (
                 <li key={itemIndex}>{renderEmphasis(item)}</li>
@@ -105,7 +126,12 @@ export default function ScienceArticleBody({
         }
         if (block.type === "callout") {
           return (
-            <Callout key={index}>{renderEmphasis(block.text)}</Callout>
+            <Callout
+              key={index}
+              className={`${topSpacing} mb-6 sm:mb-8`}
+            >
+              {renderEmphasis(block.text)}
+            </Callout>
           );
         }
         return null;
