@@ -178,11 +178,15 @@ function fieldsFromInput(
     kind === "article" ? normalizeBlocks(input.bodyBlocks) : [];
 
   if (status === "published") {
-    if (isYoutubeKind(kind) && !youtubeUrl) {
+    if ((kind === "talk_video" || kind === "interview") && !youtubeUrl) {
       throw new Error("YouTube URL を入力してください");
     }
-    if (kind === "nature_sound" && !audioUrl) {
-      throw new Error("自然音ファイルをアップロードしてください");
+    if ((kind === "nature_sound" || kind === "practice_video") && !audioUrl) {
+      throw new Error(
+        kind === "practice_video"
+          ? "入眠音楽ファイルをアップロードしてください"
+          : "自然音ファイルをアップロードしてください",
+      );
     }
   }
 

@@ -4,7 +4,6 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import SleepContentBlocksEditor from "@/components/sleep-content/SleepContentBlocksEditor";
 import { NAVY } from "@/components/ui/tokens";
 import {
-  isYoutubeKind,
   REST_KINDS,
   SLEEP_CONTENT_CATEGORIES,
   SLEEP_CONTENT_CATEGORY_LABELS,
@@ -135,6 +134,10 @@ export default function SleepContentForm({
     () => kindOptionsFor(form.category),
     [form.category],
   );
+  const showAudioUpload =
+    form.kind === "nature_sound" || form.kind === "practice_video";
+  const showYoutubeUrl =
+    form.kind === "talk_video" || form.kind === "interview";
 
   const uploadImage = async (file: File): Promise<string> => {
     const body = new FormData();
@@ -399,7 +402,7 @@ export default function SleepContentForm({
         ) : null}
       </div>
 
-      {isYoutubeKind(form.kind) ? (
+      {showYoutubeUrl ? (
         <label className="block">
           <span className={labelClass}>YouTube URL</span>
           <input
@@ -415,9 +418,11 @@ export default function SleepContentForm({
         </label>
       ) : null}
 
-      {form.kind === "nature_sound" ? (
+      {showAudioUpload ? (
         <div>
-          <p className={labelClass}>自然音（上限 50MB）</p>
+          <p className={labelClass}>
+            {form.kind === "practice_video" ? "入眠音楽" : "自然音"}（上限 50MB）
+          </p>
           <label className="mt-2 flex min-h-12 cursor-pointer items-center justify-center rounded-2xl border border-dashed border-[#8a6a2d]/40 bg-[#fbf9f4] px-4 py-4 text-sm font-semibold text-[#8a6a2d]">
             音声を選択
             <input
@@ -426,6 +431,10 @@ export default function SleepContentForm({
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0];
+                if (!file) {
+                  setAudioError("音声ファイルを選択できませんでした。もう一度お試しください。");
+                  setAudioInfo(null);
+                }
                 void onPickAudio(file);
                 // 同じファイルを再選択しても onChange が発火するようにする
                 event.currentTarget.value = "";
