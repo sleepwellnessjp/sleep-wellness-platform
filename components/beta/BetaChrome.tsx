@@ -11,21 +11,46 @@ function feedbackHref(pathname: string): string {
   return `/feedback?${params.toString()}`;
 }
 
+/** /sleep/* 配下かどうか（モバイルタブバーが表示されるページ） */
+function isSleepPage(pathname: string): boolean {
+  return pathname === "/sleep" || pathname.startsWith("/sleep/");
+}
+
 /**
  * Version 1.0 Beta 運用用の固定 UI（全画面右下）
  * BETA バッジ · Version · フィードバック導線
+ *
+ * /sleep/* ではモバイルタブバー（高さ約74px）の上に積む。
+ * バッジ・ボタンともにすりガラス台座スタイルを適用。
  */
 export default function BetaChrome() {
   const pathname = usePathname() || "/";
   const onFeedback = pathname === "/feedback" || pathname.startsWith("/feedback/");
+  const sleep = isSleepPage(pathname);
 
   return (
     <div
-      className="pointer-events-none fixed bottom-0 right-0 z-[70] flex flex-col items-end gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-4 sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
+      className={[
+        "pointer-events-none fixed right-0 z-[70] flex flex-col items-end gap-2 p-3",
+        "pr-[max(0.75rem,env(safe-area-inset-right))]",
+        "sm:p-4",
+        // /sleep/* のモバイルのみタブバー（≈74px）＋余白分を上に積む
+        sleep
+          ? "pb-[max(92px,calc(env(safe-area-inset-bottom)+92px))] sm:pb-[max(1rem,env(safe-area-inset-bottom))]"
+          : "pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
+        "bottom-0",
+      ].join(" ")}
       data-beta-chrome
       aria-label="Version 1.0 Beta 情報"
     >
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-[color:var(--sw-border)] bg-white/95 px-3 py-1.5 shadow-[0_8px_28px_-18px_rgba(7,20,38,0.45)] backdrop-blur-md">
+      {/* BETA バッジ */}
+      <div
+        className="pointer-events-auto flex items-center gap-2 rounded-full border border-white/50 px-3 py-1.5 backdrop-blur-md backdrop-saturate-150"
+        style={{
+          background: "rgba(255, 255, 255, 0.72)",
+          boxShadow: "0 8px 24px rgba(16, 24, 40, 0.12)",
+        }}
+      >
         <span
           className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-[0.18em] text-white"
           style={{ backgroundColor: GOLD }}
@@ -41,11 +66,18 @@ export default function BetaChrome() {
         </span>
       </div>
 
+      {/* フィードバックボタン */}
       {!onFeedback ? (
         <Link
           href={feedbackHref(pathname)}
-          className={`pointer-events-auto inline-flex min-h-11 items-center justify-center rounded-full px-4 text-[12px] font-semibold text-white shadow-[0_10px_32px_-18px_rgba(7,20,38,0.55)] transition active:scale-[0.98] sm:min-h-10 sm:px-5 sm:text-[13px] sm:hover:opacity-92 ${FOCUS_RING}`}
-          style={{ backgroundColor: NAVY }}
+          className={`pointer-events-auto inline-flex min-h-11 items-center justify-center rounded-full border border-white/50 px-4 text-[12px] font-semibold transition active:scale-[0.98] sm:min-h-10 sm:px-5 sm:text-[13px] sm:hover:opacity-90 ${FOCUS_RING}`}
+          style={{
+            color: NAVY,
+            background: "rgba(255, 255, 255, 0.72)",
+            backdropFilter: "blur(14px) saturate(1.4)",
+            WebkitBackdropFilter: "blur(14px) saturate(1.4)",
+            boxShadow: "0 8px 24px rgba(16, 24, 40, 0.12)",
+          }}
         >
           フィードバックを送る
         </Link>
