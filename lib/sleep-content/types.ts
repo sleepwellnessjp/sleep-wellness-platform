@@ -40,6 +40,7 @@ export const SLEEP_CONTENT_KINDS = [
   "talk_video",
   "nature_sound",
   "practice_video",
+  "sleep_music",
   "article",
   "interview",
 ] as const;
@@ -177,6 +178,7 @@ export const SLEEP_CONTENT_KIND_LABELS: Record<SleepContentKind, string> = {
   talk_video: "語りかけ動画",
   nature_sound: "自然音",
   practice_video: "メラトニンヨガ™",
+  sleep_music: "入眠音楽",
   article: "記事",
   interview: "インタビュー",
 };
@@ -194,6 +196,7 @@ export const SLEEP_CONTENT_BLOCK_TYPE_LABELS: Record<
 
 export const REST_KINDS: SleepContentKind[] = [
   "talk_video",
+  "sleep_music",
   "nature_sound",
   "practice_video",
 ];

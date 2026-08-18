@@ -118,7 +118,8 @@ function assertCategoryKind(
     if (
       kind !== "talk_video" &&
       kind !== "nature_sound" &&
-      kind !== "practice_video"
+      kind !== "practice_video" &&
+      kind !== "sleep_music"
     ) {
       throw new Error("入眠の種別を選択してください");
     }
@@ -181,9 +182,9 @@ function fieldsFromInput(
     if ((kind === "talk_video" || kind === "interview") && !youtubeUrl) {
       throw new Error("YouTube URL を入力してください");
     }
-    if ((kind === "nature_sound" || kind === "practice_video") && !audioUrl) {
+    if ((kind === "nature_sound" || kind === "sleep_music") && !audioUrl) {
       throw new Error(
-        kind === "practice_video"
+        kind === "sleep_music"
           ? "入眠音楽ファイルをアップロードしてください"
           : "自然音ファイルをアップロードしてください",
       );
@@ -380,7 +381,7 @@ export async function listPublishedScienceArticles(): Promise<SleepContent[]> {
 }
 
 export async function listPublishedRestContentByKind(
-  kind: "talk_video" | "nature_sound" | "practice_video",
+  kind: "talk_video" | "nature_sound" | "practice_video" | "sleep_music",
 ): Promise<SleepContent[]> {
   if (!isSupabaseConfigured()) return [];
   try {

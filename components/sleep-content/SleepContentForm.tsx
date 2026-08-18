@@ -135,7 +135,7 @@ export default function SleepContentForm({
     [form.category],
   );
   const showAudioUpload =
-    form.kind === "nature_sound" || form.kind === "practice_video";
+    form.kind === "nature_sound" || form.kind === "sleep_music";
   const showYoutubeUrl =
     form.kind === "talk_video" || form.kind === "interview";
 
@@ -421,7 +421,7 @@ export default function SleepContentForm({
       {showAudioUpload ? (
         <div>
           <p className={labelClass}>
-            {form.kind === "practice_video" ? "入眠音楽" : "自然音"}（上限 50MB）
+            {form.kind === "sleep_music" ? "入眠音楽" : "自然音"}（上限 50MB）
           </p>
           <label className="mt-2 flex min-h-12 cursor-pointer items-center justify-center rounded-2xl border border-dashed border-[#8a6a2d]/40 bg-[#fbf9f4] px-4 py-4 text-sm font-semibold text-[#8a6a2d]">
             音声を選択

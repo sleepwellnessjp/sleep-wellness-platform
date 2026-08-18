@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function SleepSoundPage() {
   const [music, nature] = await Promise.all([
-    listPublishedRestContentByKind("practice_video"),
+    listPublishedRestContentByKind("sleep_music"),
     listPublishedRestContentByKind("nature_sound"),
   ]);
 
