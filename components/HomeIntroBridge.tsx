@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { shouldSkipHomeIntro } from "@/lib/home-intro";
 
@@ -209,24 +210,24 @@ export default function HomeIntroBridge() {
         }
       `}</style>
 
-      {/* 背景: 夜の静かな和室・障子・窓・瞑想シルエット（下部に配置） */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={BG_IMAGE}
-        alt=""
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: "center bottom",
-          opacity: bgIn ? 1 : 0,
-          transition: "opacity 760ms ease",
-          pointerEvents: "none",
-        }}
-      />
+      {/* 背景: 表示開始まで mount しないことで初期 FCP をブロックしない */}
+      {bgIn ? (
+        <Image
+          src={BG_IMAGE}
+          alt=""
+          aria-hidden="true"
+          fill
+          sizes="100vw"
+          loading="lazy"
+          style={{
+            objectFit: "cover",
+            objectPosition: "center bottom",
+            opacity: bgIn ? 1 : 0,
+            transition: "opacity 760ms ease",
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
 
       {/* 文字視認性のための暗いオーバーレイ（上ほど濃く・背景は暗く抑える） */}
       <div

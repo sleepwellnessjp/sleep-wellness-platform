@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { getImageProps } from "next/image";
 import type { CSSProperties } from "react";
 
 /** 前景・中景・遠景で速度差をつける花びら（吹雪にならない程度） */
@@ -26,6 +26,25 @@ const PETALS = [
  * 完成構図の画像は固定し、光・花びらだけを別レイヤーで動かす（水面は静止）。
  */
 export default function JapanNightBackdrop() {
+  const {
+    props: { srcSet: mobileBgSrcSet },
+  } = getImageProps({
+    src: "/japan-night-hero-mobile-v5.webp",
+    alt: "",
+    width: 828,
+    height: 1792,
+    sizes: "100vw",
+    quality: 75,
+  });
+  const { props: desktopBgProps } = getImageProps({
+    src: "/japan-night-hero-pc.webp",
+    alt: "",
+    width: 1920,
+    height: 1080,
+    sizes: "100vw",
+    quality: 75,
+  });
+
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#040c18]"
@@ -181,22 +200,15 @@ export default function JapanNightBackdrop() {
 
       {/* 遠景：完成構図の背景画像（固定・動かさない） */}
       <div className="absolute inset-0">
-        <Image
-          src="/japan-night-hero-pc.webp"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="hidden object-cover object-[48%_46%] sm:block lg:object-[52%_44%]"
-        />
-        <Image
-          src="/japan-night-hero-mobile-v5.webp"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-[20%_34%] sm:hidden"
-        />
+        <picture>
+          <source media="(max-width: 639px)" srcSet={mobileBgSrcSet} />
+          <img
+            {...desktopBgProps}
+            alt=""
+            fetchPriority="high"
+            className="absolute inset-0 h-full w-full object-cover object-[20%_34%] sm:object-[48%_46%] lg:object-[52%_44%]"
+          />
+        </picture>
       </div>
 
       {/* 桜を落ち着かせる（構図維持） */}

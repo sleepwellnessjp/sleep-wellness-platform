@@ -4,7 +4,6 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import SleepContentBlocksEditor from "@/components/sleep-content/SleepContentBlocksEditor";
 import { NAVY } from "@/components/ui/tokens";
 import {
-  isYoutubeKind,
   REST_KINDS,
   SLEEP_CONTENT_CATEGORIES,
   SLEEP_CONTENT_CATEGORY_LABELS,
@@ -19,6 +18,7 @@ import {
   type SleepContentStatus,
   type SleepContentSubcategory,
 } from "@/lib/sleep-content/types";
+import { createBrowserClient } from "@/lib/supabase/client";
 
 const inputClass =
   "mt-2 min-h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-[16px] text-[#071426] outline-none transition focus:border-[#8a6a2d] focus:ring-4 focus:ring-[#8a6a2d]/15";
@@ -123,6 +123,8 @@ export default function SleepContentForm({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [audioInfo, setAudioInfo] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -133,6 +135,10 @@ export default function SleepContentForm({
     () => kindOptionsFor(form.category),
     [form.category],
   );
+  const showAudioUpload =
+    form.kind === "nature_sound" || form.kind === "sleep_music";
+  const showYoutubeUrl =
+    form.kind === "talk_video" || form.kind === "interview";
 
   const uploadImage = async (file: File): Promise<string> => {
     const body = new FormData();
@@ -162,24 +168,92 @@ export default function SleepContentForm({
     }
   };
 
+  const parseJsonOrThrow = async (
+    response: Response,
+    fallback: string,
+  ): Promise<Record<string, unknown>> => {
+    const raw = await response.text();
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      const snippet = raw.replace(/\s+/g, " ").slice(0, 180);
+      console.error("[sleep-content audio] non-JSON response", {
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        snippet,
+      });
+      throw new Error(
+        `${fallback}（HTTP ${response.status}${snippet ? `: ${snippet}` : ""}）`,
+      );
+    }
+  };
+
   const onPickAudio = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file) {
+      setAudioError("音声ファイルの選択に失敗しました。もう一度お試しください。");
+      return;
+    }
     setError(null);
+    setAudioError(null);
+    setAudioInfo(
+      `選択中: ${file.name} (${Math.round((file.size / 1024 / 1024) * 100) / 100}MB)`,
+    );
     setUploading(true);
     try {
-      const body = new FormData();
-      body.append("file", file);
-      const response = await fetch("/api/admin/sleep-content/audio", {
+      // ファイル本体は Vercel のボディ上限を避けるため API に送らない。
+      const signResponse = await fetch("/api/admin/sleep-content/audio", {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        }),
       });
-      const json = (await response.json()) as { url?: string; error?: string };
-      if (!response.ok || !json.url) {
-        throw new Error(json.error ?? "音声のアップロードに失敗しました");
+      const signJson = await parseJsonOrThrow(
+        signResponse,
+        "アップロード用 URL の取得に失敗しました",
+      );
+      if (!signResponse.ok) {
+        throw new Error(
+          typeof signJson.error === "string"
+            ? signJson.error
+            : "アップロード用 URL の取得に失敗しました",
+        );
       }
-      setField("audioUrl", json.url);
+      const path = typeof signJson.path === "string" ? signJson.path : "";
+      const token = typeof signJson.token === "string" ? signJson.token : "";
+      const publicUrl =
+        typeof signJson.publicUrl === "string" ? signJson.publicUrl : "";
+      const bucket =
+        typeof signJson.bucket === "string" ? signJson.bucket : "";
+      const contentType =
+        typeof signJson.contentType === "string"
+          ? signJson.contentType
+          : file.type;
+      if (!path || !token || !publicUrl || !bucket) {
+        throw new Error("アップロード用 URL の応答が不完全です");
+      }
+
+      const supabase = createBrowserClient();
+      if (!supabase) {
+        throw new Error("Supabase が設定されていません");
+      }
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .uploadToSignedUrl(path, token, file, { contentType });
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      setField("audioUrl", publicUrl);
+      setAudioInfo("アップロード完了");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "音声の処理に失敗しました");
+      const message =
+        err instanceof Error ? err.message : "音声の処理に失敗しました";
+      setError(message);
+      setAudioError(message);
+      setAudioInfo(null);
     } finally {
       setUploading(false);
     }
@@ -380,7 +454,7 @@ export default function SleepContentForm({
         ) : null}
       </div>
 
-      {isYoutubeKind(form.kind) ? (
+      {showYoutubeUrl ? (
         <label className="block">
           <span className={labelClass}>YouTube URL</span>
           <input
@@ -396,18 +470,37 @@ export default function SleepContentForm({
         </label>
       ) : null}
 
-      {form.kind === "nature_sound" ? (
+      {showAudioUpload ? (
         <div>
-          <p className={labelClass}>自然音（上限 50MB）</p>
+          <p className={labelClass}>
+            {form.kind === "sleep_music" ? "入眠音楽" : "自然音"}（上限 50MB）
+          </p>
           <label className="mt-2 flex min-h-12 cursor-pointer items-center justify-center rounded-2xl border border-dashed border-[#8a6a2d]/40 bg-[#fbf9f4] px-4 py-4 text-sm font-semibold text-[#8a6a2d]">
             音声を選択
             <input
               type="file"
               accept="audio/mpeg,audio/mp3,audio/mp4,audio/wav,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm"
               className="sr-only"
-              onChange={(event) => void onPickAudio(event.target.files?.[0])}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                  setAudioError("音声ファイルを選択できませんでした。もう一度お試しください。");
+                  setAudioInfo(null);
+                }
+                void onPickAudio(file);
+                // 同じファイルを再選択しても onChange が発火するようにする
+                event.currentTarget.value = "";
+              }}
             />
           </label>
+          {audioInfo ? (
+            <p className="mt-2 text-xs text-slate-500">{audioInfo}</p>
+          ) : null}
+          {audioError ? (
+            <p className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {audioError}
+            </p>
+          ) : null}
           {form.audioUrl ? (
             <p className="mt-2 break-all text-xs text-slate-500">{form.audioUrl}</p>
           ) : null}
