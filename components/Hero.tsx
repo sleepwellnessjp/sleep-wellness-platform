@@ -60,7 +60,7 @@ export default function Hero() {
             SLEEP WELLNESS METHOD™
           </p>
 
-          <h1 className="mt-4 text-[clamp(1.78rem,4.2vw+0.45rem,3.55rem)] font-semibold leading-[1.4] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:tracking-[-0.03em]">
+          <h1 className="mt-4 text-[clamp(1.93rem,4.2vw+0.45rem,3.55rem)] font-semibold leading-[1.4] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:tracking-[-0.03em]">
             睡眠を、
             <br />
             <span className="whitespace-nowrap">日本の新しい文化へ。</span>
