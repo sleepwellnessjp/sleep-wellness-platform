@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FOCUS_RING } from "@/components/ui/tokens";
 
 const ACTIVE = "#F5F2EA";
@@ -97,17 +98,39 @@ function ScienceIcon({ active }: { active: boolean }) {
 /**
  * モバイル向け浮遊カプセル型タブバー（ホーム含む 4 タブ）。
  * トップを含む全ページで表示。デスクトップ（sm+）では非表示。
+ * ホームイントロ中は非表示し、完了後にフェードインする。
  */
 export default function MobileSleepTabBar() {
   const pathname = usePathname() || "/";
+  const [visible, setVisible] = useState(pathname !== "/");
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const sync = () => {
+      setVisible(!html.classList.contains("swij-intro-active"));
+    };
+    const frame = window.requestAnimationFrame(sync);
+    const observer = new MutationObserver(sync);
+    observer.observe(html, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [pathname]);
 
   return (
     <nav
       aria-label="主要ナビゲーション"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-3 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden"
+      data-sleep-tabbar=""
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-3 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+      aria-hidden={!visible}
     >
       <div
-        className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-0.5 rounded-full border border-white/50 px-1.5 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150"
+        className={`mx-auto flex max-w-md items-stretch justify-between gap-0.5 rounded-full border border-white/50 px-1.5 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150 ${
+          visible ? "pointer-events-auto" : "pointer-events-none"
+        }`}
         style={{
           background: FROST_BG,
           borderColor: FROST_BORDER,

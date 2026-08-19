@@ -2103,12 +2103,17 @@ body {
   }
 }
 
-/* イントロ表示中は BETA / フィードバック / ハンバーガーを隠す */
+/* イントロ表示中は BETA / フィードバック / ハンバーガー / タブバーを隠す */
 html.swij-intro-active [data-beta-chrome],
-html.swij-intro-active button[aria-label="メニューを開く"] {
+html.swij-intro-active button[aria-label="メニューを開く"],
+html.swij-intro-active [data-sleep-tabbar] {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+[data-sleep-tabbar] {
+  transition: opacity 0.38s ease;
 }
 
 /* ホームイントロ: 丸ロゴの静かな立ち上がり（translateY 12px→0 + scale 0.97→1.0） */
