@@ -8,7 +8,7 @@ export default function Hero() {
   return (
     <section
       data-swij-hero=""
-      className="relative flex min-h-[90vh] overflow-hidden bg-[#040c18] sm:min-h-screen"
+      className="relative flex overflow-hidden bg-[#040c18] max-sm:min-h-0 sm:min-h-[72vh] lg:min-h-[78vh]"
     >
       {/* 日本の夜の世界観（完成イメージ方向・1枚貼り付けではない） */}
       <JapanNightBackdrop />
@@ -31,19 +31,19 @@ export default function Hero() {
         <SiteNavMenu tone="light" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-28 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+14rem)] max-sm:pb-[calc(var(--sw-sleep-tabbar-clearance)+4.5rem)]">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-28 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+10.5rem)] max-sm:pb-2">
         <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
             SLEEP WELLNESS METHOD™
           </p>
 
-          <h1 className="mt-6 text-[clamp(1.7rem,4.6vw+0.55rem,3.55rem)] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:mt-7 max-sm:tracking-[-0.03em]">
+          <h1 className="mt-4 text-[clamp(1.55rem,4.2vw+0.45rem,3.55rem)] font-semibold leading-[1.1] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:tracking-[-0.03em]">
             睡眠を、
             <br />
             <span className="whitespace-nowrap">日本の新しい文化へ。</span>
           </h1>
 
-          <p className="mx-auto mt-7 max-w-lg text-base leading-8 text-white/72 sm:mt-9 sm:text-lg sm:leading-9 max-sm:mt-8 max-sm:max-w-sm max-sm:text-[15px] max-sm:leading-8 max-sm:text-white/70">
+          <p className="mx-auto mt-4 max-w-lg text-base leading-7 text-white/72 sm:mt-9 sm:text-lg sm:leading-9 max-sm:max-w-sm max-sm:text-[14px] max-sm:leading-7 max-sm:text-white/70">
             データから優先順位を決め、昼と夜の実践で整える。
             <br className="hidden sm:block" />
             Sleep Wellness Institute Japan の Method です。

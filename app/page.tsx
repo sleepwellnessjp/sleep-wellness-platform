@@ -53,16 +53,18 @@ export default async function Home() {
     <main id="top" className="min-h-screen bg-[#071426] text-white">
       <HomeIntro />
       <HomeIntroBridge />
-      <Hero />
-      <MySleepSection
-        analysisHref={
-          dashboardHref
-            ? "/analysis/new"
-            : "/login?redirect=%2Fanalysis%2Fnew"
-        }
-      />
-      <div className="px-5 pb-10 sm:px-8 lg:px-10">
-        <SleepWordsBanner tone="onDark" />
+      <div className="max-sm:flex max-sm:min-h-[100dvh] max-sm:flex-col">
+        <Hero />
+        <MySleepSection
+          analysisHref={
+            dashboardHref
+              ? "/analysis/new"
+              : "/login?redirect=%2Fanalysis%2Fnew"
+          }
+        />
+        <div className="max-sm:shrink-0 px-5 pb-[calc(var(--sw-sleep-tabbar-clearance)+0.5rem)] pt-1 sm:px-8 sm:pb-10 sm:pt-2 lg:px-10">
+          <SleepWordsBanner tone="onDark" />
+        </div>
       </div>
       <About
         analysisHref={
