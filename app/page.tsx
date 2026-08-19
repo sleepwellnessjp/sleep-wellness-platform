@@ -1,8 +1,6 @@
-import Hero from "@/components/Hero";
 import HomeIntro from "@/components/HomeIntro";
 import HomeIntroBridge from "@/components/HomeIntroBridge";
-import MySleepSection from "@/components/home/MySleepSection";
-import SleepWordsBanner from "@/components/home/SleepWordsBanner";
+import HomeFirstView from "@/components/home/HomeFirstView";
 import About from "@/components/About";
 import Services from "@/components/Services";
 import InstructorsCta from "@/components/InstructorsCta";
@@ -53,19 +51,13 @@ export default async function Home() {
     <main id="top" className="min-h-screen bg-[#071426] text-white">
       <HomeIntro />
       <HomeIntroBridge />
-      <div className="max-sm:flex max-sm:min-h-[100dvh] max-sm:flex-col">
-        <Hero />
-        <MySleepSection
-          analysisHref={
-            dashboardHref
-              ? "/analysis/new"
-              : "/login?redirect=%2Fanalysis%2Fnew"
-          }
-        />
-        <div className="max-sm:shrink-0 px-5 pb-[calc(var(--sw-sleep-tabbar-clearance)+0.5rem)] pt-1 sm:px-8 sm:pb-10 sm:pt-2 lg:px-10">
-          <SleepWordsBanner tone="onDark" />
-        </div>
-      </div>
+      <HomeFirstView
+        analysisHref={
+          dashboardHref
+            ? "/analysis/new"
+            : "/login?redirect=%2Fanalysis%2Fnew"
+        }
+      />
       <About
         analysisHref={
           dashboardHref

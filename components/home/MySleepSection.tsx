@@ -141,7 +141,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
   return (
     <section
       aria-labelledby="my-sleep-heading"
-      className="relative px-5 pb-4 pt-4 sm:px-8 sm:pb-8 sm:pt-10 lg:px-10 max-sm:flex max-sm:flex-1 max-sm:flex-col max-sm:justify-center"
+      className="relative z-10 px-5 pb-4 pt-4 sm:px-8 sm:pb-8 sm:pt-10 lg:px-10 max-sm:flex max-sm:flex-1 max-sm:flex-col max-sm:justify-center"
     >
       <div className="mx-auto max-w-lg text-center">
         <p
