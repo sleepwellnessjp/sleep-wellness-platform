@@ -22,11 +22,6 @@ function feedbackHref(pathname: string): string {
   return `/feedback?${params.toString()}`;
 }
 
-/** /sleep/* 配下かどうか（モバイルタブバーが表示されるページ） */
-function isSleepPage(pathname: string): boolean {
-  return pathname === "/sleep" || pathname.startsWith("/sleep/");
-}
-
 function BetaBadgeLabel() {
   return (
     <>
@@ -54,17 +49,16 @@ function frostClass(extra: string): string {
  * Version 1.0 Beta 運用用の固定 UI（全画面右下）
  * BETA バッジ · Version · フィードバック導線
  *
- * /sleep/* モバイルではタブバーより下の z-index にし、
- * 余白は globals.css の [data-sleep-page] でタブバーの上へ積む。
- * 幅広のフィードバックボタンはプレーヤーを隠すためモバイルでは出さない。
+ * モバイルでは全ページのタブバーより下の z-index にし、
+ * 余白は globals.css の [data-beta-chrome] でタブバーの上へ積む。
+ * 幅広のフィードバックボタンはタブバーと重ならないようモバイルでは出さない。
  */
 export default function BetaChrome() {
   const pathname = usePathname() || "/";
   const onFeedback = pathname === "/feedback" || pathname.startsWith("/feedback/");
-  const sleep = isSleepPage(pathname);
 
   let badge: ReactNode;
-  if (sleep && !onFeedback) {
+  if (!onFeedback) {
     badge = (
       <Link
         href={feedbackHref(pathname)}
@@ -89,17 +83,8 @@ export default function BetaChrome() {
 
   return (
     <div
-      className={[
-        "pointer-events-none fixed right-0 bottom-0 flex flex-col items-end gap-2",
-        "px-3 pt-3",
-        "pr-[max(0.75rem,env(safe-area-inset-right))]",
-        "sm:px-4 sm:pt-4",
-        sleep
-          ? "z-40"
-          : "z-[70] pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-[max(1rem,env(safe-area-inset-bottom))]",
-      ].join(" ")}
+      className="pointer-events-none fixed right-0 bottom-0 z-40 flex flex-col items-end gap-2 px-3 pt-3 pr-[max(0.75rem,env(safe-area-inset-right))] sm:z-[70] sm:px-4 sm:pt-4"
       data-beta-chrome
-      data-sleep-page={sleep ? "" : undefined}
       aria-label="Version 1.0 Beta 情報"
     >
       {badge}
@@ -108,9 +93,7 @@ export default function BetaChrome() {
         <Link
           href={feedbackHref(pathname)}
           className={frostClass(
-            `min-h-11 justify-center px-4 text-[12px] font-semibold transition active:scale-[0.98] sm:min-h-10 sm:px-5 sm:text-[13px] sm:hover:opacity-90 ${FOCUS_RING} ${
-              sleep ? "hidden sm:inline-flex" : "inline-flex"
-            }`,
+            `hidden min-h-11 justify-center px-4 text-[12px] font-semibold transition active:scale-[0.98] sm:inline-flex sm:min-h-10 sm:px-5 sm:text-[13px] sm:hover:opacity-90 ${FOCUS_RING}`,
           )}
           style={FROST_STYLE}
         >

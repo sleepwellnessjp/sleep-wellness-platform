@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 /**
- * Hero「認定講師になる →」直下の横長バナー。
+ * Hero 直下の横長バナー。
  * Upmind のリスト行構成を参考に、SWIJ のネイビー／ゴールドへ寄せる。
  */
 export default function SleepWordsBanner({

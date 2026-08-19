@@ -13,6 +13,12 @@ const FROST_FILTER = "blur(16px) saturate(1.3)";
 
 const TABS = [
   {
+    label: "ホーム",
+    href: "/",
+    match: (pathname: string) => pathname === "/",
+    icon: HomeIcon,
+  },
+  {
     label: "語りかけ",
     href: "/sleep/talk",
     match: (pathname: string) =>
@@ -35,18 +41,32 @@ const TABS = [
   },
 ] as const;
 
+function iconProps(active: boolean) {
+  return {
+    viewBox: "0 0 24 24",
+    className: "h-[22px] w-[22px]",
+    fill: "none" as const,
+    stroke: active ? ACTIVE : INACTIVE,
+    strokeWidth: active ? "2" : "1.75",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true as const,
+  };
+}
+
+function HomeIcon({ active }: { active: boolean }) {
+  return (
+    <svg {...iconProps(active)}>
+      <path d="M4 11.2L12 4.5l8 6.7" />
+      <path d="M6.2 10.5V19h11.6v-8.5" />
+      <path d="M10 19v-5.2h4V19" />
+    </svg>
+  );
+}
+
 function TalkIcon({ active }: { active: boolean }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-[22px] w-[22px]"
-      fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
-      strokeWidth={active ? "2" : "1.75"}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
+    <svg {...iconProps(active)}>
       <path d="M7 9h10M7 13h6" />
       <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4 3V6a2 2 0 0 1 2-2z" />
     </svg>
@@ -55,16 +75,7 @@ function TalkIcon({ active }: { active: boolean }) {
 
 function SoundIcon({ active }: { active: boolean }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-[22px] w-[22px]"
-      fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
-      strokeWidth={active ? "2" : "1.75"}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
+    <svg {...iconProps(active)}>
       <path d="M4 10v4" />
       <path d="M8 7v10" />
       <path d="M12 4v16" />
@@ -76,16 +87,7 @@ function SoundIcon({ active }: { active: boolean }) {
 
 function ScienceIcon({ active }: { active: boolean }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-[22px] w-[22px]"
-      fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
-      strokeWidth={active ? "2" : "1.75"}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
+    <svg {...iconProps(active)}>
       <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 1 4 16.5V5.5z" />
       <path d="M8 7h8M8 11h8M8 15h5" />
     </svg>
@@ -93,19 +95,19 @@ function ScienceIcon({ active }: { active: boolean }) {
 }
 
 /**
- * モバイル向け浮遊カプセル型タブバー（/sleep/* 専用）。
- * デスクトップ（sm+）では非表示。
+ * モバイル向け浮遊カプセル型タブバー（ホーム含む 4 タブ）。
+ * トップを含む全ページで表示。デスクトップ（sm+）では非表示。
  */
 export default function MobileSleepTabBar() {
   const pathname = usePathname() || "/";
 
   return (
     <nav
-      aria-label="睡眠コンテンツ"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-4 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden"
+      aria-label="主要ナビゲーション"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-3 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] sm:hidden"
     >
       <div
-        className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-1 rounded-full border border-white/50 px-2 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150"
+        className="pointer-events-auto mx-auto flex max-w-md items-stretch justify-between gap-0.5 rounded-full border border-white/50 px-1.5 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150"
         style={{
           background: FROST_BG,
           borderColor: FROST_BORDER,
@@ -121,7 +123,7 @@ export default function MobileSleepTabBar() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex min-h-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-2 py-1.5 transition duration-200 active:opacity-90 ${FOCUS_RING}`}
+              className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 transition duration-200 active:opacity-90 ${FOCUS_RING}`}
               style={{
                 backgroundColor: active
                   ? "rgba(255, 255, 255, 0.12)"
@@ -131,7 +133,7 @@ export default function MobileSleepTabBar() {
             >
               <Icon active={active} />
               <span
-                className="text-[10px] font-semibold leading-none tracking-[-0.01em]"
+                className="whitespace-nowrap text-[10px] font-semibold leading-none tracking-[-0.02em]"
                 style={{ color: active ? ACTIVE : INACTIVE }}
               >
                 {tab.label}

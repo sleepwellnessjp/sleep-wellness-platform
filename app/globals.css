@@ -33,7 +33,7 @@
   --sw-duration-page: 420ms;
   /* Closed Beta Chrome（右下 BETA / Version / Feedback）用オフセット */
   --sw-beta-chrome-offset: 7.5rem;
-  /* /sleep/* モバイルタブバー（カプセル + 下余白） */
+  /* モバイル下部タブバー（カプセル + 下余白） */
   --sw-sleep-tabbar-clearance: calc(6.25rem + env(safe-area-inset-bottom, 0px));
   /* タブバー + BETA/フィードバック分。コンテンツが操作面に埋まらないようにする */
   --sw-sleep-page-bottom-pad: calc(14rem + env(safe-area-inset-bottom, 0px));
@@ -515,20 +515,28 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Closed Beta Chrome（右下）が主操作を隠さないよう余白を確保 */
+  /* Closed Beta Chrome（右下）とモバイルタブバーが主操作を隠さないよう余白を確保 */
   padding-bottom: calc(
-    var(--sw-beta-chrome-offset) + env(safe-area-inset-bottom, 0px)
+    var(--sw-sleep-tabbar-clearance) + 3.5rem
   );
 }
 
-/* /sleep/* モバイル: タブバーの上に積む。p-* ショートハンドで pb が潰されないよう CSS で指定 */
-[data-beta-chrome][data-sleep-page] {
+@media (min-width: 640px) {
+  body {
+    padding-bottom: calc(
+      var(--sw-beta-chrome-offset) + env(safe-area-inset-bottom, 0px)
+    );
+  }
+}
+
+/* モバイル: タブバーの上に積む。p-* ショートハンドで pb が潰されないよう CSS で指定 */
+[data-beta-chrome] {
   z-index: 40;
   padding-bottom: calc(var(--sw-sleep-tabbar-clearance) + 0.75rem);
 }
 
 @media (min-width: 640px) {
-  [data-beta-chrome][data-sleep-page] {
+  [data-beta-chrome] {
     z-index: 70;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
