@@ -17,7 +17,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 /**
  * Sleep Wellness Institute Japan の一般向けトップページ。
- * ログイン状態に関わらず表示し、認定講師専用ページへは明示的な導線から進む。
+ * 認定講師専用の導線はハンバーガーメニューと Method セクションへ集約する。
  */
 export default async function Home() {
   let dashboardHref: string | null = null;
@@ -51,8 +51,14 @@ export default async function Home() {
     <main id="top" className="min-h-screen bg-[#071426] text-white">
       <HomeIntro />
       <HomeIntroBridge />
-      <Hero dashboardHref={dashboardHref} />
-      <About />
+      <Hero />
+      <About
+        analysisHref={
+          dashboardHref
+            ? "/analysis/new"
+            : "/login?redirect=%2Fanalysis%2Fnew"
+        }
+      />
       <Services />
       <InstructorsCta />
       <HomeActivitiesSection activities={featuredActivities} />
