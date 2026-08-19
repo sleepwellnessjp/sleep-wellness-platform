@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import SiteNavMenu from "@/components/site/SiteNavMenu";
+import SleepCheckAboutAccordion from "@/components/sleep-check/SleepCheckAboutAccordion";
 import { FOCUS_RING } from "@/components/ui/tokens";
 import {
   resultForScore,
@@ -248,6 +249,8 @@ export default function SleepCheckExperience() {
             >
               はじめる
             </button>
+
+            <SleepCheckAboutAccordion />
           </section>
         ) : null}
 
