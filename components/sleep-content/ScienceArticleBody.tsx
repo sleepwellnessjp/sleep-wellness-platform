@@ -2,22 +2,23 @@ import type { ReactNode } from "react";
 import { GOLD, NAVY } from "@/components/ui/tokens";
 import type { SleepContentBlock } from "@/lib/sleep-content/types";
 
-/** モバイル: 見出し直後は詰め、段落間は行高より広く。sm+ は従来どおり */
+const SUBHEADING_COLOR = "#5a6b80";
+const BODY_TEXT = "text-[16px] leading-[1.75] text-[#071426]";
+
+/**
+ * 段落間: モバイル 20px / sm 24px。
+ * 小見出しの下 8px は subheading 自身の mb で確保する。
+ */
 function blockTopSpacing(
   index: number,
   blocks: SleepContentBlock[],
 ): string {
   if (index === 0) return "";
   const prev = blocks[index - 1];
-  if (prev?.type === "heading") {
-    return "mt-3 sm:mt-6";
-  }
-  // 16px × 1.8 ≈ 29px 行送り → 段落間 ~1.6倍（48px）
-  return "mt-12 sm:mt-6";
+  if (prev?.type === "subheading") return "";
+  if (prev?.type === "heading") return "mt-3 sm:mt-6";
+  return "mt-5 sm:mt-6";
 }
-
-const BODY_MOBILE = "text-[16px] leading-[1.8] text-[#071426]";
-const BODY_DESKTOP = "sm:leading-9";
 
 function renderEmphasis(text: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -43,7 +44,7 @@ function Callout({
       className={`rounded-2xl px-4 py-4 sm:px-5 sm:py-5 ${className} ${
         quiet
           ? "border border-slate-200 bg-slate-50 text-sm leading-[1.75] text-slate-500 sm:leading-7"
-          : "border border-[#8a6a2d]/25 bg-[#fbf9f4] text-[15px] leading-[1.8] text-[#071426] sm:leading-8"
+          : "border border-[#8a6a2d]/25 bg-[#fbf9f4] text-[15px] leading-[1.8] text-[#071426]"
       }`}
     >
       {children}
@@ -80,12 +81,20 @@ export default function ScienceArticleBody({
             </h2>
           );
         }
+        if (block.type === "subheading") {
+          return (
+            <h3
+              key={index}
+              className={`${index === 0 ? "" : "mt-[28px]"} mb-2 text-[16px] font-semibold leading-snug tracking-[-0.01em]`}
+              style={{ color: SUBHEADING_COLOR }}
+            >
+              {block.text}
+            </h3>
+          );
+        }
         if (block.type === "paragraph") {
           return (
-            <p
-              key={index}
-              className={`${topSpacing} ${BODY_MOBILE} ${BODY_DESKTOP}`}
-            >
+            <p key={index} className={`${topSpacing} ${BODY_TEXT}`}>
               {renderEmphasis(block.text)}
             </p>
           );
@@ -116,7 +125,7 @@ export default function ScienceArticleBody({
           return (
             <ul
               key={index}
-              className={`${topSpacing} list-disc space-y-2 pl-5 ${BODY_MOBILE} ${BODY_DESKTOP}`}
+              className={`${topSpacing} list-disc space-y-1.5 pl-5 text-[16px] leading-[1.6] text-[#071426]`}
             >
               {items.map((item, itemIndex) => (
                 <li key={itemIndex}>{renderEmphasis(item)}</li>
@@ -126,10 +135,7 @@ export default function ScienceArticleBody({
         }
         if (block.type === "callout") {
           return (
-            <Callout
-              key={index}
-              className={`${topSpacing} mb-6 sm:mb-8`}
-            >
+            <Callout key={index} className={`${topSpacing} mb-6 sm:mb-8`}>
               {renderEmphasis(block.text)}
             </Callout>
           );

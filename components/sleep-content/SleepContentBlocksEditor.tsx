@@ -23,7 +23,11 @@ function isIgnoredLine(trimmed: string): boolean {
 }
 
 function isHeadingLine(trimmed: string): boolean {
-  return trimmed.startsWith("## ");
+  return trimmed.startsWith("## ") && !trimmed.startsWith("### ");
+}
+
+function isSubheadingLine(trimmed: string): boolean {
+  return trimmed.startsWith("### ");
 }
 
 function isListLine(trimmed: string): boolean {
@@ -51,6 +55,7 @@ function isSpecialLine(trimmed: string): boolean {
   return (
     isIgnoredLine(trimmed) ||
     isHeadingLine(trimmed) ||
+    isSubheadingLine(trimmed) ||
     isListLine(trimmed) ||
     figureFromLine(trimmed) !== null ||
     isCalloutLine(trimmed)
@@ -65,6 +70,11 @@ function blocksFromMarkdown(markdown: string): SleepContentBlock[] {
   while (index < lines.length) {
     const trimmed = (lines[index] ?? "").trim();
     if (trimmed === "" || isIgnoredLine(trimmed)) {
+      index += 1;
+      continue;
+    }
+    if (isSubheadingLine(trimmed)) {
+      blocks.push({ type: "subheading", text: trimmed.slice(4).trim() });
       index += 1;
       continue;
     }
@@ -201,7 +211,7 @@ export default function SleepContentBlocksEditor({
               className={`${inputClass} min-h-40 resize-y`}
               value={importText}
               onChange={(event) => setImportText(event.target.value)}
-              placeholder="記事のマークダウンを貼り付けてください"
+              placeholder="## 大見出し / ### 小見出し / 段落 / - 箇条書き"
             />
           </label>
           <button
@@ -264,7 +274,20 @@ export default function SleepContentBlocksEditor({
 
             {block.type === "heading" ? (
               <label className="mt-3 block">
-                <span className={labelClass}>見出し</span>
+                <span className={labelClass}>大見出し</span>
+                <input
+                  className={inputClass}
+                  value={block.text}
+                  onChange={(event) =>
+                    updateAt(index, { ...block, text: event.target.value })
+                  }
+                />
+              </label>
+            ) : null}
+
+            {block.type === "subheading" ? (
+              <label className="mt-3 block">
+                <span className={labelClass}>小見出し</span>
                 <input
                   className={inputClass}
                   value={block.text}
