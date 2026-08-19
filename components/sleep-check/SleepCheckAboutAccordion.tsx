@@ -18,23 +18,19 @@ export default function SleepCheckAboutAccordion() {
   const panelId = useId();
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 w-full">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
-        className={`flex w-full min-h-11 items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-[13px] font-semibold transition ${FOCUS_RING}`}
-        style={{
-          color: GOLD,
-          borderColor: CARD_BORDER,
-          background: CARD_BG,
-        }}
+        className={`mx-auto flex min-h-11 items-center justify-center gap-2 px-3 text-[13px] font-semibold transition ${FOCUS_RING}`}
+        style={{ color: GOLD }}
       >
         <span>この質問について</span>
         <span
           aria-hidden
-          className="text-[11px] transition-transform duration-200"
+          className="text-[10px] transition-transform duration-200"
           style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
         >
           ▼
@@ -44,7 +40,7 @@ export default function SleepCheckAboutAccordion() {
       {open ? (
         <div
           id={panelId}
-          className="mt-3 space-y-8 rounded-2xl border px-4 py-5 sm:px-5"
+          className="mt-4 space-y-8 rounded-[20px] border px-4 py-5 text-left sm:px-5"
           style={{
             borderColor: CARD_BORDER,
             background: CARD_BG,
