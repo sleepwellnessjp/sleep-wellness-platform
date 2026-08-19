@@ -2163,3 +2163,11 @@ html.swij-intro-active [data-sleep-tabbar] {
     opacity: 0.9 !important;
   }
 }
+
+/* 横スクロール帯のスクロールバー非表示 */
+.featured-scroll-strip {
+  scrollbar-width: none;
+}
+.featured-scroll-strip::-webkit-scrollbar {
+  display: none;
+}

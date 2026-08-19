@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import FeaturedScrollStrip from "@/components/sleep-content/FeaturedScrollStrip";
 import ScienceArticleCard from "@/components/sleep-content/ScienceArticleCard";
 import PublicIntroLayout from "@/components/site/PublicIntroLayout";
 import { listPublishedScienceArticles } from "@/lib/sleep-content/service";
@@ -61,6 +62,12 @@ export default async function SleepSciencePage({ searchParams }: Search) {
       lead="自律神経、ホルモン、暮らし、仕事まで。睡眠の基礎をわかりやすく解説します。"
       contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] sm:pb-[5rem]"
     >
+      {/* 注目の記事（横スクロール帯）
+          PublicIntroLayout の px-6 を打ち消して全幅に戻す */}
+      <div className="-mx-6 sm:-mx-8 lg:-mx-10">
+        <FeaturedScrollStrip articles={articles} />
+      </div>
+
       {filterOptions.length > 0 ? (
         <div className="mb-8 flex flex-wrap gap-2">
           <Link
