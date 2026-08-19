@@ -127,6 +127,7 @@ export default function HomeIntroBridge() {
     const t = window.setTimeout(() => {
       document.body.style.overflow = "";
       document.documentElement.classList.remove("swij-intro-active");
+      window.dispatchEvent(new CustomEvent("swij-home-intro-done"));
       if (!isLocalHost()) {
         try {
           sessionStorage.setItem(STORAGE_KEY, "1");

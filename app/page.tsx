@@ -1,6 +1,8 @@
 import Hero from "@/components/Hero";
 import HomeIntro from "@/components/HomeIntro";
 import HomeIntroBridge from "@/components/HomeIntroBridge";
+import MySleepSection from "@/components/home/MySleepSection";
+import SleepWordsBanner from "@/components/home/SleepWordsBanner";
 import About from "@/components/About";
 import Services from "@/components/Services";
 import InstructorsCta from "@/components/InstructorsCta";
@@ -52,6 +54,16 @@ export default async function Home() {
       <HomeIntro />
       <HomeIntroBridge />
       <Hero />
+      <MySleepSection
+        analysisHref={
+          dashboardHref
+            ? "/analysis/new"
+            : "/login?redirect=%2Fanalysis%2Fnew"
+        }
+      />
+      <div className="px-5 pb-10 sm:px-8 lg:px-10">
+        <SleepWordsBanner tone="onDark" />
+      </div>
       <About
         analysisHref={
           dashboardHref

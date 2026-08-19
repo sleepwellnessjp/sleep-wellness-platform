@@ -134,6 +134,7 @@ export default function HomeIntro() {
       }
       document.body.style.overflow = prevOverflow;
       document.documentElement.classList.remove("swij-intro-active");
+      window.dispatchEvent(new CustomEvent("swij-home-intro-done"));
       setShowIntro(false);
     };
 
