@@ -20,13 +20,14 @@ import {
   SLEEP_CHECK_QUESTIONS,
 } from "@/lib/sleep-check/content";
 
-const TEXT = "#F5F2EA";
+const BG = "#F5F0E4";
+const TEXT = "#0A1426";
+const MUTED = "#5A6B7D";
 const GOLD = "#B8945F";
-const FROST_BG = "rgba(16, 28, 54, 0.62)";
-const FROST_BORDER = "rgba(184, 148, 95, 0.38)";
-const FROST_FILTER = "blur(16px) saturate(1.3)";
+const CARD_BG = "#FFFFFF";
+const CARD_BORDER = "#E0D8C6";
 
-/** 麻の葉（ごく薄い背景用） */
+/** 麻の葉（記事カバーと同じタイル定義） */
 const ASANOHA_SVG = encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="84" viewBox="0 0 72 84">
     <g fill="none" stroke="${GOLD}" stroke-width="1.1">
@@ -38,7 +39,7 @@ const ASANOHA_SVG = encodeURIComponent(
 
 type Screen = "intro" | "question" | "result";
 
-function FrostButton({
+function OptionButton({
   children,
   className = "",
   style,
@@ -46,10 +47,8 @@ function FrostButton({
 }: ButtonHTMLAttributes<HTMLButtonElement>) {
   const merged: CSSProperties = {
     color: TEXT,
-    background: FROST_BG,
-    borderColor: FROST_BORDER,
-    backdropFilter: FROST_FILTER,
-    WebkitBackdropFilter: FROST_FILTER,
+    background: CARD_BG,
+    borderColor: CARD_BORDER,
     ...style,
   };
   return (
@@ -63,7 +62,7 @@ function FrostButton({
   );
 }
 
-function FrostLink({
+function CtaLink({
   href,
   children,
   external = false,
@@ -81,10 +80,8 @@ function FrostLink({
       className={`inline-flex min-h-12 flex-1 items-center justify-center rounded-full border px-4 py-3 text-center text-[13px] font-semibold leading-snug sm:text-sm ${FOCUS_RING}`}
       style={{
         color: TEXT,
-        background: FROST_BG,
-        borderColor: FROST_BORDER,
-        backdropFilter: FROST_FILTER,
-        WebkitBackdropFilter: FROST_FILTER,
+        background: CARD_BG,
+        borderColor: CARD_BORDER,
       }}
     >
       {children}
@@ -114,17 +111,17 @@ function NekoSpeech({
         className="relative mb-6 max-w-[16rem] rounded-[22px] px-4 py-3 text-[14px] leading-relaxed"
         style={{
           color: TEXT,
-          background: "rgba(245, 242, 234, 0.1)",
-          border: `1px solid ${FROST_BORDER}`,
+          background: CARD_BG,
+          border: `1px solid ${CARD_BORDER}`,
         }}
       >
         <span
           aria-hidden
           className="absolute -left-1.5 bottom-5 h-3 w-3 rotate-45"
           style={{
-            background: "rgba(245, 242, 234, 0.1)",
-            borderLeft: `1px solid ${FROST_BORDER}`,
-            borderBottom: `1px solid ${FROST_BORDER}`,
+            background: CARD_BG,
+            borderLeft: `1px solid ${CARD_BORDER}`,
+            borderBottom: `1px solid ${CARD_BORDER}`,
           }}
         />
         {message}
@@ -189,13 +186,13 @@ export default function SleepCheckExperience() {
     >
       <style>{`
         .sw-check-root {
-          background-color: #0A1426;
+          background-color: ${BG};
         }
         .sw-check-pattern {
           position: absolute;
           inset: 0;
           pointer-events: none;
-          opacity: 0.07;
+          opacity: 0.1;
           background-image: url("data:image/svg+xml;utf8,${ASANOHA_SVG}");
           background-size: 72px 84px;
         }
@@ -210,7 +207,7 @@ export default function SleepCheckExperience() {
         >
           ← ホーム
         </Link>
-        <SiteNavMenu tone="light" />
+        <SiteNavMenu tone="dark" />
       </div>
 
       <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4.5rem)] w-full max-w-lg flex-col px-5 pb-[var(--sw-sleep-page-bottom-pad)] pt-4 sm:max-w-xl sm:px-8 sm:pb-16">
@@ -225,7 +222,10 @@ export default function SleepCheckExperience() {
             <h1 className="mt-4 text-[1.7rem] font-semibold leading-tight tracking-[-0.03em] sm:text-3xl">
               あなたの眠り、いまどんな感じ？
             </h1>
-            <p className="mt-4 text-[15px] leading-7 text-[#F5F2EA]/78 sm:text-base sm:leading-8">
+            <p
+              className="mt-4 text-[15px] leading-7 sm:text-base sm:leading-8"
+              style={{ color: MUTED }}
+            >
               8つの質問に答えると、いまの眠りの状態が見えてきます。1分ほどで終わります。
             </p>
 
@@ -237,15 +237,18 @@ export default function SleepCheckExperience() {
               />
             </div>
 
-            <p className="mt-6 text-[11px] leading-5 text-[#F5F2EA]/48">
+            <p
+              className="mt-6 text-[11px] leading-5"
+              style={{ color: MUTED }}
+            >
               これは医学的な診断ではありません。気づきのきっかけとしてお使いください。
             </p>
 
             <button
               type="button"
               onClick={() => setScreen("question")}
-              className={`mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full text-[15px] font-semibold text-[#0A1426] transition active:scale-[0.99] ${FOCUS_RING}`}
-              style={{ background: GOLD }}
+              className={`mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full text-[15px] font-semibold transition active:scale-[0.99] ${FOCUS_RING}`}
+              style={{ background: GOLD, color: TEXT }}
             >
               はじめる
             </button>
@@ -261,7 +264,7 @@ export default function SleepCheckExperience() {
             </p>
             <div
               className="mt-2 h-1 overflow-hidden rounded-full"
-              style={{ background: "rgba(245, 242, 234, 0.12)" }}
+              style={{ background: CARD_BORDER }}
               role="progressbar"
               aria-valuemin={0}
               aria-valuemax={total}
@@ -277,7 +280,10 @@ export default function SleepCheckExperience() {
               />
             </div>
 
-            <p className="mt-5 text-[12px] leading-5 text-[#F5F2EA]/58">
+            <p
+              className="mt-5 text-[12px] leading-5"
+              style={{ color: MUTED }}
+            >
               {SLEEP_CHECK_PREAMBLE}
             </p>
 
@@ -289,24 +295,21 @@ export default function SleepCheckExperience() {
               {question.options.map((option) => {
                 const selected = answers[index] === option.score;
                 return (
-                  <FrostButton
+                  <OptionButton
                     key={option.score}
                     type="button"
                     disabled={pending}
                     onClick={() => pick(option.score)}
                     className="min-h-12 w-full"
                     style={{
-                      color: TEXT,
                       background: selected
-                        ? "rgba(184, 148, 95, 0.22)"
-                        : FROST_BG,
-                      borderColor: selected ? GOLD : FROST_BORDER,
-                      backdropFilter: FROST_FILTER,
-                      WebkitBackdropFilter: FROST_FILTER,
+                        ? "rgba(184, 148, 95, 0.12)"
+                        : CARD_BG,
+                      borderColor: selected ? GOLD : CARD_BORDER,
                     }}
                   >
                     {option.label}
-                  </FrostButton>
+                  </OptionButton>
                 );
               })}
             </div>
@@ -349,13 +352,17 @@ export default function SleepCheckExperience() {
             <p
               className="mx-auto mt-5 max-w-md rounded-[22px] px-4 py-4 text-[15px] leading-7 sm:leading-8"
               style={{
-                background: "rgba(245, 242, 234, 0.1)",
-                border: `1px solid ${FROST_BORDER}`,
+                color: TEXT,
+                background: CARD_BG,
+                border: `1px solid ${CARD_BORDER}`,
               }}
             >
               {result.message}
             </p>
-            <p className="mt-4 text-center text-[11px] text-[#F5F2EA]/40">
+            <p
+              className="mt-4 text-center text-[11px]"
+              style={{ color: MUTED }}
+            >
               参考：{score}点
             </p>
 
@@ -369,23 +376,29 @@ export default function SleepCheckExperience() {
             </button>
 
             <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-              <FrostLink href="/instructors">
+              <CtaLink href="/instructors">
                 認定講師を探してみない？
-              </FrostLink>
-              <FrostLink href="/contact">SWIJに相談してみない？</FrostLink>
+              </CtaLink>
+              <CtaLink href="/contact">SWIJに相談してみない？</CtaLink>
               {result.showMedical ? (
-                <FrostLink href={SLEEP_CHECK_MEDICAL_LIST_URL} external>
+                <CtaLink href={SLEEP_CHECK_MEDICAL_LIST_URL} external>
                   医療機関で相談してみない？
-                </FrostLink>
+                </CtaLink>
               ) : null}
             </div>
             {result.showMedical ? (
-              <p className="mt-3 text-[11px] leading-5 text-[#F5F2EA]/48">
+              <p
+                className="mt-3 text-[11px] leading-5"
+                style={{ color: MUTED }}
+              >
                 睡眠時無呼吸症候群など、医療で対応できるものもあります。一覧は日本睡眠学会の睡眠医療認定ページです。
               </p>
             ) : null}
 
-            <p className="mt-8 text-[11px] leading-5 text-[#F5F2EA]/40">
+            <p
+              className="mt-8 text-[11px] leading-5"
+              style={{ color: MUTED }}
+            >
               これは医学的な診断ではありません。気づきのきっかけとしてお使いください。
             </p>
           </section>
