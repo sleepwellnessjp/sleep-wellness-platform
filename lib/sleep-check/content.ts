@@ -2,11 +2,11 @@ export const SLEEP_CHECK_IMAGE_BASE =
   "https://cqfclbyzdmxfgktkbbsz.supabase.co/storage/v1/object/public/sleep-content-images";
 
 export const SLEEP_CHECK_IMAGES = {
-  gussuri: `${SLEEP_CHECK_IMAGE_BASE}/neko-gussuri.png`,
-  relax: `${SLEEP_CHECK_IMAGE_BASE}/neko-relax.png`,
-  tsujo: `${SLEEP_CHECK_IMAGE_BASE}/neko-tsujo.png`,
-  otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare.png`,
-  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen.png`,
+  gussuri: `${SLEEP_CHECK_IMAGE_BASE}/neko-gussuri-v2.png`,
+  relax: `${SLEEP_CHECK_IMAGE_BASE}/neko-relax-v2.png`,
+  tsujo: `${SLEEP_CHECK_IMAGE_BASE}/neko-tsujo-v2.png`,
+  otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare-v2.png`,
+  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v2.png`,
 } as const;
 
 export const SLEEP_CHECK_PREAMBLE =
