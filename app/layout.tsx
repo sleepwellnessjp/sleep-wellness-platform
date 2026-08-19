@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import BetaChrome from "@/components/beta/BetaChrome";
+import MobileSleepTabBar from "@/components/sleep-content/MobileSleepTabBar";
 import SkipLink from "@/components/ui/SkipLink";
 import { ToastProvider } from "@/components/ui/Toast";
 import { APP_VERSION } from "@/lib/app-version";
@@ -138,6 +139,7 @@ export default function RootLayout({
         <SkipLink />
         <ToastProvider>
           {children}
+          <MobileSleepTabBar />
           <BetaChrome />
         </ToastProvider>
       </body>

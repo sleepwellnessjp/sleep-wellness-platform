@@ -35,13 +35,19 @@ const TABS = [
   },
 ] as const;
 
-function TalkIcon({ active }: { active: boolean }) {
+function TalkIcon({
+  active,
+  idleColor,
+}: {
+  active: boolean;
+  idleColor: string;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
       className="h-[22px] w-[22px]"
       fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
+      stroke={active ? ACTIVE : idleColor}
       strokeWidth={active ? "2" : "1.75"}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -53,13 +59,19 @@ function TalkIcon({ active }: { active: boolean }) {
   );
 }
 
-function SoundIcon({ active }: { active: boolean }) {
+function SoundIcon({
+  active,
+  idleColor,
+}: {
+  active: boolean;
+  idleColor: string;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
       className="h-[22px] w-[22px]"
       fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
+      stroke={active ? ACTIVE : idleColor}
       strokeWidth={active ? "2" : "1.75"}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -74,13 +86,19 @@ function SoundIcon({ active }: { active: boolean }) {
   );
 }
 
-function ScienceIcon({ active }: { active: boolean }) {
+function ScienceIcon({
+  active,
+  idleColor,
+}: {
+  active: boolean;
+  idleColor: string;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
       className="h-[22px] w-[22px]"
       fill="none"
-      stroke={active ? ACTIVE : INACTIVE}
+      stroke={active ? ACTIVE : idleColor}
       strokeWidth={active ? "2" : "1.75"}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -93,11 +111,14 @@ function ScienceIcon({ active }: { active: boolean }) {
 }
 
 /**
- * モバイル向け浮遊カプセル型タブバー（/sleep/* 専用）。
- * デスクトップ（sm+）では非表示。
+ * モバイル向け浮遊カプセル型タブバー。
+ * トップを含む全ページで表示。デスクトップ（sm+）では非表示。
+ * /sleep/* 以外では選択中タブなし（全タブを同等の操作可能な見た目にする）。
  */
 export default function MobileSleepTabBar() {
   const pathname = usePathname() || "/";
+  const anyActive = TABS.some((tab) => tab.match(pathname));
+  const idleColor = anyActive ? INACTIVE : "rgba(245, 242, 234, 0.88)";
 
   return (
     <nav
@@ -129,10 +150,10 @@ export default function MobileSleepTabBar() {
               }}
               aria-current={active ? "page" : undefined}
             >
-              <Icon active={active} />
+              <Icon active={active} idleColor={idleColor} />
               <span
                 className="text-[10px] font-semibold leading-none tracking-[-0.01em]"
-                style={{ color: active ? ACTIVE : INACTIVE }}
+                style={{ color: active ? ACTIVE : idleColor }}
               >
                 {tab.label}
               </span>

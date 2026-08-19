@@ -5,11 +5,7 @@ import JapanNightBackdrop from "@/components/site/JapanNightBackdrop";
 import SleepWordsBanner from "@/components/home/SleepWordsBanner";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
 
-type HeroProps = {
-  dashboardHref?: string | null;
-};
-
-export default function Hero({ dashboardHref = null }: HeroProps) {
+export default function Hero() {
   return (
     <section
       data-swij-hero=""
@@ -36,7 +32,7 @@ export default function Hero({ dashboardHref = null }: HeroProps) {
         <SiteNavMenu tone="light" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-28 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+14rem)] max-sm:pb-[calc(var(--sw-beta-chrome-offset)+2.25rem)]">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-28 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+14rem)] max-sm:pb-[calc(var(--sw-sleep-tabbar-clearance)+4.5rem)]">
         <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
             SLEEP WELLNESS METHOD™
@@ -54,52 +50,7 @@ export default function Hero({ dashboardHref = null }: HeroProps) {
             Sleep Wellness Institute Japan の Method です。
           </p>
 
-          {/* スマホ: 縦積みフル幅 / PC: 既存の2列（中央寄せ・右の行灯と重なりすぎない幅） */}
-          <div className="mx-auto mt-9 grid w-full max-w-md grid-cols-1 gap-x-4 gap-y-2 sm:mt-11 sm:w-fit sm:max-w-none sm:grid-cols-2 max-sm:mt-10 max-sm:w-full max-sm:max-w-none max-sm:grid-cols-1 max-sm:gap-y-4">
-            {dashboardHref ? (
-              <Link
-                href={dashboardHref}
-                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-8 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-0.5 hover:bg-[#f4f4f4] sm:text-base"
-              >
-                認定講師専用ページ
-              </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex h-12 w-full items-center justify-center rounded-full bg-white px-8 text-sm font-semibold text-[#071426] transition duration-500 hover:-translate-y-0.5 hover:bg-[#f4f4f4] sm:text-base"
-              >
-                認定講師専用ページ
-              </Link>
-            )}
-
-            <Link
-              href={
-                dashboardHref
-                  ? "/analysis/new"
-                  : "/login?redirect=%2Fanalysis%2Fnew"
-              }
-              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-white/30 bg-white/10 px-8 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-0.5 hover:border-white/45 hover:bg-white/18 sm:text-base"
-            >
-              クライアントの分析
-            </Link>
-
-            <span className="hidden sm:block" aria-hidden="true" />
-            <p className="px-1 text-center text-[11px] leading-5 text-white/50 sm:text-xs sm:leading-5 max-sm:mt-1 max-sm:pt-1">
-              認定講師専用
-            </p>
-          </div>
-
-          <p className="mt-8 max-sm:mt-8 max-sm:mb-2">
-            <Link
-              href="/academy/certified-instructor"
-              className="text-sm font-medium text-white/65 transition hover:text-white"
-            >
-              認定講師になる →
-            </Link>
-          </p>
-
-          {/* 「認定講師になる →」直下：睡眠のための言葉 */}
-          <div className="mx-auto mt-5 w-full max-w-md sm:mt-6 sm:max-w-lg max-sm:mt-5">
+          <div className="mx-auto mt-8 w-full max-w-md sm:mt-10 sm:max-w-lg">
             <SleepWordsBanner tone="onDark" />
           </div>
         </div>
