@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FeaturedScrollStrip from "@/components/sleep-content/FeaturedScrollStrip";
-import ScienceArticleCard from "@/components/sleep-content/ScienceArticleCard";
+import FeaturedScrollStrip, { CategoryScrollStrip } from "@/components/sleep-content/FeaturedScrollStrip";
 import PublicIntroLayout from "@/components/site/PublicIntroLayout";
 import { listPublishedScienceArticles } from "@/lib/sleep-content/service";
 import {
@@ -101,16 +100,15 @@ export default async function SleepSciencePage({ searchParams }: Search) {
           公開中の記事はまだありません。
         </p>
       ) : (
-        <div className="space-y-12">
+        <div className="space-y-10">
           {visibleSections.map((section) => (
             <section key={section.subcategory}>
-              <h2 className="text-lg font-semibold tracking-[-0.02em] text-[#071426]">
+              <h2 className="mb-4 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
                 {SCIENCE_SUBCATEGORY_LABELS[section.subcategory]}
               </h2>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {section.articles.map((article) => (
-                  <ScienceArticleCard key={article.id} article={article} />
-                ))}
+              {/* カテゴリ別横スクロール帯（コンテナのpaddingを打ち消して全幅） */}
+              <div className="-mx-6 sm:-mx-8 lg:-mx-10">
+                <CategoryScrollStrip articles={section.articles} />
               </div>
             </section>
           ))}

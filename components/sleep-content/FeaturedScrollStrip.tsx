@@ -17,35 +17,46 @@ function FeaturedCard({ article }: { article: SleepContent }) {
         scrollSnapAlign: "start",
         background: CARD_NAVY,
         border: `1px solid rgba(184,148,95,0.3)`,
-        aspectRatio: "3 / 4",
       }}
     >
       {/* カバー画像（円形） */}
       <div className="flex justify-center" style={{ paddingTop: "24px" }}>
+        {/* width/height を同値・borderRadius 50% で確実に円形にする */}
         <div
-          className="overflow-hidden rounded-full"
           style={{
             width: "55%",
             aspectRatio: "1 / 1",
+            borderRadius: "50%",
+            overflow: "hidden",
+            flexShrink: 0,
           }}
         >
           {article.coverImageUrl ? (
             <img
               src={article.coverImageUrl}
               alt=""
-              className="h-full w-full object-cover object-center"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
+                display: "block",
+              }}
             />
           ) : (
             <div
-              className="h-full w-full"
-              style={{ background: `rgba(184,148,95,0.15)` }}
+              style={{
+                width: "100%",
+                height: "100%",
+                background: `rgba(184,148,95,0.15)`,
+              }}
             />
           )}
         </div>
       </div>
 
-      {/* テキスト */}
-      <div className="px-4 pt-4 pb-5">
+      {/* テキスト — 高さはコンテンツに従う、下部24px余白 */}
+      <div className="px-4 pt-4" style={{ paddingBottom: "24px" }}>
         <h3
           className="font-semibold leading-snug tracking-[-0.02em]"
           style={{ fontSize: "16px", color: "#ffffff" }}
@@ -72,6 +83,28 @@ function FeaturedCard({ article }: { article: SleepContent }) {
   );
 }
 
+function ScrollStrip({ articles }: { articles: SleepContent[] }) {
+  return (
+    <div
+      className="flex gap-3 featured-scroll-strip"
+      style={{
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        scrollSnapType: "x mandatory",
+        paddingLeft: "20px",
+        paddingRight: "20px",
+      }}
+    >
+      {articles.map((article) => (
+        <FeaturedCard key={article.id} article={article} />
+      ))}
+      {/* 最後のカードの右余白スペーサー */}
+      <div className="flex-shrink-0" style={{ width: "4px" }} aria-hidden />
+    </div>
+  );
+}
+
+/** 注目の記事（全記事）横スクロール帯 */
 export default function FeaturedScrollStrip({
   articles,
 }: {
@@ -87,26 +120,13 @@ export default function FeaturedScrollStrip({
       >
         注目の記事
       </h2>
-
-      {/* スクロールコンテナ */}
-      <div
-        className="flex gap-3 featured-scroll-strip"
-        style={{
-          overflowX: "auto",
-          WebkitOverflowScrolling: "touch",
-          scrollSnapType: "x mandatory",
-          paddingLeft: "20px",
-          paddingRight: "20px",
-          /* 最後のカードの右余白を確保するために padding-right では届かないため
-             after 疑似要素で代用（CSS で対応） */
-        }}
-      >
-        {articles.map((article) => (
-          <FeaturedCard key={article.id} article={article} />
-        ))}
-        {/* 最後のカードの右余白スペーサー */}
-        <div className="flex-shrink-0" style={{ width: "4px" }} aria-hidden />
-      </div>
+      <ScrollStrip articles={articles} />
     </section>
   );
+}
+
+/** カテゴリ別横スクロール帯（見出しなし — page 側で見出しを出す） */
+export function CategoryScrollStrip({ articles }: { articles: SleepContent[] }) {
+  if (articles.length === 0) return null;
+  return <ScrollStrip articles={articles} />;
 }
