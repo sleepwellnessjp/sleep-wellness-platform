@@ -26,6 +26,9 @@ const MUTED = "#5A6B7D";
 const GOLD = "#B8945F";
 const CARD_BG = "#FFFFFF";
 const CARD_BORDER = "#E0D8C6";
+const CUSHION = "rgba(224, 216, 198, 0.55)";
+const CARD_SHADOW =
+  "0 24px 56px rgba(10, 20, 38, 0.11), 0 8px 20px rgba(10, 20, 38, 0.05)";
 
 /** 麻の葉（記事カバーと同じタイル定義） */
 const ASANOHA_SVG = encodeURIComponent(
@@ -38,6 +41,106 @@ const ASANOHA_SVG = encodeURIComponent(
 );
 
 type Screen = "intro" | "question" | "result";
+
+function SpeechBubbleDown({
+  message,
+  className = "",
+}: {
+  message: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative rounded-[20px] border px-4 py-2.5 text-center text-[14px] leading-relaxed ${className}`}
+      style={{
+        color: TEXT,
+        background: CARD_BG,
+        borderColor: CARD_BORDER,
+      }}
+    >
+      {message}
+      <span
+        aria-hidden
+        className="absolute bottom-0 left-1/2 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rotate-45"
+        style={{
+          background: CARD_BG,
+          borderRight: `1px solid ${CARD_BORDER}`,
+          borderBottom: `1px solid ${CARD_BORDER}`,
+        }}
+      />
+    </div>
+  );
+}
+
+function NekoWithCushion({
+  src,
+  widthClass,
+  imageWidth,
+}: {
+  src: string;
+  widthClass: string;
+  imageWidth: number;
+}) {
+  return (
+    <div className={`relative flex flex-col items-center ${widthClass}`}>
+      <div
+        className="absolute bottom-[6%] left-1/2 h-[12%] min-h-[10px] w-[78%] -translate-x-1/2 rounded-[50%]"
+        style={{ background: CUSHION }}
+        aria-hidden
+      />
+      <Image
+        src={src}
+        alt="まもりねこ"
+        width={imageWidth}
+        height={imageWidth}
+        priority
+        className="relative z-[1] h-auto w-full object-contain"
+      />
+    </div>
+  );
+}
+
+function NekoHero({
+  src,
+  message,
+}: {
+  src: string;
+  message: string;
+}) {
+  return (
+    <div className="flex w-full flex-col items-center">
+      <SpeechBubbleDown
+        message={message}
+        className="mb-4 max-w-[15rem] sm:max-w-[17rem]"
+      />
+      <NekoWithCushion
+        src={src}
+        widthClass="w-[min(50vw,12.5rem)] sm:w-[min(42vw,13.5rem)]"
+        imageWidth={216}
+      />
+    </div>
+  );
+}
+
+function NekoCompact({
+  src,
+  message,
+}: {
+  src: string;
+  message: string;
+}) {
+  return (
+    <div className="self-start">
+      <div className="inline-flex flex-col items-center">
+        <SpeechBubbleDown
+          message={message}
+          className="mb-2 max-w-[11rem] px-3 py-2 text-[12px] leading-snug"
+        />
+        <NekoWithCushion src={src} widthClass="w-[120px]" imageWidth={120} />
+      </div>
+    </div>
+  );
+}
 
 function OptionButton({
   children,
@@ -62,7 +165,7 @@ function OptionButton({
   );
 }
 
-function CtaLink({
+function GoldPillLink({
   href,
   children,
   external = false,
@@ -77,11 +180,34 @@ function CtaLink({
       {...(external
         ? { target: "_blank", rel: "noopener noreferrer" }
         : {})}
-      className={`inline-flex min-h-12 flex-1 items-center justify-center rounded-full border px-4 py-3 text-center text-[13px] font-semibold leading-snug sm:text-sm ${FOCUS_RING}`}
+      className={`inline-flex min-h-12 w-full items-center justify-center rounded-full px-5 py-3.5 text-center text-[14px] font-semibold leading-snug text-white transition active:scale-[0.99] sm:text-[15px] ${FOCUS_RING}`}
+      style={{ background: GOLD }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function GoldOutlinePillLink({
+  href,
+  children,
+  external = false,
+}: {
+  href: string;
+  children: ReactNode;
+  external?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      {...(external
+        ? { target: "_blank", rel: "noopener noreferrer" }
+        : {})}
+      className={`inline-flex min-h-12 w-full items-center justify-center rounded-full border-2 px-5 py-3.5 text-center text-[14px] font-semibold leading-snug transition active:scale-[0.99] sm:text-[15px] ${FOCUS_RING}`}
       style={{
-        color: TEXT,
-        background: CARD_BG,
-        borderColor: CARD_BORDER,
+        color: GOLD,
+        borderColor: GOLD,
+        background: "transparent",
       }}
     >
       {children}
@@ -89,43 +215,49 @@ function CtaLink({
   );
 }
 
-function NekoSpeech({
-  src,
+function ResultCard({
+  nekoSrc,
+  heading,
   message,
-  size = 132,
+  score,
 }: {
-  src: string;
+  nekoSrc: string;
+  heading: string;
   message: string;
-  size?: number;
+  score: number;
 }) {
   return (
-    <div className="flex items-end gap-3">
-      <Image
-        src={src}
-        alt="まもりねこ"
-        width={size}
-        height={size}
-        className="h-auto w-[min(38vw,9rem)] shrink-0 object-contain"
-      />
+    <div
+      className="rounded-[24px] px-6 pb-7 pt-6 sm:px-8 sm:pb-8 sm:pt-7"
+      style={{
+        background: CARD_BG,
+        boxShadow: CARD_SHADOW,
+      }}
+    >
       <div
-        className="relative mb-6 max-w-[16rem] rounded-[22px] px-4 py-3 text-[14px] leading-relaxed"
-        style={{
-          color: TEXT,
-          background: CARD_BG,
-          border: `1px solid ${CARD_BORDER}`,
-        }}
-      >
-        <span
-          aria-hidden
-          className="absolute -left-1.5 bottom-5 h-3 w-3 rotate-45"
-          style={{
-            background: CARD_BG,
-            borderLeft: `1px solid ${CARD_BORDER}`,
-            borderBottom: `1px solid ${CARD_BORDER}`,
-          }}
+        className="mx-auto mb-6 h-0.5 w-[120px] rounded-full"
+        style={{ background: GOLD }}
+        aria-hidden
+      />
+      <div className="flex justify-center">
+        <NekoWithCushion
+          src={nekoSrc}
+          widthClass="w-[min(44vw,10.5rem)]"
+          imageWidth={168}
         />
-        {message}
       </div>
+      <h2 className="mt-5 text-center text-[1.65rem] font-semibold leading-tight tracking-[-0.03em] sm:text-[1.85rem]">
+        {heading}
+      </h2>
+      <p className="mt-4 text-center text-[15px] leading-7 sm:text-base sm:leading-8">
+        {message}
+      </p>
+      <p
+        className="mt-5 text-center text-[11px] tabular-nums"
+        style={{ color: MUTED }}
+      >
+        参考：{score}点
+      </p>
     </div>
   );
 }
@@ -199,59 +331,71 @@ export default function SleepCheckExperience() {
       `}</style>
       <div className="sw-check-pattern" aria-hidden />
 
-      <div className="relative z-20 flex items-center justify-between px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
+      <div className="relative z-20 flex items-center justify-between px-4 pb-1 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
         <Link
           href="/"
           className={`inline-flex min-h-11 items-center rounded-full px-3 text-[12px] font-semibold ${FOCUS_RING}`}
-          style={{ color: GOLD }}
+          style={{ color: MUTED }}
         >
           ← ホーム
         </Link>
         <SiteNavMenu tone="dark" />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4.5rem)] w-full max-w-lg flex-col px-5 pb-[var(--sw-sleep-page-bottom-pad)] pt-4 sm:max-w-xl sm:px-8 sm:pb-16">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-lg flex-col px-5 pb-[var(--sw-sleep-page-bottom-pad)] pt-2 sm:max-w-xl sm:px-8 sm:pb-16">
         {screen === "intro" ? (
-          <section className="flex flex-1 flex-col">
+          <section className="flex flex-1 flex-col items-center text-center">
             <p
               className="text-[10px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
             >
               SLEEP CHECK
             </p>
-            <h1 className="mt-4 text-[1.7rem] font-semibold leading-tight tracking-[-0.03em] sm:text-3xl">
-              あなたの眠り、いまどんな感じ？
-            </h1>
-            <p
-              className="mt-4 text-[15px] leading-7 sm:text-base sm:leading-8"
-              style={{ color: MUTED }}
-            >
-              8つの質問に答えると、いまの眠りの状態が見えてきます。1分ほどで終わります。
-            </p>
 
-            <div className="mt-8 flex flex-1 flex-col justify-center">
-              <NekoSpeech
+            <div className="mt-6 flex w-full flex-1 flex-col items-center justify-center py-4 sm:mt-8 sm:py-6">
+              <NekoHero
                 src={SLEEP_CHECK_IMAGES.tsujo}
                 message="いっしょに見ていこうね"
-                size={180}
               />
             </div>
 
+            <h1 className="text-[1.75rem] font-semibold leading-[1.25] tracking-[-0.03em] sm:text-[2rem]">
+              あなたの眠り、
+              <br className="sm:hidden" />
+              いまどんな感じ？
+            </h1>
             <p
-              className="mt-6 text-[11px] leading-5"
+              className="mt-3 max-w-sm text-[14px] leading-7 sm:text-[15px] sm:leading-8"
               style={{ color: MUTED }}
             >
-              これは医学的な診断ではありません。気づきのきっかけとしてお使いください。
+              8つの質問で、いまの眠りの状態が見えてきます。
+              <br className="hidden sm:inline" />
+              1分ほどで終わります。
             </p>
 
             <button
               type="button"
               onClick={() => setScreen("question")}
-              className={`mt-5 inline-flex min-h-12 w-full items-center justify-center rounded-full text-[15px] font-semibold transition active:scale-[0.99] ${FOCUS_RING}`}
-              style={{ background: GOLD, color: TEXT }}
+              className={`mt-6 inline-flex min-h-[3.25rem] w-full max-w-md items-center justify-center rounded-full text-[15px] font-semibold text-white transition active:scale-[0.99] sm:mt-7 ${FOCUS_RING}`}
+              style={{ background: GOLD }}
             >
               はじめる
             </button>
+
+            <p
+              className="mt-4 max-w-sm text-[10px] leading-5 sm:text-[11px]"
+              style={{ color: MUTED }}
+            >
+              これは医学的な診断ではありません。
+              <br />
+              気づきのきっかけとしてお使いください。
+            </p>
+
+            <div
+              className="mt-8 h-px w-16"
+              style={{ background: CARD_BORDER }}
+              aria-hidden
+            />
 
             <SleepCheckAboutAccordion />
           </section>
@@ -259,7 +403,10 @@ export default function SleepCheckExperience() {
 
         {screen === "question" && question ? (
           <section className="flex flex-1 flex-col">
-            <p className="text-[12px] tabular-nums" style={{ color: GOLD }}>
+            <p
+              className="text-[11px] font-semibold tabular-nums tracking-[0.08em]"
+              style={{ color: GOLD }}
+            >
               {index + 1} / {total}
             </p>
             <div
@@ -280,14 +427,16 @@ export default function SleepCheckExperience() {
               />
             </div>
 
+            <NekoCompact src={question.nekoSrc} message={question.speech} />
+
             <p
-              className="mt-5 text-[12px] leading-5"
+              className="mt-5 text-[11px] leading-5"
               style={{ color: MUTED }}
             >
               {SLEEP_CHECK_PREAMBLE}
             </p>
 
-            <h2 className="mt-4 text-[1.15rem] font-semibold leading-snug tracking-[-0.02em] sm:text-xl">
+            <h2 className="mt-3 text-[1.2rem] font-semibold leading-snug tracking-[-0.02em] sm:text-[1.35rem]">
               {question.title}
             </h2>
 
@@ -314,14 +463,10 @@ export default function SleepCheckExperience() {
               })}
             </div>
 
-            <div className="mt-8">
-              <NekoSpeech src={question.nekoSrc} message={question.speech} />
-            </div>
-
             <button
               type="button"
               onClick={goBack}
-              className={`mt-6 self-start text-[13px] font-semibold ${FOCUS_RING}`}
+              className={`mt-8 self-start text-[13px] font-semibold ${FOCUS_RING}`}
               style={{ color: GOLD }}
             >
               ひとつ前に戻る
@@ -332,71 +477,62 @@ export default function SleepCheckExperience() {
         {screen === "result" ? (
           <section className="flex flex-1 flex-col">
             <p
-              className="text-[10px] font-semibold tracking-[0.28em]"
+              className="text-center text-[10px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
             >
               RESULT
             </p>
-            <div className="mt-6 flex justify-center">
-              <Image
-                src={result.nekoSrc}
-                alt="まもりねこ"
-                width={220}
-                height={220}
-                className="h-auto w-[min(52vw,13rem)] object-contain"
+
+            <div className="mt-5 sm:mt-6">
+              <ResultCard
+                nekoSrc={result.nekoSrc}
+                heading={result.heading}
+                message={result.message}
+                score={score}
               />
             </div>
-            <h2 className="mt-5 text-center text-[1.55rem] font-semibold leading-tight tracking-[-0.03em] sm:text-3xl">
-              {result.heading}
-            </h2>
+
             <p
-              className="mx-auto mt-5 max-w-md rounded-[22px] px-4 py-4 text-[15px] leading-7 sm:leading-8"
-              style={{
-                color: TEXT,
-                background: CARD_BG,
-                border: `1px solid ${CARD_BORDER}`,
-              }}
+              className="mt-8 text-center text-[11px] font-semibold tracking-[0.12em]"
+              style={{ color: GOLD }}
             >
-              {result.message}
+              つぎの一歩に
             </p>
-            <p
-              className="mt-4 text-center text-[11px]"
-              style={{ color: MUTED }}
-            >
-              参考：{score}点
-            </p>
+
+            <div className="mt-3 flex flex-col gap-2.5">
+              <GoldPillLink href="/instructors">
+                認定講師を探してみない？
+              </GoldPillLink>
+              <GoldPillLink href="/contact">SWIJに相談してみない？</GoldPillLink>
+              {result.showMedical ? (
+                <>
+                  <GoldOutlinePillLink
+                    href={SLEEP_CHECK_MEDICAL_LIST_URL}
+                    external
+                  >
+                    医療機関で相談してみない？
+                  </GoldOutlinePillLink>
+                  <p
+                    className="mt-1 text-center text-[10px] leading-5 sm:text-[11px]"
+                    style={{ color: MUTED }}
+                  >
+                    睡眠時無呼吸症候群など、医療で対応できるものもあります。
+                  </p>
+                </>
+              ) : null}
+            </div>
 
             <button
               type="button"
               onClick={reset}
-              className={`mt-5 self-center text-[13px] font-semibold ${FOCUS_RING}`}
-              style={{ color: GOLD }}
+              className={`mt-8 self-center text-[13px] font-medium ${FOCUS_RING}`}
+              style={{ color: MUTED }}
             >
               もう一度やってみる
             </button>
 
-            <div className="mt-8 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
-              <CtaLink href="/instructors">
-                認定講師を探してみない？
-              </CtaLink>
-              <CtaLink href="/contact">SWIJに相談してみない？</CtaLink>
-              {result.showMedical ? (
-                <CtaLink href={SLEEP_CHECK_MEDICAL_LIST_URL} external>
-                  医療機関で相談してみない？
-                </CtaLink>
-              ) : null}
-            </div>
-            {result.showMedical ? (
-              <p
-                className="mt-3 text-[11px] leading-5"
-                style={{ color: MUTED }}
-              >
-                睡眠時無呼吸症候群など、医療で対応できるものもあります。一覧は日本睡眠学会の睡眠医療認定ページです。
-              </p>
-            ) : null}
-
             <p
-              className="mt-8 text-[11px] leading-5"
+              className="mt-6 text-center text-[10px] leading-5"
               style={{ color: MUTED }}
             >
               これは医学的な診断ではありません。気づきのきっかけとしてお使いください。
