@@ -71,7 +71,7 @@ comment on column public.sleep_contents.subcategory is
 comment on column public.sleep_contents.kind is
   'talk_video / nature_sound / practice_video / sleep_music / article / interview';
 comment on column public.sleep_contents.body_blocks is
-  '記事本文のブロック配列。type は heading / paragraph / figure / list / callout';
+  '記事本文のブロック配列。type は heading / subheading / paragraph / figure / list / callout';
 comment on column public.sleep_contents.youtube_url is
   'YouTube限定公開URL。iframe HTML は保存しない';
 comment on column public.sleep_contents.audio_url is
