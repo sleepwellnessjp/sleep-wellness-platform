@@ -55,8 +55,15 @@ export default function JapanNightBackdrop({
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#040c18]"
       aria-hidden="true"
       data-swij-japan-night=""
+      data-variant={variant}
     >
       <style>{`
+        [data-swij-japan-night] {
+          --jn-fall-end: 112vh;
+        }
+        [data-swij-japan-night][data-variant="firstView"] {
+          --jn-fall-end: 165vh;
+        }
         [data-swij-japan-night] .jn-moon-breathe {
           animation: jn-moon-breathe 8s ease-in-out infinite;
         }
@@ -140,7 +147,7 @@ export default function JapanNightBackdrop({
             opacity: 0.55;
           }
           100% {
-            transform: translate3d(var(--jn-drift), 112vh, 0) rotate(var(--jn-rot));
+            transform: translate3d(var(--jn-drift), var(--jn-fall-end), 0) rotate(var(--jn-rot));
             opacity: 0;
           }
         }
@@ -158,7 +165,7 @@ export default function JapanNightBackdrop({
             opacity: 0.45;
           }
           100% {
-            transform: translate3d(var(--jn-drift), 110vh, 0) rotate(var(--jn-rot)) scale(0.88);
+            transform: translate3d(var(--jn-drift), var(--jn-fall-end), 0) rotate(var(--jn-rot)) scale(0.88);
             opacity: 0;
           }
         }
@@ -169,7 +176,7 @@ export default function JapanNightBackdrop({
           }
           10% { opacity: 0.4; }
           100% {
-            transform: translate3d(var(--jn-drift), 105vh, 0) rotate(var(--jn-rot)) scale(0.7);
+            transform: translate3d(var(--jn-drift), var(--jn-fall-end), 0) rotate(var(--jn-rot)) scale(0.7);
             opacity: 0;
           }
         }
@@ -213,7 +220,7 @@ export default function JapanNightBackdrop({
             fetchPriority="high"
             className={`absolute inset-0 h-full w-full object-cover ${
               variant === "firstView"
-                ? "object-[22%_38%] sm:object-[48%_46%] lg:object-[52%_44%]"
+                ? "object-[22%_32%] sm:object-[48%_44%] lg:object-[52%_42%]"
                 : "object-[20%_34%] sm:object-[48%_46%] lg:object-[52%_44%]"
             }`}
           />
@@ -368,7 +375,9 @@ export default function JapanNightBackdrop({
         className="absolute inset-0 sm:hidden"
         style={{
           background:
-            "linear-gradient(180deg, rgba(3,10,20,0.02) 0%, transparent 20%, transparent 70%, rgba(2,8,16,0.45) 100%)",
+            variant === "firstView"
+              ? "linear-gradient(180deg, rgba(3,10,20,0.02) 0%, transparent 16%, transparent 84%, rgba(2,8,16,0.52) 100%)"
+              : "linear-gradient(180deg, rgba(3,10,20,0.02) 0%, transparent 20%, transparent 70%, rgba(2,8,16,0.45) 100%)",
         }}
       />
 
