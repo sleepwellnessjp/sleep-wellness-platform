@@ -7,10 +7,10 @@ export default function Hero() {
   return (
     <section
       data-swij-hero=""
-      className="relative z-10 flex max-sm:min-h-[52svh] sm:min-h-[68vh] lg:min-h-[72vh]"
+      className="relative z-10 flex max-sm:min-h-[44svh] sm:min-h-[62vh] lg:min-h-[68vh]"
     >
       {/* スマホ: ロゴ帯・ハンバーガーを月の下へ（重なり回避） / PCは従来位置 */}
-      <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+2.25rem)] z-20 flex items-center justify-between max-sm:top-[calc(env(safe-area-inset-top,0px)+7rem)] sm:left-8 sm:right-8 sm:top-8 lg:left-12 lg:right-12 lg:top-10">
+      <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+2.25rem)] z-20 flex items-center justify-between max-sm:top-[calc(env(safe-area-inset-top,0px)+5rem)] sm:left-8 sm:right-8 sm:top-8 lg:left-12 lg:right-12 lg:top-10">
         <Link
           href={HOME_TOP_HREF}
           className="inline-flex min-h-11 min-w-11 items-center py-1.5 pr-2 sm:min-h-0 sm:py-0 sm:pr-0"
@@ -27,7 +27,7 @@ export default function Hero() {
         <SiteNavMenu tone="light" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-8 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+10.5rem)] max-sm:pb-4">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-8 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+8.5rem)] max-sm:pb-4">
         <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
             SLEEP WELLNESS METHOD™
