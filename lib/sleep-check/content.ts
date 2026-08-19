@@ -180,7 +180,7 @@ export const SLEEP_CHECK_RESULTS: SleepCheckResultBand[] = [
   },
   {
     min: 10,
-    max: 14,
+    max: 15,
     heading: "おつかれさま",
     message:
       "かなり眠りが乱れているようですね。ここまでよく頑張ってきたと思います。ひとりで抱えこまなくて大丈夫。手を借りるという方法もあります。",
@@ -188,7 +188,7 @@ export const SLEEP_CHECK_RESULTS: SleepCheckResultBand[] = [
     showMedical: true,
   },
   {
-    min: 15,
+    min: 16,
     max: 24,
     heading: "しんどいですね",
     message:

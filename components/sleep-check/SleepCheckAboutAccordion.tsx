@@ -7,9 +7,11 @@ import {
   SLEEP_CHECK_ABOUT_SECTIONS,
 } from "@/lib/sleep-check/about";
 
-const TEXT = "#F5F2EA";
+const TEXT = "#0A1426";
+const MUTED = "#5A6B7D";
 const GOLD = "#B8945F";
-const FROST_BORDER = "rgba(184, 148, 95, 0.38)";
+const CARD_BG = "#FFFFFF";
+const CARD_BORDER = "#E0D8C6";
 
 export default function SleepCheckAboutAccordion() {
   const [open, setOpen] = useState(false);
@@ -25,8 +27,8 @@ export default function SleepCheckAboutAccordion() {
         className={`flex w-full min-h-11 items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-[13px] font-semibold transition ${FOCUS_RING}`}
         style={{
           color: GOLD,
-          borderColor: FROST_BORDER,
-          background: "rgba(245, 242, 234, 0.06)",
+          borderColor: CARD_BORDER,
+          background: CARD_BG,
         }}
       >
         <span>この質問について</span>
@@ -44,8 +46,8 @@ export default function SleepCheckAboutAccordion() {
           id={panelId}
           className="mt-3 space-y-8 rounded-2xl border px-4 py-5 sm:px-5"
           style={{
-            borderColor: "rgba(245, 242, 234, 0.12)",
-            background: "rgba(245, 242, 234, 0.04)",
+            borderColor: CARD_BORDER,
+            background: CARD_BG,
           }}
         >
           {SLEEP_CHECK_ABOUT_SECTIONS.map((section) => (
@@ -59,7 +61,8 @@ export default function SleepCheckAboutAccordion() {
               {section.paragraphs.map((paragraph) => (
                 <p
                   key={paragraph}
-                  className="text-[13px] leading-7 text-[#F5F2EA]/72"
+                  className="text-[13px] leading-7"
+                  style={{ color: MUTED }}
                 >
                   {paragraph}
                 </p>
@@ -73,14 +76,20 @@ export default function SleepCheckAboutAccordion() {
                       >
                         {scale.name}
                       </p>
-                      <p className="text-[13px] leading-7 text-[#F5F2EA]/72">
+                      <p
+                        className="text-[13px] leading-7"
+                        style={{ color: MUTED }}
+                      >
                         {scale.body}
                       </p>
                     </div>
                   ))
                 : null}
               {"bullets" in section && section.bullets ? (
-                <ul className="list-disc space-y-1.5 pl-5 text-[13px] leading-7 text-[#F5F2EA]/72">
+                <ul
+                  className="list-disc space-y-1.5 pl-5 text-[13px] leading-7"
+                  style={{ color: MUTED }}
+                >
                   {section.bullets.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
@@ -91,7 +100,8 @@ export default function SleepCheckAboutAccordion() {
                 ? section.paragraphsAfterBullets.map((paragraph) => (
                     <p
                       key={paragraph}
-                      className="text-[13px] leading-7 text-[#F5F2EA]/72"
+                      className="text-[13px] leading-7"
+                      style={{ color: MUTED }}
                     >
                       {paragraph}
                     </p>
@@ -100,7 +110,10 @@ export default function SleepCheckAboutAccordion() {
             </section>
           ))}
 
-          <section className="space-y-3 border-t border-[#F5F2EA]/10 pt-5">
+          <section
+            className="space-y-3 border-t pt-5"
+            style={{ borderColor: CARD_BORDER }}
+          >
             <h2
               className="text-[15px] font-semibold tracking-[-0.02em]"
               style={{ color: TEXT }}
@@ -111,7 +124,8 @@ export default function SleepCheckAboutAccordion() {
               {SLEEP_CHECK_ABOUT_REFERENCES.map((reference) => (
                 <li
                   key={reference}
-                  className="text-[11px] leading-6 text-[#F5F2EA]/52"
+                  className="text-[11px] leading-6"
+                  style={{ color: MUTED }}
                 >
                   {reference}
                 </li>
