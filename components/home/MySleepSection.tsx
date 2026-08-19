@@ -141,7 +141,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
   return (
     <section
       aria-labelledby="my-sleep-heading"
-      className="relative z-10 px-5 pb-6 pt-2 sm:px-8 sm:pb-10 sm:pt-10 lg:px-10"
+      className="relative z-10 px-5 pb-4 pt-0 sm:px-8 sm:pb-10 sm:pt-8 lg:px-10"
     >
       <div className="mx-auto max-w-lg text-center">
         <p
@@ -159,7 +159,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
         </p>
       </div>
 
-      <div className="relative mx-auto mt-3 aspect-square w-[min(64vw,15.5rem)] max-sm:mt-2 sm:mt-6 sm:w-[min(68vw,17rem)] sm:max-w-[20rem] lg:max-w-[22rem]">
+      <div className="relative mx-auto mt-2 aspect-square w-[min(54vw,13rem)] max-sm:mt-1 sm:mt-5 sm:w-[min(58vw,14.5rem)] sm:max-w-[17rem] lg:max-w-[19rem]">
         {/* 軌道円（二重線） */}
         <div
           className="pointer-events-none absolute inset-0"
