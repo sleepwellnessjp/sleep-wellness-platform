@@ -220,7 +220,7 @@ export default function JapanNightBackdrop({
             fetchPriority="high"
             className={`absolute inset-0 h-full w-full object-cover ${
               variant === "firstView"
-                ? "object-[22%_32%] sm:object-[48%_44%] lg:object-[52%_42%]"
+                ? "object-[22%_27%] sm:object-[48%_39%] lg:object-[52%_37%]"
                 : "object-[20%_34%] sm:object-[48%_46%] lg:object-[52%_44%]"
             }`}
           />
