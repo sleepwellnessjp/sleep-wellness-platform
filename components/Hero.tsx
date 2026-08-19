@@ -27,7 +27,7 @@ export default function Hero() {
         <SiteNavMenu tone="light" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-8 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+10.5rem)] max-sm:pb-4">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-8 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+13rem)] max-sm:pb-4">
         <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
             SLEEP WELLNESS METHOD™
