@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import SiteNavMenu from "@/components/site/SiteNavMenu";
 import JapanNightBackdrop from "@/components/site/JapanNightBackdrop";
-import SleepWordsBanner from "@/components/home/SleepWordsBanner";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 export default function Hero() {
@@ -49,10 +48,6 @@ export default function Hero() {
             <br className="hidden sm:block" />
             Sleep Wellness Institute Japan の Method です。
           </p>
-
-          <div className="mx-auto mt-8 w-full max-w-md sm:mt-10 sm:max-w-lg">
-            <SleepWordsBanner tone="onDark" />
-          </div>
         </div>
       </div>
     </section>
