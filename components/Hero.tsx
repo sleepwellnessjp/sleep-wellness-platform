@@ -52,7 +52,7 @@ export default function Hero() {
               width={400}
               height={100}
               priority
-              className="mx-auto h-auto w-[60vw] max-w-[280px] bg-transparent"
+              className="mx-auto h-auto w-[34vw] max-w-[140px] bg-transparent"
             />
           </Link>
 
