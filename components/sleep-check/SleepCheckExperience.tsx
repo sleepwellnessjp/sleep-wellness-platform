@@ -122,6 +122,36 @@ function NekoHero({
   );
 }
 
+function SpeechBubbleSide({
+  message,
+  className = "",
+}: {
+  message: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative rounded-[22px] border px-5 py-4 text-[22px] font-medium leading-snug ${className}`}
+      style={{
+        color: TEXT,
+        background: CARD_BG,
+        borderColor: CARD_BORDER,
+      }}
+    >
+      {message}
+      <span
+        aria-hidden
+        className="absolute left-0 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45"
+        style={{
+          background: CARD_BG,
+          borderLeft: `1px solid ${CARD_BORDER}`,
+          borderBottom: `1px solid ${CARD_BORDER}`,
+        }}
+      />
+    </div>
+  );
+}
+
 function NekoCompact({
   src,
   message,
@@ -130,14 +160,13 @@ function NekoCompact({
   message: string;
 }) {
   return (
-    <div className="self-start">
-      <div className="inline-flex flex-col items-center">
-        <SpeechBubbleDown
-          message={message}
-          className="mb-2 max-w-[11rem] px-3 py-2 text-[12px] leading-snug"
-        />
-        <NekoWithCushion src={src} widthClass="w-[120px]" imageWidth={120} />
-      </div>
+    <div className="flex items-center gap-3">
+      <NekoWithCushion
+        src={src}
+        widthClass="w-[120px] shrink-0"
+        imageWidth={120}
+      />
+      <SpeechBubbleSide message={message} className="min-w-0 flex-1" />
     </div>
   );
 }
