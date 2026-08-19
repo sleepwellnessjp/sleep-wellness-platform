@@ -7,7 +7,7 @@ export default function Hero() {
   return (
     <section
       data-swij-hero=""
-      className="relative z-10 flex flex-col sm:block sm:min-h-[62vh] lg:min-h-[68vh]"
+      className="relative z-10 flex flex-col sm:block"
     >
       {/* PC: absolute ヘッダー（ロゴ左 + メニュー右） */}
       <div className="absolute left-8 right-8 top-8 z-20 hidden items-center justify-between sm:flex lg:left-12 lg:right-12 lg:top-10">
@@ -36,7 +36,7 @@ export default function Hero() {
       </div>
 
       {/* コンテンツ: ロゴ中央 → METHOD™ → 見出し → 説明文（すべて通常フロー） */}
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-8 pt-32 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pb-4 max-sm:pt-0">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-12 pt-32 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pb-8 max-sm:pt-0">
         <div
           className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none"
           style={{ paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 1.5rem), 1.5rem)" }}

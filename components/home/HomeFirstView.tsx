@@ -24,7 +24,7 @@ export default function HomeFirstView({ analysisHref }: HomeFirstViewProps) {
 
       <MySleepSection analysisHref={analysisHref} />
 
-      <div className="relative z-10 px-5 pb-[calc(var(--sw-sleep-tabbar-clearance)+2.5rem)] pt-1 sm:px-8 sm:pb-12 sm:pt-3 lg:px-10">
+      <div className="relative z-10 px-5 pt-1 sm:px-8 sm:pb-12 sm:pt-3 lg:px-10" style={{ paddingBottom: "calc(6.25rem + env(safe-area-inset-bottom, 0px) + 1.5rem)" }}>
         <SleepWordsBanner tone="onDark" />
       </div>
     </div>
