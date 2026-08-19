@@ -2,31 +2,23 @@ import type { ReactNode } from "react";
 import { GOLD, NAVY } from "@/components/ui/tokens";
 import type { SleepContentBlock } from "@/lib/sleep-content/types";
 
+const SUBHEADING_COLOR = "#5a6b80";
+const BODY_TEXT = "text-[16px] leading-[1.75] text-[#071426]";
+
 /**
- * 階層が余白で分かるようにする。
- * 大見出しの上は広く、小見出しの上は控えめ、段落間は行高より少し広い程度。
+ * 段落間: モバイル 20px / sm 24px。
+ * 小見出しの下 8px は subheading 自身の mb で確保する。
  */
 function blockTopSpacing(
   index: number,
   blocks: SleepContentBlock[],
 ): string {
   if (index === 0) return "";
-  const current = blocks[index];
   const prev = blocks[index - 1];
-
-  if (current?.type === "heading") {
-    return "mt-10 sm:mt-14";
-  }
-  if (current?.type === "subheading") {
-    return "mt-6 sm:mt-8";
-  }
-  if (prev?.type === "heading" || prev?.type === "subheading") {
-    return "mt-3";
-  }
-  return "mt-4 sm:mt-5";
+  if (prev?.type === "subheading") return "";
+  if (prev?.type === "heading") return "mt-3 sm:mt-6";
+  return "mt-5 sm:mt-6";
 }
-
-const BODY_TEXT = "text-[16px] leading-[1.8] text-[#071426]";
 
 function renderEmphasis(text: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -82,7 +74,7 @@ export default function ScienceArticleBody({
           return (
             <h2
               key={index}
-              className={`${topSpacing} text-[1.35rem] font-semibold leading-snug tracking-[-0.03em] sm:text-2xl`}
+              className={`${index === 0 ? "" : "mt-8 sm:mt-12"} text-[1.35rem] font-semibold leading-snug tracking-[-0.03em] sm:text-2xl`}
               style={{ color: NAVY }}
             >
               {block.text}
@@ -93,7 +85,8 @@ export default function ScienceArticleBody({
           return (
             <h3
               key={index}
-              className={`${topSpacing} text-[15px] font-bold leading-snug tracking-[-0.01em] text-slate-500 sm:text-base`}
+              className={`${index === 0 ? "" : "mt-[28px]"} mb-2 text-[16px] font-semibold leading-snug tracking-[-0.01em]`}
+              style={{ color: SUBHEADING_COLOR }}
             >
               {block.text}
             </h3>
@@ -109,7 +102,7 @@ export default function ScienceArticleBody({
         if (block.type === "figure") {
           if (!block.image_url) return null;
           return (
-            <figure key={index} className={topSpacing}>
+            <figure key={index} className={`${topSpacing} mb-6 sm:mb-10`}>
               <img
                 src={block.image_url}
                 alt={block.alt || block.caption || ""}
@@ -132,7 +125,7 @@ export default function ScienceArticleBody({
           return (
             <ul
               key={index}
-              className={`${topSpacing} list-disc space-y-2 pl-5 text-[16px] leading-[1.6] text-[#071426]`}
+              className={`${topSpacing} list-disc space-y-1.5 pl-5 text-[16px] leading-[1.6] text-[#071426]`}
             >
               {items.map((item, itemIndex) => (
                 <li key={itemIndex}>{renderEmphasis(item)}</li>
@@ -142,7 +135,7 @@ export default function ScienceArticleBody({
         }
         if (block.type === "callout") {
           return (
-            <Callout key={index} className={topSpacing}>
+            <Callout key={index} className={`${topSpacing} mb-6 sm:mb-8`}>
               {renderEmphasis(block.text)}
             </Callout>
           );
