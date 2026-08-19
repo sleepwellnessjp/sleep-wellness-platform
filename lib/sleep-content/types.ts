@@ -47,6 +47,7 @@ export const SLEEP_CONTENT_KINDS = [
 
 export const SLEEP_CONTENT_BLOCK_TYPES = [
   "heading",
+  "subheading",
   "paragraph",
   "figure",
   "list",
@@ -62,6 +63,11 @@ export type SleepContentBlockType = (typeof SLEEP_CONTENT_BLOCK_TYPES)[number];
 
 export type SleepContentHeadingBlock = {
   type: "heading";
+  text: string;
+};
+
+export type SleepContentSubheadingBlock = {
+  type: "subheading";
   text: string;
 };
 
@@ -89,6 +95,7 @@ export type SleepContentCalloutBlock = {
 
 export type SleepContentBlock =
   | SleepContentHeadingBlock
+  | SleepContentSubheadingBlock
   | SleepContentParagraphBlock
   | SleepContentFigureBlock
   | SleepContentListBlock
@@ -187,7 +194,8 @@ export const SLEEP_CONTENT_BLOCK_TYPE_LABELS: Record<
   SleepContentBlockType,
   string
 > = {
-  heading: "見出し",
+  heading: "大見出し",
+  subheading: "小見出し",
   paragraph: "段落",
   figure: "図解",
   list: "箇条書き",
@@ -231,6 +239,7 @@ export function isYoutubeKind(kind: SleepContentKind): boolean {
 
 export function emptyBlock(type: SleepContentBlockType): SleepContentBlock {
   if (type === "heading") return { type: "heading", text: "" };
+  if (type === "subheading") return { type: "subheading", text: "" };
   if (type === "paragraph") return { type: "paragraph", text: "" };
   if (type === "figure") {
     return { type: "figure", image_url: "", alt: "", caption: "" };
@@ -251,6 +260,13 @@ export function parseBodyBlocks(value: unknown): SleepContentBlock[] {
     const type = "type" in item ? String(item.type) : "";
     if (type === "heading") {
       blocks.push({ type: "heading", text: asText((item as { text?: unknown }).text) });
+      continue;
+    }
+    if (type === "subheading") {
+      blocks.push({
+        type: "subheading",
+        text: asText((item as { text?: unknown }).text),
+      });
       continue;
     }
     if (type === "paragraph") {
