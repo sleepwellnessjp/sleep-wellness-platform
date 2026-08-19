@@ -1,18 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import SiteNavMenu from "@/components/site/SiteNavMenu";
-import JapanNightBackdrop from "@/components/site/JapanNightBackdrop";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
 
 export default function Hero() {
   return (
     <section
       data-swij-hero=""
-      className="relative flex overflow-hidden bg-[#040c18] max-sm:min-h-0 sm:min-h-[72vh] lg:min-h-[78vh]"
+      className="relative z-10 flex max-sm:min-h-0 max-sm:shrink-0 sm:min-h-0 sm:flex-1"
     >
-      {/* 日本の夜の世界観（完成イメージ方向・1枚貼り付けではない） */}
-      <JapanNightBackdrop />
-
       {/* スマホ: ロゴ帯・ハンバーガーを月の下へ（重なり回避） / PCは従来位置 */}
       <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+2.25rem)] z-20 flex items-center justify-between max-sm:top-[calc(env(safe-area-inset-top,0px)+9.5rem)] sm:left-8 sm:right-8 sm:top-8 lg:left-12 lg:right-12 lg:top-10">
         <Link

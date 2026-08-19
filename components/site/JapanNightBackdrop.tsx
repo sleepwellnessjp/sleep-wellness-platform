@@ -25,7 +25,12 @@ const PETALS = [
  * 本サイト（イントロ後）用「日本の静かな夜」背景。
  * 完成構図の画像は固定し、光・花びらだけを別レイヤーで動かす（水面は静止）。
  */
-export default function JapanNightBackdrop() {
+export default function JapanNightBackdrop({
+  variant = "hero",
+}: {
+  /** firstView: 1画面全体（MY SLEEP まで）向けの構図 */
+  variant?: "hero" | "firstView";
+}) {
   const {
     props: { srcSet: mobileBgSrcSet },
   } = getImageProps({
@@ -206,7 +211,11 @@ export default function JapanNightBackdrop() {
             {...desktopBgProps}
             alt=""
             fetchPriority="high"
-            className="absolute inset-0 h-full w-full object-cover object-[20%_34%] sm:object-[48%_46%] lg:object-[52%_44%]"
+            className={`absolute inset-0 h-full w-full object-cover ${
+              variant === "firstView"
+                ? "object-[22%_38%] sm:object-[48%_46%] lg:object-[52%_44%]"
+                : "object-[20%_34%] sm:object-[48%_46%] lg:object-[52%_44%]"
+            }`}
           />
         </picture>
       </div>
