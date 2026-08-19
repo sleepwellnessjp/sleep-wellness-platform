@@ -44,7 +44,7 @@ export default function Hero() {
           {/* モバイル中央ロゴ */}
           <Link
             href={HOME_TOP_HREF}
-            className="mb-6 inline-block sm:hidden"
+            className="mb-[19px] inline-block sm:hidden"
           >
             <Image
               src="/swij-logo-horizontal-on-dark.png"
