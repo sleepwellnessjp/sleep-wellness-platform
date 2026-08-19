@@ -7,13 +7,18 @@ export default function Hero() {
   return (
     <section
       data-swij-hero=""
-      className="relative z-10 flex max-sm:min-h-[44svh] sm:min-h-[62vh] lg:min-h-[68vh]"
+      className="relative z-10 flex flex-col sm:block sm:min-h-[62vh] lg:min-h-[68vh]"
     >
-      {/* スマホ: ロゴ帯・ハンバーガーを月の下へ（重なり回避） / PCは従来位置 */}
-      <div className="absolute left-5 right-5 top-[calc(env(safe-area-inset-top,0px)+2.25rem)] z-20 flex items-center justify-between max-sm:top-[calc(env(safe-area-inset-top,0px)+5rem)] sm:left-8 sm:right-8 sm:top-8 lg:left-12 lg:right-12 lg:top-10">
+      {/*
+        モバイル: 通常フロー（ロゴ → コンテンツの順に積む）で重なりを排除。
+        PC:       既存の absolute 配置を維持。
+      */}
+
+      {/* PC のみ absolute ヘッダー */}
+      <div className="absolute left-8 right-8 top-8 z-20 hidden items-center justify-between sm:flex lg:left-12 lg:right-12 lg:top-10">
         <Link
           href={HOME_TOP_HREF}
-          className="inline-flex min-h-11 min-w-11 items-center py-1.5 pr-2 sm:min-h-0 sm:py-0 sm:pr-0"
+          className="inline-flex items-center py-0 pr-0"
         >
           <Image
             src="/swij-logo-horizontal-on-dark.png"
@@ -21,13 +26,35 @@ export default function Hero() {
             width={200}
             height={50}
             priority
-            className="h-auto w-[148px] bg-transparent sm:w-[168px] lg:w-[188px]"
+            className="h-auto w-[168px] bg-transparent lg:w-[188px]"
           />
         </Link>
         <SiteNavMenu tone="light" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pt-32 pb-8 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pt-[calc(env(safe-area-inset-top,0px)+8.5rem)] max-sm:pb-4">
+      {/* モバイル: 通常フローのヘッダー */}
+      <div
+        className="relative z-20 flex items-center justify-between px-5 sm:hidden"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 1.25rem)" }}
+      >
+        <Link
+          href={HOME_TOP_HREF}
+          className="inline-flex min-h-11 min-w-11 items-center py-1.5 pr-2"
+        >
+          <Image
+            src="/swij-logo-horizontal-on-dark.png"
+            alt="Sleep Wellness Institute Japan"
+            width={200}
+            height={50}
+            priority
+            className="h-auto w-[140px] bg-transparent"
+          />
+        </Link>
+        <SiteNavMenu tone="light" />
+      </div>
+
+      {/* コンテンツ */}
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-8 pt-32 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:mt-10 max-sm:items-start max-sm:pb-4 max-sm:pt-0">
         <div className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a] sm:text-xs max-sm:tracking-[0.32em]">
             SLEEP WELLNESS METHOD™
