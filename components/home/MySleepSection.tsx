@@ -14,7 +14,7 @@ const PLANET_SHADOW = "0 14px 20px rgba(0, 0, 0, 0.3)";
 const REVEAL_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const REVEAL_MS = 900;
 
-const ORBIT_R = 38;
+const ORBIT_R = 43;
 
 function orbitPosition(clockHour: number, minute = 0): { left: string; top: string } {
   const angle = ((clockHour % 12) + minute / 60) * 30 * (Math.PI / 180);
@@ -78,18 +78,18 @@ function SleepStepsIcon() {
         />
       </svg>
       <div className="flex items-baseline gap-0.5">
-        <span className="text-[1.35rem] font-semibold tabular-nums" style={{ color: CREAM }}>
+        <span className="text-[1.1rem] font-semibold tabular-nums sm:text-[1.25rem]" style={{ color: CREAM }}>
           6.8
         </span>
-        <span className="text-[10px]" style={{ color: "rgba(245,240,228,0.72)" }}>
+        <span className="text-[9px] sm:text-[10px]" style={{ color: "rgba(245,240,228,0.72)" }}>
           時間
         </span>
       </div>
       <div className="mt-0.5 flex items-baseline gap-0.5">
-        <span className="text-[1rem] font-semibold tabular-nums" style={{ color: GOLD }}>
+        <span className="text-[0.9rem] font-semibold tabular-nums sm:text-[1rem]" style={{ color: GOLD }}>
           8,000
         </span>
-        <span className="text-[10px]" style={{ color: "rgba(184,148,95,0.85)" }}>
+        <span className="text-[9px] sm:text-[10px]" style={{ color: "rgba(184,148,95,0.85)" }}>
           歩
         </span>
       </div>
@@ -100,7 +100,7 @@ function SleepStepsIcon() {
 function PlanetLabel({ children }: { children: React.ReactNode }) {
   return (
     <p
-      className="mt-2 text-center text-[11px] font-semibold tracking-[0.04em] sm:text-[12px]"
+      className="mt-1 text-center text-[10px] font-semibold tracking-[0.04em] sm:mt-1.5 sm:text-[11px]"
       style={{ color: CREAM }}
     >
       {children}
@@ -135,31 +135,31 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
     return () => cancelAnimationFrame(id);
   }, [introReady, reducedMotion]);
 
-  const leftPos = orbitPosition(8);
-  const rightPos = orbitPosition(1, 30);
+  const leftPos = orbitPosition(8, 15);
+  const rightPos = orbitPosition(1, 45);
 
   return (
     <section
       aria-labelledby="my-sleep-heading"
-      className="relative px-5 pb-[calc(var(--sw-sleep-tabbar-clearance)+2rem)] pt-10 sm:px-8 sm:pt-14 lg:px-10"
+      className="relative px-5 pb-4 pt-4 sm:px-8 sm:pb-8 sm:pt-10 lg:px-10 max-sm:flex max-sm:flex-1 max-sm:flex-col max-sm:justify-center"
     >
       <div className="mx-auto max-w-lg text-center">
         <p
           id="my-sleep-heading"
-          className="text-[11px] font-semibold tracking-[0.42em] sm:text-xs"
+          className="text-[10px] font-semibold tracking-[0.42em] sm:text-[11px]"
           style={{ color: GOLD }}
         >
           M Y&nbsp;&nbsp;S L E E P
         </p>
         <p
-          className="mt-2 text-[13px] tracking-[0.06em] sm:text-sm"
+          className="mt-1 text-[12px] tracking-[0.06em] sm:mt-1.5 sm:text-[13px]"
           style={{ color: "rgba(245, 240, 228, 0.55)" }}
         >
           眠りを、まんなかに。
         </p>
       </div>
 
-      <div className="relative mx-auto mt-8 aspect-square w-[75vw] max-w-[22rem] sm:mt-10 sm:max-w-[24rem]">
+      <div className="relative mx-auto mt-3 aspect-square w-[min(64vw,15.5rem)] max-sm:mt-2 sm:mt-6 sm:w-[min(68vw,17rem)] sm:max-w-[20rem] lg:max-w-[22rem]">
         {/* 軌道円（二重線） */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -190,7 +190,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
 
         {/* 中央：睡眠テスト */}
         <div
-          className="absolute left-1/2 top-1/2 z-10 w-[44%] -translate-x-1/2 -translate-y-1/2"
+          className="absolute left-1/2 top-1/2 z-10 w-[40%] -translate-x-1/2 -translate-y-1/2"
           style={revealStyle(visible, 150, reducedMotion)}
         >
           <Link
@@ -218,9 +218,9 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
           </Link>
         </div>
 
-        {/* 左：講師専用分析（8時方向） */}
+        {/* 左：講師専用分析（8時15分方向） */}
         <div
-          className="absolute z-10 w-[34%] -translate-x-1/2 -translate-y-1/2"
+          className="absolute z-10 w-[28%] -translate-x-1/2 -translate-y-1/2"
           style={{
             left: leftPos.left,
             top: leftPos.top,
@@ -245,9 +245,9 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
           </Link>
         </div>
 
-        {/* 右：睡眠と歩数（1時半方向） */}
+        {/* 右：睡眠と歩数（1時45分方向） */}
         <div
-          className="absolute z-10 w-[34%] -translate-x-1/2 -translate-y-1/2 cursor-default"
+          className="absolute z-10 w-[28%] -translate-x-1/2 -translate-y-1/2 cursor-default"
           style={{
             left: rightPos.left,
             top: rightPos.top,
