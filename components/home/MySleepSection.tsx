@@ -100,7 +100,7 @@ function SleepStepsIcon() {
 function PlanetLabel({ children }: { children: React.ReactNode }) {
   return (
     <p
-      className="mt-1 text-center text-[9px] font-semibold tracking-[0.02em] sm:mt-1.5 sm:text-[10px]"
+      className="mt-1 text-center text-[11px] font-semibold tracking-[0.02em] sm:mt-1.5 sm:text-[12px]"
       style={{ color: CREAM, whiteSpace: "nowrap" }}
     >
       {children}
@@ -159,7 +159,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
         </p>
       </div>
 
-      <div className="relative mx-auto mt-2 aspect-square w-[min(54vw,13rem)] max-sm:mt-1 sm:mt-5 sm:w-[min(58vw,14.5rem)] sm:max-w-[17rem] lg:max-w-[19rem]">
+      <div className="relative mx-auto mt-2 aspect-square w-[min(73vw,17.5rem)] max-sm:mt-1 sm:mt-5 sm:w-[min(78vw,19.5rem)] sm:max-w-[22rem] lg:max-w-[24rem]">
         {/* 軌道円（二重線） */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -170,20 +170,21 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
             viewBox="0 0 200 200"
             className="h-full w-full"
             fill="none"
+            style={{ overflow: "visible" }}
           >
             <circle
               cx="100"
               cy="100"
               r="96"
               stroke={ORBIT_GOLD}
-              strokeWidth="1"
+              strokeWidth="0.75"
             />
             <circle
               cx="100"
               cy="100"
               r="85"
               stroke={ORBIT_GOLD}
-              strokeWidth="2"
+              strokeWidth="1.5"
             />
           </svg>
         </div>
