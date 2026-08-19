@@ -100,8 +100,8 @@ function SleepStepsIcon() {
 function PlanetLabel({ children }: { children: React.ReactNode }) {
   return (
     <p
-      className="mt-1 text-center text-[10px] font-semibold tracking-[0.04em] sm:mt-1.5 sm:text-[11px]"
-      style={{ color: CREAM }}
+      className="mt-1 text-center text-[9px] font-semibold tracking-[0.02em] sm:mt-1.5 sm:text-[10px]"
+      style={{ color: CREAM, whiteSpace: "nowrap" }}
     >
       {children}
     </p>
@@ -141,7 +141,7 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
   return (
     <section
       aria-labelledby="my-sleep-heading"
-      className="relative z-10 px-5 pb-4 pt-0 sm:px-8 sm:pb-10 sm:pt-8 lg:px-10"
+      className="relative z-10 px-5 pb-4 pt-2 sm:px-8 sm:pb-10 sm:pt-8 lg:px-10"
     >
       <div className="mx-auto max-w-lg text-center">
         <p

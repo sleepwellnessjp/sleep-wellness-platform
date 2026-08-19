@@ -50,9 +50,15 @@ export default function JapanNightBackdrop({
     quality: 75,
   });
 
+  const isFirstView = variant === "firstView";
+
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#040c18]"
+      className={`pointer-events-none z-0 overflow-hidden bg-[#040c18] ${
+        isFirstView
+          ? "fixed inset-0"
+          : "absolute inset-0"
+      }`}
       aria-hidden="true"
       data-swij-japan-night=""
       data-variant={variant}
