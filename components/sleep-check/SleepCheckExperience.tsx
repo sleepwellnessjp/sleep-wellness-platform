@@ -19,6 +19,22 @@ import {
   SLEEP_CHECK_PREAMBLE,
   SLEEP_CHECK_QUESTIONS,
 } from "@/lib/sleep-check/content";
+import {
+  calcDaytimeScore,
+  DAYTIME_PREAMBLE,
+  DAYTIME_QUESTIONS,
+} from "@/lib/sleep-check/daytime";
+import {
+  CHRONOTYPE_PREAMBLE,
+  CHRONOTYPE_QUESTIONS,
+  judgeChronotype,
+} from "@/lib/sleep-check/chronotype";
+import {
+  AXIS_COMMENTS,
+  judgeThreeAxis,
+  PRIORITY_MESSAGES,
+  type AxisLevel,
+} from "@/lib/sleep-check/verdict";
 
 const BG = "#F5F0E4";
 const TEXT = "#0A1426";
@@ -40,7 +56,82 @@ const ASANOHA_SVG = encodeURIComponent(
   </svg>`,
 );
 
-type Screen = "intro" | "question" | "result";
+type Screen =
+  | "intro"
+  | "question"
+  | "result"
+  | "extended-intro"
+  | "extended-question"
+  | "extended-result";
+
+type ExtendedSection = "daytime" | "chronotype";
+type ExtendedScore = 0 | 1 | 2 | 3 | 4 | null;
+type ExtendedOption = {
+  label: string;
+  score: ExtendedScore;
+};
+type ExtendedQuestion = {
+  id: number;
+  title: string;
+  speech: string;
+  nekoSrc: string;
+  preamble: string;
+  section: ExtendedSection;
+  options: ExtendedOption[];
+};
+
+const AXIS_SEGMENT_COLORS = [
+  "rgba(184, 148, 95, 0.25)",
+  "rgba(184, 148, 95, 0.45)",
+  "rgba(184, 148, 95, 0.70)",
+  "rgba(184, 148, 95, 1)",
+] as const;
+
+function axisLevelToStep(level: AxisLevel | "none" | "moderate" | "severe"): number {
+  if (level === "none") return 1;
+  if (level === "mild") return 2;
+  if (level === "moderate") return 3;
+  return 4;
+}
+
+function axisLabel(level: AxisLevel | "none" | "moderate" | "severe"): string {
+  if (level === "none") return "安定";
+  if (level === "mild") return "軽度";
+  if (level === "moderate") return "中等度";
+  return "強め";
+}
+
+function AxisBar({
+  title,
+  level,
+}: {
+  title: string;
+  level: AxisLevel | "none" | "moderate" | "severe";
+}) {
+  const step = axisLevelToStep(level);
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between text-[12px] font-semibold">
+        <span>{title}</span>
+        <span style={{ color: MUTED }}>{axisLabel(level)}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {AXIS_SEGMENT_COLORS.map((color, idx) => (
+          <div
+            key={`${title}-${idx}`}
+            className="h-2 rounded-full"
+            style={{
+              background:
+                idx < step
+                  ? color
+                  : "rgba(184, 148, 95, 0.10)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SpeechBubbleDown({
   message,
@@ -72,17 +163,38 @@ function SpeechBubbleDown({
   );
 }
 
+/** まもりねこ各画像の実寸。Next.js Image の最適化切り抜きを防ぐため width/height に反映する */
+const NEKO_INTRINSIC_SIZE: Record<string, { width: number; height: number }> = {
+  [SLEEP_CHECK_IMAGES.gussuri]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.relax]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.tsujo]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.otsukare]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.ouen]: { width: 506, height: 588 },
+};
+
+function nekoDisplayHeight(src: string, imageWidth: number): number {
+  const intrinsic = NEKO_INTRINSIC_SIZE[src] ?? { width: 506, height: 588 };
+  return Math.round((imageWidth * intrinsic.height) / intrinsic.width);
+}
+
 function NekoWithCushion({
   src,
   widthClass,
   imageWidth,
+  imageHeight,
 }: {
   src: string;
   widthClass: string;
   imageWidth: number;
+  /** 未指定時は元画像実寸比から算出（ouen=506:588、他=1:1） */
+  imageHeight?: number;
 }) {
+  const resolvedHeight = imageHeight ?? nekoDisplayHeight(src, imageWidth);
+
   return (
-    <div className={`relative flex flex-col items-center ${widthClass}`}>
+    <div
+      className={`relative flex aspect-square flex-col items-center justify-center overflow-visible ${widthClass}`}
+    >
       <div
         className="absolute bottom-[6%] left-1/2 h-[12%] min-h-[10px] w-[78%] -translate-x-1/2 rounded-[50%]"
         style={{ background: CUSHION }}
@@ -92,9 +204,10 @@ function NekoWithCushion({
         src={src}
         alt="まもりねこ"
         width={imageWidth}
-        height={imageWidth}
+        height={resolvedHeight}
         priority
-        className="relative z-[1] h-auto w-full object-contain"
+        className="relative z-[1] h-auto w-auto max-h-full max-w-full"
+        style={{ objectFit: "contain" }}
       />
     </div>
   );
@@ -297,15 +410,41 @@ export default function SleepCheckExperience() {
   const [answers, setAnswers] = useState<(number | null)[]>(
     () => SLEEP_CHECK_QUESTIONS.map(() => null),
   );
+  const [extendedIndex, setExtendedIndex] = useState(0);
+  const [daytimeAnswers, setDaytimeAnswers] = useState<Array<0 | 1 | 2 | 3 | null>>(
+    () => DAYTIME_QUESTIONS.map(() => null),
+  );
+  const [chronotypeAnswers, setChronotypeAnswers] = useState<Array<1 | 2 | 3 | 4 | null>>(
+    () => CHRONOTYPE_QUESTIONS.map(() => null),
+  );
   const [pending, setPending] = useState(false);
 
   const question = SLEEP_CHECK_QUESTIONS[index];
   const total = SLEEP_CHECK_QUESTIONS.length;
+  const extendedQuestions: ExtendedQuestion[] = [
+    ...DAYTIME_QUESTIONS.map((q) => ({
+      ...q,
+      section: "daytime" as const,
+      preamble: DAYTIME_PREAMBLE,
+      options: q.options as ExtendedOption[],
+    })),
+    ...CHRONOTYPE_QUESTIONS.map((q) => ({
+      ...q,
+      section: "chronotype" as const,
+      preamble: CHRONOTYPE_PREAMBLE,
+      options: q.options as ExtendedOption[],
+    })),
+  ];
+  const extendedTotal = extendedQuestions.length;
+  const extendedQuestion = extendedQuestions[extendedIndex];
 
   const reset = useCallback(() => {
     setScreen("intro");
     setIndex(0);
     setAnswers(SLEEP_CHECK_QUESTIONS.map(() => null));
+    setExtendedIndex(0);
+    setDaytimeAnswers(DAYTIME_QUESTIONS.map(() => null));
+    setChronotypeAnswers(CHRONOTYPE_QUESTIONS.map(() => null));
     setPending(false);
   }, []);
 
@@ -334,11 +473,68 @@ export default function SleepCheckExperience() {
     }, 180);
   };
 
+  const goBackExtended = () => {
+    if (pending) return;
+    if (extendedIndex === 0) {
+      setScreen("extended-intro");
+      return;
+    }
+    setExtendedIndex((prev) => prev - 1);
+  };
+
+  const pickExtended = (score: ExtendedScore) => {
+    if (pending || !extendedQuestion) return;
+
+    if (extendedQuestion.section === "daytime") {
+      const localIndex = extendedIndex;
+      const next = [...daytimeAnswers];
+      next[localIndex] = score as 0 | 1 | 2 | 3 | null;
+      setDaytimeAnswers(next);
+    } else {
+      const localIndex = extendedIndex - DAYTIME_QUESTIONS.length;
+      const next = [...chronotypeAnswers];
+      next[localIndex] = score as 1 | 2 | 3 | 4;
+      setChronotypeAnswers(next);
+    }
+
+    setPending(true);
+    window.setTimeout(() => {
+      if (extendedIndex >= extendedTotal - 1) {
+        setScreen("extended-result");
+      } else {
+        setExtendedIndex((prev) => prev + 1);
+      }
+      setPending(false);
+    }, 180);
+  };
+
   const score = answers.reduce<number>(
     (sum, value) => sum + (value ?? 0),
     0,
   );
   const result = resultForScore(score);
+  const daytimeScore = calcDaytimeScore(daytimeAnswers);
+  const chronotypeFilled = chronotypeAnswers.map((value) => value ?? 1) as Array<
+    1 | 2 | 3 | 4
+  >;
+  const chronotype = judgeChronotype(chronotypeFilled);
+  const threeAxis = judgeThreeAxis({
+    insomniaScore: score,
+    daytimeScore,
+    chronotype,
+  });
+  const priorityMessage = PRIORITY_MESSAGES[threeAxis.priority];
+  const priorityAxis: "insomnia" | "daytime" | "rhythm" | null =
+    threeAxis.priority.startsWith("insomnia")
+      ? "insomnia"
+      : threeAxis.priority.startsWith("daytime")
+        ? "daytime"
+        : threeAxis.priority === "rhythm"
+          ? "rhythm"
+          : null;
+  const secondaryAxes = (["insomnia", "daytime", "rhythm"] as const)
+    .filter((axis) => axis !== priorityAxis)
+    .slice(0, 2);
 
   return (
     <main
@@ -529,6 +725,17 @@ export default function SleepCheckExperience() {
             </p>
 
             <div className="mt-3 flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setExtendedIndex(0);
+                  setScreen("extended-intro");
+                }}
+                className={`inline-flex min-h-12 w-full items-center justify-center rounded-full border px-5 py-3.5 text-center text-[14px] font-semibold leading-snug transition active:scale-[0.99] sm:text-[15px] ${FOCUS_RING}`}
+                style={{ color: GOLD, borderColor: GOLD, background: CARD_BG }}
+              >
+                さらに詳しく調べる
+              </button>
               <GoldPillLink href="/instructors">
                 認定講師を探してみない？
               </GoldPillLink>
@@ -566,6 +773,260 @@ export default function SleepCheckExperience() {
             >
               これは医学的な診断ではありません。気づきのきっかけとしてお使いください。
             </p>
+          </section>
+        ) : null}
+
+        {screen === "extended-intro" ? (
+          <section className="flex flex-1 flex-col items-center text-center">
+            <p
+              className="text-[10px] font-semibold tracking-[0.28em]"
+              style={{ color: GOLD }}
+            >
+              EXTENDED CHECK
+            </p>
+
+            <div className="mt-6 flex w-full flex-1 flex-col items-center justify-center py-4 sm:mt-8 sm:py-6">
+              <NekoHero
+                src={SLEEP_CHECK_IMAGES.ouen}
+                message="もう少しだけ一緒に見てみよう"
+              />
+            </div>
+
+            <h1 className="text-[1.6rem] font-semibold leading-[1.3] tracking-[-0.03em] sm:text-[1.9rem]">
+              さらに詳しく、
+              <br className="sm:hidden" />
+              眠りを見てみよう
+            </h1>
+            <p
+              className="mt-3 max-w-sm text-[14px] leading-7 sm:text-[15px] sm:leading-8"
+              style={{ color: MUTED }}
+            >
+              あと16問、日中の眠気とからだのリズムについて伺います。
+              <br className="hidden sm:inline" />
+              2分ほどで終わります。
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setScreen("extended-question")}
+              className={`mt-6 inline-flex min-h-[3.25rem] w-full max-w-md items-center justify-center rounded-full text-[15px] font-semibold text-white transition active:scale-[0.99] sm:mt-7 ${FOCUS_RING}`}
+              style={{ background: GOLD }}
+            >
+              はじめる
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setScreen("result")}
+              className={`mt-4 text-[13px] font-semibold ${FOCUS_RING}`}
+              style={{ color: GOLD }}
+            >
+              ひとつ前に戻る
+            </button>
+          </section>
+        ) : null}
+
+        {screen === "extended-question" && extendedQuestion ? (
+          <section className="flex flex-1 flex-col">
+            <p
+              className="text-[11px] font-semibold tabular-nums tracking-[0.08em]"
+              style={{ color: GOLD }}
+            >
+              {extendedIndex + 1} / {extendedTotal}
+            </p>
+            <div
+              className="mt-2 h-1 overflow-hidden rounded-full"
+              style={{ background: CARD_BORDER }}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={extendedTotal}
+              aria-valuenow={extendedIndex + 1}
+              aria-label="進捗"
+            >
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{
+                  width: `${((extendedIndex + 1) / extendedTotal) * 100}%`,
+                  background: GOLD,
+                }}
+              />
+            </div>
+
+            <NekoCompact
+              src={extendedQuestion.nekoSrc}
+              message={extendedQuestion.speech}
+            />
+
+            <p
+              className="mt-5 text-[11px] leading-5"
+              style={{ color: MUTED }}
+            >
+              {extendedQuestion.preamble}
+            </p>
+
+            <h2 className="mt-3 text-[1.2rem] font-semibold leading-snug tracking-[-0.02em] sm:text-[1.35rem]">
+              {extendedQuestion.title}
+            </h2>
+
+            <div className="mt-5 flex flex-col gap-2.5">
+              {extendedQuestion.options.map((option, optionIdx) => {
+                const selected =
+                  extendedQuestion.section === "daytime"
+                    ? daytimeAnswers[extendedIndex] === option.score
+                    : chronotypeAnswers[
+                        extendedIndex - DAYTIME_QUESTIONS.length
+                      ] === option.score;
+                return (
+                  <OptionButton
+                    key={`${extendedQuestion.id}-${optionIdx}-${option.label}`}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => pickExtended(option.score)}
+                    className="min-h-12 w-full"
+                    style={{
+                      background: selected
+                        ? "rgba(184, 148, 95, 0.12)"
+                        : CARD_BG,
+                      borderColor: selected ? GOLD : CARD_BORDER,
+                    }}
+                  >
+                    {option.label}
+                  </OptionButton>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={goBackExtended}
+              className={`mt-8 self-start text-[13px] font-semibold ${FOCUS_RING}`}
+              style={{ color: GOLD }}
+            >
+              ひとつ前に戻る
+            </button>
+          </section>
+        ) : null}
+
+        {screen === "extended-result" ? (
+          <section className="flex flex-1 flex-col">
+            <p
+              className="text-center text-[10px] font-semibold tracking-[0.28em]"
+              style={{ color: GOLD }}
+            >
+              くわしい結果
+            </p>
+
+            <div
+              className="mt-4 rounded-[20px] border p-4"
+              style={{ background: CARD_BG, borderColor: CARD_BORDER }}
+            >
+              <div className="space-y-4">
+                <AxisBar title="眠りの状態（AIS）" level={threeAxis.insomniaLevel} />
+                <AxisBar title="日中の眠気" level={threeAxis.daytimeLevel} />
+                <AxisBar title="リズムのずれ" level={threeAxis.rhythmLevel} />
+              </div>
+            </div>
+
+            <div
+              className="mt-5 rounded-[24px] px-6 pb-7 pt-6 sm:px-8 sm:pb-8"
+              style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}
+            >
+              <p
+                className="text-center text-[11px] font-semibold tracking-[0.12em]"
+                style={{ color: GOLD }}
+              >
+                まずここから
+              </p>
+              <div className="mt-4 flex justify-center">
+                <NekoWithCushion
+                  src={SLEEP_CHECK_IMAGES.ouen}
+                  widthClass="w-[min(44vw,10.5rem)]"
+                  imageWidth={168}
+                />
+              </div>
+              <h2 className="mt-4 text-center text-[1.6rem] font-semibold leading-[1.25] tracking-[-0.03em] sm:text-[1.85rem]">
+                {priorityMessage.heading}
+              </h2>
+              <p className="mt-4 text-center text-[15px] leading-7 sm:text-base sm:leading-8">
+                {priorityMessage.body}
+              </p>
+            </div>
+
+            <div
+              className="mt-4 rounded-[18px] border px-4 py-3"
+              style={{ background: "rgba(255,255,255,0.72)", borderColor: CARD_BORDER }}
+            >
+              <p className="text-[11px] font-semibold" style={{ color: MUTED }}>
+                ほかの軸について
+              </p>
+              <div className="mt-2 space-y-2 text-[12px] leading-6" style={{ color: MUTED }}>
+                {secondaryAxes.map((axis) => {
+                  const level =
+                    axis === "insomnia"
+                      ? threeAxis.insomniaLevel
+                      : axis === "daytime"
+                        ? threeAxis.daytimeLevel
+                        : threeAxis.rhythmLevel;
+                  const text =
+                    axis === "insomnia"
+                      ? AXIS_COMMENTS.insomnia[level as AxisLevel]
+                      : axis === "daytime"
+                        ? AXIS_COMMENTS.daytime[level as AxisLevel]
+                        : AXIS_COMMENTS.rhythm[level as "none" | "moderate" | "severe"];
+                  const label =
+                    axis === "insomnia"
+                      ? "眠りの状態"
+                      : axis === "daytime"
+                        ? "日中の眠気"
+                        : "リズムのずれ";
+                  return (
+                    <p key={axis}>
+                      <span className="font-semibold">{label}：</span>
+                      {text}
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+
+            <p
+              className="mt-8 text-center text-[11px] font-semibold tracking-[0.12em]"
+              style={{ color: GOLD }}
+            >
+              つぎの一歩に
+            </p>
+
+            <div className="mt-3 flex flex-col gap-2.5">
+              <GoldPillLink href="/instructors">
+                認定講師を探してみない？
+              </GoldPillLink>
+              <GoldPillLink href="/contact">SWIJに相談してみない？</GoldPillLink>
+              {threeAxis.showMedical ? (
+                <>
+                  <GoldOutlinePillLink
+                    href={SLEEP_CHECK_MEDICAL_LIST_URL}
+                    external
+                  >
+                    医療機関で相談してみない？
+                  </GoldOutlinePillLink>
+                  <p
+                    className="mt-1 text-center text-[10px] leading-5 sm:text-[11px]"
+                    style={{ color: MUTED }}
+                  >
+                    睡眠時無呼吸症候群など、医療で対応できるものもあります。
+                  </p>
+                </>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={reset}
+              className={`mt-8 self-center text-[13px] font-medium ${FOCUS_RING}`}
+              style={{ color: MUTED }}
+            >
+              もう一度やってみる
+            </button>
           </section>
         ) : null}
       </div>
