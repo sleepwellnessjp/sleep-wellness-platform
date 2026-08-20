@@ -6,7 +6,7 @@ export const SLEEP_CHECK_IMAGES = {
   relax: `${SLEEP_CHECK_IMAGE_BASE}/neko-relax-v2.png`,
   tsujo: `${SLEEP_CHECK_IMAGE_BASE}/neko-tsujo-v2.png`,
   otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare-v2.png`,
-  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v2.png`,
+  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v3.png`,
 } as const;
 
 export const SLEEP_CHECK_PREAMBLE =
