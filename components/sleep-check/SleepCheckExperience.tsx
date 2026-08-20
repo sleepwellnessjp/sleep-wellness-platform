@@ -81,10 +81,10 @@ type ExtendedQuestion = {
 };
 
 const AXIS_SEGMENT_COLORS = [
-  "rgba(184, 148, 95, 0.22)",
+  "rgba(184, 148, 95, 0.25)",
   "rgba(184, 148, 95, 0.45)",
-  "rgba(154, 120, 72, 0.72)",
-  "rgba(122, 91, 52, 0.92)",
+  "rgba(184, 148, 95, 0.70)",
+  "rgba(184, 148, 95, 1)",
 ] as const;
 
 function axisLevelToStep(level: AxisLevel | "none" | "moderate" | "severe"): number {
@@ -124,7 +124,7 @@ function AxisBar({
               background:
                 idx < step
                   ? color
-                  : "rgba(184, 148, 95, 0.12)",
+                  : "rgba(184, 148, 95, 0.10)",
             }}
           />
         ))}
@@ -894,7 +894,7 @@ export default function SleepCheckExperience() {
               className="text-center text-[10px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
             >
-              EXTENDED RESULT
+              くわしい結果
             </p>
 
             <div
@@ -938,7 +938,7 @@ export default function SleepCheckExperience() {
               style={{ background: "rgba(255,255,255,0.72)", borderColor: CARD_BORDER }}
             >
               <p className="text-[11px] font-semibold" style={{ color: MUTED }}>
-                ほかの軸のメモ
+                ほかの軸について
               </p>
               <div className="mt-2 space-y-2 text-[12px] leading-6" style={{ color: MUTED }}>
                 {secondaryAxes.map((axis) => {
