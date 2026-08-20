@@ -163,18 +163,37 @@ function SpeechBubbleDown({
   );
 }
 
+/** まもりねこ各画像の実寸。Next.js Image の最適化切り抜きを防ぐため width/height に反映する */
+const NEKO_INTRINSIC_SIZE: Record<string, { width: number; height: number }> = {
+  [SLEEP_CHECK_IMAGES.gussuri]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.relax]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.tsujo]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.otsukare]: { width: 480, height: 480 },
+  [SLEEP_CHECK_IMAGES.ouen]: { width: 506, height: 588 },
+};
+
+function nekoDisplayHeight(src: string, imageWidth: number): number {
+  const intrinsic = NEKO_INTRINSIC_SIZE[src] ?? { width: 506, height: 588 };
+  return Math.round((imageWidth * intrinsic.height) / intrinsic.width);
+}
+
 function NekoWithCushion({
   src,
   widthClass,
   imageWidth,
+  imageHeight,
 }: {
   src: string;
   widthClass: string;
   imageWidth: number;
+  /** 未指定時は元画像実寸比から算出（ouen=506:588、他=1:1） */
+  imageHeight?: number;
 }) {
+  const resolvedHeight = imageHeight ?? nekoDisplayHeight(src, imageWidth);
+
   return (
     <div
-      className={`relative flex aspect-square flex-col items-center overflow-visible ${widthClass}`}
+      className={`relative flex aspect-square flex-col items-center justify-center overflow-visible ${widthClass}`}
     >
       <div
         className="absolute bottom-[6%] left-1/2 h-[12%] min-h-[10px] w-[78%] -translate-x-1/2 rounded-[50%]"
@@ -185,9 +204,9 @@ function NekoWithCushion({
         src={src}
         alt="まもりねこ"
         width={imageWidth}
-        height={imageWidth}
+        height={resolvedHeight}
         priority
-        className="relative z-[1] h-full w-full"
+        className="relative z-[1] h-auto w-auto max-h-full max-w-full"
         style={{ objectFit: "contain" }}
       />
     </div>
