@@ -173,7 +173,9 @@ function NekoWithCushion({
   imageWidth: number;
 }) {
   return (
-    <div className={`relative flex flex-col items-center ${widthClass}`}>
+    <div
+      className={`relative flex aspect-square flex-col items-center overflow-visible ${widthClass}`}
+    >
       <div
         className="absolute bottom-[6%] left-1/2 h-[12%] min-h-[10px] w-[78%] -translate-x-1/2 rounded-[50%]"
         style={{ background: CUSHION }}
@@ -185,7 +187,8 @@ function NekoWithCushion({
         width={imageWidth}
         height={imageWidth}
         priority
-        className="relative z-[1] h-auto w-full object-contain"
+        className="relative z-[1] h-full w-full"
+        style={{ objectFit: "contain" }}
       />
     </div>
   );
