@@ -21,7 +21,7 @@ export default async function SleepSoundPage() {
       eyebrow="SLEEP SOUND"
       title="入眠音"
       lead="心地よい入眠音楽と自然音で、穏やかな眠りへ導きます。"
-      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] sm:pb-[5rem]"
+      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
     >
       <div className="space-y-16">
         <SleepAudioSection

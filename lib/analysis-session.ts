@@ -453,6 +453,8 @@ export type AnalysisResult = {
   medicalHistory?: string;
   /** 保存済み分析の再表示用 ID */
   analysisId?: string;
+  /** 当日の生活習慣（day_context）。旧レコードは未設定 */
+  dayContext?: AnalysisDayContext;
   /** 項目別 OCR 信頼度（保存用） */
   ocrConfidence?: MetricConfidenceMap;
   /** 入力ソース（未設定は soxai 扱い） */
@@ -1641,6 +1643,10 @@ export function normalizeAnalysisResult(
     snoringNasal: extras?.snoringNasal ?? raw.snoringNasal,
     medicalHistory: extras?.medicalHistory ?? raw.medicalHistory,
     analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
+    dayContext:
+      raw.dayContext && typeof raw.dayContext === "object"
+        ? (raw.dayContext as AnalysisDayContext)
+        : undefined,
     inputSource:
       raw.inputSource === "oura" ||
       raw.inputSource === "manual" ||
@@ -2795,8 +2801,9 @@ export function runPendingAnalysis(): Promise<AnalysisResult> {
       result.ouraVisionMetrics = payload.ouraVisionMetrics;
     }
 
-    clearPendingAnalysisRequest();
-    clearExtractionDraft();
+    // pending / draft のクリアは DB 保存後（analysis-progressive）で行う。
+    // ここで消すと day_context に当日値が載らず、②・⑩が「記録なし」になる。
+
     try {
       sessionStorage.setItem(RESULT_KEY, JSON.stringify(result));
     } catch (persistError) {

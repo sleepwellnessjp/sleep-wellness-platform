@@ -2,6 +2,7 @@
 
 import {
   computeRecoveryIndex,
+  RECOVERY_INDEX_COMPOSITION_LABEL,
   type RecoveryIndexResult,
 } from "@/lib/recovery-index";
 import { GOLD, NAVY } from "@/components/ui/tokens";
@@ -131,8 +132,8 @@ export default function RecoveryIndexCard({
           <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
             / 100
           </p>
-          <p className="mt-2 text-[10px] leading-4 text-slate-400 sm:text-[11px]">
-            HRV × 安静時心拍
+          <p className="mt-2 max-w-[11rem] text-[10px] leading-4 text-slate-400 sm:ml-auto sm:text-[11px]">
+            {recovery.compositionLabel ?? RECOVERY_INDEX_COMPOSITION_LABEL}
           </p>
         </div>
       </div>

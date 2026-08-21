@@ -63,7 +63,9 @@ import {
 import {
   buildClientWellnessReport,
   formatStars,
+  formatLifestyleStars,
   type LifestyleSnapshot,
+  resolveLifestyleSnapshot,
 } from "@/lib/wellness-client-report";
 import {
   CHALLENGE_TYPE_LABEL,
@@ -72,12 +74,20 @@ import {
   type PrescriptionCard,
 } from "@/lib/data/practice";
 import { CHALLENGE_TYPE_DESCRIPTION } from "@/lib/data/practice/prescriptions";
-import { buildHomeworkSeedActions } from "@/lib/homework-goals";
+import { buildHomeworkDisplaySeedActions } from "@/lib/homework-goals";
 import { startProgressiveAnalysisBackground } from "@/lib/analysis-progressive";
 import { buildAiFollowAlerts, type AiFollowAlert } from "@/lib/ai-follow-alerts";
-import { displayValue, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import {
+  isReportSectionVisible,
+  isResultSectionIdVisible,
+} from "@/lib/report-sections";
+import { displayValue, parseDurationMinutes, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
-import { formatGenderLabel, hasAgeAndGender } from "@/lib/client-profile";
+import { formatGenderLabel, hasAgeAndGender, parseOptionalAge } from "@/lib/client-profile";
+import {
+  buildSleepRiskHint,
+  MEDICAL_REFERRAL_NOTICE,
+} from "@/lib/sleep-risk-flag";
 import { loadLastSavedAnalysisRef } from "@/lib/client-store";
 import {
   analysisResultToStoredShape,
@@ -431,11 +441,12 @@ const PRIORITY_STAR_FALLBACK: Record<
 const RESULT_TOC_PART1 = [
   { id: "result-section-1", label: "① 今日の総合評価" },
   { id: "result-section-2", label: "② 基本情報" },
-  { id: "result-section-3", label: "③ 測定データ" },
+  /** label は ResultToc で dataHeading から組み立てる */
+  { id: "result-section-3", label: "③" },
   { id: "result-section-4", label: "④ 今日の睡眠の読み解き" },
   { id: "result-section-5", label: "⑤ 改善優先順位" },
   { id: "result-section-6", label: "⑥ メラトニンヨガ™処方" },
-  { id: "result-section-7", label: "⑦ 今日やる3つ＋宿題" },
+  { id: "result-section-7", label: "⑦ 今日やること＋宿題" },
   { id: "result-section-8", label: "⑧ 次回への見通し" },
 ] as const;
 
@@ -444,7 +455,19 @@ const RESULT_TOC_PART2 = [
   { id: "result-section-10", label: "⑩ 講師記録・運用" },
 ] as const;
 
-function ResultToc() {
+function ResultToc({ dataHeading }: { dataHeading: string }) {
+  const part1 = RESULT_TOC_PART1.filter((item) =>
+    isResultSectionIdVisible(item.id),
+  ).map((item) =>
+    item.id === "result-section-3"
+      ? { ...item, label: `③ ${dataHeading}` }
+      : item,
+  );
+  const part2 = RESULT_TOC_PART2.filter((item) =>
+    isResultSectionIdVisible(item.id),
+  );
+  if (part1.length === 0 && part2.length === 0) return null;
+
   return (
     <nav
       className="report-toc no-print mt-5 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5"
@@ -463,42 +486,46 @@ function ResultToc() {
         目次
       </p>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-400">
-            クライアント向け ①〜⑧
-          </p>
-          <ol className="mt-2 space-y-1.5">
-            {RESULT_TOC_PART1.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={`#${item.id}`}
-                  className="text-[13px] leading-6 text-slate-600 underline-offset-2 transition hover:underline"
-                  style={{ color: NAVY }}
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-400">
-            講師用 ⑨⑩
-          </p>
-          <ol className="mt-2 space-y-1.5">
-            {RESULT_TOC_PART2.map((item) => (
-              <li key={item.id}>
-                <a
-                  href={`#${item.id}`}
-                  className="text-[13px] leading-6 text-slate-600 underline-offset-2 transition hover:underline"
-                  style={{ color: NAVY }}
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
-          </ol>
-        </div>
+        {part1.length > 0 ? (
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-400">
+              クライアント向け
+            </p>
+            <ol className="mt-2 space-y-1.5">
+              {part1.map((item) => (
+                <li key={item.id}>
+                  <a
+                    href={`#${item.id}`}
+                    className="text-[13px] leading-6 text-slate-600 underline-offset-2 transition hover:underline"
+                    style={{ color: NAVY }}
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+        {part2.length > 0 ? (
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-400">
+              講師用
+            </p>
+            <ol className="mt-2 space-y-1.5">
+              {part2.map((item) => (
+                <li key={item.id}>
+                  <a
+                    href={`#${item.id}`}
+                    className="text-[13px] leading-6 text-slate-600 underline-offset-2 transition hover:underline"
+                    style={{ color: NAVY }}
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
       </div>
     </nav>
   );
@@ -522,7 +549,16 @@ function MetricGuideCard({
       : metricKey === "sleepScore"
         ? displayValue(metrics.sleepScore)
         : displayValue(metrics[metricKey]);
-  if (metricKey === "hrvRange" && !valueText) return null;
+
+  // 欠損・プレースホルダはカードごと非表示
+  if (
+    !valueText.trim() ||
+    /^(未測定|取得できず|データなし|要確認|--|—|－|-|n\/a|na)$/i.test(
+      valueText.trim(),
+    )
+  ) {
+    return null;
+  }
 
   return (
     <div className="report-metric min-w-0 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-2.5 py-2.5 sm:px-3.5 sm:py-3.5">
@@ -585,10 +621,106 @@ function BulletList({ items }: { items: string[] }) {
   );
 }
 
-function buildLifestyleRows(result: AnalysisResult): Array<{
+type LifestyleDisplayRow = {
   label: string;
-  value: string;
-}> {
+  /** 服薬など、従来どおりの単一テキスト */
+  value?: string;
+  /** 固定プロフィール側（あれば） */
+  habit?: string;
+  /** 当日。未取得時は「記録なし」 */
+  today?: string;
+};
+
+function hasLifestyleSignal(life: LifestyleSnapshot | null | undefined): boolean {
+  if (!life) return false;
+  return Object.values(life).some(
+    (v) => typeof v === "string" && v.trim().length > 0,
+  );
+}
+
+function formatAlcoholToday(life: LifestyleSnapshot | null): string {
+  if (!hasLifestyleSignal(life)) return "記録なし";
+  if (life!.alcoholDrank === "none") return "なし";
+  if (life!.alcoholDrank === "yes") {
+    const detail = life!.alcohol?.trim();
+    if (detail) {
+      return detail
+        .replace(/^あり\s*[／/]\s*/, "")
+        .replace(/\s*[／/]\s*/g, " ")
+        .trim() || "あり";
+    }
+    return "あり";
+  }
+  const alcohol = life!.alcohol?.trim();
+  if (!alcohol) return "記録なし";
+  if (/^(なし|無し|ない|none)$/i.test(alcohol)) return "なし";
+  return alcohol.replace(/\s*[／/]\s*/g, " ").trim();
+}
+
+function formatCaffeineToday(life: LifestyleSnapshot | null): string {
+  if (!hasLifestyleSignal(life)) return "記録なし";
+  if (life!.caffeineDone === "none") return "なし";
+  if (life!.caffeineDone === "yes") {
+    const detail = life!.caffeine?.trim();
+    if (detail) {
+      return detail
+        .replace(/^あり\s*[／/]\s*/, "")
+        .replace(/\s*[／/]\s*/g, " ")
+        .trim() || "あり";
+    }
+    return "あり";
+  }
+  const caffeine = life!.caffeine?.trim();
+  if (!caffeine) return "記録なし";
+  if (/^(なし|無し|ない|none)$/i.test(caffeine)) return "なし";
+  return caffeine.replace(/\s*[／/]\s*/g, " ").trim();
+}
+
+function formatBathingToday(life: LifestyleSnapshot | null): string {
+  if (!hasLifestyleSignal(life)) return "記録なし";
+  const bath = life!.bathing?.trim();
+  if (!bath) return "記録なし";
+  // 「シャワーのみ」を「なし」と誤判定しない（classifyBathing と同じ基準）
+  if (/入浴していない/i.test(bath) || /^(なし|無し|ない|none)$/i.test(bath)) {
+    return "なし";
+  }
+  return bath.replace(/\s*[／/]\s*/g, " ").trim();
+}
+
+function formatExerciseToday(life: LifestyleSnapshot | null): string {
+  if (!hasLifestyleSignal(life)) return "記録なし";
+  const parts: string[] = [];
+  if (life!.yogaDone === "yes" || (life!.yoga && !/^(なし|無し|none)$/i.test(life!.yoga))) {
+    parts.push("ヨガ実施");
+  } else if (life!.yogaDone === "none") {
+    /* skip */
+  }
+  if (
+    life!.pilatesDone === "yes" ||
+    (life!.pilates && !/^(なし|無し|none)$/i.test(life!.pilates))
+  ) {
+    parts.push("ピラティス実施");
+  }
+  if (life!.otherExerciseDone === "yes") {
+    const name = life!.exercise?.trim();
+    parts.push(name && !/^(なし|無し|none)$/i.test(name) ? name : "運動実施");
+  } else if (life!.exercise?.trim() && !/^(なし|無し|none)$/i.test(life!.exercise)) {
+    parts.push(life!.exercise.trim());
+  }
+  if (parts.length > 0) return parts.join("・");
+
+  const explicitNone =
+    life!.yogaDone === "none" ||
+    life!.pilatesDone === "none" ||
+    life!.otherExerciseDone === "none";
+  if (explicitNone) return "なし";
+  return "記録なし";
+}
+
+function buildLifestyleRows(
+  result: AnalysisResult,
+  lifestyle: LifestyleSnapshot | null,
+): LifestyleDisplayRow[] {
   const bedtime = result.metrics.bedtime?.trim() || "";
   const wakeTime = result.metrics.wakeTime?.trim() || "";
   const schedule =
@@ -596,15 +728,46 @@ function buildLifestyleRows(result: AnalysisResult): Array<{
       ? `${bedtime} 〜 ${wakeTime}`
       : bedtime || wakeTime;
 
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "飲酒習慣", value: result.drinkingHabit?.trim() || "" },
-    { label: "運動習慣", value: result.exerciseHabit?.trim() || "" },
-    { label: "服薬", value: result.medications?.trim() || "" },
-    { label: "いびき・鼻閉", value: result.snoringNasal?.trim() || "" },
-    { label: "既往・体調", value: result.medicalHistory?.trim() || "" },
-    { label: "就寝・起床", value: schedule },
-  ];
-  return rows.filter((row) => row.value.length > 0);
+  const drinkingHabit = result.drinkingHabit?.trim() || "";
+  const exerciseHabit = result.exerciseHabit?.trim() || "";
+  const alcoholToday = formatAlcoholToday(lifestyle);
+  const exerciseToday = formatExerciseToday(lifestyle);
+  const bathingToday = formatBathingToday(lifestyle);
+  const caffeineToday = formatCaffeineToday(lifestyle);
+
+  const rows: LifestyleDisplayRow[] = [];
+
+  if (drinkingHabit || alcoholToday !== "記録なし" || hasLifestyleSignal(lifestyle)) {
+    rows.push({
+      label: "飲酒",
+      habit: drinkingHabit || undefined,
+      today: alcoholToday,
+    });
+  }
+
+  if (exerciseHabit || exerciseToday !== "記録なし" || hasLifestyleSignal(lifestyle)) {
+    rows.push({
+      label: "運動",
+      habit: exerciseHabit || undefined,
+      today: exerciseToday,
+    });
+  }
+
+  rows.push({ label: "入浴", today: bathingToday });
+  rows.push({ label: "カフェイン", today: caffeineToday });
+
+  const medications = result.medications?.trim() || "";
+  if (medications) rows.push({ label: "服薬", value: medications });
+
+  const snoring = result.snoringNasal?.trim() || "";
+  if (snoring) rows.push({ label: "いびき・鼻閉", value: snoring });
+
+  const medical = result.medicalHistory?.trim() || "";
+  if (medical) rows.push({ label: "既往・体調", value: medical });
+
+  if (schedule) rows.push({ label: "就寝・起床", value: schedule });
+
+  return rows;
 }
 
 function InstituteBrandComment({ seed }: { seed: string }) {
@@ -1275,27 +1438,6 @@ function ResultContent({
       : "SOXAI Ring";
   const dataHeading = isOuraResult ? formatOuraDataHeading() : "SOXAIデータ";
   const dataEyebrow = isOuraResult ? "OURA" : "SOXAI";
-  const recoveryIndex = computeRecoveryIndex(
-    isOuraResult
-      ? toRecoveryIndexInputFromOura({
-          metrics: confirmedMetrics,
-          readinessScore: result.ouraScores?.readinessScore,
-          sleepScore: result.ouraScores?.sleepScore,
-          activityScore: result.ouraScores?.activityScore,
-          deviceSpecificMetrics: result.deviceSpecificMetrics,
-          visionMetrics: result.ouraVisionMetrics,
-        })
-      : {
-          sleepDuration: confirmedMetrics.sleepDuration,
-          deepSleep: confirmedMetrics.deepSleep,
-          sleepEfficiency: confirmedMetrics.sleepEfficiency,
-          hrv: confirmedMetrics.hrv,
-          stress: confirmedMetrics.stress,
-          restingHeartRate: confirmedMetrics.restingHeartRate,
-          spo2: confirmedMetrics.spo2,
-          respiratoryRate: confirmedMetrics.respiratoryRate,
-        },
-  );
   const ouraDisplayRows = isOuraResult
     ? buildOuraSpecificDisplayRows(
         result.ouraScores ?? {
@@ -1353,7 +1495,6 @@ function ResultContent({
     clampSentences(result.disclaimer ?? "", 2),
     120,
   );
-  const lifestyleRows = buildLifestyleRows(result);
   const pendingLifestyle = (() => {
     const toSnapshot = (life: Record<string, unknown> | null | undefined) => {
       if (!life) return null;
@@ -1383,7 +1524,7 @@ function ResultContent({
     };
     try {
       if (isDemoLayout) return DEMO_LIFESTYLE_SNAPSHOT;
-      return (
+      const fromSession =
         toSnapshot(
           getPendingAnalysisRequest()?.lifestyle as
             | Record<string, unknown>
@@ -1391,17 +1532,84 @@ function ResultContent({
         ) ??
         toSnapshot(
           getExtractionDraft()?.lifestyle as Record<string, unknown> | undefined,
-        )
-      );
+        );
+      return resolveLifestyleSnapshot({
+        pending: fromSession,
+        dayContext: result.dayContext,
+      });
     } catch {
-      return isDemoLayout ? DEMO_LIFESTYLE_SNAPSHOT : null;
+      return isDemoLayout
+        ? DEMO_LIFESTYLE_SNAPSHOT
+        : resolveLifestyleSnapshot({
+            pending: null,
+            dayContext: result.dayContext,
+          });
     }
   })();
-  const wellnessModel = buildClientWellnessReport(result, pendingLifestyle);
+  // 当日鼻閉は LifestyleSnapshot に含まれないため、pending の生 lifestyle / day_context から拾う
+  const pendingDayNasal = (() => {
+    try {
+      const raw =
+        (getPendingAnalysisRequest()?.lifestyle as
+          | Record<string, unknown>
+          | undefined) ??
+        (getExtractionDraft()?.lifestyle as Record<string, unknown> | undefined);
+      const fromForm = raw?.nasalCongestion;
+      if (typeof fromForm === "string" && fromForm.trim()) return fromForm;
+      const fromDay = result.dayContext?.nasalCongestion;
+      return typeof fromDay === "string" && fromDay.trim() ? fromDay : null;
+    } catch {
+      const fromDay = result.dayContext?.nasalCongestion;
+      return typeof fromDay === "string" && fromDay.trim() ? fromDay : null;
+    }
+  })();
+  const sleepRiskHint = buildSleepRiskHint({
+    age: parseOptionalAge(result.age),
+    snoringNasal: result.snoringNasal,
+    nasalCongestion: pendingDayNasal,
+    // Profile V2 の snoring / nasalCongestionHabitual は取得不可
+  });
+  const awakeMinutesForRecovery = parseDurationMinutes(
+    String(confirmedMetrics.awakenings ?? ""),
+  );
+  const recoveryIndex = computeRecoveryIndex(
+    isOuraResult
+      ? {
+          ...toRecoveryIndexInputFromOura({
+            metrics: confirmedMetrics,
+            readinessScore: result.ouraScores?.readinessScore,
+            sleepScore: result.ouraScores?.sleepScore,
+            activityScore: result.ouraScores?.activityScore,
+            deviceSpecificMetrics: result.deviceSpecificMetrics,
+            visionMetrics: result.ouraVisionMetrics,
+          }),
+          riskHint: sleepRiskHint,
+          awakeMinutes: awakeMinutesForRecovery,
+        }
+      : {
+          sleepDuration: confirmedMetrics.sleepDuration,
+          deepSleep: confirmedMetrics.deepSleep,
+          sleepEfficiency: confirmedMetrics.sleepEfficiency,
+          hrv: confirmedMetrics.hrv,
+          stress: confirmedMetrics.stress,
+          restingHeartRate: confirmedMetrics.restingHeartRate,
+          spo2: confirmedMetrics.spo2,
+          respiratoryRate: confirmedMetrics.respiratoryRate,
+          riskHint: sleepRiskHint,
+          awakeMinutes: awakeMinutesForRecovery,
+        },
+  );
+  const wellnessModel = buildClientWellnessReport(
+    result,
+    pendingLifestyle,
+    sleepRiskHint,
+  );
+  const lifestyleRows = buildLifestyleRows(result, pendingLifestyle);
   const practicePrescription = getPrescription(
     toPracticeMetrics(result.metrics),
   );
-  const homeworkSeedActions = buildHomeworkSeedActions({
+  const homeworkSeedActions = buildHomeworkDisplaySeedActions({
+    priorityImprovements: wellnessModel.priorityImprovements,
     todaysActions: wellnessModel.todaysActions,
     todaysRecommendations: todaysRecommendations,
     melatoninPhase: wellnessModel.melatoninYoga.phase,
@@ -1554,58 +1762,63 @@ function ResultContent({
                       </span>
                     </p>
                   </div>
-                  <div className="border-l border-[#071426]/10 pl-5 sm:pl-7">
-                    <p
-                      className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
-                      style={{ color: GOLD }}
-                    >
-                      回復指数
-                    </p>
-                    {recoveryIndex.available ? (
-                      <>
-                        <p
-                          className="mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
-                          style={{ color: recoveryIndex.accent }}
-                        >
-                          {recoveryIndex.score}
-                        </p>
-                        <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
-                          / 100
-                        </p>
-                        <p
-                          className="mt-2 text-[11px] font-semibold"
-                          style={{ color: recoveryIndex.accent }}
-                        >
-                          {recoveryIndex.emoji} {recoveryIndex.label}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p
-                          className="mt-2 text-[1.15rem] font-semibold leading-snug tracking-[-0.03em] sm:text-[1.35rem]"
-                          style={{ color: NAVY }}
-                        >
-                          —
-                        </p>
-                        <p className="mt-2 max-w-[7.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[9rem] sm:text-[11px] sm:leading-4">
-                          {recoveryIndex.message}
-                        </p>
-                      </>
-                    )}
-                  </div>
+                  {isReportSectionVisible("recoveryIndex") ? (
+                    <div className="border-l border-[#071426]/10 pl-5 sm:pl-7">
+                      <p
+                        className="text-[10px] font-semibold tracking-[0.08em] sm:text-[11px] sm:tracking-[0.12em]"
+                        style={{ color: GOLD }}
+                      >
+                        回復指数
+                      </p>
+                      {recoveryIndex.available ? (
+                        <>
+                          <p
+                            className="mt-1 text-[2.35rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.25rem]"
+                            style={{ color: recoveryIndex.accent }}
+                          >
+                            {recoveryIndex.score}
+                          </p>
+                          <p className="mt-1 text-[11px] tracking-[0.12em] text-slate-400">
+                            / 100
+                          </p>
+                          <p
+                            className="mt-2 text-[11px] font-semibold"
+                            style={{ color: recoveryIndex.accent }}
+                          >
+                            {recoveryIndex.emoji} {recoveryIndex.label}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p
+                            className="mt-2 text-[1.15rem] font-semibold leading-snug tracking-[-0.03em] sm:text-[1.35rem]"
+                            style={{ color: NAVY }}
+                          >
+                            —
+                          </p>
+                          <p className="mt-2 max-w-[7.5rem] text-[9px] leading-3 text-slate-400 sm:max-w-[9rem] sm:text-[11px] sm:leading-4">
+                            {recoveryIndex.message}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </header>
 
-            <ResultToc />
+            <ResultToc dataHeading={dataHeading} />
 
+            {isReportSectionVisible("overall") ? (
             <section
               id="result-section-1"
               className="report-panel report-overall mt-5 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-gradient-to-br from-white via-[#fafaf8] to-[#f4f7f7] px-4 py-4 sm:mt-6 sm:px-5"
             >
               <SectionLabel title="① 今日の総合評価" eyebrow="OVERALL" />
               <ReportLead>
-                本日の Sleep Wellness Score と回復指数です。総評はここにのみ記載しています。
+                {isReportSectionVisible("recoveryIndex")
+                  ? "本日の Sleep Wellness Score と回復指数です。総評はここにのみ記載しています。"
+                  : "本日の Sleep Wellness Score です。総評はここにのみ記載しています。"}
               </ReportLead>
               <div className="mt-1 flex flex-wrap items-end gap-6 sm:gap-10">
                 <div>
@@ -1660,14 +1873,17 @@ function ResultContent({
                   </p>
                 )}
               </div>
-              <div className="mt-5">
-                <RecoveryIndexCard
-                  value={recoveryIndex}
-                  hrv={confirmedMetrics.hrv}
-                  restingHeartRate={confirmedMetrics.restingHeartRate}
-                />
-              </div>
+              {isReportSectionVisible("recoveryIndex") ? (
+                <div className="mt-5">
+                  <RecoveryIndexCard
+                    value={recoveryIndex}
+                    hrv={confirmedMetrics.hrv}
+                    restingHeartRate={confirmedMetrics.restingHeartRate}
+                  />
+                </div>
+              ) : null}
             </section>
+            ) : null}
 
             <section className="report-wellness-radar mt-5 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5">
               <SectionLabel
@@ -1740,6 +1956,7 @@ function ResultContent({
               ) : null}
             </section>
 
+            {isReportSectionVisible("profile") ? (
             <section
               id="result-section-2"
               className="report-panel report-basics mt-5 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5"
@@ -1798,10 +2015,37 @@ function ResultContent({
                         {row.label}
                       </dt>
                       <dd
-                        className="min-w-0 break-words text-right text-[13px] font-semibold tracking-[-0.02em]"
+                        className="min-w-0 break-words text-right text-[13px] font-semibold leading-5 tracking-[-0.02em]"
                         style={{ color: NAVY }}
                       >
-                        {row.value}
+                        {row.value ? (
+                          row.value
+                        ) : (
+                          <>
+                            {row.habit ? (
+                              <>
+                                <span className="font-medium text-slate-400">
+                                  習慣：
+                                </span>
+                                {row.habit}
+                              </>
+                            ) : null}
+                            {row.habit && row.today != null ? (
+                              <span className="font-medium text-slate-400">
+                                {" "}
+                                ／{" "}
+                              </span>
+                            ) : null}
+                            {row.today != null ? (
+                              <>
+                                <span className="font-medium text-slate-400">
+                                  今回：
+                                </span>
+                                {row.today}
+                              </>
+                            ) : null}
+                          </>
+                        )}
                       </dd>
                     </div>
                   ))}
@@ -1818,7 +2062,9 @@ function ResultContent({
                 </div>
               ) : null}
             </section>
+            ) : null}
 
+            {isReportSectionVisible("measurement") ? (
             <section
               id="result-section-3"
               className="report-panel report-soxai mt-5 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5"
@@ -2005,7 +2251,9 @@ function ResultContent({
                 </div>
               ) : null}
             </section>
+            ) : null}
 
+            {isReportSectionVisible("insight") ? (
             <section
               id="result-section-4"
               className="report-panel report-karte mt-5 scroll-mt-24 rounded-xl border border-[#8a6a2d]/30 bg-gradient-to-br from-[#faf7f1] via-white to-[#f5efe4] px-4 py-4 sm:mt-6 sm:px-5"
@@ -2095,9 +2343,11 @@ function ResultContent({
                 </Link>
               ) : null}
             </section>
+            ) : null}
           </div>
 
           <div className="report-print-page report-print-page-2 mt-8 border-t border-[#071426]/08 pt-8">
+            {isReportSectionVisible("priority") ? (
             <section
               id="result-section-5"
               className="report-panel report-priority scroll-mt-24 rounded-xl border border-[#071426]/10 px-4 py-4 sm:px-5"
@@ -2159,19 +2409,28 @@ function ResultContent({
                           </span>
                           {item.reason}
                         </p>
-                        <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                          <span className="font-semibold text-slate-700">
-                            行動：
-                          </span>
-                          {item.action}
-                        </p>
+                        {item.action.trim() ? (
+                          <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                            <span className="font-semibold text-slate-700">
+                              行動：
+                            </span>
+                            {item.action}
+                          </p>
+                        ) : null}
+                        {item.medicalReferral ? (
+                          <p className="mt-3 rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2 text-[11px] leading-5 text-slate-500 sm:text-[12px] sm:leading-6">
+                            {MEDICAL_REFERRAL_NOTICE}
+                          </p>
+                        ) : null}
                       </div>
                     );
                   })}
                 </div>
               )}
             </section>
+            ) : null}
 
+            {isReportSectionVisible("melatoninYoga") ? (
             <section
               id="result-section-6"
               className="report-panel mt-4 scroll-mt-24 rounded-xl border border-[#8a6a2d]/25 bg-gradient-to-br from-[#fbf9f4] via-white to-[#f7f3ea] px-4 py-4 sm:px-5"
@@ -2211,25 +2470,27 @@ function ResultContent({
                 </p>
               </div>
             </section>
+            ) : null}
 
+            {isReportSectionVisible("homework") ? (
             <section
               id="result-section-7"
               className="report-panel report-today mt-4 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:px-5"
             >
               <SectionLabel
-                title="⑦ 今日やる3つ＋宿題"
+                title="⑦ 今日やること＋宿題"
                 eyebrow="TODAY / HOMEWORK"
               />
               <ReportLead>
                 今夜から取り組む行動と、次回までの宿題を1つのチェックリストにまとめています。
               </ReportLead>
               {aiPending ? (
-                <AiContentPendingPlaceholder label="今日やる3つ＋宿題" />
+                <AiContentPendingPlaceholder label="今日やること＋宿題" />
               ) : (
                 <RecommendationsUntilNextCard
                   result={result}
                   embedded
-                  title="⑦ 今日やる3つ＋宿題"
+                  title="⑦ 今日やること＋宿題"
                   eyebrow="TODAY / HOMEWORK"
                   description="できたものからチェックを入れてください。達成率はカルテに保存され、次回の比較に使われます。"
                   seedActions={homeworkSeedActions}
@@ -2248,8 +2509,37 @@ function ResultContent({
                 </div>
               ) : null}
             </section>
+            ) : null}
           </div>
 
+          {/* ⑧非表示時も総合免責・医療機関導線をクライアント向け領域の末尾（⑩直前）に残す */}
+          {!isReportSectionVisible("next") ? (
+            <section
+              className="report-disclaimer mt-8 border-t border-[#071426]/08 pt-6"
+              aria-label="注意事項／免責"
+            >
+              <h2
+                className="text-sm font-semibold tracking-[-0.01em]"
+                style={{ color: NAVY }}
+              >
+                注意事項／免責
+              </h2>
+              {cautionText ? (
+                <p className="mt-2 text-[13px] leading-6 text-slate-500">
+                  {cautionText}
+                </p>
+              ) : null}
+              <p className="mt-1.5 text-[12px] leading-5 text-slate-400">
+                {disclaimerText ||
+                  "本レポートは睡眠ウェルネス支援であり、医療診断・治療を代替しません。"}
+              </p>
+              <p className="mt-1.5 text-[12px] leading-5 text-slate-400">
+                睡眠の状態が続けて気になる場合は、医療機関にご相談ください。本レポートは医療的な診断・治療ではなく、生活上の実践の提案です。
+              </p>
+            </section>
+          ) : null}
+
+          {isReportSectionVisible("next") ? (
           <div className="report-print-page report-print-page-3 mt-8 border-t border-[#071426]/08 pt-8">
             <section
               id="result-section-8"
@@ -2325,7 +2615,10 @@ function ResultContent({
               </p>
             </footer>
           </div>
+          ) : null}
 
+          {(isReportSectionVisible("counseling") ||
+            isReportSectionVisible("operations")) ? (
           <div className="instructor-only no-print mt-10 border-t border-[#8a6a2d]/30 pt-8">
             <div className="mb-5 rounded-xl border border-[#8a6a2d]/35 bg-[#071426] px-4 py-3 sm:px-5">
               <p className="text-[10px] font-semibold tracking-[0.22em] text-[#d8b36a]">
@@ -2336,6 +2629,7 @@ function ResultContent({
               </p>
             </div>
 
+            {isReportSectionVisible("counseling") ? (
             <section
               id="result-section-9"
               className="report-panel scroll-mt-24 rounded-xl border border-[#8a6a2d]/25 bg-[#fbf9f4] px-4 py-4 sm:px-5"
@@ -2361,7 +2655,9 @@ function ResultContent({
                 </div>
               ) : null}
             </section>
+            ) : null}
 
+            {isReportSectionVisible("operations") ? (
             <section
               id="result-section-10"
               className="report-panel mt-5 scroll-mt-24 space-y-5 rounded-xl border border-[#071426]/10 px-4 py-4 sm:mt-6 sm:px-5"
@@ -2373,10 +2669,13 @@ function ResultContent({
 
               <div>
                 <p
-                  className="mb-3 text-[12px] font-semibold tracking-[-0.01em] sm:text-[13px]"
+                  className="mb-1.5 text-[12px] font-semibold tracking-[-0.01em] sm:text-[13px]"
                   style={{ color: NAVY }}
                 >
                   生活習慣評価
+                </p>
+                <p className="mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+                  ★が多いほど、今回の睡眠にとって良い状態です。
                 </p>
                 <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {wellnessModel.lifestyleStars.map((row) => (
@@ -2392,10 +2691,16 @@ function ResultContent({
                       </span>
                       <span
                         className="text-[15px] tracking-[0.1em] sm:text-[16px]"
-                        style={{ color: GOLD }}
-                        aria-label={`${row.label} ${row.stars}つ星`}
+                        style={{
+                          color: row.stars == null ? "#94a3b8" : GOLD,
+                        }}
+                        aria-label={
+                          row.stars == null
+                            ? `${row.label} 記録なし`
+                            : `${row.label} ${row.stars}つ星`
+                        }
                       >
-                        {formatStars(row.stars)}
+                        {formatLifestyleStars(row.stars)}
                       </span>
                     </li>
                   ))}
@@ -2488,7 +2793,9 @@ function ResultContent({
                 </Link>
               </div>
             </section>
+            ) : null}
           </div>
+          ) : null}
         </article>
 
         {/* ===== クライアント向けカウンセリングレポート PDF（A4縦・3ページ。画面には出さない） ===== */}

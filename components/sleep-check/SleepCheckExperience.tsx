@@ -567,7 +567,7 @@ export default function SleepCheckExperience() {
         <SiteNavMenu tone="dark" />
       </div>
 
-      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-lg flex-col px-5 pb-[var(--sw-sleep-page-bottom-pad)] pt-2 sm:max-w-xl sm:px-8 sm:pb-16">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-lg flex-col px-5 pb-[var(--sw-sleep-page-bottom-pad)] pt-2 sm:max-w-xl sm:px-8 lg:pb-16">
         {screen === "intro" ? (
           <section className="flex flex-1 flex-col items-center text-center">
             <p

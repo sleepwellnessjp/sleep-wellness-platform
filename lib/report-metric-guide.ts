@@ -191,8 +191,8 @@ export function evaluateMetric(
       if (p == null) return null;
       if (p >= 96) return evalFrom(5, "とても良い");
       if (p >= 94) return evalFrom(4, "良い");
-      if (p >= 92) return evalFrom(3, "普通");
-      if (p >= 90) return evalFrom(2, "やや低い");
+      if (p >= 93) return evalFrom(3, "やや低い");
+      if (p >= 90) return evalFrom(2, "低め・確認推奨");
       return evalFrom(1, "要確認");
     }
     case "respiratoryRate": {
@@ -286,7 +286,7 @@ export function metricGuideline(
     case "respiratoryRate":
       return "睡眠時呼吸の一般：12〜16回/分前後";
     case "spo2":
-      return "平均SpO₂：95%以上が目安　94%未満が続く場合は要確認";
+      return "平均SpO₂：95%以上が目安　93%未満が続く場合は確認を推奨";
     case "respiration":
       return "呼吸：12〜16回/分　SpO₂：95%以上が一般的な目安";
     case "skinTemperature":
@@ -302,8 +302,7 @@ export function metricGuideline(
 export function formatHrvRange(metrics: AnalysisMetrics): string {
   const min = String(metrics.hrvMin ?? "").trim();
   const max = String(metrics.hrvMax ?? "").trim();
+  // 片方が欠損している場合はカード非表示用に空文字を返す
   if (min && max) return `${min} 〜 ${max}`;
-  if (min) return `${min} 〜 —`;
-  if (max) return `— 〜 ${max}`;
   return "";
 }

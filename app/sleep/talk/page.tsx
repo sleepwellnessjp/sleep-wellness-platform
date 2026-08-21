@@ -18,7 +18,7 @@ export default async function SleepTalkPage() {
       eyebrow="SLEEP TALK"
       title="語りかけ"
       lead="やさしい語りかけで、心と身体をリラックスさせ眠りへ導きます。"
-      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] sm:pb-[5rem]"
+      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
     >
       <SleepContentSection
         title="語りかけ"

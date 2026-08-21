@@ -1,10 +1,12 @@
 import type { AnalysisMetrics, AnalysisResult } from "@/lib/analysis-session";
 import {
   computeHomeworkAchievement,
+  getPendingAnalysisRequest,
   normalizeAnalysisResult,
   normalizeMetrics,
   normalizeRecommendationsUntilNext,
 } from "@/lib/analysis-session";
+import { buildDayContextFromLifestyle } from "@/lib/client-profiles/ai-input";
 import { buildClientSearchText } from "@/lib/client-search";
 import { normalizeClientTags } from "@/lib/client-tags";
 import {
@@ -137,6 +139,7 @@ type DbAnalysisRow = {
   confirmed_metrics?: AnalysisMetrics | null;
   report_payload?: unknown;
   ai_result: AnalysisResult | null;
+  day_context?: unknown;
   credits_consumed?: number | null;
   created_at: string;
   updated_at?: string;
@@ -161,6 +164,47 @@ async function getSupabaseAuth(): Promise<SupabaseAuth | null> {
 function notifyClientsUpdated() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("swij-clients-updated"));
+  }
+}
+
+/** pending フォームの当日値を day_context へ保存（列未適用時は握りつぶす） */
+async function persistPendingDayContext(
+  auth: SupabaseAuth,
+  analysisId: string,
+): Promise<void> {
+  try {
+    const pending = getPendingAnalysisRequest();
+    const dayContext = buildDayContextFromLifestyle(pending?.lifestyle ?? null);
+    if (!dayContext) return;
+    const { error } = await auth.supabase
+      .from("analyses")
+      .update({ day_context: dayContext as never })
+      .eq("id", analysisId)
+      .eq("owner_id", auth.userId);
+    if (error) {
+      console.warn(
+        "[client-repository] day_context persist skipped:",
+        error.message,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      "[client-repository] day_context persist skipped:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+function dayContextForSave(result: AnalysisResult): AnalysisResult["dayContext"] {
+  if (result.dayContext) return result.dayContext;
+  try {
+    return (
+      buildDayContextFromLifestyle(
+        getPendingAnalysisRequest()?.lifestyle ?? null,
+      ) ?? undefined
+    );
+  } catch {
+    return undefined;
   }
 }
 
@@ -317,6 +361,11 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
         extractedMetrics: resultRaw.extractedMetrics ?? ocr.extracted,
         analysisId: row.id,
         clientId: row.client_id,
+        dayContext:
+          resultRaw.dayContext ??
+          (row.day_context && typeof row.day_context === "object"
+            ? (row.day_context as AnalysisResult["dayContext"])
+            : undefined),
       })
     : normalizeAnalysisResult({
         summary: "",
@@ -345,12 +394,22 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
         disclaimer: "",
         analysisId: row.id,
         clientId: row.client_id,
+        dayContext:
+          row.day_context && typeof row.day_context === "object"
+            ? (row.day_context as AnalysisResult["dayContext"])
+            : undefined,
       });
 
   const sleepScore =
     typeof row.sleep_score === "number" && Number.isFinite(row.sleep_score)
       ? row.sleep_score
       : metrics.sleepScore;
+
+  const dayContext =
+    result.dayContext ??
+    (row.day_context && typeof row.day_context === "object"
+      ? (row.day_context as NonNullable<AnalysisResult["dayContext"]>)
+      : undefined);
 
   return {
     id: row.id,
@@ -362,7 +421,8 @@ function mapDbAnalysis(row: DbAnalysisRow): StoredAnalysis {
     wellnessScore: result.score,
     metrics,
     structured,
-    result,
+    result: dayContext ? { ...result, dayContext } : result,
+    dayContext,
     pdfHistory: [],
   };
 }
@@ -1449,6 +1509,7 @@ export async function saveAnalysisToRepository(
         metrics,
         sleepScore,
       });
+      await persistPendingDayContext(auth, existingRef.analysisId);
       return existingRef;
     }
   }
@@ -1608,6 +1669,8 @@ export async function saveAnalysisToRepository(
     measurementDate: analysisDate,
   };
 
+  const resolvedDayContext = dayContextForSave(result);
+
   const aiResultPayload: AnalysisResult = {
     ...result,
     homeworkAchievement:
@@ -1619,6 +1682,7 @@ export async function saveAnalysisToRepository(
     clientId,
     clientName: name,
     measurementDate: analysisDate,
+    dayContext: resolvedDayContext,
   };
 
   const ocrConfidence: Record<string, number> = {};
@@ -1696,6 +1760,10 @@ export async function saveAnalysisToRepository(
     credits_consumed: 0,
   };
 
+  if (resolvedDayContext) {
+    insertPayload.day_context = resolvedDayContext;
+  }
+
   // migration 未適用 / PostgREST schema cache 未更新向けに、
   // PGRST204（未知カラム）を検出したら該当キーを落として再試行する。
   const analysisRow = await insertAnalysisWithSchemaFallback(
@@ -1718,6 +1786,7 @@ export async function saveAnalysisToRepository(
     metrics: confirmedMetrics,
     sleepScore,
   });
+  await persistPendingDayContext(auth, savedRef.analysisId);
   return savedRef;
 }
 

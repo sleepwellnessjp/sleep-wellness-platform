@@ -464,6 +464,24 @@ export function buildDayContextFromLifestyle(
     nasalCongestion: lifestyle?.nasalCongestion?.trim() || undefined,
     medicationsToday: lifestyle?.medications?.trim() || undefined,
     notes: lifestyle?.notes?.trim() || undefined,
+    formLifestyle: lifestyle
+      ? {
+          alcohol: lifestyle.alcohol?.trim() || undefined,
+          alcoholDrank: lifestyle.alcoholDrank?.trim() || undefined,
+          caffeine: lifestyle.caffeine?.trim() || undefined,
+          caffeineDone: lifestyle.caffeineDone?.trim() || undefined,
+          bathing: lifestyle.bathing?.trim() || undefined,
+          yoga: lifestyle.yoga?.trim() || undefined,
+          yogaDone: lifestyle.yogaDone?.trim() || undefined,
+          pilates: lifestyle.pilates?.trim() || undefined,
+          pilatesDone: lifestyle.pilatesDone?.trim() || undefined,
+          meals: lifestyle.meals?.trim() || undefined,
+          otherExerciseDone: lifestyle.otherExerciseDone?.trim() || undefined,
+          exercise: lifestyle.exercise?.trim() || undefined,
+          dinnerTime: lifestyle.dinnerTime?.trim() || undefined,
+          stress: lifestyle.stress?.trim() || undefined,
+        }
+      : undefined,
   };
 
   const prefer = <T,>(a: T | undefined | null, b: T | undefined | null): T | undefined => {
@@ -517,6 +535,13 @@ export function buildDayContextFromLifestyle(
       fromForm.medicationsToday,
     ),
     notes: prefer(existing?.notes, fromForm.notes),
+    formLifestyle:
+      existing?.formLifestyle &&
+      Object.values(existing.formLifestyle).some(
+        (v) => typeof v === "string" && v.trim(),
+      )
+        ? existing.formLifestyle
+        : fromForm.formLifestyle,
   };
 
   return compactDayContext(result) ? result : null;

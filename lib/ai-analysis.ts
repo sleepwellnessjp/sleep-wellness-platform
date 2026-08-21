@@ -242,7 +242,10 @@ const THRESH = {
   rhrFairMax: 72,
   spo2Good: 96,
   spo2Fair: 94,
-  spo2Soft: 92,
+  /** ★3「やや低い」の下限。93未満はリスク判定の境界と揃える */
+  spo2Soft: 93,
+  /** ★2「低め・確認推奨」の下限 */
+  spo2Watch: 90,
   circadianGoodMaxMin: 20,
   circadianFairMaxMin: 40,
   circadianSoftMaxMin: 60,
@@ -783,23 +786,29 @@ export function evaluateSpo2(value: string | null | undefined): AiAnalysisItem {
   if (pct >= THRESH.spo2Good) {
     score = 92;
     signal = "high";
-    note = "平均SpO₂は良好です";
+    note = `平均SpO₂ ${pct}%は、一般的な目安（95%以上）の範囲にあります。`;
   } else if (pct >= THRESH.spo2Fair) {
     score =
       72 +
       ((pct - THRESH.spo2Fair) / (THRESH.spo2Good - THRESH.spo2Fair)) * 16;
     signal = "moderate";
-    note = "平均SpO₂はまずまずです";
+    note = `平均SpO₂ ${pct}%は、一般的な目安（95%以上）に近い値です。`;
   } else if (pct >= THRESH.spo2Soft) {
     score =
       55 +
       ((pct - THRESH.spo2Soft) / (THRESH.spo2Fair - THRESH.spo2Soft)) * 14;
     signal = "borderline";
-    note = "平均SpO₂はやや低めです。呼吸の安定性を確認します";
-  } else {
-    score = Math.max(28, (pct / THRESH.spo2Soft) * 52);
+    note = `平均SpO₂ ${pct}%は、一般的な目安（95%以上）を下回っています。`;
+  } else if (pct >= THRESH.spo2Watch) {
+    score =
+      40 +
+      ((pct - THRESH.spo2Watch) / (THRESH.spo2Soft - THRESH.spo2Watch)) * 14;
     signal = "low";
-    note = "平均SpO₂が低めです。呼吸イベントや鼻閉の確認が有効です";
+    note = `平均SpO₂ ${pct}%は、一般的な目安（95%以上）を下回っています。`;
+  } else {
+    score = Math.max(28, (pct / THRESH.spo2Watch) * 38);
+    signal = "low";
+    note = `平均SpO₂ ${pct}%は、一般的な目安（95%以上）を下回っています。`;
   }
   return scoredItem("spo2", raw, score, signal, note);
 }
@@ -1686,8 +1695,8 @@ function improvementActionText(item: AiAnalysisItem): string {
         : `測定ストレスがやや高めです。就寝前の呼吸リセットが期待できます`;
     case "spo2":
       return v
-        ? `平均SpO₂${v}はやや低めです。鼻呼吸や側臥位など、呼吸が安定しやすい姿勢を試すことが有効です`
-        : `平均SpO₂がやや低めです。呼吸の安定を優先しましょう`;
+        ? `平均SpO₂${v}は、一般的な目安（95%以上）を下回っています。鼻呼吸や側臥位など、呼吸が安定しやすい姿勢を試すことが有効です`
+        : `平均SpO₂は、一般的な目安（95%以上）を下回っています。呼吸の安定を優先しましょう`;
     case "respiratoryRate":
       return v
         ? `呼吸数${v}にばらつきがあります。就寝前のリラックスと鼻呼吸の意識が有効です`

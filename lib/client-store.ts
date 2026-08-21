@@ -6,6 +6,7 @@ import {
   type AnalysisResult,
   type NextActionGoal,
 } from "@/lib/analysis-session";
+import type { AnalysisDayContext } from "@/lib/client-profiles/types";
 import { buildClientSearchText } from "@/lib/client-search";
 import { normalizeClientTags } from "@/lib/client-tags";
 import {
@@ -35,6 +36,8 @@ export type StoredAnalysis = {
   structured?: StructuredSleepMetrics;
   /** AI分析結果 */
   result: AnalysisResult;
+  /** 当日生活習慣（analyses.day_context）。旧レコードは未設定 */
+  dayContext?: AnalysisDayContext;
   pdfHistory: PdfHistoryEntry[];
 };
 

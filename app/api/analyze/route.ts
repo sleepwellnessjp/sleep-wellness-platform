@@ -36,6 +36,11 @@ import type {
   OuraVisionMetrics,
 } from "@/lib/oura-vision-schema";
 import { normalizeOuraVisionResult } from "@/lib/oura-vision-schema";
+import {
+  detectSummaryQualityIssues,
+  SUMMARY_REWRITE_INSTRUCTIONS,
+  summaryHasQualityIssues,
+} from "@/lib/analysis-summary-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -398,6 +403,8 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 ⑥ 定型アドバイス禁止
 - 「飲酒を減らしましょう」など根拠のない一般論で終わらない
 - 必ず今回の数値・習慣入力を根拠に理由を書く
+- summary で「年齢と性別を考慮」「意識が大切」「心がけましょう」など内容のない定型句で締めない
+- 指標間の因果を断定しない（特に睡眠時間不足→SpO₂／酸素低下は禁止。複数指標は「一方で」「また」で並列に述べる）
 
 ⑥-b 『ノンレム』という語の使用禁止
 - 睡眠ステージは「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」のみで書く
@@ -485,6 +492,15 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   数値の羅列だけにせず、解釈を添える。単日評価であることを踏まえる。
   『ノンレム』という語は使用禁止（覚醒／レム睡眠／浅い睡眠／深い睡眠のみ）。
   同じ実測フレーズ（例:「睡眠時間4時間12分」）を他フィールドで繰り返さないよう、数値は必要最小限。
+  【因果断定の禁止・厳守】
+  - 指標間の因果関係を断定しないこと（「AのためBが低下」「Aが短く、Bが不十分」で A→B を示す書き方は禁止）
+  - 特に「睡眠時間の不足が SpO₂／酸素供給の低下の原因」という趣旨の記述は禁止
+  - SpO₂・酸素供給は夜間の呼吸に関わる観察として扱い、睡眠時間の短さと因果で結ばない
+  - 複数の指標に言及する場合は、並列（「一方で」「また」）で述べ、一方が他方を引き起こしたと書かないこと
+  【空の定型句禁止・厳守】
+  - 具体的な指標名と数値を伴わない一般論で締めないこと
+  - 「年齢と性別を考慮し〜」「改善に向けた意識が大切です」「心がけましょう」「意識しましょう」等の抽象的な結びは禁止
+  - 結びは、今回触れた指標の整え余地か、観察のまとめに留めること
 
 ③-b karteSummary（Sleep Wellness Insight）※必須・最重要・毎回GPT生成
   Sleep Wellness Institute Japan 独自の総合考察。旧称「AIカルテ」。
@@ -583,6 +599,7 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   - 「午後のカフェインを控える習慣を続ける」
   todaysRecommendations と「同じ文言」は禁止（今日だけ vs 宿題で役割を分ける）。
   improvements と方向性は整合させる。根拠に無い提案は禁止。
+  【カフェインの厳守】カットオフは「14時以降」を基準にする。「朝◯時以降」「午前中から控える」など非現実的な早朝カットは禁止。
   前回分析に recommendationsUntilNext（AI宿題）がある場合は、checked（達成）/未達と達成率を踏まえつつ、今回のデータに合う目標を新たに書く（前回の文言をそのままコピーしない）。
 
 ⑨ instructorCounseling（AIから講師への提案）※必須・構造化
@@ -1302,6 +1319,69 @@ ${
         },
         { status: 500 },
       );
+    }
+
+    // summary 品質ガード：因果逆転・空定型句を検出したら summary のみ1回再生成
+    if (analysis && typeof analysis === "object") {
+      const record = analysis as Record<string, unknown>;
+      const currentSummary =
+        typeof record.summary === "string" ? record.summary.trim() : "";
+      if (currentSummary && summaryHasQualityIssues(currentSummary)) {
+        const issues = detectSummaryQualityIssues(currentSummary);
+        console.warn("[api/analyze] summary quality issues", issues);
+        try {
+          const rewrite = await client.responses.create({
+            model: "gpt-4o",
+            instructions: SUMMARY_REWRITE_INSTRUCTIONS,
+            input: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: `次の summary を制約どおりに書き直してください。\n\n【現行 summary】\n${currentSummary}\n\n【参考 metrics（数値は改変しない）】\n${typeof metricsBlock === "string" ? metricsBlock.slice(0, 2500) : ""}`,
+                  },
+                ],
+              },
+            ],
+            text: {
+              format: {
+                type: "json_schema",
+                name: "swij_summary_rewrite",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["summary"],
+                  properties: {
+                    summary: { type: "string" },
+                  },
+                },
+              },
+            },
+          });
+          const rewrittenText = rewrite.output_text?.trim();
+          if (rewrittenText) {
+            const rewritten = JSON.parse(rewrittenText) as {
+              summary?: string;
+            };
+            const nextSummary = rewritten.summary?.trim();
+            if (nextSummary) {
+              if (summaryHasQualityIssues(nextSummary)) {
+                console.warn(
+                  "[api/analyze] summary rewrite still has issues",
+                  detectSummaryQualityIssues(nextSummary),
+                );
+              } else {
+                console.info("[api/analyze] summary rewritten once");
+              }
+              record.summary = nextSummary;
+            }
+          }
+        } catch (rewriteError) {
+          console.error("[api/analyze] summary rewrite failed", rewriteError);
+        }
+      }
     }
 
     if (confirmedMetrics) {

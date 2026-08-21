@@ -570,6 +570,27 @@ export type AnalysisDayContext = {
   nasalCongestion?: string;
   medicationsToday?: string;
   notes?: string;
+
+  /**
+   * 分析フォームの当日入力スナップショット（星評価・「今回」表示用）。
+   * 旧レコードには存在しない。無い場合は「記録なし」扱い。
+   */
+  formLifestyle?: {
+    alcohol?: string;
+    alcoholDrank?: string;
+    caffeine?: string;
+    caffeineDone?: string;
+    bathing?: string;
+    yoga?: string;
+    yogaDone?: string;
+    pilates?: string;
+    pilatesDone?: string;
+    meals?: string;
+    otherExerciseDone?: string;
+    exercise?: string;
+    dinnerTime?: string;
+    stress?: string;
+  };
 };
 
 // ---------------------------------------------------------------------------

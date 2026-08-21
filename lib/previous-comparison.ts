@@ -47,8 +47,9 @@ const PROFILE_KEYS = [
 ] as const;
 
 /**
- * analyses は新しい順。currentId の1つ古い分析を返す。
- * 初回（比較対象なし）は null。
+ * analyses は新しい順。
+ * 「前回」= 現在と異なる analysisDate を持つ直近（別日）の分析。
+ * 同日の重複レコードはスキップする。該当なしは null。
  */
 export function findPreviousAnalysis(
   analyses: StoredAnalysis[],
@@ -56,20 +57,41 @@ export function findPreviousAnalysis(
 ): StoredAnalysis | null {
   if (analyses.length < 2) return null;
 
+  let currentDate = "";
+  let startIndex = 0;
+
   if (currentId?.trim()) {
     const index = analyses.findIndex((item) => item.id === currentId);
     if (index >= 0) {
-      return analyses[index + 1] ?? null;
+      currentDate = analyses[index]!.analysisDate?.trim() ?? "";
+      startIndex = index + 1;
     }
   }
 
-  // 保存直後など ID 未解決時は最新の次（前回）を使う
-  return analyses[1] ?? null;
+  // ID 未解決時: 先頭を「今回」とみなし、その日付と異なる最初を返す
+  if (!currentDate) {
+    currentDate = analyses[0]?.analysisDate?.trim() ?? "";
+    startIndex = 1;
+  }
+
+  if (!currentDate) return null;
+
+  for (let i = startIndex; i < analyses.length; i += 1) {
+    const candidate = analyses[i];
+    if (!candidate) continue;
+    const date = candidate.analysisDate?.trim() ?? "";
+    if (date && date !== currentDate) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 /**
- * analyses は新しい順。最古（初回）分析を返す。
- * 前回と同じ場合は null（前回比較と重複させない）。
+ * 「初回」= analysisDate が最も古いレコード。
+ * 同日が複数ある場合は createdAt が最も古い1件。
+ * 現在／前回と同じ場合は null（前回比較と重複させない）。
  */
 export function findFirstAnalysis(
   analyses: StoredAnalysis[],
@@ -78,15 +100,31 @@ export function findFirstAnalysis(
 ): StoredAnalysis | null {
   if (analyses.length < 2) return null;
 
-  let currentIndex = -1;
-  if (currentId?.trim()) {
-    currentIndex = analyses.findIndex((item) => item.id === currentId);
+  let currentIdResolved = currentId?.trim() || "";
+  if (!currentIdResolved) {
+    currentIdResolved = analyses[0]?.id ?? "";
   }
-  if (currentIndex < 0) currentIndex = 0;
 
-  const first = analyses[analyses.length - 1];
+  let first: StoredAnalysis | null = null;
+  for (const item of analyses) {
+    const date = item.analysisDate?.trim() ?? "";
+    if (!date) continue;
+    if (!first) {
+      first = item;
+      continue;
+    }
+    const firstDate = first.analysisDate?.trim() ?? "";
+    if (date < firstDate) {
+      first = item;
+      continue;
+    }
+    if (date === firstDate && item.createdAt < first.createdAt) {
+      first = item;
+    }
+  }
+
   if (!first) return null;
-  if (first.id === analyses[currentIndex]?.id) return null;
+  if (currentIdResolved && first.id === currentIdResolved) return null;
 
   const prev = previous ?? findPreviousAnalysis(analyses, currentId);
   if (prev && prev.id === first.id) return null;
@@ -109,24 +147,28 @@ export function analysisResultToStoredShape(
   };
 }
 
-function resolveTrend(
+/** 増加が良い指標 / 増加が悪い（反転）指標 */
+type ComparisonPolarity = "higherIsBetter" | "higherIsWorse";
+
+/**
+ * 差分・良し悪しを一括判定。
+ * - 欠損（null）は比較しない（呼び出し側で非表示）
+ * - tone が unchanged になるのは差分ちょうど 0 のときだけ（閾値なし）
+ */
+function resolveComparison(
   before: number | null,
   after: number | null,
-  lowerIsBetter: boolean,
-): { tone: PreviousComparisonTone; delta: number | null } {
-  if (before == null || after == null) {
-    return { tone: "unchanged", delta: null };
-  }
+  polarity: ComparisonPolarity,
+): { tone: PreviousComparisonTone; delta: number } | null {
+  if (before == null || after == null) return null;
 
   const delta = after - before;
-  const threshold =
-    Math.abs(before) >= 50 ? 1 : Math.max(0.5, Math.abs(before) * 0.02);
-
-  if (Math.abs(delta) <= threshold) {
-    return { tone: "unchanged", delta };
+  if (delta === 0) {
+    return { tone: "unchanged", delta: 0 };
   }
 
-  const improved = lowerIsBetter ? delta < 0 : delta > 0;
+  const improved =
+    polarity === "higherIsBetter" ? delta > 0 : delta < 0;
   return {
     tone: improved ? "improved" : "worsened",
     delta,
@@ -136,7 +178,7 @@ function resolveTrend(
 function formatSignedMinutes(delta: number): string {
   const rounded = Math.round(delta);
   if (rounded === 0) return "±0分";
-  const sign = rounded > 0 ? "+" : "";
+  const sign = rounded > 0 ? "+" : "-";
   const abs = Math.abs(rounded);
   const hours = Math.floor(abs / 60);
   const minutes = abs % 60;
@@ -149,16 +191,47 @@ function formatSignedMinutes(delta: number): string {
   return `${sign}${minutes}分`;
 }
 
+/**
+ * 矢印は数値の増減のみ（色＝tone が良し悪し）。
+ * 差分 0 のときだけ →。小さな変化で → にしない。
+ */
+function comparisonArrow(delta: number): string {
+  if (delta === 0) return "→";
+  return delta > 0 ? "↑" : "↓";
+}
+
 function sleepScoreOf(analysis: StoredAnalysis): number | null {
   const fromField = analysis.sleepScore ?? analysis.metrics.sleepScore;
   if (typeof fromField === "number" && Number.isFinite(fromField)) {
     return fromField;
   }
+  const fromResult = analysis.result?.metrics?.sleepScore;
+  if (typeof fromResult === "number" && Number.isFinite(fromResult)) {
+    return fromResult;
+  }
   return null;
 }
 
+/** metrics → result.metrics の順。空 / "—" / "-" は欠損（null）。0 は有効値。 */
+function metricDurationText(
+  analysis: StoredAnalysis,
+  key: "deepSleep" | "sleepDebt" | "sleepDuration",
+): string {
+  const fromMetrics = String(analysis.metrics?.[key] ?? "").trim();
+  if (fromMetrics && fromMetrics !== "—" && fromMetrics !== "-") {
+    return fromMetrics;
+  }
+  const fromResult = String(analysis.result?.metrics?.[key] ?? "").trim();
+  if (fromResult && fromResult !== "—" && fromResult !== "-") {
+    return fromResult;
+  }
+  return "";
+}
+
 function deepSleepMinutes(analysis: StoredAnalysis): number | null {
-  return parseDurationMinutes(analysis.metrics.deepSleep ?? "");
+  const text = metricDurationText(analysis, "deepSleep");
+  if (!text) return null;
+  return parseDurationMinutes(text);
 }
 
 function stressValue(analysis: StoredAnalysis): number | null {
@@ -166,11 +239,21 @@ function stressValue(analysis: StoredAnalysis): number | null {
   if (structured?.trim()) {
     return parseLeadingNumber(structured);
   }
-  return parseLeadingNumber(analysis.metrics.stress ?? "");
+  const fromMetrics = String(analysis.metrics.stress ?? "").trim();
+  if (fromMetrics && fromMetrics !== "—" && fromMetrics !== "-") {
+    return parseLeadingNumber(fromMetrics);
+  }
+  const fromResult = String(analysis.result?.metrics?.stress ?? "").trim();
+  if (fromResult && fromResult !== "—" && fromResult !== "-") {
+    return parseLeadingNumber(fromResult);
+  }
+  return null;
 }
 
 function sleepDebtMinutes(analysis: StoredAnalysis): number | null {
-  return parseDurationMinutes(analysis.metrics.sleepDebt ?? "");
+  const text = metricDurationText(analysis, "sleepDebt");
+  if (!text) return null;
+  return parseDurationMinutes(text);
 }
 
 function profileChanged(
@@ -185,9 +268,22 @@ function profileChanged(
   });
 }
 
+function hrvValue(analysis: StoredAnalysis): number | null {
+  const fromMetrics = String(analysis.metrics.hrv ?? "").trim();
+  if (fromMetrics && fromMetrics !== "—" && fromMetrics !== "-") {
+    return parseLeadingNumber(fromMetrics);
+  }
+  const fromResult = String(analysis.result?.metrics?.hrv ?? "").trim();
+  if (fromResult && fromResult !== "—" && fromResult !== "-") {
+    return parseLeadingNumber(fromResult);
+  }
+  return null;
+}
+
 /**
  * 結果レポート用のコンパクトな前回比較。
  * 比較可能な指標が1つも無い場合は null。
+ * 前回値が欠損の指標は行ごと非表示（現在値を差分として出さない）。
  */
 export function buildPreviousComparisonSummary(
   previous: StoredAnalysis,
@@ -195,108 +291,117 @@ export function buildPreviousComparisonSummary(
 ): PreviousComparisonSummary | null {
   const items: PreviousComparisonItem[] = [];
 
-  const wellnessTrend = resolveTrend(
+  const wellnessTrend = resolveComparison(
     wellnessScoreOf(previous),
     wellnessScoreOf(current),
-    false,
+    "higherIsBetter",
   );
-  if (wellnessTrend.delta != null) {
+  if (wellnessTrend) {
     items.push({
       label: "Sleep Wellness Score",
-      value: `${toneArrow(wellnessTrend.tone)}${formatSignedScore(wellnessTrend.delta)}`,
+      value: `${comparisonArrow(wellnessTrend.delta)}${formatSignedScore(wellnessTrend.delta)}`,
       tone: wellnessTrend.tone,
     });
   }
 
-  const scoreTrend = resolveTrend(
+  const scoreTrend = resolveComparison(
     sleepScoreOf(previous),
     sleepScoreOf(current),
-    false,
+    "higherIsBetter",
   );
-  if (scoreTrend.delta != null) {
+  if (scoreTrend) {
     const rounded = Math.round(scoreTrend.delta);
     const deltaText =
       rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "睡眠スコア",
-      value: `${toneArrow(scoreTrend.tone)}${deltaText}`,
+      value: `${comparisonArrow(scoreTrend.delta)}${deltaText}`,
       tone: scoreTrend.tone,
     });
   }
 
-  const efficiencyTrend = resolveTrend(
+  const efficiencyTrend = resolveComparison(
     sleepEfficiencyPercent(previous),
     sleepEfficiencyPercent(current),
-    false,
+    "higherIsBetter",
   );
-  if (efficiencyTrend.delta != null) {
+  if (efficiencyTrend) {
     items.push({
       label: "睡眠効率",
-      value: `${toneArrow(efficiencyTrend.tone)}${formatSignedPercent(efficiencyTrend.delta)}`,
+      value: `${comparisonArrow(efficiencyTrend.delta)}${formatSignedPercent(efficiencyTrend.delta)}`,
       tone: efficiencyTrend.tone,
     });
   }
 
-  const hrvTrend = resolveTrend(
-    parseLeadingNumber(String(previous.metrics.hrv ?? "")),
-    parseLeadingNumber(String(current.metrics.hrv ?? "")),
-    false,
+  const hrvTrend = resolveComparison(
+    hrvValue(previous),
+    hrvValue(current),
+    "higherIsBetter",
   );
-  if (hrvTrend.delta != null) {
+  if (hrvTrend) {
     const rounded = Math.round(hrvTrend.delta * 10) / 10;
     const deltaText =
       rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "HRV",
-      value: `${toneArrow(hrvTrend.tone)}${deltaText}`,
+      value: `${comparisonArrow(hrvTrend.delta)}${deltaText}`,
       tone: hrvTrend.tone,
     });
   }
 
-  const deepTrend = resolveTrend(
-    deepSleepMinutes(previous),
-    deepSleepMinutes(current),
-    false,
-  );
-  if (deepTrend.delta != null) {
+  const prevDeep = deepSleepMinutes(previous);
+  const currDeep = deepSleepMinutes(current);
+  if (process.env.NODE_ENV === "development") {
+    console.debug("[previous-comparison] deepSleep", {
+      previousDate: previous.analysisDate,
+      previousRaw: metricDurationText(previous, "deepSleep") || null,
+      currentRaw: metricDurationText(current, "deepSleep") || null,
+      previousMinutes: prevDeep,
+      currentMinutes: currDeep,
+      delta:
+        prevDeep != null && currDeep != null ? currDeep - prevDeep : null,
+    });
+  }
+  const deepTrend = resolveComparison(prevDeep, currDeep, "higherIsBetter");
+  if (deepTrend) {
     items.push({
       label: "深い睡眠",
-      value: `${toneArrow(deepTrend.tone)}${formatSignedMinutes(deepTrend.delta)}`,
+      value: `${comparisonArrow(deepTrend.delta)}${formatSignedMinutes(deepTrend.delta)}`,
       tone: deepTrend.tone,
     });
   }
 
-  const stressTrend = resolveTrend(
+  const stressTrend = resolveComparison(
     stressValue(previous),
     stressValue(current),
-    true,
+    "higherIsWorse",
   );
-  if (stressTrend.delta != null) {
+  if (stressTrend) {
     const rounded = Math.round(stressTrend.delta * 10) / 10;
     const deltaText =
       rounded > 0 ? `+${rounded}` : rounded < 0 ? String(rounded) : "±0";
     items.push({
       label: "ストレス",
-      value: `${toneArrow(stressTrend.tone)}${deltaText}`,
+      value: `${comparisonArrow(stressTrend.delta)}${deltaText}`,
       tone: stressTrend.tone,
     });
   }
 
-  const debtTrend = resolveTrend(
+  const debtTrend = resolveComparison(
     sleepDebtMinutes(previous),
     sleepDebtMinutes(current),
-    true,
+    "higherIsWorse",
   );
-  if (debtTrend.delta != null) {
+  if (debtTrend) {
+    const changeWord =
+      debtTrend.delta > 0
+        ? "増加"
+        : debtTrend.delta < 0
+          ? "減少"
+          : "変化なし";
     items.push({
       label: "睡眠負債",
-      value: `${toneArrow(debtTrend.tone)}${
-        debtTrend.tone === "improved"
-          ? "減少"
-          : debtTrend.tone === "worsened"
-            ? "増加"
-            : "変化なし"
-      }`,
+      value: `${comparisonArrow(debtTrend.delta)}${changeWord}`,
       tone: debtTrend.tone,
     });
   }
@@ -345,12 +450,6 @@ export function previousComparisonToneColor(
   return "#8a6a2d";
 }
 
-function toneArrow(tone: PreviousComparisonTone): string {
-  if (tone === "improved") return "↑";
-  if (tone === "worsened") return "↓";
-  return "→";
-}
-
 function wellnessScoreOf(analysis: StoredAnalysis): number | null {
   if (
     typeof analysis.wellnessScore === "number" &&
@@ -368,13 +467,27 @@ function wellnessScoreOf(analysis: StoredAnalysis): number | null {
 }
 
 function sleepDurationMinutes(analysis: StoredAnalysis): number | null {
-  return parseDurationMinutes(String(analysis.metrics.sleepDuration ?? ""));
+  const text = metricDurationText(analysis, "sleepDuration");
+  if (!text) return null;
+  return parseDurationMinutes(text);
 }
 
 function sleepEfficiencyPercent(analysis: StoredAnalysis): number | null {
   const raw = analysis.metrics.sleepEfficiency;
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  return parseLeadingNumber(String(raw ?? ""));
+  const fromMetrics = String(raw ?? "").trim();
+  if (fromMetrics && fromMetrics !== "—" && fromMetrics !== "-") {
+    return parseLeadingNumber(fromMetrics);
+  }
+  const fromResult = analysis.result?.metrics?.sleepEfficiency;
+  if (typeof fromResult === "number" && Number.isFinite(fromResult)) {
+    return fromResult;
+  }
+  const fromResultText = String(fromResult ?? "").trim();
+  if (fromResultText && fromResultText !== "—" && fromResultText !== "-") {
+    return parseLeadingNumber(fromResultText);
+  }
+  return null;
 }
 
 function formatSignedScore(delta: number): string {
@@ -400,41 +513,41 @@ export function buildClientMypageComparison(
 ): PreviousComparisonSummary | null {
   const items: PreviousComparisonItem[] = [];
 
-  const scoreTrend = resolveTrend(
+  const scoreTrend = resolveComparison(
     wellnessScoreOf(previous),
     wellnessScoreOf(current),
-    false,
+    "higherIsBetter",
   );
-  if (scoreTrend.delta != null) {
+  if (scoreTrend) {
     items.push({
       label: "Sleep Wellness Score",
-      value: `${toneArrow(scoreTrend.tone)}${formatSignedScore(scoreTrend.delta)}`,
+      value: `${comparisonArrow(scoreTrend.delta)}${formatSignedScore(scoreTrend.delta)}`,
       tone: scoreTrend.tone,
     });
   }
 
-  const efficiencyTrend = resolveTrend(
+  const efficiencyTrend = resolveComparison(
     sleepEfficiencyPercent(previous),
     sleepEfficiencyPercent(current),
-    false,
+    "higherIsBetter",
   );
-  if (efficiencyTrend.delta != null) {
+  if (efficiencyTrend) {
     items.push({
       label: "睡眠効率",
-      value: `${toneArrow(efficiencyTrend.tone)}${formatSignedPercent(efficiencyTrend.delta)}`,
+      value: `${comparisonArrow(efficiencyTrend.delta)}${formatSignedPercent(efficiencyTrend.delta)}`,
       tone: efficiencyTrend.tone,
     });
   }
 
-  const durationTrend = resolveTrend(
+  const durationTrend = resolveComparison(
     sleepDurationMinutes(previous),
     sleepDurationMinutes(current),
-    false,
+    "higherIsBetter",
   );
-  if (durationTrend.delta != null) {
+  if (durationTrend) {
     items.push({
       label: "睡眠時間",
-      value: `${toneArrow(durationTrend.tone)}${formatSignedMinutes(durationTrend.delta)}`,
+      value: `${comparisonArrow(durationTrend.delta)}${formatSignedMinutes(durationTrend.delta)}`,
       tone: durationTrend.tone,
     });
   }

@@ -24,6 +24,7 @@ import {
   toPracticeMetrics,
   type PrescriptionCard,
 } from "@/lib/data/practice";
+import { isReportSectionVisible } from "@/lib/report-sections";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
@@ -234,6 +235,7 @@ export function ClientDiagnosticPdf({
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const scoreComment = clampPdfComment(result.scoreComment);
   const expertParagraphs = getExpertAnalysis(practiceMetrics);
+  const pdfPageCount = isReportSectionVisible("melatoninYoga") ? 3 : 2;
 
   return (
     <div
@@ -274,7 +276,7 @@ export function ClientDiagnosticPdf({
             </p>
             <p>{result.measurementDate || "分析日未設定"}</p>
             <p>デバイス：{resolvedDeviceName}</p>
-            <p className="mt-1 text-[9px] text-slate-400">1 / 3</p>
+            <p className="mt-1 text-[9px] text-slate-400">1 / {pdfPageCount}</p>
           </div>
         </header>
 
@@ -284,7 +286,11 @@ export function ClientDiagnosticPdf({
             title="今回の総合評価"
           />
           <div
-            className={`grid gap-2 ${recovery.available ? "grid-cols-2" : "grid-cols-1"}`}
+            className={`grid gap-2 ${
+              isReportSectionVisible("recoveryIndex") && recovery.available
+                ? "grid-cols-2"
+                : "grid-cols-1"
+            }`}
           >
             <div
               className="rounded-lg px-3 py-2.5"
@@ -309,7 +315,7 @@ export function ClientDiagnosticPdf({
                 生活・環境・測定を総合した独自指標
               </p>
             </div>
-            {recovery.available ? (
+            {isReportSectionVisible("recoveryIndex") && recovery.available ? (
               <div
                 className="rounded-lg px-3 py-2.5"
                 style={{
@@ -400,7 +406,8 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        {report.goodPoints.length > 0 || report.attentionPoints.length > 0 ? (
+        {isReportSectionVisible("insight") &&
+        (report.goodPoints.length > 0 || report.attentionPoints.length > 0) ? (
           <section className="mt-3">
             <SectionEyebrow
               eyebrow="④ GOOD / ATTENTION"
@@ -496,7 +503,7 @@ export function ClientDiagnosticPdf({
               分析から分かったこと・これからの改善
             </h1>
           </div>
-          <p className="text-[9px] text-slate-400">2 / 3</p>
+          <p className="text-[9px] text-slate-400">2 / {pdfPageCount}</p>
         </header>
 
         <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -583,7 +590,7 @@ export function ClientDiagnosticPdf({
         ) : null}
         </div>
 
-        {report.actions.length > 0 ? (
+        {isReportSectionVisible("homework") && report.actions.length > 0 ? (
           <section className="mt-3 shrink-0">
             <SectionEyebrow
               eyebrow="⑦ YOUR ACTION PLAN"
@@ -624,7 +631,7 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        {report.nextSteps.length > 0 ? (
+        {isReportSectionVisible("next") && report.nextSteps.length > 0 ? (
           <section className="mt-3 shrink-0">
             <SectionEyebrow
               eyebrow="⑧ NEXT STEP"
@@ -651,6 +658,7 @@ export function ClientDiagnosticPdf({
         <BrandFooter />
       </section>
 
+      {isReportSectionVisible("melatoninYoga") ? (
       <section className="client-diagnostic-page client-diagnostic-page-prescription flex flex-col">
         <header className="flex items-end justify-between border-b border-[#071426]/12 pb-3">
           <div>
@@ -667,7 +675,7 @@ export function ClientDiagnosticPdf({
               今夜からの実践
             </h1>
           </div>
-          <p className="text-[9px] text-slate-400">3 / 3</p>
+          <p className="text-[9px] text-slate-400">3 / {pdfPageCount}</p>
         </header>
 
         <section className="mt-3 flex min-h-0 flex-1 flex-col">
@@ -687,6 +695,7 @@ export function ClientDiagnosticPdf({
 
         <BrandFooter />
       </section>
+      ) : null}
     </div>
   );
 }

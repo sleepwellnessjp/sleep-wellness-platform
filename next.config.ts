@@ -9,6 +9,8 @@ const showDevIndicators =
   process.env.NEXT_PUBLIC_SHOW_DEV_INDICATORS === "1";
 
 const nextConfig: NextConfig = {
+  // LAN 上の実機（iPhone 等）から dev サーバーへアクセスするとき用
+  allowedDevOrigins: ["192.168.111.12", "192.168.111.62"],
   // AI分析（画像＋構造化出力）は30秒を超えることがあるため、
   // Next.js 開発プロキシのデフォルト30秒制限を延長する。
   // SOXAI画像は最大10枚（base64）のため、プロキシのボディ上限も引き上げる。

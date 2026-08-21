@@ -12,7 +12,7 @@ import {
   type NextActionGoal,
 } from "@/lib/analysis-session";
 import { updateAnalysisRecommendationsUntilNext } from "@/lib/repositories/client-repository";
-import { mergeHomeworkDisplayGoals } from "@/lib/homework-goals";
+import { mergeHomeworkDisplayGoals, type HomeworkSeed } from "@/lib/homework-goals";
 
 function createGoalId(): string {
   try {
@@ -102,7 +102,7 @@ type Props = {
   /** false のときテキスト編集 UI を隠す（クライアントマイページ向け） */
   allowEdit?: boolean;
   /** 今日のアクションなど、宿題リストへ統合する追加項目（重複は除外） */
-  seedActions?: string[];
+  seedActions?: Array<string | HomeworkSeed>;
 };
 
 /**
@@ -129,11 +129,23 @@ export default function RecommendationsUntilNextCard({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const seedKey = (seedActions ?? []).join("\n");
+  const seedKey = JSON.stringify(
+    (seedActions ?? []).map((entry) =>
+      typeof entry === "string" ? { text: entry, source: "today" } : entry,
+    ),
+  );
   useEffect(() => {
+    const parsed = (() => {
+      if (!seedKey) return undefined;
+      try {
+        return JSON.parse(seedKey) as HomeworkSeed[];
+      } catch {
+        return undefined;
+      }
+    })();
     const next = mergeHomeworkDisplayGoals(
       result.recommendationsUntilNext,
-      seedKey ? seedKey.split("\n") : undefined,
+      parsed,
     );
     setGoals(next);
     if (!editing) setDraft(next);

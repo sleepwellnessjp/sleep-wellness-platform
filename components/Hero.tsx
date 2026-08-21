@@ -36,7 +36,7 @@ export default function Hero() {
       </div>
 
       {/* コンテンツ: ロゴ中央 → METHOD™ → 見出し → 説明文（すべて通常フロー） */}
-      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-12 pt-32 sm:px-8 sm:pb-36 lg:px-10 lg:pb-44 max-sm:items-start max-sm:pb-8 max-sm:pt-0">
+      <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-12 pt-32 sm:px-8 sm:pb-28 md:pb-6 md:pt-[4.5rem] lg:px-10 lg:pb-44 max-sm:items-start max-sm:pb-0 max-sm:pt-0">
         <div
           className="mx-auto w-full max-w-3xl animate-fade-up text-center sm:max-w-2xl lg:max-w-[42rem] max-sm:max-w-none"
           style={{ paddingTop: "max(calc(env(safe-area-inset-top, 0px) + 1.5rem), 1.5rem)" }}
@@ -60,15 +60,15 @@ export default function Hero() {
             SLEEP WELLNESS METHOD™
           </p>
 
-          <h1 className="mt-4 text-[clamp(1.93rem,4.2vw+0.45rem,3.55rem)] font-semibold leading-[1.4] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] lg:leading-[1.05] max-sm:tracking-[-0.03em]">
+          <h1 className="mt-4 text-[clamp(2.28rem,4.96vw+0.53rem,4.19rem)] font-semibold leading-[1.4] tracking-[-0.04em] text-white sm:mt-7 sm:leading-[1.06] md:mt-4 md:text-[clamp(2.9rem,6.3vw+0.67rem,5.3rem)] md:leading-[1.25] lg:leading-[1.25] max-sm:tracking-[-0.03em]">
             睡眠を、
             <br />
             <span className="whitespace-nowrap">日本の新しい文化へ。</span>
           </h1>
 
-          <p className="mx-auto mt-4 max-w-lg text-base leading-7 text-white/72 sm:mt-9 sm:text-lg sm:leading-9 max-sm:max-w-sm max-sm:text-[14px] max-sm:leading-7 max-sm:text-white/70">
+          <p className="mx-auto mt-4 max-w-lg text-base leading-7 text-white/72 sm:mt-9 sm:text-lg sm:leading-9 md:mt-4 max-sm:max-w-sm max-sm:text-[14px] max-sm:leading-7 max-sm:text-white/70">
             データから優先順位を決め、昼と夜の実践で整える。
-            <br className="hidden sm:block" />
+            <br />
             Sleep Wellness Institute Japan の Method です。
           </p>
         </div>

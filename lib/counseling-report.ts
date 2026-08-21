@@ -20,6 +20,8 @@ import {
   type LifestyleSnapshot,
   type MelatoninYogaPrescription,
 } from "@/lib/wellness-client-report";
+import { buildSleepRiskHint } from "@/lib/sleep-risk-flag";
+import { parseOptionalAge } from "@/lib/client-profile";
 
 export type CounselingKeyMetric = {
   label: string;
@@ -437,6 +439,14 @@ function hedgeLine(text: string): string {
   return line.replace(/。$/u, "") + "が、今回の睡眠に影響している可能性があります。";
 }
 
+function sleepRiskHintFromResult(result: AnalysisResult) {
+  return buildSleepRiskHint({
+    age: parseOptionalAge(result.age),
+    snoringNasal: result.snoringNasal,
+    // Profile V2 / 当日 nasalCongestion は CounselingReport の引数からは取得不可
+  });
+}
+
 function buildLifestyleConnection(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
@@ -446,7 +456,11 @@ function buildLifestyleConnection(
   );
   if (fromAi) return clampSentences(fromAi, 2);
 
-  const model = buildClientWellnessReport(result, lifestyle);
+  const model = buildClientWellnessReport(
+    result,
+    lifestyle,
+    sleepRiskHintFromResult(result),
+  );
   if (model.impactFactors.length > 0) {
     return model.impactFactors.slice(0, 3).map(hedgeLine).filter(Boolean).join("");
   }
@@ -553,7 +567,10 @@ function buildActions(
   }
   return model.priorityImprovements.slice(0, 3).map((item, index) => ({
     rank: index + 1,
-    what: stripReportNoise(item.action).replace(/ください。?$/u, ""),
+    what: stripReportNoise(item.action.trim() || item.title).replace(
+      /ください。?$/u,
+      "",
+    ),
     why: toClientLine(clampSentences(stripReportNoise(item.reason), 1)),
   }));
 }
@@ -562,7 +579,11 @@ export function buildCounselingReportContent(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
 ): CounselingReportContent {
-  const model = buildClientWellnessReport(result, lifestyle);
+  const model = buildClientWellnessReport(
+    result,
+    lifestyle,
+    sleepRiskHintFromResult(result),
+  );
   const goodPoints = model.goodPoints
     .map((item) => toClientLine(stripReportNoise(item)))
     .filter((item) => item && !isGenericPoint(item))

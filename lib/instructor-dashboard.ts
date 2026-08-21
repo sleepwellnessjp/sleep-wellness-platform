@@ -18,6 +18,8 @@ import {
   computeRecoveryIndex,
   type RecoveryIndexResult,
 } from "@/lib/recovery-index";
+import { buildSleepRiskHint } from "@/lib/sleep-risk-flag";
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
 
 export type InstructorTodayClient = {
   id: string;
@@ -671,6 +673,13 @@ export async function getInstructorDashboard(): Promise<InstructorDashboardData>
         restingHeartRate: analysis.metrics?.restingHeartRate,
         spo2: analysis.metrics?.spo2,
         respiratoryRate: analysis.metrics?.respiratoryRate,
+        riskHint: buildSleepRiskHint({
+          age: typeof client.age === "number" ? client.age : null,
+          snoringNasal: client.snoringNasal,
+        }),
+        awakeMinutes: parseDurationMinutes(
+          String(analysis.metrics?.awakenings ?? ""),
+        ),
       });
       if (!recovery.available) continue;
       latestAt = at;

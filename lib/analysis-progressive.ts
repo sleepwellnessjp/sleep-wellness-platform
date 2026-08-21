@@ -9,6 +9,8 @@ import {
 } from "@/lib/analysis-fast-path";
 import {
   AnalysisError,
+  clearExtractionDraft,
+  clearPendingAnalysisRequest,
   getPendingAnalysisRequest,
   hydrateAnalysisSession,
   peekPendingAnalysisImages,
@@ -16,6 +18,7 @@ import {
   setPendingAnalysisRequest,
   type AnalysisResult,
 } from "@/lib/analysis-session";
+import { buildDayContextFromLifestyle } from "@/lib/client-profiles/ai-input";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { saveAnalysisToRepository } from "@/lib/repositories/client-repository";
 import { userMessageFromUnknown } from "@/lib/data-access-errors";
@@ -192,6 +195,15 @@ export function startProgressiveAnalysisBackground(
       try {
         const persisted = await persistAndConsumeCredit(merged);
         persisted.contentStatus = "ready";
+        // クリア前に当日値を結果オブジェクトへ載せる（画面の②・⑩用）
+        const dayContext = buildDayContextFromLifestyle(
+          getPendingAnalysisRequest()?.lifestyle ?? null,
+        );
+        if (dayContext) {
+          persisted.dayContext = dayContext;
+        }
+        clearPendingAnalysisRequest();
+        clearExtractionDraft();
         hydrateAnalysisSession(persisted, {
           images: images.length > 0 ? images : undefined,
           notify: true,
@@ -199,6 +211,7 @@ export function startProgressiveAnalysisBackground(
         return persisted;
       } catch (saveError) {
         // 保存・クレジット失敗でも AI 本文は結果/PDF に残す（未ログイン時など）
+        // pending はクリアしない（day_context 再保存のため）
         console.error("Background analysis save failed:", saveError);
         merged.contentStatus = "ready";
         hydrateAnalysisSession(merged, {

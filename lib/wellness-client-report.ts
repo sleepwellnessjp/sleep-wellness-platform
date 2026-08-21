@@ -9,6 +9,13 @@ import type {
   ScoreStars,
 } from "@/lib/analysis-session";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
+import {
+  evaluateSleepRiskFlag,
+  formatElevatedBreathingReason,
+  type SleepRiskHint,
+} from "@/lib/sleep-risk-flag";
+
+export type { SleepRiskHint };
 
 export type LifestyleSnapshot = {
   alcohol?: string;
@@ -27,9 +34,54 @@ export type LifestyleSnapshot = {
   stress?: string;
 };
 
+/** day_context.formLifestyle → LifestyleSnapshot（旧レコードは null） */
+export function lifestyleSnapshotFromDayContext(
+  dayContext: { formLifestyle?: LifestyleSnapshot | null } | null | undefined,
+): LifestyleSnapshot | null {
+  const form = dayContext?.formLifestyle;
+  if (!form || typeof form !== "object") return null;
+  const snap: LifestyleSnapshot = {};
+  const assign = (key: keyof LifestyleSnapshot) => {
+    const v = form[key];
+    if (typeof v === "string" && v.trim()) snap[key] = v.trim();
+  };
+  assign("alcohol");
+  assign("alcoholDrank");
+  assign("caffeine");
+  assign("caffeineDone");
+  assign("bathing");
+  assign("yoga");
+  assign("yogaDone");
+  assign("pilates");
+  assign("pilatesDone");
+  assign("meals");
+  assign("otherExerciseDone");
+  assign("exercise");
+  assign("dinnerTime");
+  assign("stress");
+  return Object.keys(snap).length > 0 ? snap : null;
+}
+
+/**
+ * 当日生活習慣の解決順:
+ * 1. sessionStorage 由来の pending / draft
+ * 2. DB day_context（formLifestyle）
+ * 3. なし
+ */
+export function resolveLifestyleSnapshot(args: {
+  pending?: LifestyleSnapshot | null;
+  dayContext?: { formLifestyle?: LifestyleSnapshot | null } | null;
+}): LifestyleSnapshot | null {
+  if (args.pending && Object.keys(args.pending).length > 0) {
+    return args.pending;
+  }
+  return lifestyleSnapshotFromDayContext(args.dayContext);
+}
+
 export type LifestyleStarRow = {
   label: string;
-  stars: ScoreStars;
+  /** null = データ欠損（「—」表示）。カフェイン・飲酒の明示的な「なし」は ★5（良い） */
+  stars: ScoreStars | null;
 };
 
 export type ImprovementPoint = {
@@ -43,9 +95,39 @@ export type PriorityImprovement = {
   tierLabel: string;
   title: string;
   reason: string;
-  /** 今夜からできる具体的な行動（1つ） */
+  /** 今夜からできる具体的な行動（1つ）。空なら UI で非表示 */
   action: string;
+  /** 医療機関への相談を促す導線を表示するか（リスクフラグ昇格時のみ true） */
+  medicalReferral?: boolean;
 };
+
+/**
+ * AI improvements.text を見出し（1文目）と行動（2文目以降）に分割する。
+ * ルールパスの title/action には使わない。
+ */
+export function splitAiImprovementText(text: string): {
+  title: string;
+  action: string;
+} {
+  const trimmed = text.trim();
+  if (!trimmed) return { title: "", action: "" };
+
+  const match = /[。．]/.exec(trimmed);
+  if (!match || match.index == null) {
+    return { title: trimmed, action: "" };
+  }
+
+  const end = match.index + match[0].length;
+  const title = trimmed.slice(0, end).trim();
+  const action = trimmed.slice(end).trim();
+
+  // 1文のみ、または2文目が極端に短い場合は分割しない
+  if (!action || action.length < 10) {
+    return { title: trimmed, action: "" };
+  }
+
+  return { title, action };
+}
 
 export type MelatoninYogaDisplay = {
   phase: string;
@@ -92,6 +174,12 @@ export function formatStars(stars: ScoreStars): string {
   return `${"★".repeat(filled)}${"☆".repeat(5 - filled)}`;
 }
 
+/** 生活習慣評価用。データ欠損は「—」（未評価） */
+export function formatLifestyleStars(stars: ScoreStars | null): string {
+  if (stars == null) return "—";
+  return formatStars(stars);
+}
+
 function parsePercent(value?: string): number | null {
   if (!value?.trim()) return null;
   const match = value.match(/(\d+(?:\.\d+)?)\s*%/);
@@ -115,7 +203,15 @@ function parseMinutesRough(value?: string): number | null {
 function isAbsent(value?: string): boolean {
   const v = (value ?? "").trim();
   if (!v) return true;
-  return /なし|摂取なし|飲まない|していない|入浴していない|none/i.test(v);
+  // 「シャワーのみ」を「なし」扱いにしない（のみ ≠ なし）
+  if (/シャワー|湯船|半身浴/i.test(v) && !/入浴していない/i.test(v)) {
+    return false;
+  }
+  return (
+    /^(なし|無し|ない|none)$/i.test(v) ||
+    /摂取なし|飲まない|していない|入浴していない/i.test(v) ||
+    /なし$/i.test(v)
+  );
 }
 
 function isPresent(value?: string): boolean {
@@ -123,6 +219,56 @@ function isPresent(value?: string): boolean {
   if (!v) return false;
   if (isAbsent(v)) return false;
   return /あり|実施|飲んだ|摂取|湯船|シャワー|yes/i.test(v) || v.length > 0;
+}
+
+/** 入浴の種類。シャワーと「なし」は別状態 */
+export type BathingKind = "bath" | "shower" | "none" | "unknown";
+
+export function classifyBathing(text?: string | null): BathingKind | null {
+  const v = (text ?? "").trim();
+  if (!v) return null;
+  if (/入浴していない/i.test(v)) return "none";
+  if (/^(なし|無し|ない|none)$/i.test(v)) return "none";
+  if (/湯船|半身浴|\bbath\b/i.test(v)) return "bath";
+  if (/シャワー|shower/i.test(v)) return "shower";
+  return "unknown";
+}
+
+function parseClockMinutes(text?: string | null): number | null {
+  if (!text?.trim()) return null;
+  const m = text
+    .normalize("NFKC")
+    .match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** 入浴時刻テキスト（「時刻:22:00」等）と就寝時刻の差（分）。日跨ぎ対応 */
+export function bathingMinutesBeforeBed(
+  bathingText: string | null | undefined,
+  bedtime: string | null | undefined,
+): number | null {
+  const bathClock =
+    parseClockMinutes(bathingText?.match(/時刻\s*[:：]?\s*([0-9：:]+)/)?.[1]) ??
+    parseClockMinutes(bathingText);
+  const bedClock = parseClockMinutes(bedtime);
+  if (bathClock == null || bedClock == null) return null;
+  let gap = bedClock - bathClock;
+  if (gap < 0) gap += 24 * 60;
+  if (gap > 18 * 60) return null; // 異常値は無視
+  return gap;
+}
+
+/**
+ * 入浴が「不足寄り」か（湯船推奨に届いていない）。
+ * シャワーは「なし」ではないが、湯船不足としてアドバイス対象になり得る。
+ */
+function bathingNeedsImprovement(kind: BathingKind | null): boolean {
+  return kind === "none" || kind === "shower";
 }
 
 function alcoholLate(lifestyle?: LifestyleSnapshot): boolean {
@@ -142,22 +288,39 @@ function caffeineLate(lifestyle?: LifestyleSnapshot): boolean {
   return /1[5-9]:|2[0-3]:|夕方|夜|午後/.test(text) && !isAbsent(text);
 }
 
-function sleepStarsFromMetrics(
-  metrics: AnalysisMetrics,
-  breakdown: AnalysisResult["scoreBreakdown"],
-): ScoreStars {
+/**
+ * 睡眠の星 = 睡眠時間 × 睡眠負債（同じ測定 metrics）。
+ * どちらも欠損なら null（「—」）。scoreBreakdown は使わない。
+ */
+function sleepStarsFromMetrics(metrics: AnalysisMetrics): ScoreStars | null {
   const durationMin = parseMinutesRough(metrics.sleepDuration);
-  const efficiency = parsePercent(metrics.sleepEfficiency);
-  let score = breakdown.sleepDuration + breakdown.sleepEfficiency;
+  const debtRaw = parseMinutesRough(metrics.sleepDebt);
+  const debtMin = debtRaw == null ? null : Math.abs(debtRaw);
+
+  if (durationMin == null && debtMin == null) return null;
+
+  let durationStars: number | null = null;
   if (durationMin != null) {
-    if (durationMin >= 420) score += 1;
-    else if (durationMin < 300) score -= 1;
+    if (durationMin >= 420 && durationMin <= 540) durationStars = 5;
+    else if (durationMin >= 390) durationStars = 4;
+    else if (durationMin >= 360) durationStars = 3;
+    else if (durationMin >= 300) durationStars = 2;
+    else durationStars = 1;
   }
-  if (efficiency != null) {
-    if (efficiency >= 90) score += 1;
-    else if (efficiency < 80) score -= 1;
+
+  let debtStars: number | null = null;
+  if (debtMin != null) {
+    if (debtMin <= 15) debtStars = 5;
+    else if (debtMin <= 30) debtStars = 4;
+    else if (debtMin <= 60) debtStars = 3;
+    else if (debtMin <= 90) debtStars = 2;
+    else debtStars = 1;
   }
-  return clampStars(Math.round(score / 2));
+
+  if (durationStars != null && debtStars != null) {
+    return clampStars(Math.round((durationStars + debtStars) / 2));
+  }
+  return clampStars(durationStars ?? debtStars ?? 3);
 }
 
 function buildOverallComment(
@@ -283,15 +446,14 @@ function buildOverallComment(
       "遅い夕食による消化負担が深い休息を妨げた可能性があります",
     );
   }
-  const bath = lifestyle?.bathing ?? "";
-  if (
-    lifestyle?.bathing != null &&
-    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
-  ) {
+  const bathKind = classifyBathing(lifestyle?.bathing);
+  if (bathingNeedsImprovement(bathKind)) {
     lifestyleHints.push(
-      "入浴が十分でないと体温リズムの整えにくさに影響した可能性があります",
+      bathKind === "shower"
+        ? "シャワーのみだと体温リズムの整えにくさに影響した可能性があります"
+        : "入浴がないと体温リズムの整えにくさに影響した可能性があります",
     );
-  } else if (isPresent(bath) && /入浴|湯船|バス/i.test(bath)) {
+  } else if (bathKind === "bath") {
     lifestyleHints.push(
       "入浴習慣は入眠の助けになった可能性があります",
     );
@@ -326,7 +488,157 @@ function buildOverallComment(
     );
   }
 
-  return lines.slice(0, 5).join("\n");
+  return lines.join("\n");
+}
+
+/** ③表示と揃える SpO₂ 表示（数値＋%）。欠損時は null */
+function spo2DisplayMatchingMetrics(metrics: AnalysisMetrics): string | null {
+  const raw = metrics.spo2;
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  if (
+    !text ||
+    /^(未測定|取得できず|データなし|要確認|--|—|－|-|n\/a|na)$/i.test(text)
+  ) {
+    return null;
+  }
+  const p = parsePercent(text);
+  if (p == null) {
+    const leading = Number(text.replace(/[^\d.]/g, ""));
+    if (!Number.isFinite(leading)) return null;
+    const num = Number.isInteger(leading)
+      ? String(Math.round(leading))
+      : String(leading);
+    return `${num}%`;
+  }
+  const num = Number.isInteger(p) ? String(Math.round(p)) : String(p);
+  return `${num}%`;
+}
+
+const PRIORITY_OVERALL_CLOSING =
+  "改善優先順位で最優先の確認事項として整理しています。";
+
+/** 最優先トピックが AI summary 内で既に言及されているか */
+function priorityMetricAlreadyInSummary(
+  summary: string,
+  highest: PriorityImprovement,
+): boolean {
+  const title = highest.title;
+  const spo2Related =
+    Boolean(highest.medicalReferral) ||
+    /SpO|酸素|呼吸・酸素|呼吸・酸素の状態/i.test(title);
+  if (spo2Related) {
+    return /SpO[₂2]|酸素飽和|平均酸素/i.test(summary);
+  }
+  if (/睡眠時間/.test(title)) return /睡眠時間/.test(summary);
+  if (/HRV|心拍のゆらぎ/.test(title)) return /HRV|心拍のゆらぎ/.test(summary);
+  if (/睡眠効率/.test(title)) return /睡眠効率/.test(summary);
+  if (/入眠/.test(title)) return /入眠/.test(summary);
+  if (/覚醒/.test(title)) return /覚醒/.test(summary);
+  if (/ストレス/.test(title)) return /ストレス/.test(summary);
+  if (/飲酒/.test(title)) return /飲酒|アルコール/.test(summary);
+  if (/カフェイン/.test(title)) return /カフェイン/.test(summary);
+  // タイトル先頭の短い名詞が本文にあれば重複とみなす
+  const compact = title.replace(/\s+/g, "").slice(0, 8);
+  return compact.length >= 4 && summary.replace(/\s+/g, "").includes(compact);
+}
+
+/**
+ * ⑤最優先を①総合コメントへ穏やかに反映する文。
+ * 診断断定・原因推測・受診導線は書かない（⑤が単一の真実）。
+ * @param options.shorten 指標が AI summary に既出のとき、事実の再述を避けて短縮する
+ */
+export function buildHighestPriorityOverallSentence(
+  highest: PriorityImprovement,
+  metrics: AnalysisMetrics,
+  options?: { shorten?: boolean },
+): string {
+  const title = highest.title.trim().replace(/[。．]+$/u, "");
+  const shorten = options?.shorten === true;
+  const spo2Related =
+    Boolean(highest.medicalReferral) ||
+    /SpO|酸素|呼吸・酸素|呼吸・酸素の状態/i.test(title);
+
+  if (spo2Related) {
+    if (shorten) {
+      return `平均SpO₂を、${PRIORITY_OVERALL_CLOSING}`;
+    }
+    const spo2 = spo2DisplayMatchingMetrics(metrics);
+    if (spo2) {
+      const p = parsePercent(spo2);
+      if (p != null && p < 95) {
+        return `平均SpO₂は${spo2}で、一般的な目安（95%以上）を下回っています。${PRIORITY_OVERALL_CLOSING}`;
+      }
+      return `平均SpO₂は${spo2}です。${PRIORITY_OVERALL_CLOSING}`;
+    }
+    return `夜間の呼吸・酸素の状態を、${PRIORITY_OVERALL_CLOSING}`;
+  }
+
+  if (/睡眠時間/.test(title)) {
+    if (shorten) {
+      return `睡眠時間を、${PRIORITY_OVERALL_CLOSING}`;
+    }
+    const duration = String(metrics.sleepDuration ?? "").trim();
+    if (
+      duration &&
+      !/^(未測定|取得できず|データなし|要確認|--|—|－|-)$/i.test(duration)
+    ) {
+      return `睡眠時間は${duration}で、整えの余地が見られます。${PRIORITY_OVERALL_CLOSING}`;
+    }
+    return `睡眠時間を、${PRIORITY_OVERALL_CLOSING}`;
+  }
+
+  if (/HRV|心拍のゆらぎ/.test(title)) {
+    if (shorten) {
+      return `平均HRVを、${PRIORITY_OVERALL_CLOSING}`;
+    }
+    const hrv = String(metrics.hrv ?? "").trim();
+    if (hrv && !/^(未測定|要確認|--|—)$/i.test(hrv)) {
+      const withUnit = /ms/i.test(hrv) ? hrv : `${hrv}ms`;
+      return `平均HRVは${withUnit}です。${PRIORITY_OVERALL_CLOSING}`;
+    }
+  }
+
+  if (/睡眠効率/.test(title)) {
+    if (shorten) {
+      return `睡眠効率を、${PRIORITY_OVERALL_CLOSING}`;
+    }
+    const eff = String(metrics.sleepEfficiency ?? "").trim();
+    if (eff && !/^(未測定|要確認|--|—)$/i.test(eff)) {
+      const withPct = /%|％/.test(eff) ? eff.replace("％", "%") : `${eff}%`;
+      return `睡眠効率は${withPct}です。${PRIORITY_OVERALL_CLOSING}`;
+    }
+  }
+
+  if (shorten) {
+    const topic = title.length > 32 ? `${title.slice(0, 31)}…` : title;
+    return `「${topic}」は、${PRIORITY_OVERALL_CLOSING}`;
+  }
+
+  const topic = title.length > 48 ? `${title.slice(0, 47)}…` : title;
+  return `「${topic}」は、${PRIORITY_OVERALL_CLOSING}`;
+}
+
+function enrichOverallCommentWithHighestPriority(
+  base: string,
+  highest: PriorityImprovement | undefined,
+  metrics: AnalysisMetrics,
+): string {
+  const trimmed = base.trim();
+  if (!highest || !highest.title.trim()) return trimmed;
+
+  // 既に改善優先順位の最優先案内がある場合は二重追記しない
+  if (/改善優先順位で最優先|⑤で最優先/.test(trimmed)) return trimmed;
+
+  const shorten = priorityMetricAlreadyInSummary(trimmed, highest);
+  const sentence = buildHighestPriorityOverallSentence(highest, metrics, {
+    shorten,
+  });
+  if (!sentence) return trimmed;
+
+  if (!trimmed) return sentence;
+  // 最優先を先頭、AI summary / ルール本文をその後
+  return `${sentence}\n${trimmed}`;
 }
 
 function buildImpactFactors(
@@ -360,12 +672,21 @@ function buildImpactFactors(
     hits.push({ label: "深い睡眠不足", weight: 86 });
   }
 
-  const bath = lifestyle?.bathing ?? "";
-  if (
-    lifestyle?.bathing != null &&
-    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
-  ) {
+  const bathKind = classifyBathing(lifestyle?.bathing);
+  if (bathKind === "none") {
     hits.push({ label: "入浴なし", weight: 55 });
+  } else if (bathKind === "shower") {
+    const gap = bathingMinutesBeforeBed(
+      lifestyle?.bathing,
+      metrics.bedtime,
+    );
+    hits.push({
+      label:
+        gap != null && (gap < 60 || gap > 120)
+          ? "シャワーのみ（就寝との間隔が推奨から外れている）"
+          : "シャワーのみ",
+      weight: gap != null && (gap < 60 || gap > 120) ? 62 : 52,
+    });
   }
 
   if (
@@ -570,14 +891,13 @@ function collectImprovementCandidates(
     );
   }
 
-  const bath = lifestyle?.bathing ?? "";
-  if (
-    lifestyle?.bathing != null &&
-    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
-  ) {
+  const bathKind = classifyBathing(lifestyle?.bathing);
+  if (bathingNeedsImprovement(bathKind)) {
     push(
-      "湯船での入浴",
-      "入浴が十分でないと体温リズムが整いにくい可能性があります。",
+      bathKind === "shower" ? "湯船での入浴" : "湯船での入浴",
+      bathKind === "shower"
+        ? "シャワーのみのため、体温リズムが整いにくい可能性があります。"
+        : "入浴が十分でないと体温リズムが整いにくい可能性があります。",
       "就寝90分前に湯船へ入ってください。",
       58,
     );
@@ -601,9 +921,66 @@ function buildImprovements(
     .map(({ title, reason }) => ({ title, reason }));
 }
 
+/** リスクフラグ昇格処理を PriorityImprovement 配列に適用するヘルパー */
+function applyBreathingRiskElevation(
+  items: PriorityImprovement[],
+  result: AnalysisResult,
+  hint?: SleepRiskHint,
+): PriorityImprovement[] {
+  const tiers = [
+    { tier: "highest" as const, tierLabel: "最優先" },
+    { tier: "next" as const, tierLabel: "次に改善" },
+    { tier: "optional" as const, tierLabel: "余裕があれば" },
+  ];
+
+  const spo2Num = parsePercent(result.metrics.spo2);
+  const awakeMin = parseMinutesRough(result.metrics.awakenings);
+  const riskFlag = evaluateSleepRiskFlag({
+    avgSpo2: spo2Num,
+    snoring: hint?.snoring ?? null,
+    nasalCongestion: hint?.nasalCongestion ?? null,
+    awakeMinutes: awakeMin,
+    age: hint?.age ?? null,
+  });
+
+  if (!riskFlag.isElevated) return items;
+
+  const elevatedReason = formatElevatedBreathingReason(riskFlag.displayReasons);
+
+  // ImprovementItem に metric キーが無いため文字列マッチ。
+  // 「呼吸」単独は入眠潜時等に誤マッチするため除外し、SpO₂ / 酸素のみ対象。
+  const SPO2_KEYWORDS = /SpO|酸素/i;
+  const existingIdx = items.findIndex((item) => SPO2_KEYWORDS.test(item.title));
+  const breathingItem: PriorityImprovement =
+    existingIdx >= 0
+      ? {
+          ...items[existingIdx]!,
+          tier: "highest",
+          tierLabel: "最優先",
+          reason: elevatedReason,
+          medicalReferral: true,
+        }
+      : {
+          tier: "highest",
+          tierLabel: "最優先",
+          title: "呼吸・酸素の状態確認",
+          reason: elevatedReason,
+          action: "医療機関での睡眠相談をご検討ください。",
+          medicalReferral: true,
+        };
+
+  const rest = items
+    .filter((_, i) => i !== existingIdx)
+    .slice(0, 2)
+    .map((item, i) => ({ ...item, ...tiers[i + 1]! }));
+
+  return [breathingItem, ...rest];
+}
+
 function buildPriorityImprovements(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot,
+  hint?: SleepRiskHint,
 ): PriorityImprovement[] {
   const tiers = [
     { tier: "highest" as const, tierLabel: "最優先" },
@@ -614,23 +991,29 @@ function buildPriorityImprovements(
 
   // 該当しない項目は無理に埋めない（0件のときのみ、維持の1件を出す）
   if (candidates.length === 0) {
-    return [
-      {
-        ...tiers[0],
-        title: "良い習慣の継続",
-        reason:
-          "大きな乱れは目立たないため、現状のリズムを維持することが安定につながる可能性があります。",
-        action: "就寝・起床時刻をできるだけそろえてください。",
-      },
-    ];
+    return applyBreathingRiskElevation(
+      [
+        {
+          ...tiers[0],
+          title: "良い習慣の継続",
+          reason:
+            "大きな乱れは目立たないため、現状のリズムを維持することが安定につながる可能性があります。",
+          action: "就寝・起床時刻をできるだけそろえてください。",
+        },
+      ],
+      result,
+      hint,
+    );
   }
 
-  return candidates.map((item, index) => ({
+  const items: PriorityImprovement[] = candidates.map((item, index) => ({
     ...tiers[index]!,
     title: item.title,
     reason: item.reason,
     action: item.action,
   }));
+
+  return applyBreathingRiskElevation(items, result, hint);
 }
 
 function buildMelatoninYoga(
@@ -737,11 +1120,8 @@ function buildTodaysActions(
     push("夕食は就寝の3時間前までに終える");
   }
 
-  const bath = lifestyle?.bathing ?? "";
-  if (
-    lifestyle?.bathing != null &&
-    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
-  ) {
+  const bathKind = classifyBathing(lifestyle?.bathing);
+  if (bathingNeedsImprovement(bathKind)) {
     push("39〜40℃で15分入浴する");
   }
 
@@ -790,66 +1170,187 @@ function buildLifestyleStars(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot,
 ): LifestyleStarRow[] {
-  const sleep = sleepStarsFromMetrics(result.metrics, result.scoreBreakdown);
+  const sleep = sleepStarsFromMetrics(result.metrics);
 
-  let meals: ScoreStars = 3;
-  const mealsText = lifestyle?.meals ?? "";
-  if (!mealsText.trim()) meals = 3;
-  else if (/食べていない/.test(mealsText) && /朝食|昼食/.test(mealsText)) meals = 2;
-  else if (lateDinner(lifestyle)) meals = 2;
-  else if (/朝食.*食べた|昼食.*食べた|夕食.*食べた/.test(mealsText)) meals = 4;
-
-  let exercise: ScoreStars = 3;
-  if (
-    lifestyle?.otherExerciseDone === "yes" ||
-    isPresent(lifestyle?.exercise) ||
-    (result.exerciseHabit && !isAbsent(result.exerciseHabit))
-  ) {
-    exercise = 4;
-  } else if (
-    lifestyle?.otherExerciseDone === "none" ||
-    isAbsent(lifestyle?.exercise)
-  ) {
-    exercise = 2;
+  // 当日スナップショット自体が無い（過去レコード等）→ 睡眠以外は未評価
+  if (!lifestyle) {
+    return [
+      { label: "睡眠", stars: sleep },
+      { label: "食事", stars: null },
+      { label: "運動", stars: null },
+      { label: "ヨガ", stars: null },
+      { label: "ピラティス", stars: null },
+      { label: "カフェイン", stars: null },
+      { label: "飲酒", stars: null },
+      { label: "入浴", stars: null },
+    ];
   }
 
-  let yoga: ScoreStars = 3;
-  if (lifestyle?.yogaDone === "yes" || isPresent(lifestyle?.yoga)) yoga = 5;
-  else if (lifestyle?.yogaDone === "none" || isAbsent(lifestyle?.yoga)) yoga = 2;
+  const hasText = (value?: string) => Boolean(value?.trim());
+  /** 空文字は欠損。明示的な「なし」のみ true */
+  const recordedAbsent = (value?: string) => {
+    const v = (value ?? "").trim();
+    if (!v) return false;
+    return (
+      /^(なし|無し|ない|none)$/i.test(v) ||
+      /摂取なし|飲まない|していない|入浴していない/i.test(v)
+    );
+  };
 
-  let pilates: ScoreStars = 3;
-  if (lifestyle?.pilatesDone === "yes" || isPresent(lifestyle?.pilates)) {
-    pilates = 5;
-  } else if (
-    lifestyle?.pilatesDone === "none" ||
-    isAbsent(lifestyle?.pilates)
-  ) {
-    pilates = 2;
+  const yogaDone =
+    lifestyle.yogaDone === "yes" || isPresent(lifestyle.yoga);
+  const yogaNone =
+    lifestyle.yogaDone === "none" || recordedAbsent(lifestyle.yoga);
+  const pilatesDone =
+    lifestyle.pilatesDone === "yes" || isPresent(lifestyle.pilates);
+  const pilatesNone =
+    lifestyle.pilatesDone === "none" || recordedAbsent(lifestyle.pilates);
+  const otherDone =
+    lifestyle.otherExerciseDone === "yes" || isPresent(lifestyle.exercise);
+  const otherNone =
+    lifestyle.otherExerciseDone === "none" ||
+    recordedAbsent(lifestyle.exercise);
+
+  let meals: ScoreStars | null = null;
+  const mealsText = lifestyle.meals ?? "";
+  if (hasText(mealsText)) {
+    if (/食べていない/.test(mealsText) && /朝食|昼食/.test(mealsText)) {
+      meals = 2;
+    } else if (lateDinner(lifestyle)) {
+      meals = 2;
+    } else if (/朝食.*食べた|昼食.*食べた|夕食.*食べた/.test(mealsText)) {
+      meals = 4;
+    } else {
+      meals = 3;
+    }
   }
 
-  let caffeine: ScoreStars = 4;
-  if (isAbsent(lifestyle?.caffeine) || lifestyle?.caffeineDone === "none") {
+  /** ヨガ・ピラティス・その他運動を同一入力から評価（矛盾しないよう統合） */
+  let exercise: ScoreStars | null = null;
+  if (yogaDone || pilatesDone || otherDone) {
+    const practicedCount = [yogaDone, pilatesDone, otherDone].filter(
+      Boolean,
+    ).length;
+    exercise = practicedCount >= 2 ? 5 : yogaDone || pilatesDone ? 5 : 4;
+  } else if (yogaNone || pilatesNone || otherNone) {
+    // いずれかが明示「なし」で実施なし → 低評価（全部未記入は欠損）
+    const anySignal =
+      yogaNone ||
+      pilatesNone ||
+      otherNone ||
+      hasText(lifestyle.yoga) ||
+      hasText(lifestyle.pilates) ||
+      hasText(lifestyle.exercise) ||
+      Boolean(lifestyle.yogaDone) ||
+      Boolean(lifestyle.pilatesDone) ||
+      Boolean(lifestyle.otherExerciseDone);
+    exercise = anySignal && !yogaDone && !pilatesDone && !otherDone ? 2 : null;
+  }
+
+  let yoga: ScoreStars | null = null;
+  if (yogaDone) yoga = 5;
+  else if (yogaNone) yoga = 2;
+  else if (hasText(lifestyle.yoga) || lifestyle.yogaDone) yoga = 3;
+
+  let pilates: ScoreStars | null = null;
+  if (pilatesDone) pilates = 5;
+  else if (pilatesNone) pilates = 2;
+  else if (hasText(lifestyle.pilates) || lifestyle.pilatesDone) pilates = 3;
+
+  let caffeine: ScoreStars | null = null;
+  if (lifestyle.caffeineDone === "none" || recordedAbsent(lifestyle.caffeine)) {
     caffeine = 5;
   } else if (caffeineLate(lifestyle)) {
     caffeine = 2;
-  } else if (isPresent(lifestyle?.caffeine)) {
+  } else if (isPresent(lifestyle.caffeine) || lifestyle.caffeineDone === "yes") {
     caffeine = 3;
+  } else if (hasText(lifestyle.caffeine) || lifestyle.caffeineDone) {
+    caffeine = 4;
   }
 
-  let alcohol: ScoreStars = 4;
-  if (isAbsent(lifestyle?.alcohol) || lifestyle?.alcoholDrank === "none") {
+  let alcohol: ScoreStars | null = null;
+  if (lifestyle.alcoholDrank === "none" || recordedAbsent(lifestyle.alcohol)) {
     alcohol = 5;
   } else if (alcoholLate(lifestyle)) {
     alcohol = 2;
-  } else if (isPresent(lifestyle?.alcohol)) {
+  } else if (isPresent(lifestyle.alcohol) || lifestyle.alcoholDrank === "yes") {
     alcohol = 3;
+  } else if (hasText(lifestyle.alcohol) || lifestyle.alcoholDrank) {
+    alcohol = 4;
   }
 
-  let bathing: ScoreStars = 3;
-  const bath = lifestyle?.bathing ?? "";
-  if (/湯船|bath/i.test(bath)) bathing = 5;
-  else if (/シャワー|shower/i.test(bath)) bathing = 4;
-  else if (/入浴していない|なし|none/i.test(bath)) bathing = 2;
+  let bathing: ScoreStars | null = null;
+  const bathKind = classifyBathing(lifestyle.bathing);
+  if (bathKind != null) {
+    const gap = bathingMinutesBeforeBed(
+      lifestyle.bathing,
+      result.metrics.bedtime,
+    );
+    // 推奨: 就寝 60〜90 分前の湯船
+    const inIdealWindow = gap != null && gap >= 60 && gap <= 90;
+    const nearWindow = gap != null && gap >= 45 && gap <= 120;
+    if (bathKind === "bath") {
+      if (inIdealWindow) bathing = 5;
+      else if (nearWindow) bathing = 4;
+      else if (gap != null) bathing = 3;
+      else bathing = 4; // 湯船だが時刻不明
+    } else if (bathKind === "shower") {
+      if (inIdealWindow) bathing = 3;
+      else if (nearWindow) bathing = 2;
+      else if (gap != null) bathing = 2; // 推奨から外れたシャワー
+      else bathing = 3; // シャワー・時刻不明
+    } else if (bathKind === "none") {
+      bathing = 1;
+    } else {
+      bathing = 3;
+    }
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    console.debug("[lifestyle-stars] sources", {
+      sleep: {
+        sleepDuration: result.metrics.sleepDuration,
+        sleepDebt: result.metrics.sleepDebt,
+        stars: sleep,
+      },
+      meals: { meals: lifestyle.meals, dinnerTime: lifestyle.dinnerTime, stars: meals },
+      exercise: {
+        yogaDone: lifestyle.yogaDone,
+        yoga: lifestyle.yoga,
+        pilatesDone: lifestyle.pilatesDone,
+        pilates: lifestyle.pilates,
+        otherExerciseDone: lifestyle.otherExerciseDone,
+        exercise: lifestyle.exercise,
+        stars: exercise,
+      },
+      yoga: { yogaDone: lifestyle.yogaDone, yoga: lifestyle.yoga, stars: yoga },
+      pilates: {
+        pilatesDone: lifestyle.pilatesDone,
+        pilates: lifestyle.pilates,
+        stars: pilates,
+      },
+      caffeine: {
+        caffeineDone: lifestyle.caffeineDone,
+        caffeine: lifestyle.caffeine,
+        stars: caffeine,
+      },
+      alcohol: {
+        alcoholDrank: lifestyle.alcoholDrank,
+        alcohol: lifestyle.alcohol,
+        stars: alcohol,
+      },
+      bathing: {
+        bathing: lifestyle.bathing,
+        bedtime: result.metrics.bedtime,
+        kind: bathKind,
+        gapMin: bathingMinutesBeforeBed(
+          lifestyle.bathing,
+          result.metrics.bedtime,
+        ),
+        stars: bathing,
+      },
+    });
+  }
 
   return [
     { label: "睡眠", stars: sleep },
@@ -874,6 +1375,7 @@ export function buildMelatoninYogaPrescription(
 export function buildClientWellnessReport(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
+  hint?: SleepRiskHint,
 ): ClientWellnessReportModel {
   const snap = lifestyle ?? undefined;
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
@@ -898,24 +1400,45 @@ export function buildClientWellnessReport(
   ];
   const fromAiPriority: PriorityImprovement[] = aiImprovements
     .slice(0, 3)
-    .map((item, index) => ({
-      ...tiers[index]!,
-      title: item.text.trim().slice(0, 40),
-      reason: (item.whyNow ?? "").trim() || "今回の測定データから優先しています。",
-      action: item.text.trim(),
-    }));
+    .map((item, index) => {
+      const { title, action } = splitAiImprovementText(item.text);
+      return {
+        ...tiers[index]!,
+        title,
+        reason:
+          (item.whyNow ?? "").trim() ||
+          "今回の測定データから優先しています。",
+        action,
+      };
+    });
+
+  const rawPriority =
+    fromAiPriority.length > 0
+      ? fromAiPriority
+      : buildPriorityImprovements(result, snap, hint);
+
+  const priorityImprovements = applyBreathingRiskElevation(
+    rawPriority,
+    result,
+    hint,
+  );
+  const highestPriority =
+    priorityImprovements.find((item) => item.tier === "highest") ??
+    priorityImprovements[0];
+  const baseOverallComment = aiSummary || buildOverallComment(result, snap);
 
   return {
     score,
     stars,
-    overallComment: aiSummary || buildOverallComment(result, snap),
+    overallComment: enrichOverallCommentWithHighestPriority(
+      baseOverallComment,
+      highestPriority,
+      result.metrics,
+    ),
     impactFactors: buildImpactFactors(result, snap),
     goodPoints: aiGood.length > 0 ? aiGood : buildGoodPoints(result, snap),
     improvements: buildImprovements(result, snap),
-    priorityImprovements:
-      fromAiPriority.length > 0
-        ? fromAiPriority
-        : buildPriorityImprovements(result, snap),
+    priorityImprovements,
     melatoninYoga,
     todaysActions:
       (result.todaysRecommendations ?? []).filter(Boolean).slice(0, 3).length > 0

@@ -515,13 +515,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  /* Closed Beta Chrome（右下）とモバイルタブバーが主操作を隠さないよう余白を確保 */
+  /* Closed Beta Chrome（右下）とモバイル〜タブレットのタブバーが主操作を隠さないよう余白を確保 */
   padding-bottom: calc(
     var(--sw-sleep-tabbar-clearance) + 3.5rem
   );
 }
 
-@media (min-width: 640px) {
+@media (min-width: 1024px) {
   body {
     padding-bottom: calc(
       var(--sw-beta-chrome-offset) + env(safe-area-inset-bottom, 0px)
@@ -535,7 +535,7 @@ body {
   padding-bottom: calc(var(--sw-sleep-tabbar-clearance) + 0.75rem);
 }
 
-@media (min-width: 640px) {
+@media (min-width: 1024px) {
   [data-beta-chrome] {
     z-index: 70;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));

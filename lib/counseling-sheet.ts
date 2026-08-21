@@ -5,7 +5,11 @@
  */
 
 import type { AnalysisResult } from "@/lib/analysis-session";
-import type { LifestyleSnapshot } from "@/lib/wellness-client-report";
+import type { LifestyleSnapshot, SleepRiskHint } from "@/lib/wellness-client-report";
+import {
+  evaluateSleepRiskFlag,
+  formatElevatedBreathingReason,
+} from "@/lib/sleep-risk-flag";
 
 export type CounselingImpactFactor = {
   /** 短い見出し（任意表示） */
@@ -23,6 +27,8 @@ export type CounselingPriorityItem = {
   reason: string;
   /** 今日やること */
   action: string;
+  /** 医療機関への相談を促す導線を表示するか（リスクフラグ昇格時のみ true） */
+  medicalReferral?: boolean;
 };
 
 /** AIから認定講師への提案（4ブロック） */
@@ -83,7 +89,14 @@ function num(value: string | number | null | undefined): number | null {
 function isAbsent(value?: string): boolean {
   const v = (value ?? "").trim();
   if (!v) return true;
-  return /なし|摂取なし|飲まない|していない|入浴していない|none/i.test(v);
+  if (/シャワー|湯船|半身浴/i.test(v) && !/入浴していない/i.test(v)) {
+    return false;
+  }
+  return (
+    /^(なし|無し|ない|none)$/i.test(v) ||
+    /摂取なし|飲まない|していない|入浴していない/i.test(v) ||
+    /なし$/i.test(v)
+  );
 }
 
 function isPresent(value?: string): boolean {
@@ -357,14 +370,27 @@ function buildImpactFactors(
   }
 
   const bath = lifestyle?.bathing ?? "";
-  if (
-    lifestyle?.bathing != null &&
-    (/入浴していない|なし|none|シャワーのみ/i.test(bath) || isAbsent(bath))
-  ) {
+  const bathKind = (() => {
+    const v = bath.trim();
+    if (!v) return null;
+    if (/入浴していない/i.test(v) || /^(なし|無し|ない|none)$/i.test(v)) {
+      return "none" as const;
+    }
+    if (/湯船|半身浴|\bbath\b/i.test(v)) return "bath" as const;
+    if (/シャワー|shower/i.test(v)) return "shower" as const;
+    return "unknown" as const;
+  })();
+  if (bathKind === "none") {
     hits.push({
-      label: "入浴不足",
-      reason: "入浴が十分でないと体温リズムが整いにくく、入眠に影響した可能性があります。",
+      label: "入浴なし",
+      reason: "入浴がないと体温リズムが整いにくく、入眠に影響した可能性があります。",
       weight: 55,
+    });
+  } else if (bathKind === "shower") {
+    hits.push({
+      label: "シャワーのみ",
+      reason: "シャワーのみのため、湯船と比べて体温リズムが整いにくい可能性があります。",
+      weight: 52,
     });
   }
 
@@ -513,9 +539,69 @@ function splitReasonAndAction(
   };
 }
 
+/** リスクフラグ昇格処理を CounselingPriorityItem 配列に適用するヘルパー */
+function applyBreathingRiskElevationCounseling(
+  items: CounselingPriorityItem[],
+  result: AnalysisResult,
+  hint?: SleepRiskHint,
+): CounselingPriorityItem[] {
+  const tiers: Array<{
+    tier: CounselingPriorityItem["tier"];
+    tierLabel: CounselingPriorityItem["tierLabel"];
+  }> = [
+    { tier: "highest", tierLabel: "最優先" },
+    { tier: "next", tierLabel: "次に改善" },
+    { tier: "optional", tierLabel: "余裕があれば" },
+  ];
+
+  const spo2Num = parsePercent(result.metrics.spo2);
+  const awakeMin = parseMinutesRough(result.metrics.awakenings);
+  const riskFlag = evaluateSleepRiskFlag({
+    avgSpo2: spo2Num,
+    snoring: hint?.snoring ?? null,
+    nasalCongestion: hint?.nasalCongestion ?? null,
+    awakeMinutes: awakeMin,
+    age: hint?.age ?? null,
+  });
+
+  if (!riskFlag.isElevated) return items;
+
+  const elevatedReason = formatElevatedBreathingReason(riskFlag.displayReasons);
+
+  // ImprovementItem に metric キーが無いため文字列マッチ。
+  // 「呼吸」単独は入眠潜時等に誤マッチするため除外し、SpO₂ / 酸素のみ対象。
+  const SPO2_KEYWORDS = /SpO|酸素/i;
+  const existingIdx = items.findIndex((item) => SPO2_KEYWORDS.test(item.content));
+  const breathingItem: CounselingPriorityItem =
+    existingIdx >= 0
+      ? {
+          ...items[existingIdx]!,
+          tier: "highest",
+          tierLabel: "最優先",
+          reason: elevatedReason,
+          medicalReferral: true,
+        }
+      : {
+          tier: "highest",
+          tierLabel: "最優先",
+          content: "呼吸・酸素の状態確認",
+          reason: elevatedReason,
+          action: "医療機関での睡眠相談をご検討ください。",
+          medicalReferral: true,
+        };
+
+  const rest = items
+    .filter((_, i) => i !== existingIdx)
+    .slice(0, 2)
+    .map((item, i) => ({ ...item, ...tiers[i + 1]! }));
+
+  return [breathingItem, ...rest];
+}
+
 function buildPriorities(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
+  hint?: SleepRiskHint,
 ): CounselingPriorityItem[] {
   const tiers: Array<{
     tier: CounselingPriorityItem["tier"];
@@ -634,22 +720,28 @@ function buildPriorities(
   const top = cands.slice(0, 3);
 
   if (top.length === 0) {
-    return [
-      {
-        ...tiers[0]!,
-        content: "良い習慣の継続",
-        reason: "大きな乱れは目立たないため、現状のリズム維持が安定につながります。",
-        action: "就寝・起床時刻をできるだけそろえてください。",
-      },
-    ];
+    return applyBreathingRiskElevationCounseling(
+      [
+        {
+          ...tiers[0]!,
+          content: "良い習慣の継続",
+          reason: "大きな乱れは目立たないため、現状のリズム維持が安定につながります。",
+          action: "就寝・起床時刻をできるだけそろえてください。",
+        },
+      ],
+      result,
+      hint,
+    );
   }
 
-  return top.map((item, index) => ({
+  const items = top.map((item, index) => ({
     ...tiers[index]!,
     content: item.content,
     reason: item.reason,
     action: item.action,
   }));
+
+  return applyBreathingRiskElevationCounseling(items, result, hint);
 }
 
 function buildInstructorBlocks(
@@ -739,8 +831,9 @@ function uniqueQuestions(items: string[]): string[] {
 export function buildCounselingSheetModel(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
+  hint?: SleepRiskHint,
 ): CounselingSheetModel {
-  const priorities = buildPriorities(result, lifestyle);
+  const priorities = buildPriorities(result, lifestyle, hint);
   const impactFactors = buildImpactFactors(result, lifestyle);
   const sessionTheme = buildSessionTheme(result, priorities[0], lifestyle);
   const instructorBlocks = buildInstructorBlocks(result, priorities, lifestyle);

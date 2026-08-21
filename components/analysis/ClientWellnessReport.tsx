@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import {
   buildClientWellnessReport,
   formatStars,
+  formatLifestyleStars,
   type LifestyleSnapshot,
 } from "@/lib/wellness-client-report";
+import { buildSleepRiskHint, MEDICAL_REFERRAL_NOTICE } from "@/lib/sleep-risk-flag";
+import { parseOptionalAge } from "@/lib/client-profile";
 import type { AnalysisResult } from "@/lib/analysis-session";
 
 const NAVY = "#071426";
@@ -192,7 +195,13 @@ export function ClientWellnessReportSections({
   lifestyle?: LifestyleSnapshot | null;
   includeInstructorComment?: boolean;
 }) {
-  const model = buildClientWellnessReport(result, lifestyle);
+  const hint = buildSleepRiskHint({
+    age: parseOptionalAge(result.age),
+    snoringNasal: result.snoringNasal,
+    // Profile V2 の snoring / nasalCongestionHabitual、当日 nasalCongestion は
+    // このコンポーネントの props からは取得不可
+  });
+  const model = buildClientWellnessReport(result, lifestyle, hint);
 
   return (
     <div className="report-client-wellness mt-6 space-y-5 sm:mt-8 sm:space-y-6">
@@ -360,10 +369,17 @@ export function ClientWellnessReportSections({
                 <span className="font-semibold text-slate-700">理由：</span>
                 {item.reason}
               </p>
-              <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
-                <span className="font-semibold text-slate-700">行動：</span>
-                {item.action}
-              </p>
+              {item.action.trim() ? (
+                <p className="mt-1.5 text-[13px] leading-6 text-slate-600 sm:text-[14px] sm:leading-7">
+                  <span className="font-semibold text-slate-700">行動：</span>
+                  {item.action}
+                </p>
+              ) : null}
+              {item.medicalReferral ? (
+                <p className="mt-3 rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2 text-[11px] leading-5 text-slate-500 sm:text-[12px] sm:leading-6">
+                  {MEDICAL_REFERRAL_NOTICE}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -455,6 +471,9 @@ export function ClientWellnessReportSections({
       {/* ⑥ 生活習慣評価 */}
       <ReportCard>
         <SectionLabel title="⑥ 生活習慣評価" eyebrow="LIFESTYLE" />
+        <p className="mb-3 text-[13px] leading-6 text-slate-500 sm:text-[14px]">
+          ★が多いほど、今回の睡眠にとって良い状態です。
+        </p>
         <ul className="mt-1 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {model.lifestyleStars.map((row) => (
             <li
@@ -469,10 +488,16 @@ export function ClientWellnessReportSections({
               </span>
               <span
                 className="text-[15px] tracking-[0.1em] sm:text-[16px]"
-                style={{ color: GOLD }}
-                aria-label={`${row.label} ${row.stars}つ星`}
+                style={{
+                  color: row.stars == null ? "#94a3b8" : GOLD,
+                }}
+                aria-label={
+                  row.stars == null
+                    ? `${row.label} 記録なし`
+                    : `${row.label} ${row.stars}つ星`
+                }
               >
-                {formatStars(row.stars)}
+                {formatLifestyleStars(row.stars)}
               </span>
             </li>
           ))}

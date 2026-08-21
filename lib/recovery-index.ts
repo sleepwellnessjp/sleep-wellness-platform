@@ -5,6 +5,10 @@
  */
 
 import { parseDurationMinutes, parseLeadingNumber } from "@/lib/soxai-graphs";
+import {
+  evaluateSleepRiskFlag,
+  type SleepRiskHint,
+} from "@/lib/sleep-risk-flag";
 
 export type RecoveryLevel =
   | "excellent"
@@ -12,6 +16,24 @@ export type RecoveryLevel =
   | "mild_fatigue"
   | "fatigue"
   | "insufficient";
+
+/** カード上の算出範囲ラベル（UI 共通） */
+export const RECOVERY_INDEX_COMPOSITION_LABEL =
+  "HRV・安静時心拍・呼吸・睡眠を総合した指標";
+
+/** why / 主算出に使う8指標（Readiness 参考は含めない） */
+const CORE_METRIC_KEYS = [
+  "hrv",
+  "restingHeartRate",
+  "sleepDuration",
+  "deepSleep",
+  "sleepEfficiency",
+  "stress",
+  "spo2",
+  "respiratoryRate",
+] as const;
+
+type CoreMetricKey = (typeof CORE_METRIC_KEYS)[number];
 
 export type RecoveryIndexResult =
   | {
@@ -37,6 +59,9 @@ export type RecoveryIndexResult =
       restingHeartRateBpm: number;
       accent: string;
       accentSoft: string;
+      /** evaluateSleepRiskFlag().isElevated */
+      riskFlagElevated: boolean;
+      compositionLabel: string;
     };
 
 export type RecoveryIndexInput = {
@@ -53,6 +78,10 @@ export type RecoveryIndexInput = {
    * 未指定時は従来どおり（SOXAI 互換）。指定時のみ重み再配分に参加。
    */
   readinessScore?: string | number | null;
+  /** リスクフラグ用（いびき・鼻閉・年齢） */
+  riskHint?: SleepRiskHint | null;
+  /** リスクフラグ用・覚醒時間（分）。metrics.awakenings から呼び出し側で渡す */
+  awakeMinutes?: number | null;
 };
 
 /** 合計 1.0。睡眠時間は 10% に抑え、他指標でバランスを取る */
@@ -241,70 +270,93 @@ const LEVEL_META: Record<
   },
 };
 
+const RISK_CAP_SUMMARY =
+  "回復の土台は保てていますが、確認をおすすめする項目があります";
+
+/**
+ * 1文目: HRV と安静時心拍を必ず言及。
+ * 2文目: 8指標のうち最も弱いもの（best は使わない）。
+ */
 function buildWhy(parts: {
-  scores: Array<{ key: string; score: number; label: string }>;
+  coreScores: Array<{ key: CoreMetricKey; score: number; label: string }>;
   hrvMs: number;
   rhrBpm: number;
 }): string[] {
-  const sorted = [...parts.scores].sort((a, b) => b.score - a.score);
-  const best = sorted[0];
-  const weak = [...parts.scores].sort((a, b) => a.score - b.score)[0];
-  const lines: string[] = [];
-  if (best) {
-    lines.push(`${best.label}が回復を支える前向きな要素です。`);
-  }
-  if (weak && weak.score < 70) {
+  const lines: string[] = [
+    `HRV（${Math.round(parts.hrvMs)} ms）と安静時心拍（${Math.round(parts.rhrBpm)} bpm）を軸に、呼吸・睡眠指標を総合して判定しています。`,
+  ];
+
+  const weak = [...parts.coreScores].sort((a, b) => a.score - b.score)[0];
+  if (weak) {
     lines.push(
       `一方で${weak.label}に整え余地があり、総合的な回復指数に反映しています。`,
-    );
-  } else {
-    lines.push(
-      `HRV（${Math.round(parts.hrvMs)} ms）と安静時心拍（${Math.round(parts.rhrBpm)} bpm）を含む複数指標で総合判定しています。`,
     );
   }
   return lines.slice(0, 2);
 }
 
-function buildAdvice(level: RecoveryLevel): {
+/** 中立な食事助言（良好前提の断定を避ける） */
+const NUTRITION_NEUTRAL =
+  "食事の内容と就寝までの間隔を意識し、負担の少ない選択を検討してください。";
+
+function buildAdvice(
+  level: RecoveryLevel,
+  sleepDurationMinutes: number | null,
+): {
   exercise: string;
   sleep: string;
   nutrition: string;
   stress: string;
 } {
+  const shortSleep =
+    sleepDurationMinutes != null && sleepDurationMinutes < 6 * 60;
+
+  const sleepForGoodOrExcellent = shortSleep
+    ? "睡眠時間が短めのため、今夜は15〜30分早めの就寝を検討してください。"
+    : level === "excellent"
+      ? "良いリズムを維持。就寝・起床時刻のばらつきを小さく保ちましょう。"
+      : "睡眠時間の確保と、就寝前の画面時間を控えめにすることを意識してください。";
+
   switch (level) {
     case "excellent":
       return {
         exercise: "通常〜やや高めの強度でも問題ありません。感覚を大切に調整を。",
-        sleep: "良いリズムを維持。就寝・起床時刻のばらつきを小さく保ちましょう。",
-        nutrition: "水分とたんぱく質を意識し、回復を支える食事を続けてください。",
+        sleep: sleepForGoodOrExcellent,
+        nutrition: NUTRITION_NEUTRAL,
         stress: "好調な日こそ短時間の呼吸リセットで余力を温存しましょう。",
       };
     case "good":
       return {
         exercise: "予定通りの運動で大丈夫です。疲労感が出たら強度を一段下げて。",
-        sleep: "いつも通りの睡眠時間を確保し、就寝前の画面時間を控えめに。",
-        nutrition: "バランスの良い食事と十分な水分補給を続けてください。",
+        sleep: sleepForGoodOrExcellent,
+        nutrition: NUTRITION_NEUTRAL,
         stress: "軽いストレッチや深呼吸で副交感神経をサポートしましょう。",
       };
     case "mild_fatigue":
       return {
         exercise: "高強度は控え、有酸素やヨガなど中〜低強度を中心に。",
-        sleep: "今夜はいつもより15〜30分早めの就寝を検討してください。",
-        nutrition: "消化の良い夕食と、就寝3時間前までの食事を意識して。",
+        sleep: shortSleep
+          ? "睡眠時間が短めのため、今夜は15〜30分早めの就寝を検討してください。"
+          : "今夜はいつもより15〜30分早めの就寝を検討してください。",
+        nutrition: NUTRITION_NEUTRAL,
         stress: "仕事のピークを分散し、短い休息をこまめに入れてください。",
       };
     case "fatigue":
       return {
         exercise: "激しいトレーニングは避け、歩行や軽いストレッチにとどめて。",
-        sleep: "睡眠時間の確保を最優先。昼寝は20分以内で調整を。",
-        nutrition: "アルコールを控え、ミネラルとたんぱく質を意識して。",
+        sleep: shortSleep
+          ? "睡眠時間が短めです。確保を最優先し、昼寝は20分以内で調整を。"
+          : "睡眠時間の確保を最優先。昼寝は20分以内で調整を。",
+        nutrition: NUTRITION_NEUTRAL,
         stress: "予定を見直し、心理的負荷の高い予定は可能な範囲で後ろへ。",
       };
     default:
       return {
         exercise: "激しい運動は避け、休養日として身体を休めてください。",
-        sleep: "今夜の睡眠を最優先。就寝ルーティンを簡潔に整えて。",
-        nutrition: "刺激物を控え、温かい食事と十分な水分で回復を支えて。",
+        sleep: shortSleep
+          ? "睡眠時間が短めです。今夜の睡眠を最優先し、就寝ルーティンを簡潔に。"
+          : "今夜の睡眠を最優先。就寝ルーティンを簡潔に整えて。",
+        nutrition: NUTRITION_NEUTRAL,
         stress: "情報入力を減らし、静かな時間で神経系をリセットしましょう。",
       };
   }
@@ -313,6 +365,7 @@ function buildAdvice(level: RecoveryLevel): {
 /**
  * 回復指数を算出。
  * HRV と安静時心拍は必須。他項目は取れたものだけ重み再配分。
+ * リスクフラグが立っている場合は excellent / good にしない。
  */
 export function computeRecoveryIndex(
   input: RecoveryIndexInput,
@@ -405,8 +458,56 @@ export function computeRecoveryIndex(
       0,
     ),
   );
-  const level = levelFromScore(score);
+
+  const riskFlag = evaluateSleepRiskFlag({
+    avgSpo2: spo2,
+    snoring: input.riskHint?.snoring ?? null,
+    nasalCongestion: input.riskHint?.nasalCongestion ?? null,
+    age: input.riskHint?.age ?? null,
+    awakeMinutes:
+      typeof input.awakeMinutes === "number" &&
+      Number.isFinite(input.awakeMinutes)
+        ? input.awakeMinutes
+        : null,
+  });
+  const riskFlagElevated = riskFlag.isElevated;
+
+  let level = levelFromScore(score);
+  const wasGoodBand = level === "excellent" || level === "good";
+  if (riskFlagElevated && wasGoodBand) {
+    level = "mild_fatigue";
+  }
+
   const meta = LEVEL_META[level];
+  const summary =
+    riskFlagElevated && wasGoodBand ? RISK_CAP_SUMMARY : meta.summary;
+
+  const coreScores = scored
+    .filter((s): s is typeof s & { key: CoreMetricKey } =>
+      (CORE_METRIC_KEYS as readonly string[]).includes(s.key),
+    )
+    .map((s) => ({ key: s.key, score: s.score, label: s.label }));
+
+  const why = buildWhy({
+    coreScores,
+    hrvMs: hrvRaw,
+    rhrBpm: rhrRaw,
+  });
+  const advice = buildAdvice(level, durationMin);
+
+  if (process.env.NODE_ENV === "development") {
+    console.debug("[recovery-index]", {
+      score,
+      level,
+      riskFlag: riskFlagElevated,
+      label: meta.label,
+      compositionLabel: RECOVERY_INDEX_COMPOSITION_LABEL,
+      why1: why[0],
+      why2: why[1],
+      sleepAdvice: advice.sleep,
+      sleepDurationMinutes: durationMin,
+    });
+  }
 
   return {
     available: true,
@@ -414,20 +515,14 @@ export function computeRecoveryIndex(
     level,
     label: meta.label,
     emoji: meta.emoji,
-    summary: meta.summary,
-    why: buildWhy({
-      scores: scored.map((s) => ({
-        key: s.key,
-        score: s.score,
-        label: s.label,
-      })),
-      hrvMs: hrvRaw,
-      rhrBpm: rhrRaw,
-    }),
-    advice: buildAdvice(level),
+    summary,
+    why,
+    advice,
     hrvMs: hrvRaw,
     restingHeartRateBpm: rhrRaw,
     accent: meta.accent,
     accentSoft: meta.accentSoft,
+    riskFlagElevated,
+    compositionLabel: RECOVERY_INDEX_COMPOSITION_LABEL,
   };
 }
