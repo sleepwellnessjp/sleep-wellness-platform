@@ -250,7 +250,7 @@ export function metricGuideline(
     case "sleepLatency":
       return "一般：15〜20分以内　30分超が続く場合は入眠環境を確認";
     case "sleepDebt":
-      return "0に近いほど理想　積み重なると日中の回復感に影響しやすい";
+      return "0に近いほど理想　積み重なると日中の回復感に影響しやすい\nマイナスは、それだけ早く就寝する余地があることを示します";
     case "bedtime":
     case "wakeTime":
       return "毎日の入眠・起床時刻のばらつきが小さいほど体内時計が整いやすい";

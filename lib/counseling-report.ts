@@ -19,6 +19,7 @@ import {
   buildMelatoninYogaPrescription,
   type LifestyleSnapshot,
   type MelatoninYogaPrescription,
+  type PriorityImprovement,
 } from "@/lib/wellness-client-report";
 import { buildSleepRiskHint } from "@/lib/sleep-risk-flag";
 import { parseOptionalAge } from "@/lib/client-profile";
@@ -64,6 +65,8 @@ export type CounselingReportContent = {
   actions: CounselingAction[];
   nextSteps: string[];
   melatoninYoga: MelatoninYogaPrescription;
+  /** 画面⑤と同じ配列。PDF⑤の文面ガードに使う（⑦の生成は buildActions のまま） */
+  priorityImprovements: PriorityImprovement[];
 };
 
 const MISSING = /^(未測定|取得できず|データなし|要確認|--|—|－|-|n\/a|na)$/i;
@@ -505,11 +508,12 @@ function buildOverallComment(
   result: AnalysisResult,
   model: ReturnType<typeof buildClientWellnessReport>,
 ): string {
-  const candidates = [
-    result.scoreComment,
-    result.summary,
-    model.overallComment,
-  ];
+  // ①は総評。画面①と同じ summary 系（⑤最優先の冒頭付与済み）を優先し、
+  // 2ページ目の scoreComment と重複させない。
+  const summarySource = (result.summary ?? "").trim()
+    ? model.overallComment
+    : "";
+  const candidates = [summarySource, result.scoreComment];
   for (const candidate of candidates) {
     const clamped = clampSentences(stripReportNoise(candidate || ""), 2);
     if (clamped.length >= 24) return clamped;
@@ -588,6 +592,7 @@ export function buildCounselingReportContent(
     lifestyleConnection: buildLifestyleConnection(result, lifestyle),
     actions,
     nextSteps: buildNextSteps(result, actions),
+    priorityImprovements: model.priorityImprovements,
     melatoninYoga: (() => {
       const yoga = buildMelatoninYogaPrescription(result, lifestyle);
       return {

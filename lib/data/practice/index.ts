@@ -55,6 +55,7 @@ export { toPracticeMetrics } from "@/lib/data/practice/from-analysis-metrics";
 
 export {
   getExpertAnalysis,
+  type ExpertAnalysisPriorityItem,
   type ExpertAnalysisTemplate,
 } from "@/lib/data/practice/expert-analysis";
 

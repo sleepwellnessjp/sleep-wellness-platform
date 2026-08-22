@@ -583,7 +583,7 @@ function MetricGuideCard({
         </p>
       ) : null}
       {guide ? (
-        <p className="mt-1.5 text-[9px] leading-3.5 text-slate-400 sm:text-[10px] sm:leading-4">
+        <p className="mt-1.5 whitespace-pre-line text-[9px] leading-3.5 text-slate-400 sm:text-[10px] sm:leading-4">
           一般的な目安
           <br />
           {guide}

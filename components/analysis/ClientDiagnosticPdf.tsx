@@ -63,6 +63,12 @@ function SectionEyebrow({
   );
 }
 
+function actionPlanLead(count: number): string {
+  if (count >= 3) return "まず取り組みたい3つ";
+  if (count === 2) return "まず取り組みたい2つ";
+  return "まず取り組みたいこと";
+}
+
 function BrandFooter() {
   return (
     <footer className="mt-auto border-t border-[#071426]/10 pt-2 text-center">
@@ -125,7 +131,7 @@ function MetricGuideTile({
         </p>
       ) : null}
       {item.guide ? (
-        <p className="mt-1 text-[8px] leading-[1.35] text-slate-400">
+        <p className="mt-1 whitespace-pre-line text-[8px] leading-[1.35] text-slate-400">
           一般的な目安
           <br />
           {item.guide}
@@ -234,7 +240,10 @@ export function ClientDiagnosticPdf({
   const practicePrescription = getPrescription(practiceMetrics);
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
   const scoreComment = clampPdfComment(result.scoreComment);
-  const expertParagraphs = getExpertAnalysis(practiceMetrics);
+  const expertParagraphs = getExpertAnalysis(
+    practiceMetrics,
+    report.priorityImprovements,
+  );
   const pdfPageCount = isReportSectionVisible("melatoninYoga") ? 3 : 2;
 
   return (
@@ -597,7 +606,7 @@ export function ClientDiagnosticPdf({
               title="あなたへの改善提案"
             />
             <p className="mb-1.5 text-[10px] text-slate-500">
-              まず取り組みたい3つ
+              {actionPlanLead(report.actions.length)}
             </p>
             <div className="space-y-1.5">
               {report.actions.map((item) => (

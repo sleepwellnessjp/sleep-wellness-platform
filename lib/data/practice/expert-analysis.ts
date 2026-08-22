@@ -4,6 +4,13 @@ import type {
   PracticeMetrics,
 } from "@/lib/data/practice/types";
 
+/** 画面⑤と同じ配列から、PDF⑤の矛盾ガードに使う最小形 */
+export type ExpertAnalysisPriorityItem = {
+  title: string;
+  reason: string;
+  action?: string;
+};
+
 export interface ExpertAnalysisTemplate {
   challengeType: ChallengeTypeId;
   paragraphs: string[];
@@ -109,18 +116,92 @@ function slotsForType(
   }
 }
 
-/**
- * 課題タイプ（処方の優先度1位）に対応する定型文を穴埋めして返す。
- * 2段落未満なら空配列（PDFの⑤は非表示）。
- */
-export function getExpertAnalysis(metrics: PracticeMetrics): string[] {
-  const challengeType = getPrescription(metrics).challengeTypes[0];
+function fillTemplate(
+  challengeType: ChallengeTypeId,
+  metrics: PracticeMetrics,
+): string[] {
   const template = TEMPLATES[challengeType];
   const slots = slotsForType(challengeType, metrics);
   const paragraphs = template.paragraphs
     .map((paragraph) => fillParagraph(paragraph, slots))
     .filter((paragraph): paragraph is string => Boolean(paragraph));
-
   if (paragraphs.length < 2) return [];
   return paragraphs;
+}
+
+function challengeMatchesPriority(
+  challengeType: ChallengeTypeId,
+  item: ExpertAnalysisPriorityItem,
+): boolean {
+  const text = `${item.title} ${item.reason} ${item.action ?? ""}`;
+  switch (challengeType) {
+    case "onset":
+      return /入眠|潜時|寝つき/.test(text);
+    case "midwake":
+      return /覚醒|睡眠効率|中途/.test(text);
+    case "rhythm":
+      return /体内時計|リズム|就寝時刻|起床時刻/.test(text);
+    case "recovery":
+      return /HRV|心拍|自律|ストレス/.test(text);
+    case "deep":
+      return /深い睡眠|深睡眠/.test(text);
+    case "maintenance":
+      return false;
+  }
+}
+
+function asSentence(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return /[。．!?！？]$/.test(t) ? t : `${t}。`;
+}
+
+function closingFromPriority(item: ExpertAnalysisPriorityItem): string {
+  const action = (item.action ?? "").trim();
+  if (action) {
+    if (/ください[。．]?$/.test(action) || /です[。．]?$/.test(action)) {
+      return asSentence(action);
+    }
+    return `${action.replace(/[。．]+$/u, "")}ください。`;
+  }
+  const title = item.title.trim() || "今回いちばん気になるところ";
+  return `${title}を、今夜からひとつだけ意識してみてください。`;
+}
+
+/** 最優先項目から、既存テンプレに近い語りかけ調の3段落を組み立てる */
+function paragraphsFromPriority(item: ExpertAnalysisPriorityItem): string[] {
+  const title = item.title.trim() || "今回いちばん整えたいところ";
+  const reason = asSentence(item.reason);
+  const first = reason || `${title}が、今回いちばん先に見ておきたい状態です。`;
+  const second = `今のデータのなかで、いちばん先に整えたいのは「${title}」です。ここが整うと、ほかの指標も追いつきやすくなります。`;
+  return [first, second, closingFromPriority(item)];
+}
+
+/**
+ * 課題タイプ（処方の優先度1位）に対応する定型文を穴埋めして返す。
+ * 画面⑤ priorityImprovements があるときは maintenance を使わない。
+ * 2段落未満なら空配列（PDFの⑤は非表示）。
+ */
+export function getExpertAnalysis(
+  metrics: PracticeMetrics,
+  priorityImprovements?: ExpertAnalysisPriorityItem[] | null,
+): string[] {
+  const challengeType = getPrescription(metrics).challengeTypes[0];
+  const priorities = (priorityImprovements ?? []).filter(
+    (item) => item.title.trim() || item.reason.trim(),
+  );
+
+  if (priorities.length === 0) {
+    return fillTemplate(challengeType, metrics);
+  }
+
+  if (
+    challengeType !== "maintenance" &&
+    challengeMatchesPriority(challengeType, priorities[0]!)
+  ) {
+    const fromTemplate = fillTemplate(challengeType, metrics);
+    if (fromTemplate.length >= 2) return fromTemplate;
+  }
+
+  return paragraphsFromPriority(priorities[0]!);
 }
