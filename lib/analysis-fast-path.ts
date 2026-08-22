@@ -44,6 +44,99 @@ const CATEGORY_KEYS = Object.keys(
   WELLNESS_CATEGORY_LABELS,
 ) as WellnessCategoryKey[];
 
+const OVERALL_SCORE_LABEL =
+  "(?:Sleep\\s*Wellness\\s*Score|睡眠ウェルネススコア|ウェルネススコア|総合(?:スコア|点)|スコア)";
+
+/** 点数表記の直後に続き得る助詞（置換時に二重化しないよう消費する） */
+const TRAILING_SCORE_PARTICLE = "[はがをにでも]";
+
+const PARTICLE_DUPLICATION_RE = /(は|が|を|に|で|も)(\d{1,3})点\1/;
+
+/** 助詞重複（は74点は 等）を検出 */
+export function hasScoreParticleDuplication(text: string): boolean {
+  return PARTICLE_DUPLICATION_RE.test(text);
+}
+
+/** 助詞重複を除去（は74点は → は74点） */
+export function fixScoreParticleDuplication(text: string): string {
+  let prev = "";
+  let cur = text;
+  while (prev !== cur) {
+    prev = cur;
+    cur = cur.replace(PARTICLE_DUPLICATION_RE, "$1$2点");
+  }
+  return cur;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function alignOverallScoreMentions(text: string, score: number): string {
+  const phrase = `Sleep Wellness Score は${score}点`;
+  const withPoints = new RegExp(
+    `${OVERALL_SCORE_LABEL}\\s*(?:[はが：:]\\s*)?(\\d{1,3})\\s*(?:点|\\/\\s*100)?((${TRAILING_SCORE_PARTICLE}))?`,
+    "gi",
+  );
+  let aligned = text.replace(withPoints, (_match, numStr, trailing = "") => {
+    const num = Number(numStr);
+    if (num === score && (trailing === "は" || trailing === "が")) {
+      return phrase;
+    }
+    if (num === score) {
+      return `${phrase}${trailing}`;
+    }
+    return phrase;
+  });
+  const bareNumber = new RegExp(
+    `${OVERALL_SCORE_LABEL}\\s*[：:]?\\s*(\\d{1,3})(?!\\s*\\/)`,
+    "gi",
+  );
+  aligned = aligned.replace(bareNumber, () => phrase);
+  return aligned;
+}
+
+/** 同一文内で Sleep Wellness Score はN点 が複数回出る場合、2回目以降は N点 に短縮 */
+function dedupeOverallScorePhraseInSentences(text: string, score: number): string {
+  const phrase = `Sleep Wellness Score は${score}点`;
+  const re = new RegExp(escapeRegExp(phrase), "g");
+  return text.replace(/[^。！？!?]+[。！？!?]?/g, (sentence) => {
+    let count = 0;
+    return sentence.replace(re, () => {
+      count += 1;
+      return count === 1 ? phrase : `${score}点`;
+    });
+  });
+}
+
+function alignCategoryMention(text: string, label: string, value: number): string {
+  const re = new RegExp(
+    `${escapeRegExp(label)}\\s*(?:[はが：:・]\\s*)?(\\d{1,3})\\s*(?:点|\\/\\s*100)((${TRAILING_SCORE_PARTICLE}))?`,
+    "g",
+  );
+  return text.replace(re, (_match, numStr, trailing = "") => {
+    const num = Number(numStr);
+    if (num === value) {
+      return `${label}${value}点${trailing}`;
+    }
+    return `${label}${value}点`;
+  });
+}
+
+function polishScoreNarrative(original: string, score: number, transform: (text: string) => string): string {
+  const trimmed = original.trim();
+  if (!trimmed) return trimmed;
+
+  let aligned = transform(trimmed);
+  aligned = dedupeOverallScorePhraseInSentences(aligned, score);
+  aligned = fixScoreParticleDuplication(aligned);
+
+  if (hasScoreParticleDuplication(aligned)) {
+    return fixScoreParticleDuplication(trimmed);
+  }
+  return aligned;
+}
+
 /**
  * 説明文中の点数を、画面表示用の確定スコアへ強制整合する。
  * AI が独自に付けた点数表記を表示点数に置き換える。
@@ -60,38 +153,22 @@ export function alignScoreNarrativesToLocked(args: {
   const score = clamp100(args.lockedScore);
   const cats = args.lockedCategories;
 
-  const alignCategoryMention = (text: string, label: string, value: number) =>
-    text.replace(
-      new RegExp(`${label}\\s*[はが：:・]?\\s*\\d{1,3}\\s*(?:点|/\\s*100)`, "g"),
-      `${label}${value}点`,
-    );
-
-  let scoreComment = (args.scoreComment || "").trim();
-  if (scoreComment) {
-    scoreComment = scoreComment
-      .replace(
-        /(?:Sleep\s*Wellness\s*Score|睡眠ウェルネススコア|ウェルネススコア|総合(?:スコア|点)|スコア)\s*[はが：:]?\s*\d{1,3}\s*点/gi,
-        `Sleep Wellness Score は${score}点`,
-      )
-      .replace(
-        /(?:Sleep\s*Wellness\s*Score|睡眠ウェルネススコア)\s*[：:]?\s*\d{1,3}(?!\s*\/)/gi,
-        `Sleep Wellness Score ${score}`,
-      );
+  let scoreComment = polishScoreNarrative(args.scoreComment || "", score, (text) => {
+    let next = alignOverallScoreMentions(text, score);
     for (const key of CATEGORY_KEYS) {
-      scoreComment = alignCategoryMention(
-        scoreComment,
+      next = alignCategoryMention(
+        next,
         WELLNESS_CATEGORY_LABELS[key],
         cats[key],
       );
     }
     if (
-      !new RegExp(`(?:Score|スコア|点).*${score}|${score}\\s*点`).test(
-        scoreComment,
-      )
+      !new RegExp(`(?:Score|スコア|点).*${score}|${score}\\s*点`).test(next)
     ) {
-      scoreComment = `Sleep Wellness Score は${score}点。${scoreComment}`;
+      next = `Sleep Wellness Score は${score}点。${next}`;
     }
-  }
+    return next;
+  });
 
   const rawRationales = args.categoryScoreRationales;
   if (!rawRationales) {
@@ -101,21 +178,24 @@ export function alignScoreNarrativesToLocked(args: {
   const categoryScoreRationales = CATEGORY_KEYS.reduce((acc, key) => {
     const label = WELLNESS_CATEGORY_LABELS[key];
     const value = cats[key];
-    let text = (rawRationales[key] || "").trim();
-    if (!text) {
+    const original = (rawRationales[key] || "").trim();
+    if (!original) {
       acc[key] = `${label}${value}点。今回のデータに基づく参考評価です。`;
       return acc;
     }
-    text = alignCategoryMention(text, label, value);
-    text = text.replace(/^\d{1,3}\s*(?:点|\/\s*100)/, `${value}点`);
-    if (
-      !text.includes(`${value}点`) &&
-      !text.includes(`${value}/100`) &&
-      !new RegExp(`${label}\\s*${value}\\b`).test(text)
-    ) {
-      text = `${label}${value}点。${text}`;
-    }
-    acc[key] = text;
+
+    acc[key] = polishScoreNarrative(original, score, (text) => {
+      let next = alignCategoryMention(text, label, value);
+      next = next.replace(/^\d{1,3}\s*(?:点|\/\s*100)/, `${value}点`);
+      if (
+        !next.includes(`${value}点`) &&
+        !next.includes(`${value}/100`) &&
+        !new RegExp(`${escapeRegExp(label)}\\s*${value}\\b`).test(next)
+      ) {
+        next = `${label}${value}点。${next}`;
+      }
+      return next;
+    });
     return acc;
   }, {} as CategoryScoreRationales);
 
