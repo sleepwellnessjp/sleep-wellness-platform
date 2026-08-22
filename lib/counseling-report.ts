@@ -23,6 +23,7 @@ import {
 } from "@/lib/wellness-client-report";
 import { buildSleepRiskHint } from "@/lib/sleep-risk-flag";
 import { parseOptionalAge } from "@/lib/client-profile";
+import { sanitizeProfileRelationScores } from "@/lib/analysis-profile-relation-guard";
 
 export type CounselingKeyMetric = {
   label: string;
@@ -457,7 +458,10 @@ function buildLifestyleConnection(
   const fromAi = stripReportNoise(
     result.profileRelation || result.lifestyleRelation || "",
   );
-  if (fromAi) return clampSentences(fromAi, 2);
+  if (fromAi) {
+    // 既存分析でも「身体71点」等が残らないよう、表示直前にスコア言及を除去
+    return clampSentences(sanitizeProfileRelationScores(fromAi), 2);
+  }
 
   const model = buildClientWellnessReport(
     result,

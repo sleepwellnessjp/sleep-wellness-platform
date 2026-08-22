@@ -41,6 +41,21 @@ import {
   SUMMARY_REWRITE_INSTRUCTIONS,
   summaryHasQualityIssues,
 } from "@/lib/analysis-summary-guard";
+import {
+  applyLifestyleRewritePayload,
+  buildLifestyleMentionRewriteInstructions,
+  collectUnfilledLifestyleCategories,
+  detectLifestyleMentionHits,
+  formatUnfilledCategoriesForPrompt,
+  lifestyleMentionHasIssues,
+  sanitizeLifestyleMentionsInRecord,
+  snapshotLifestyleGuardedFields,
+  type LifestyleRewritePayload,
+} from "@/lib/analysis-lifestyle-mention-guard";
+import {
+  profileRelationHasScoreMentions,
+  sanitizeProfileRelationScores,
+} from "@/lib/analysis-profile-relation-guard";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -406,6 +421,12 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
 - summary で「年齢と性別を考慮」「意識が大切」「心がけましょう」など内容のない定型句で締めない
 - 指標間の因果を断定しない（特に睡眠時間不足→SpO₂／酸素低下は禁止。複数指標は「一方で」「また」で並列に述べる）
 
+⑥-a 未入力の生活習慣への言及・断定禁止（厳守）
+- 当日フォーム／プロフィールに記録がない項目（飲酒・カフェイン・運動・入浴・食事・服薬・勤務など）には一切言及しない
+- 未入力を「していない」「多い」「摂らない」「不規則」などと断定・推測しない
+- 入力がある項目のみを根拠にする。記録が少ない場合は測定データ中心の参考見解と述べる
+- profileRelation / scoreComment / categoryScoreRationales / summary も同じルール
+
 ⑥-b 『ノンレム』という語の使用禁止
 - 睡眠ステージは「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」のみで書く
 
@@ -542,6 +563,11 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   固定プロフィール（普段の傾向）と今回の睡眠データのつながりを、根拠を示して書く。
   プロフィール未入力の場合は「今回はプロフィール情報が少ないため、測定データ中心の参考見解です」と短く述べる。
   当日の一時的な習慣と普段の傾向を混同しない。
+  【厳守】記録のない飲酒・食事・勤務・カフェイン・運動・入浴・服薬について「多い」「していない」「不規則」等と書かない。未入力項目には言及しない。
+  【厳守・数値】
+  - 4領域のカテゴリ点数（身体・心・生活・環境）には言及しない（「身体71点」等は禁止。点数は scoreComment / categoryScoreRationales 側の役割）
+  - 総合スコア（Sleep Wellness Score）にも言及しない
+  - 指標値を引用する場合は、確認済みメトリクス表にある値のみを一字一句そのまま使う（表に無い数値の創作・概算禁止）
 
 ⑤ scoreComment（睡眠ウェルネススコアの解説）
   2〜3短段落（全体でおおむね 80〜160文字）。
@@ -549,6 +575,7 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   「身体68点」など独自の点数を捏造しない。渡された点数のみを書く。
   「どの軸が支えになっているか／どこに整え余地があるか」を伝える。
   SOXAI睡眠スコアとの違いには触れなくてよい（UI側で表示）。
+  【厳守】未入力の生活習慣を根拠にしない。生活軸は入力がある項目か測定データとのバランスのみで説明する。
 
 ⑤-b categoryScoreRationales（4軸の点数根拠）※必須
   身体・心・生活・環境それぞれについて「なぜこの点数なのか」を1〜2行で書く。
@@ -556,14 +583,16 @@ Insight／今日やる3つ／AI宿題／講師提案は役割を混ぜない（�
   確定点と異なる数値を書くことは絶対禁止。
   各フィールドは1〜2文（目安 40〜110文字）。指標名を含める。
   空欄禁止。定型文（「バランスが良い」だけ等）禁止。今回データに紐づける。
+  【厳守・生活軸】未入力の飲酒・夕食・勤務などを「摂らない」「多い」「不規則」と捏造しない。生活習慣入力が少ない場合は「詳細入力が少ないため測定データ中心の参考値」と書く。
 
 ⑥ todaysRecommendations（今日やる3つ）※必須・厳守・完全個別化
   必ずちょうど 3件の配列。2件以下・4件以上は禁止。
   【役割】その人専用の「今日だけ」の具体アクション。宿題・Insight・講師提案と役割を混ぜない。
   優先順位が高い順（1件目が最優先）。
   【必須】次の領域から、今回のデータで最も必要な3つを選ぶ（毎回内容が変わること）:
-    睡眠データ / 体内時計 / ストレス / 飲酒 / 運動 / 生活習慣
+    睡眠データ / 体内時計 / ストレス / （入力がある場合のみ）飲酒・運動・生活習慣
   同じ分析でも定型の3点セットは禁止。入力された時刻・量・有無と SOXAI 実測を反映する。
+  未入力の飲酒・運動・食事などを前提にした提案は禁止。
   各項目は1文（目安 28〜56文字）。番号は付けない（表示側で付ける）。
   文末は「〜する」「〜にする」「〜を控える」など、今日できる目標形。
   良い例（入力値に合わせて数字・時刻を変える）:
@@ -1380,6 +1409,117 @@ ${
           }
         } catch (rewriteError) {
           console.error("[api/analyze] summary rewrite failed", rewriteError);
+        }
+      }
+
+      // 未入力生活習慣への言及ガード：検出 → 該当フィールド1回再生成 → 残れば削除／安全文
+      const unfilledLifestyle = collectUnfilledLifestyleCategories(lifestyle);
+      if (
+        unfilledLifestyle.length > 0 &&
+        lifestyleMentionHasIssues(record, unfilledLifestyle)
+      ) {
+        const hits = detectLifestyleMentionHits(record, unfilledLifestyle);
+        console.warn("[api/analyze] unfilled lifestyle mentions", {
+          unfilled: formatUnfilledCategoriesForPrompt(unfilledLifestyle),
+          hits,
+        });
+        try {
+          const snapshot = snapshotLifestyleGuardedFields(record, hits);
+          const requiredKeys = Object.keys(snapshot) as Array<
+            keyof LifestyleRewritePayload
+          >;
+          const properties: Record<string, unknown> = {};
+          for (const key of requiredKeys) {
+            if (key === "categoryScoreRationales") {
+              const rationale = snapshot.categoryScoreRationales ?? {};
+              const rationaleKeys = Object.keys(rationale);
+              properties.categoryScoreRationales = {
+                type: "object",
+                additionalProperties: false,
+                required: rationaleKeys,
+                properties: Object.fromEntries(
+                  rationaleKeys.map((k) => [k, { type: "string" }]),
+                ),
+              };
+            } else {
+              properties[key] = { type: "string" };
+            }
+          }
+          const rewrite = await client.responses.create({
+            model: "gpt-4o",
+            instructions: buildLifestyleMentionRewriteInstructions(
+              unfilledLifestyle,
+            ),
+            input: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: `次のフィールドを書き直してください。記録のない項目（${formatUnfilledCategoriesForPrompt(unfilledLifestyle)}）には一切言及しないこと。\n\n【現行】\n${JSON.stringify(snapshot, null, 2)}\n\n【参考 metrics（数値は改変しない）】\n${typeof metricsBlock === "string" ? metricsBlock.slice(0, 2000) : ""}`,
+                  },
+                ],
+              },
+            ],
+            text: {
+              format: {
+                type: "json_schema",
+                name: "swij_lifestyle_mention_rewrite",
+                strict: true,
+                schema: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: requiredKeys,
+                  properties,
+                },
+              },
+            },
+          });
+          const rewrittenText = rewrite.output_text?.trim();
+          if (rewrittenText) {
+            const rewritten = JSON.parse(
+              rewrittenText,
+            ) as LifestyleRewritePayload;
+            applyLifestyleRewritePayload(record, rewritten);
+            console.info("[api/analyze] lifestyle-mention fields rewritten once");
+          }
+        } catch (rewriteError) {
+          console.error(
+            "[api/analyze] lifestyle-mention rewrite failed",
+            rewriteError,
+          );
+        }
+        if (lifestyleMentionHasIssues(record, unfilledLifestyle)) {
+          console.warn(
+            "[api/analyze] lifestyle-mention still present — sanitizing",
+            detectLifestyleMentionHits(record, unfilledLifestyle),
+          );
+          sanitizeLifestyleMentionsInRecord(record, unfilledLifestyle);
+        }
+      }
+
+      // profileRelation: 4領域点・総合スコア言及は書き換えず文ごと除去（PDF⑥矛盾防止）
+      const profileRelationRaw =
+        typeof record.profileRelation === "string"
+          ? record.profileRelation
+          : typeof record.lifestyleRelation === "string"
+            ? record.lifestyleRelation
+            : "";
+      if (
+        profileRelationRaw &&
+        profileRelationHasScoreMentions(profileRelationRaw)
+      ) {
+        const cleaned = sanitizeProfileRelationScores(profileRelationRaw);
+        console.warn(
+          "[api/analyze] profileRelation score mentions stripped",
+          {
+            before: profileRelationRaw.slice(0, 120),
+            after: cleaned.slice(0, 120),
+          },
+        );
+        record.profileRelation = cleaned;
+        if ("lifestyleRelation" in record) {
+          record.lifestyleRelation = cleaned;
         }
       }
     }
