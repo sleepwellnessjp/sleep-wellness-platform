@@ -1,3 +1,4 @@
+import { appendKudasaiIfNeeded } from "@/lib/append-kudasai-if-needed";
 import { getPrescription } from "@/lib/data/practice/prescriptions";
 import type {
   ChallengeTypeId,
@@ -159,10 +160,7 @@ function asSentence(text: string): string {
 function closingFromPriority(item: ExpertAnalysisPriorityItem): string {
   const action = (item.action ?? "").trim();
   if (action) {
-    if (/ください[。．]?$/.test(action) || /です[。．]?$/.test(action)) {
-      return asSentence(action);
-    }
-    return `${action.replace(/[。．]+$/u, "")}ください。`;
+    return asSentence(appendKudasaiIfNeeded(action));
   }
   const title = item.title.trim() || "今回いちばん気になるところ";
   return `${title}を、今夜からひとつだけ意識してみてください。`;
