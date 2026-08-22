@@ -518,105 +518,105 @@ function spo2DisplayMatchingMetrics(metrics: AnalysisMetrics): string | null {
 const PRIORITY_OVERALL_CLOSING =
   "改善優先順位で最優先の確認事項として整理しています。";
 
-/** 最優先トピックが AI summary 内で既に言及されているか */
-function priorityMetricAlreadyInSummary(
-  summary: string,
-  highest: PriorityImprovement,
-): boolean {
-  const title = highest.title;
-  const spo2Related =
-    Boolean(highest.medicalReferral) ||
-    /SpO|酸素|呼吸・酸素|呼吸・酸素の状態/i.test(title);
-  if (spo2Related) {
-    return /SpO[₂2]|酸素飽和|平均酸素/i.test(summary);
+/** ③表示と揃える睡眠時間の表示文字列 */
+function sleepDurationDisplayMatchingMetrics(
+  metrics: AnalysisMetrics,
+): string | null {
+  const duration = String(metrics.sleepDuration ?? "").trim();
+  if (
+    !duration ||
+    /^(未測定|取得できず|データなし|要確認|--|—|－|-|n\/a|na)$/i.test(duration)
+  ) {
+    return null;
   }
-  if (/睡眠時間/.test(title)) return /睡眠時間/.test(summary);
-  if (/HRV|心拍のゆらぎ/.test(title)) return /HRV|心拍のゆらぎ/.test(summary);
-  if (/睡眠効率/.test(title)) return /睡眠効率/.test(summary);
-  if (/入眠/.test(title)) return /入眠/.test(summary);
-  if (/覚醒/.test(title)) return /覚醒/.test(summary);
-  if (/ストレス/.test(title)) return /ストレス/.test(summary);
-  if (/飲酒/.test(title)) return /飲酒|アルコール/.test(summary);
-  if (/カフェイン/.test(title)) return /カフェイン/.test(summary);
-  // タイトル先頭の短い名詞が本文にあれば重複とみなす
-  const compact = title.replace(/\s+/g, "").slice(0, 8);
-  return compact.length >= 4 && summary.replace(/\s+/g, "").includes(compact);
+  return duration;
 }
 
 /**
- * ⑤最優先を①総合コメントへ穏やかに反映する文。
+ * ⑤最優先を①総合コメントへ穏やかに反映する文（常に指標名＋数値＋目安関係）。
  * 診断断定・原因推測・受診導線は書かない（⑤が単一の真実）。
- * @param options.shorten 指標が AI summary に既出のとき、事実の再述を避けて短縮する
  */
 export function buildHighestPriorityOverallSentence(
   highest: PriorityImprovement,
   metrics: AnalysisMetrics,
-  options?: { shorten?: boolean },
 ): string {
   const title = highest.title.trim().replace(/[。．]+$/u, "");
-  const shorten = options?.shorten === true;
   const spo2Related =
     Boolean(highest.medicalReferral) ||
     /SpO|酸素|呼吸・酸素|呼吸・酸素の状態/i.test(title);
 
   if (spo2Related) {
-    if (shorten) {
-      return `平均SpO₂を、${PRIORITY_OVERALL_CLOSING}`;
-    }
     const spo2 = spo2DisplayMatchingMetrics(metrics);
     if (spo2) {
       const p = parsePercent(spo2);
       if (p != null && p < 95) {
         return `平均SpO₂は${spo2}で、一般的な目安（95%以上）を下回っています。${PRIORITY_OVERALL_CLOSING}`;
       }
+      if (p != null && p >= 95) {
+        return `平均SpO₂は${spo2}で、一般的な目安（95%以上）の範囲にあります。${PRIORITY_OVERALL_CLOSING}`;
+      }
       return `平均SpO₂は${spo2}です。${PRIORITY_OVERALL_CLOSING}`;
     }
-    return `夜間の呼吸・酸素の状態を、${PRIORITY_OVERALL_CLOSING}`;
+    return `夜間の呼吸・酸素の状態について、${PRIORITY_OVERALL_CLOSING}`;
   }
 
   if (/睡眠時間/.test(title)) {
-    if (shorten) {
-      return `睡眠時間を、${PRIORITY_OVERALL_CLOSING}`;
+    const duration = sleepDurationDisplayMatchingMetrics(metrics);
+    if (duration) {
+      const minutes = parseMinutesRough(duration);
+      if (minutes != null && minutes < 420) {
+        return `睡眠時間は${duration}で、一般的な目安（7〜9時間）を下回っています。${PRIORITY_OVERALL_CLOSING}`;
+      }
+      if (minutes != null && minutes > 540) {
+        return `睡眠時間は${duration}で、一般的な目安（7〜9時間）を上回っています。${PRIORITY_OVERALL_CLOSING}`;
+      }
+      if (minutes != null) {
+        return `睡眠時間は${duration}で、一般的な目安（7〜9時間）の範囲にあります。${PRIORITY_OVERALL_CLOSING}`;
+      }
+      return `睡眠時間は${duration}です。${PRIORITY_OVERALL_CLOSING}`;
     }
-    const duration = String(metrics.sleepDuration ?? "").trim();
-    if (
-      duration &&
-      !/^(未測定|取得できず|データなし|要確認|--|—|－|-)$/i.test(duration)
-    ) {
-      return `睡眠時間は${duration}で、整えの余地が見られます。${PRIORITY_OVERALL_CLOSING}`;
-    }
-    return `睡眠時間を、${PRIORITY_OVERALL_CLOSING}`;
+    return `睡眠時間について、${PRIORITY_OVERALL_CLOSING}`;
   }
 
   if (/HRV|心拍のゆらぎ/.test(title)) {
-    if (shorten) {
-      return `平均HRVを、${PRIORITY_OVERALL_CLOSING}`;
-    }
     const hrv = String(metrics.hrv ?? "").trim();
     if (hrv && !/^(未測定|要確認|--|—)$/i.test(hrv)) {
       const withUnit = /ms/i.test(hrv) ? hrv : `${hrv}ms`;
+      const n = Number(String(hrv).replace(/[^\d.]/g, ""));
+      if (Number.isFinite(n) && n > 0 && n < 40) {
+        return `平均HRVは${withUnit}で、回復のゆらぎとしては低めの傾向が見られます。${PRIORITY_OVERALL_CLOSING}`;
+      }
       return `平均HRVは${withUnit}です。${PRIORITY_OVERALL_CLOSING}`;
     }
   }
 
   if (/睡眠効率/.test(title)) {
-    if (shorten) {
-      return `睡眠効率を、${PRIORITY_OVERALL_CLOSING}`;
-    }
     const eff = String(metrics.sleepEfficiency ?? "").trim();
     if (eff && !/^(未測定|要確認|--|—)$/i.test(eff)) {
       const withPct = /%|％/.test(eff) ? eff.replace("％", "%") : `${eff}%`;
+      const p = parsePercent(withPct);
+      if (p != null && p < 85) {
+        return `睡眠効率は${withPct}で、一般的な目安（85%以上）を下回っています。${PRIORITY_OVERALL_CLOSING}`;
+      }
       return `睡眠効率は${withPct}です。${PRIORITY_OVERALL_CLOSING}`;
     }
   }
 
-  if (shorten) {
-    const topic = title.length > 32 ? `${title.slice(0, 31)}…` : title;
-    return `「${topic}」は、${PRIORITY_OVERALL_CLOSING}`;
-  }
-
   const topic = title.length > 48 ? `${title.slice(0, 47)}…` : title;
-  return `「${topic}」は、${PRIORITY_OVERALL_CLOSING}`;
+  return `「${topic}」について、${PRIORITY_OVERALL_CLOSING}`;
+}
+
+/** AI summary 冒頭と追記文が完全に同一のときだけスキップする */
+function isExactPrioritySentenceDuplicate(
+  base: string,
+  sentence: string,
+): boolean {
+  const normalize = (value: string) => value.replace(/\s+/g, "").trim();
+  const sentenceNorm = normalize(sentence);
+  if (!sentenceNorm) return false;
+  const firstPara = normalize((base.split(/\n/)[0] ?? "").trim());
+  const baseNorm = normalize(base);
+  return firstPara === sentenceNorm || baseNorm.startsWith(sentenceNorm);
 }
 
 function enrichOverallCommentWithHighestPriority(
@@ -630,11 +630,13 @@ function enrichOverallCommentWithHighestPriority(
   // 既に改善優先順位の最優先案内がある場合は二重追記しない
   if (/改善優先順位で最優先|⑤で最優先/.test(trimmed)) return trimmed;
 
-  const shorten = priorityMetricAlreadyInSummary(trimmed, highest);
-  const sentence = buildHighestPriorityOverallSentence(highest, metrics, {
-    shorten,
-  });
+  const sentence = buildHighestPriorityOverallSentence(highest, metrics);
   if (!sentence) return trimmed;
+
+  // AI summary 冒頭と完全に同一文になる場合のみスキップ
+  if (isExactPrioritySentenceDuplicate(trimmed, sentence)) {
+    return trimmed;
+  }
 
   if (!trimmed) return sentence;
   // 最優先を先頭、AI summary / ルール本文をその後

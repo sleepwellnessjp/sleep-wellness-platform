@@ -1,3 +1,4 @@
+import os from "node:os";
 import type { NextConfig } from "next";
 
 /**
@@ -8,9 +9,23 @@ const showDevIndicators =
   process.env.NODE_ENV === "development" &&
   process.env.NEXT_PUBLIC_SHOW_DEV_INDICATORS === "1";
 
+/** Wi-Fi 変更で IP が変わっても再起動するだけで実機アクセスできるよう、LAN IPv4 を自動列挙する */
+function lanDevOrigins(): string[] {
+  const origins = new Set<string>();
+  for (const infos of Object.values(os.networkInterfaces())) {
+    for (const info of infos ?? []) {
+      const family = info.family;
+      const isV4 = family === "IPv4" || family === 4;
+      if (!isV4 || info.internal) continue;
+      origins.add(info.address);
+    }
+  }
+  return [...origins];
+}
+
 const nextConfig: NextConfig = {
   // LAN 上の実機（iPhone 等）から dev サーバーへアクセスするとき用
-  allowedDevOrigins: ["192.168.111.12", "192.168.111.62"],
+  allowedDevOrigins: lanDevOrigins(),
   // AI分析（画像＋構造化出力）は30秒を超えることがあるため、
   // Next.js 開発プロキシのデフォルト30秒制限を延長する。
   // SOXAI画像は最大10枚（base64）のため、プロキシのボディ上限も引き上げる。

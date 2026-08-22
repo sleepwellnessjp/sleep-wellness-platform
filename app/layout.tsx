@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import BetaChrome from "@/components/beta/BetaChrome";
 import MobileSleepTabBar from "@/components/sleep-content/MobileSleepTabBar";
 import SkipLink from "@/components/ui/SkipLink";
@@ -142,6 +143,7 @@ export default function RootLayout({
           <MobileSleepTabBar />
           <BetaChrome />
         </ToastProvider>
+        <Analytics />
       </body>
     </html>
   );

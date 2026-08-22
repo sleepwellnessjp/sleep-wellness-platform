@@ -544,27 +544,9 @@ function isGenericPoint(text: string): boolean {
 }
 
 function buildActions(
-  result: AnalysisResult,
   model: ReturnType<typeof buildClientWellnessReport>,
 ): CounselingAction[] {
-  const recs = (result.todaysRecommendations ?? [])
-    .map((item) => stripReportNoise(item).replace(/ください。?$/u, ""))
-    .filter(Boolean)
-    .slice(0, 3);
-  const reasons = model.priorityImprovements.map((item) => item.reason);
-  if (recs.length > 0) {
-    return recs.map((what, index) => ({
-      rank: index + 1,
-      what,
-      why: toClientLine(
-        clampSentences(
-          stripReportNoise(reasons[index] || "") ||
-            "今回の測定と生活の様子から、優先して取り組みたいことです。",
-          1,
-        ),
-      ),
-    }));
-  }
+  // ⑤と同じ配列から what/why を取る（todaysRecommendations との index zip は順序がずれる）
   return model.priorityImprovements.slice(0, 3).map((item, index) => ({
     rank: index + 1,
     what: stripReportNoise(item.action.trim() || item.title).replace(
@@ -592,7 +574,7 @@ export function buildCounselingReportContent(
     .map((item) => toClientLine(stripReportNoise(item.title)))
     .filter((item) => item && !isGenericPoint(item))
     .slice(0, 3);
-  const actions = buildActions(result, model);
+  const actions = buildActions(model);
   const keyMetrics = buildKeyMetrics(result.metrics);
 
   return {
