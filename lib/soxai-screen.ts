@@ -482,7 +482,7 @@ export function screenCriticalLabels(screen: SoxaiScreenType): string {
     case "sleep_detail":
       return "入眠時間 / 起床時間（HH:mm）/ 睡眠時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計。潜時・就床と混同しない";
     case "sleep_stages":
-      return "覚醒・レム・浅い・深い（ラベル直後の%が率。右端比較は昨日差）。深い睡眠率は深い睡眠行の%のみ / SpO₂。睡眠時間をノンレム・浅いにしない";
+      return "覚醒・レム・浅い・深いの4行すべて（各行の%と時間。浅い睡眠を省略しない）。ラベル直後の%が率・右端比較は昨日差。深い睡眠率は深い睡眠行の%のみ / SpO₂。睡眠時間をノンレム・浅いにしない";
     case "home":
     case "sleep_overview":
       return "睡眠スコア（カード行。QoL円・昨日・体調・心拍数と取り違えない）/ 睡眠時間（見出し「睡眠時間」のみ。全就床・ベッド滞在・必要睡眠と取り違えない。値を就寝時刻にしない）";

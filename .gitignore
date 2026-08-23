@@ -25,6 +25,7 @@
 *.pem
 /tmp-*
 .tmp-pdf-extract/
+.tmp-stage-debug/
 .tmp-report-verify/
 tmp-*.json
 tmp-*.pdf

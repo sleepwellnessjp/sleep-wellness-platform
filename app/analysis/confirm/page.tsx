@@ -985,11 +985,32 @@ export default function ConfirmExtractionPage() {
         )}
 
         {consistencyWarnings.length > 0 && (
-          <div className="mx-auto mt-5 max-w-2xl rounded-2xl border border-amber-200 bg-[#fffbeb] px-4 py-4 text-[14px] leading-7 text-amber-950 sm:px-5">
-            <p className="font-semibold">合計時間・割合に矛盾があります</p>
+          <div
+            className={`mx-auto mt-5 max-w-2xl rounded-2xl px-4 py-4 text-[14px] leading-7 sm:px-5 ${
+              consistencyWarnings.some((w) => w.severity === "blocking")
+                ? "border-2 border-red-500 bg-red-50 text-red-950"
+                : "border border-amber-200 bg-[#fffbeb] text-amber-950"
+            }`}
+            role="alert"
+          >
+            <p className="font-semibold">
+              {consistencyWarnings.some((w) => w.severity === "blocking")
+                ? "睡眠バランスが整合していません（修正必須）"
+                : "合計時間・割合に矛盾があります"}
+            </p>
+            {consistencyWarnings.some((w) => w.severity === "blocking") ? (
+              <p className="mt-2 text-[13px] text-red-900/90">
+                このまま確定すると、PDFの「③ 睡眠バランス」は内訳を印刷せず空欄になります。画像と照合して数値を直してください。
+              </p>
+            ) : null}
             <ul className="mt-3 space-y-1.5 text-[13px]">
               {consistencyWarnings.map((warning) => (
-                <li key={warning.message}>{warning.message}</li>
+                <li key={warning.message}>
+                  {warning.severity === "blocking" ? (
+                    <span className="mr-1 font-semibold text-red-700">[必須]</span>
+                  ) : null}
+                  {warning.message}
+                </li>
               ))}
             </ul>
           </div>

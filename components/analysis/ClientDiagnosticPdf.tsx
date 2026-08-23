@@ -385,41 +385,49 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        {report.stages.length > 0 ? (
+        {report.stages.length > 0 || report.stagesUnavailableMessage ? (
           <section className="mt-3">
             <SectionEyebrow eyebrow="③ SLEEP BALANCE" title="睡眠バランス" />
-            <div
-              className="flex h-4 overflow-hidden rounded-full"
-              style={{ background: "rgba(7,20,38,0.06)" }}
-            >
-              {report.stages.map((stage) => (
+            {report.stagesUnavailableMessage ? (
+              <p className="mt-1 text-[11px] leading-5" style={{ color: NAVY }}>
+                {report.stagesUnavailableMessage}
+              </p>
+            ) : (
+              <>
                 <div
-                  key={stage.id}
-                  style={{
-                    width: `${Math.max(stage.percent, 4)}%`,
-                    backgroundColor: stage.color,
-                  }}
-                  title={`${stage.label} ${stage.valueText}`}
-                />
-              ))}
-            </div>
-            <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
-              {report.stages.map((stage) => (
-                <div key={stage.id} className="flex items-baseline justify-between gap-2">
-                  <p className="flex items-center gap-1.5 text-[10px]" style={{ color: NAVY }}>
-                    <span
-                      className="inline-block h-2 w-2 rounded-full"
-                      style={{ backgroundColor: stage.color }}
-                      aria-hidden
+                  className="flex h-4 overflow-hidden rounded-full"
+                  style={{ background: "rgba(7,20,38,0.06)" }}
+                >
+                  {report.stages.map((stage) => (
+                    <div
+                      key={stage.id}
+                      style={{
+                        width: `${Math.max(stage.percent, 4)}%`,
+                        backgroundColor: stage.color,
+                      }}
+                      title={`${stage.label} ${stage.valueText}`}
                     />
-                    {stage.label}
-                  </p>
-                  <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
-                    {stage.valueText}
-                  </p>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
+                  {report.stages.map((stage) => (
+                    <div key={stage.id} className="flex items-baseline justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-[10px]" style={{ color: NAVY }}>
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ backgroundColor: stage.color }}
+                          aria-hidden
+                        />
+                        {stage.label}
+                      </p>
+                      <p className="text-[10px] font-semibold" style={{ color: NAVY }}>
+                        {stage.valueText}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </section>
         ) : null}
 

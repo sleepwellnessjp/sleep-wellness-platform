@@ -9,6 +9,7 @@ import {
   parseDurationMinutes,
   parsePercent,
 } from "@/lib/soxai-graphs";
+import { evaluateSleepBalanceGate } from "@/lib/soxai-consistency";
 import type { AnalysisMetrics, MetricFieldKey } from "@/lib/soxai-metrics";
 import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
 import {
@@ -60,6 +61,11 @@ export type CounselingReportContent = {
   keyMetrics: CounselingKeyMetric[];
   analysisGuideMetrics: CounselingKeyMetric[];
   stages: CounselingStageBar[];
+  /**
+   * 睡眠バランス不整合で帯グラフを出さないとき。
+   * 文言は固定（詳細はコンソール）。
+   */
+  stagesUnavailableMessage: string | null;
   goodPoints: string[];
   attentionPoints: string[];
   expertPoints: CounselingExpertPoint[];
@@ -70,6 +76,9 @@ export type CounselingReportContent = {
   /** 画面⑤と同じ配列。PDF⑤の文面ガードに使う（⑦の生成は buildActions のまま） */
   priorityImprovements: PriorityImprovement[];
 };
+
+export const STAGES_UNAVAILABLE_MESSAGE =
+  "内訳データを取得できませんでした";
 
 const MISSING = /^(未測定|取得できず|データなし|要確認|--|—|－|-|n\/a|na)$/i;
 
@@ -223,7 +232,45 @@ function buildAnalysisGuideMetrics(
   return rows;
 }
 
-function buildStages(metrics: AnalysisMetrics): CounselingStageBar[] {
+function formatAwakeStageText(metrics: AnalysisMetrics): string {
+  const duration = displayMeasured(metrics.awakenings);
+  const rate = displayMeasured(metrics.awakeningRate);
+  if (duration && rate) return `${duration} · ${rate}`;
+  return duration || rate || "";
+}
+
+function buildStages(metrics: AnalysisMetrics): {
+  stages: CounselingStageBar[];
+  stagesUnavailableMessage: string | null;
+} {
+  const gate = evaluateSleepBalanceGate(metrics);
+  if (!gate.ok) {
+    console.warn("[counseling-report] sleep balance gate blocked stages", {
+      failedChecks: gate.failedChecks,
+      stageSumMinutes: gate.stageSumMinutes,
+      sleepMinutes: gate.sleepMinutes,
+      durationDiffMinutes: gate.durationDiffMinutes,
+      rateSum: gate.rateSum,
+      rateDiffFrom100: gate.rateDiffFrom100,
+      messages: gate.messages,
+      metrics: {
+        sleepDuration: metrics.sleepDuration,
+        awakenings: metrics.awakenings,
+        awakeningRate: metrics.awakeningRate,
+        remSleep: metrics.remSleep,
+        remSleepRate: metrics.remSleepRate,
+        lightSleep: metrics.lightSleep,
+        lightSleepRate: metrics.lightSleepRate,
+        deepSleep: metrics.deepSleep,
+        deepSleepRate: metrics.deepSleepRate,
+      },
+    });
+    return {
+      stages: [],
+      stagesUnavailableMessage: STAGES_UNAVAILABLE_MESSAGE,
+    };
+  }
+
   const summary = computeSleepStageSummary(metrics);
   const candidates: Array<{
     id: CounselingStageBar["id"];
@@ -238,10 +285,7 @@ function buildStages(metrics: AnalysisMetrics): CounselingStageBar[] {
       present:
         hasMeasuredValue(metrics.awakenings) ||
         hasMeasuredValue(metrics.awakeningRate),
-      valueText:
-        displayMeasured(metrics.awakenings) ||
-        displayMeasured(metrics.awakeningRate) ||
-        "",
+      valueText: formatAwakeStageText(metrics),
       percent: parsePercent(metrics.awakeningRate),
     },
     {
@@ -277,7 +321,9 @@ function buildStages(metrics: AnalysisMetrics): CounselingStageBar[] {
   const present = candidates.filter(
     (item) => item.present && (item.valueText || item.percent != null),
   );
-  if (present.length < 2) return [];
+  if (present.length < 2) {
+    return { stages: [], stagesUnavailableMessage: null };
+  }
 
   const percentSum = present.reduce(
     (sum, item) => sum + (item.percent ?? 0),
@@ -291,23 +337,26 @@ function buildStages(metrics: AnalysisMetrics): CounselingStageBar[] {
   });
   const minuteSum = minuteWeights.reduce((sum, n) => sum + n, 0);
 
-  return present.map((item, index) => {
-    let percent = item.percent ?? 0;
-    if (percentSum >= 40) {
-      percent = ((item.percent ?? 0) / percentSum) * 100;
-    } else if (minuteSum > 0) {
-      percent = (minuteWeights[index]! / minuteSum) * 100;
-    } else {
-      percent = 100 / present.length;
-    }
-    return {
-      id: item.id,
-      label: item.label,
-      valueText: item.valueText || `${Math.round(percent)}%`,
-      percent,
-      color: STAGE_COLORS[item.id],
-    };
-  });
+  return {
+    stages: present.map((item, index) => {
+      let percent = item.percent ?? 0;
+      if (percentSum >= 40) {
+        percent = ((item.percent ?? 0) / percentSum) * 100;
+      } else if (minuteSum > 0) {
+        percent = (minuteWeights[index]! / minuteSum) * 100;
+      } else {
+        percent = 100 / present.length;
+      }
+      return {
+        id: item.id,
+        label: item.label,
+        valueText: item.valueText || `${Math.round(percent)}%`,
+        percent,
+        color: STAGE_COLORS[item.id],
+      };
+    }),
+    stagesUnavailableMessage: null,
+  };
 }
 
 function buildExpertPoints(result: AnalysisResult): CounselingExpertPoint[] {
@@ -589,12 +638,14 @@ export function buildCounselingReportContent(
     .slice(0, 3);
   const actions = buildActions(model);
   const keyMetrics = buildKeyMetrics(result.metrics);
+  const stageBuild = buildStages(result.metrics);
 
   return {
     overallComment: buildOverallComment(result, model),
     keyMetrics,
     analysisGuideMetrics: buildAnalysisGuideMetrics(result.metrics, keyMetrics),
-    stages: buildStages(result.metrics),
+    stages: stageBuild.stages,
+    stagesUnavailableMessage: stageBuild.stagesUnavailableMessage,
     goodPoints,
     attentionPoints,
     expertPoints: buildExpertPoints(result),

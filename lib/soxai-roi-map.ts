@@ -87,8 +87,8 @@ const ROI_SLEEP_BED_WAKE_LATENCY: SoxaiRoiDef = roi(
 
 const ROI_SLEEP_STAGES_CORE: SoxaiRoiDef = roi(
   "roi_sleep_stages_core",
-  "②覚醒率・レム・ノンレム",
-  // 下方向へ拡張し、深い睡眠（ノンレム）行まで完全に含める（x/w・y・プロンプトは据え置き）
+  "②覚醒・レム・浅い・深い",
+  // 下方向へ拡張し、深い睡眠行まで完全に含める（浅い睡眠の取りこぼし禁止）
   { x: 0.0, y: 0.12, w: 1.0, h: 0.86 },
   [
     "覚醒",
@@ -96,6 +96,8 @@ const ROI_SLEEP_STAGES_CORE: SoxaiRoiDef = roi(
     "覚醒時間",
     "レム睡眠",
     "レム睡眠率",
+    "浅い睡眠",
+    "浅い睡眠率",
     "深い睡眠",
     "深い睡眠率",
   ],
@@ -104,18 +106,21 @@ const ROI_SLEEP_STAGES_CORE: SoxaiRoiDef = roi(
     "awakenings",
     "remSleep",
     "remSleepRate",
+    "lightSleep",
+    "lightSleepRate",
     "deepSleep",
     "deepSleepRate",
     "nonRemSleep",
     "nonRemSleepRate",
   ],
   `${VISIBLE_ONLY}
-対象はこの画面のステージ行だけ:
+対象はこの画面のステージ行だけ（4行すべて必須・見逃し禁止）:
 - 覚醒率（%）と覚醒時間
 - レム睡眠率（%）とレム睡眠（時間）
-- 深い睡眠率（%）と深い睡眠（時間）※表示上ノンレム
-各行はラベル直後の%と時間。右端の昨日比較（↑↓隣）は捨てる。
-入眠・起床・潜時・浅い睡眠・酸素・グラフ軸は返さない。`,
+- 浅い睡眠率（%）と浅い睡眠（時間）※「浅い睡眠」行を省略しない
+- 深い睡眠率（%）と深い睡眠（時間）
+各行はラベル直後の%と時間を別エントリで返す。右端の昨日比較（↑↓隣）は捨てる。
+入眠・起床・潜時・酸素・グラフ軸は返さない。浅い睡眠は必ず返す。`,
 );
 
 /** 睡眠系画面に共通で載せる2 ROI（順序固定・別 OCR） */
@@ -198,6 +203,7 @@ export const CLASSIFY_ROI: SoxaiRoiDef = roi(
     "平均酸素",
     "覚醒",
     "レム",
+    "浅い睡眠",
     "深い睡眠",
     "入眠潜時",
     "睡眠効率",

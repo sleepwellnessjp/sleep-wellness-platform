@@ -89,7 +89,7 @@ const VISION_TRANSIENT_RETRIES = 1;
 /** critical 再OCRの候補画像上限（優先画面から） */
 const CRITICAL_REOCR_MAX_IMAGES = 2;
 /** サーバー温インスタンス内の画像ハッシュキャッシュ（不完全結果は採用しない） */
-const SERVER_OCR_CACHE_VERSION = "v20";
+const SERVER_OCR_CACHE_VERSION = "v21";
 const serverOcrCache = new Map<
   string,
   {
@@ -629,7 +629,7 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 - sleep_overview: 睡眠スコア / 睡眠時間（ホームが無いときの睡眠スコア正）
 - sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計
   ※sleep_detail から睡眠スコアは返さない。入眠・起床の正
-- sleep_stages: 覚醒・レム・浅い・深い（各行は「ラベル直後の%」が率、右の時間が時間。右端比較矢印は昨日差で率にしない）。深い睡眠率は「深い睡眠」行の%のみ。浅い率と合算しない / SpO₂（「--」は省略） ※端点時刻を入眠・起床にしない
+- sleep_stages: 覚醒・レム・浅い・深いの4行すべて必須（各行は「ラベル直後の%」が率、右の時間が時間。右端比較矢印は昨日差で率にしない）。「浅い睡眠」行を省略しない。深い睡眠率は「深い睡眠」行の%のみ。浅い率と合算しない / SpO₂（「--」は省略） ※端点時刻を入眠・起床にしない
 - circadian: 体内時計のみ（入眠・起床は返さない）
 - skin_temp: 皮膚温度 / 皮膚温 / 平均 / 偏差（+0.2℃ や単位なし +0.2 も）
 - stress: ストレス / 平均ストレス / ストレスレベル
@@ -674,16 +674,20 @@ function criticalOnlyScreenPrompt(
   const stagesExtra =
     screenType === "sleep_stages"
       ? `
-【sleep_stages 専用 — 深い睡眠率の位置関係】
-各ステージ行は左から: ラベル → その直後の% → バー → 時間 → 右端の比較値（昨日差）。
-- 「深い睡眠」行の「深い睡眠率」は、ラベル「深い睡眠」の直後にある % のみ（桁を正確に読む。近い別数字にしない）
-- label は必ず「深い睡眠率」と「深い睡眠」（時間）を別エントリで返す
+【sleep_stages 専用 — 4ステージ行すべて必須】
+上から順に「覚醒」「レム睡眠」「浅い睡眠」「深い睡眠」の4行がある。各行を必ず返す（浅い睡眠の省略は禁止）。
+各行は左から: ラベル → その直後の% → バー → 時間 → 右端の比較値（昨日差）。
+必須エントリ（計8）:
+- { label: "覚醒率", value: "NN%" } / { label: "覚醒時間", value: "H:MM" }
+- { label: "レム睡眠率", value: "NN%" } / { label: "レム睡眠", value: "H:MM" }
+- { label: "浅い睡眠率", value: "NN%" } / { label: "浅い睡眠", value: "H:MM" }
+- { label: "深い睡眠率", value: "NN%" } / { label: "深い睡眠", value: "H:MM" }
+ルール:
+- 「深い睡眠率」はラベル「深い睡眠」の直後の % のみ（桁を正確に。近い別数字にしない）
 - 時間（H:MM）も必ず取る。率だけ返して時間を省略しない
-- 右端の比較矢印（↑↓）の隣の時間・%は昨日差。深い睡眠率にしない
-- 浅い睡眠率・レム率・覚醒率を深い睡眠率にしない。合算・逆算・推測で % を作らない
-- 例形式: { label: "深い睡眠率", value: "NN%" } と { label: "深い睡眠", value: "H:MM" }（画面の実値）
-- 画面下部に「呼吸速度」「平均酸素レベル」があれば取る
-- SpO₂ が「--」等なら省略`
+- 右端の比較矢印（↑↓）隣の時間・%は昨日差。率にも時間にもしない
+- 浅い・レム・覚醒の率を深い睡眠率にしない。合算・逆算・推測で % を作らない
+- 画面下部に「呼吸速度」「平均酸素レベル」があれば取る。SpO₂ が「--」等なら省略`
       : "";
 
   const respirationExtra =
@@ -2208,9 +2212,13 @@ export async function POST(request: Request) {
         circadianRhythm: "体内時計",
         sleepLatency: "入眠潜時",
         awakeningRate: "覚醒率",
+        awakenings: "覚醒時間",
+        remSleep: "レム睡眠",
         remSleepRate: "レム睡眠率",
         nonRemSleepRate: "ノンレム睡眠率",
+        lightSleep: "浅い睡眠",
         lightSleepRate: "浅い睡眠率",
+        deepSleep: "深い睡眠",
         deepSleepRate: "深い睡眠率",
         spo2: "平均SpO₂",
         respiratoryRate: "呼吸速度",
@@ -2220,7 +2228,7 @@ export async function POST(request: Request) {
         stress: "ストレス",
       };
       const stagesMissing = stillMissing.filter((k) =>
-        ["awakeningRate","remSleepRate","lightSleepRate","deepSleepRate","spo2"].includes(k),
+        ["awakenings","awakeningRate","remSleep","remSleepRate","lightSleep","lightSleepRate","deepSleep","deepSleepRate","spo2"].includes(k),
       );
       const respirationMissing = stillMissing.filter((k) =>
         ["respiratoryRate","spo2"].includes(k),
