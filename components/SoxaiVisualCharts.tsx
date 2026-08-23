@@ -26,6 +26,7 @@ function evaluationText(
 ): string | undefined {
   const ev = evaluateMetric(key, metrics);
   if (!ev) return undefined;
+  if (!ev.starsLabel) return ev.label;
   return `${ev.starsLabel}　${ev.label}`;
 }
 

@@ -19,6 +19,10 @@ import {
   buildCounselingSupport,
   flattenCounselingSupport,
 } from "@/lib/counseling-support";
+import {
+  evaluateSleepDebtDisplay,
+  sleepDebtAnalysisNote,
+} from "@/lib/sleep-debt-evaluation";
 
 export const AI_SLEEP_ANALYSIS_VERSION = "1.0" as const;
 
@@ -468,17 +472,18 @@ export function evaluateSleepDebt(
   if (!raw) {
     return emptyItem("sleepDebt", null, "missing", "睡眠負債未入力");
   }
-  const minutes = Math.abs(parseDurationMinutes(raw) ?? NaN);
-  if (!Number.isFinite(minutes)) {
+  const signed = parseDurationMinutes(raw);
+  if (signed == null || !Number.isFinite(signed)) {
     return emptyItem("sleepDebt", raw, "missing", "睡眠負債を解釈できません");
   }
+
+  // wellness 寄与スコアは従来どおり絶対値（総合・4領域の点数を変えない）
+  const minutes = Math.abs(signed);
   let score: number;
   let signal: string;
-  let note: string;
   if (minutes <= THRESH.debtGoodMaxMin) {
     score = 90;
     signal = "low";
-    note = "睡眠負債は小さいです";
   } else if (minutes <= THRESH.debtFairMaxMin) {
     score =
       75 +
@@ -486,7 +491,6 @@ export function evaluateSleepDebt(
         (THRESH.debtFairMaxMin - THRESH.debtGoodMaxMin)) *
         12;
     signal = "mild";
-    note = "睡眠負債は軽度です";
   } else if (minutes <= THRESH.debtSoftMaxMin) {
     score =
       58 +
@@ -494,12 +498,17 @@ export function evaluateSleepDebt(
         (THRESH.debtSoftMaxMin - THRESH.debtFairMaxMin)) *
         14;
     signal = "moderate";
-    note = "睡眠負債がややあります。回復夜の確保が有効です";
   } else {
     score = Math.max(30, 55 - (minutes - THRESH.debtSoftMaxMin) / 8);
     signal = "elevated";
-    note = "睡眠負債が大きめです。総睡眠の底上げを優先します";
   }
+
+  // 表示・説明文のみ符号を反映（共通関数）
+  const display = evaluateSleepDebtDisplay(signed);
+  const note = display
+    ? sleepDebtAnalysisNote(display)
+    : "睡眠負債を解釈できません";
+
   return scoredItem("sleepDebt", raw, score, signal, note);
 }
 

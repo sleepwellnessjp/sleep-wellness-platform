@@ -9,11 +9,13 @@ import {
   parseLeadingNumber,
   parsePercent,
 } from "@/lib/soxai-graphs";
+import { evaluateSleepDebtDisplay } from "@/lib/sleep-debt-evaluation";
 
 export type MetricStars = 1 | 2 | 3 | 4 | 5;
 
 export type MetricEvaluation = {
-  stars: MetricStars;
+  /** null のとき★非表示（睡眠負債のマイナスなど） */
+  stars: MetricStars | null;
   starsLabel: string;
   label: string;
 };
@@ -35,7 +37,10 @@ export function formatMetricStars(stars: MetricStars): string {
   return `${"★".repeat(stars)}${"☆".repeat(5 - stars)}`;
 }
 
-function evalFrom(stars: number, label: string): MetricEvaluation {
+function evalFrom(stars: number | null, label: string): MetricEvaluation {
+  if (stars == null) {
+    return { stars: null, starsLabel: "", label };
+  }
   const s = clampStars(stars);
   return { stars: s, starsLabel: formatMetricStars(s), label };
 }
@@ -87,12 +92,9 @@ export function evaluateMetric(
     case "sleepDebt": {
       const m = parseDurationMinutes(metrics.sleepDebt);
       if (m == null) return null;
-      const abs = Math.abs(m);
-      if (abs <= 15) return evalFrom(5, "とても良い");
-      if (abs <= 45) return evalFrom(4, "良い");
-      if (abs <= 90) return evalFrom(3, "普通");
-      if (abs <= 150) return evalFrom(2, "やや多い");
-      return evalFrom(1, "要改善");
+      const debt = evaluateSleepDebtDisplay(m);
+      if (!debt) return null;
+      return evalFrom(debt.stars, debt.label);
     }
     case "remSleepRate": {
       const p = parsePercent(metrics.remSleepRate);

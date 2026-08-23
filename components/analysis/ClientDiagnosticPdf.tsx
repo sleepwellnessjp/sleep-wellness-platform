@@ -122,11 +122,19 @@ function MetricGuideTile({
       >
         {item.value}
       </p>
-      {item.starsLabel ? (
+      {item.starsLabel || item.evalLabel ? (
         <p className="mt-0.5 text-[8px] leading-3" style={{ color: GOLD }}>
-          {item.starsLabel}
-          {item.evalLabel ? (
-            <span className="ml-1 font-medium text-slate-500">{item.evalLabel}</span>
+          {item.starsLabel ? (
+            <>
+              {item.starsLabel}
+              {item.evalLabel ? (
+                <span className="ml-1 font-medium text-slate-500">
+                  {item.evalLabel}
+                </span>
+              ) : null}
+            </>
+          ) : item.evalLabel ? (
+            <span className="font-medium text-slate-500">{item.evalLabel}</span>
           ) : null}
         </p>
       ) : null}

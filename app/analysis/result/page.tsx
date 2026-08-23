@@ -576,10 +576,16 @@ function MetricGuideCard({
           className="mt-1 text-[10px] leading-4 tracking-[0.04em] sm:text-[11px]"
           style={{ color: GOLD }}
         >
-          {evaluation.starsLabel}
-          <span className="ml-1.5 font-medium text-slate-500">
-            {evaluation.label}
-          </span>
+          {evaluation.starsLabel ? (
+            <>
+              {evaluation.starsLabel}
+              <span className="ml-1.5 font-medium text-slate-500">
+                {evaluation.label}
+              </span>
+            </>
+          ) : (
+            <span className="font-medium text-slate-500">{evaluation.label}</span>
+          )}
         </p>
       ) : null}
       {guide ? (
