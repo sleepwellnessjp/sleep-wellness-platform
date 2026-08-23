@@ -23,6 +23,8 @@ const DURATION_KEYS = new Set<MetricFieldKey>([
   "deepSleep",
   "sleepDebt",
   "sleepLatency",
+  /** 体内時計の偏移（±H:MM / ±時間分）。睡眠負債と同じ「〜時間〜分」整形 */
+  "circadianRhythm",
 ]);
 
 const PERCENT_KEYS = new Set<MetricFieldKey>([

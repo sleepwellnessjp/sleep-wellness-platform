@@ -10,6 +10,7 @@ import {
   parsePercent,
 } from "@/lib/soxai-graphs";
 import type { AnalysisMetrics, MetricFieldKey } from "@/lib/soxai-metrics";
+import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
 import {
   evaluateMetric,
   metricGuideline,
@@ -91,10 +92,14 @@ export function hasMeasuredValue(
 
 function displayMeasured(
   value: string | number | null | undefined,
+  key?: MetricFieldKey,
 ): string | null {
   if (!hasMeasuredValue(value)) return null;
-  if (typeof value === "number") return String(value);
-  return String(value).trim();
+  const text =
+    typeof value === "number" ? String(value) : String(value).trim();
+  if (!key) return text;
+  // 体内時計の -1:21 等を「-1時間21分」へ揃える（既存保存値の PDF 再生成にも効く）
+  return normalizeMetricDisplayValue(key, text) || text;
 }
 
 function stripReportNoise(text: string): string {
@@ -190,7 +195,7 @@ function buildKeyMetrics(metrics: AnalysisMetrics): CounselingKeyMetric[] {
   const seen = new Set<string>();
   for (const item of [...KEY_METRIC_PRIORITY, ...KEY_METRIC_FILL]) {
     if (seen.has(item.label)) continue;
-    const value = displayMeasured(item.pick(metrics));
+    const value = displayMeasured(item.pick(metrics), item.key);
     if (!value) continue;
     seen.add(item.label);
     rows.push(enrichMetric(metrics, item, value));
@@ -209,7 +214,7 @@ function buildAnalysisGuideMetrics(
   const rows: CounselingKeyMetric[] = [];
   for (const item of ANALYSIS_PAGE_METRICS) {
     if (item.key && usedKeys.has(item.key)) continue;
-    const value = displayMeasured(item.pick(metrics));
+    const value = displayMeasured(item.pick(metrics), item.key);
     if (!value) continue;
     if (item.key) usedKeys.add(item.key);
     rows.push(enrichMetric(metrics, item, value));

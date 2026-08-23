@@ -11,6 +11,7 @@ const DURATION_KEYS = new Set<MetricFieldKey>([
   "deepSleep",
   "sleepDebt",
   "sleepLatency",
+  "circadianRhythm",
 ]);
 
 const PERCENT_KEYS = new Set<MetricFieldKey>([
