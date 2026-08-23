@@ -14,8 +14,10 @@ function lanDevOrigins(): string[] {
   const origins = new Set<string>();
   for (const infos of Object.values(os.networkInterfaces())) {
     for (const info of infos ?? []) {
-      const family = info.family;
-      const isV4 = family === "IPv4" || family === 4;
+      // Node の型定義では family が string | number のどちらかに固定されるため、
+      // 正規化してから比較する（実行時は "IPv4" / 4 の両方が来うる）。
+      const family = info.family as string | number;
+      const isV4 = String(family) === "IPv4" || Number(family) === 4;
       if (!isV4 || info.internal) continue;
       origins.add(info.address);
     }

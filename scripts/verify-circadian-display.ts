@@ -70,7 +70,7 @@ function baseResult(circadian: string): AnalysisResult {
     recommendationsUntilNext: [],
     caution: "",
     disclaimer: "",
-  } as AnalysisResult;
+  } as unknown as AnalysisResult;
 }
 
 let ok = true;

@@ -158,7 +158,7 @@ function logCase(
     recommendationsUntilNext: [],
     caution: "",
     disclaimer: "",
-  } as AnalysisResult;
+  } as unknown as AnalysisResult;
   const report = buildCounselingReportContent(fake);
   for (const s of report.stages) {
     console.log(`  ${s.label}: valueText=${s.valueText} barPercent≈${Math.round(s.percent)}%`);
