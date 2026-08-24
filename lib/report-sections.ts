@@ -10,7 +10,9 @@ export const REPORT_SECTIONS = {
   measurement: true, // ③ SOXAIデータ
   insight: false, // ④ 今日の睡眠の読み解き
   priority: true, // ⑤ 改善優先順位
-  melatoninYoga: false, // ⑥ メラトニンヨガ™処方
+  melatoninYoga: false, // ⑥ メラトニンヨガ™処方（結果画面）
+  /** PDF ⑥ LIFESTYLE「生活とのつながり」。結果画面の同名ブロックは対象外 */
+  pdfLifestyle: false,
   homework: true, // ⑦ 今日やること＋宿題
   next: false, // ⑧ 次回への見通し
   counseling: false, // ⑨ AIカウンセリング支援

@@ -602,7 +602,8 @@ export function ClientDiagnosticPdf({
           </section>
         ) : null}
 
-        {report.lifestyleConnection ? (
+        {isReportSectionVisible("pdfLifestyle") &&
+        report.lifestyleConnection ? (
           <section className="mt-3">
             <SectionEyebrow eyebrow="⑥ LIFESTYLE" title="生活とのつながり" />
             <p
