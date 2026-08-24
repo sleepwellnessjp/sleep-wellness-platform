@@ -10,6 +10,14 @@ import {
   parsePercent,
 } from "@/lib/soxai-graphs";
 import { evaluateSleepBalanceGate } from "@/lib/soxai-consistency";
+import {
+  collectUnfilledLifestyleCategories,
+  fallbackLifestyleSafeText,
+  mergeLifestyleMentionSource,
+  sanitizeLifestyleMentionText,
+  buildMeasurementFallbackFromText,
+  type LifestyleMentionSource,
+} from "@/lib/analysis-lifestyle-mention-guard";
 import type { AnalysisMetrics, MetricFieldKey } from "@/lib/soxai-metrics";
 import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
 import {
@@ -505,16 +513,41 @@ function sleepRiskHintFromResult(result: AnalysisResult) {
   });
 }
 
+function lifestyleMentionContext(
+  result: AnalysisResult,
+  lifestyle?: LifestyleSnapshot | null,
+): LifestyleMentionSource {
+  return mergeLifestyleMentionSource(
+    lifestyle as LifestyleMentionSource | null | undefined,
+    {
+      drinkingHabit: result.drinkingHabit,
+      exerciseHabit: result.exerciseHabit,
+      snoringNasal: result.snoringNasal,
+      medications: result.medications,
+    },
+  );
+}
+
 function buildLifestyleConnection(
   result: AnalysisResult,
   lifestyle?: LifestyleSnapshot | null,
 ): string {
+  const unfilled = collectUnfilledLifestyleCategories(
+    lifestyleMentionContext(result, lifestyle),
+  );
   const fromAi = stripReportNoise(
     result.profileRelation || result.lifestyleRelation || "",
   );
   if (fromAi) {
     // 既存分析でも「身体71点」等が残らないよう、表示直前にスコア言及を除去
-    return clampSentences(sanitizeProfileRelationScores(fromAi), 2);
+    const cleaned = clampSentences(
+      sanitizeProfileRelationScores(fromAi),
+      2,
+    );
+    const sanitized = sanitizeLifestyleMentionText(cleaned, unfilled, {
+      mode: "strict",
+    });
+    if (sanitized.trim()) return sanitized;
   }
 
   const model = buildClientWellnessReport(
@@ -523,9 +556,17 @@ function buildLifestyleConnection(
     sleepRiskHintFromResult(result),
   );
   if (model.impactFactors.length > 0) {
-    return model.impactFactors.slice(0, 3).map(hedgeLine).filter(Boolean).join("");
+    const joined = model.impactFactors
+      .slice(0, 3)
+      .map(hedgeLine)
+      .filter(Boolean)
+      .join("");
+    return sanitizeLifestyleMentionText(joined, unfilled, { mode: "strict" });
   }
-  return "";
+  return fallbackLifestyleSafeText(
+    "profileRelation",
+    fromAi || result.profileRelation || "",
+  );
 }
 
 function buildNextSteps(
@@ -605,17 +646,38 @@ function isGenericPoint(text: string): boolean {
   );
 }
 
+function buildActionWhy(
+  reason: string,
+  unfilled: ReturnType<typeof collectUnfilledLifestyleCategories>,
+): string {
+  const raw = toClientLine(clampSentences(stripReportNoise(reason), 1));
+  const sanitized = sanitizeLifestyleMentionText(raw, unfilled, {
+    mode: "partial",
+  });
+  if (sanitized.trim()) return sanitized;
+  return (
+    buildMeasurementFallbackFromText(raw) ??
+    buildMeasurementFallbackFromText(reason) ??
+    "今回の測定データから優先しています。"
+  );
+}
+
 function buildActions(
   model: ReturnType<typeof buildClientWellnessReport>,
+  unfilled: ReturnType<typeof collectUnfilledLifestyleCategories>,
 ): CounselingAction[] {
   // ⑤と同じ配列から what/why を取る（todaysRecommendations との index zip は順序がずれる）
   return model.priorityImprovements.slice(0, 3).map((item, index) => ({
     rank: index + 1,
-    what: stripReportNoise(item.action.trim() || item.title).replace(
-      /ください。?$/u,
-      "",
+    what: sanitizeLifestyleMentionText(
+      stripReportNoise(item.action.trim() || item.title).replace(
+        /ください。?$/u,
+        "",
+      ),
+      unfilled,
+      { mode: "partial" },
     ),
-    why: toClientLine(clampSentences(stripReportNoise(item.reason), 1)),
+    why: buildActionWhy(item.reason, unfilled),
   }));
 }
 
@@ -636,7 +698,9 @@ export function buildCounselingReportContent(
     .map((item) => toClientLine(stripReportNoise(item.title)))
     .filter((item) => item && !isGenericPoint(item))
     .slice(0, 3);
-  const actions = buildActions(model);
+  const mentionContext = lifestyleMentionContext(result, lifestyle);
+  const unfilledLifestyle = collectUnfilledLifestyleCategories(mentionContext);
+  const actions = buildActions(model, unfilledLifestyle);
   const keyMetrics = buildKeyMetrics(result.metrics);
   const stageBuild = buildStages(result.metrics);
 

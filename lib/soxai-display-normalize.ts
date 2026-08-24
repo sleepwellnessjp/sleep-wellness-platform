@@ -5,6 +5,13 @@ import {
   type MetricFieldKey,
 } from "@/lib/soxai-metrics";
 import { normalizeTimeToHHMM } from "@/lib/soxai-structured-metrics";
+import { stripOcrDurationQualitative } from "@/lib/soxai-ocr-duration-qualitative";
+
+/** OCR 定性 suffix 除去対象（circadianRhythm / sleepDebt のみ） */
+const OCR_QUALITATIVE_DURATION_KEYS = new Set<MetricFieldKey>([
+  "circadianRhythm",
+  "sleepDebt",
+]);
 
 function normalizeSkinTemperatureDisplay(value: string): string {
   return value
@@ -100,7 +107,11 @@ export function normalizeMetricDisplayValue(
   }
 
   if (DURATION_KEYS.has(key)) {
-    return formatDurationDisplay(raw);
+    const prepared =
+      OCR_QUALITATIVE_DURATION_KEYS.has(key)
+        ? stripOcrDurationQualitative(raw)
+        : raw;
+    return formatDurationDisplay(prepared);
   }
 
   if (PERCENT_KEYS.has(key)) {

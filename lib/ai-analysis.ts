@@ -13,6 +13,7 @@ import {
   parseLeadingNumber,
 } from "@/lib/soxai-graphs";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
+import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
 import type { ImprovementItem } from "@/lib/improvement-priority";
 import type { NextActionGoal } from "@/lib/analysis-session";
 import {
@@ -23,6 +24,8 @@ import {
   evaluateSleepDebtDisplay,
   sleepDebtAnalysisNote,
 } from "@/lib/sleep-debt-evaluation";
+import { isDurationDirectionAmbiguous } from "@/lib/duration-direction-ambiguity";
+import { stripOcrDurationQualitative } from "@/lib/soxai-ocr-duration-qualitative";
 
 export const AI_SLEEP_ANALYSIS_VERSION = "1.0" as const;
 
@@ -476,6 +479,7 @@ export function evaluateSleepDebt(
   if (signed == null || !Number.isFinite(signed)) {
     return emptyItem("sleepDebt", raw, "missing", "睡眠負債を解釈できません");
   }
+  const directionAmbiguous = isDurationDirectionAmbiguous(raw, "sleepDebt").ambiguous;
 
   // wellness 寄与スコアは従来どおり絶対値（総合・4領域の点数を変えない）
   const minutes = Math.abs(signed);
@@ -501,6 +505,16 @@ export function evaluateSleepDebt(
   } else {
     score = Math.max(30, 55 - (minutes - THRESH.debtSoftMaxMin) / 8);
     signal = "elevated";
+  }
+
+  if (directionAmbiguous) {
+    return scoredItem(
+      "sleepDebt",
+      raw,
+      score,
+      signal,
+      "睡眠負債の記録があります。符号と表現が一致しないため、方向は確定できません",
+    );
   }
 
   // 表示・説明文のみ符号を反映（共通関数）
@@ -876,6 +890,64 @@ function parseCircadianOffsetMinutes(raw: string): number | null {
   return null;
 }
 
+const CIRCADIAN_DIRECTION_AMBIGUOUS_NOTE =
+  "体内時計にずれの記録があります。方向は測定データから確定できないため、継続観察で確認してください";
+
+function circadianRhythmNoteForOffset(
+  abs: number,
+  directionAmbiguous: boolean,
+  offset: number,
+): { score: number; signal: string; note: string } {
+  if (abs <= THRESH.circadianGoodMaxMin) {
+    return {
+      score: 90,
+      signal: directionAmbiguous ? "direction_ambiguous" : "aligned",
+      note: "体内時計のずれは小さいです",
+    };
+  }
+  if (abs <= THRESH.circadianFairMaxMin) {
+    return {
+      score:
+        72 +
+        ((THRESH.circadianFairMaxMin - abs) /
+          (THRESH.circadianFairMaxMin - THRESH.circadianGoodMaxMin)) *
+          14,
+      signal: directionAmbiguous ? "direction_ambiguous" : "mild_shift",
+      note: "体内時計に軽度のずれがあります",
+    };
+  }
+  if (abs <= THRESH.circadianSoftMaxMin) {
+    return {
+      score:
+        58 +
+        ((THRESH.circadianSoftMaxMin - abs) /
+          (THRESH.circadianSoftMaxMin - THRESH.circadianFairMaxMin)) *
+          12,
+      signal: directionAmbiguous
+        ? "direction_ambiguous"
+        : offset < 0
+          ? "delayed"
+          : "advanced",
+      note: directionAmbiguous
+        ? CIRCADIAN_DIRECTION_AMBIGUOUS_NOTE
+        : offset < 0
+          ? "体内時計の遅れが示唆されます。朝の光と起床固定が有効です"
+          : "体内時計がやや前倒しの可能性があります",
+    };
+  }
+  return {
+    score: Math.max(30, 55 - (abs - THRESH.circadianSoftMaxMin) / 5),
+    signal: directionAmbiguous
+      ? "direction_ambiguous"
+      : offset < 0
+        ? "delayed"
+        : "advanced",
+    note: directionAmbiguous
+      ? CIRCADIAN_DIRECTION_AMBIGUOUS_NOTE
+      : "体内時計のずれが大きめです。光環境と起床リズムを優先します",
+  };
+}
+
 export function evaluateCircadianRhythm(
   value: string | null | undefined,
 ): AiAnalysisItem {
@@ -884,41 +956,29 @@ export function evaluateCircadianRhythm(
     return emptyItem("circadianRhythm", null, "missing", "体内時計未入力");
   }
 
-  const offset = parseCircadianOffsetMinutes(raw);
+  const directionAmbiguous = isDurationDirectionAmbiguous(raw, "circadian").ambiguous;
+
+  const offset =
+    parseCircadianOffsetMinutes(raw) ??
+    parseCircadianOffsetMinutes(stripOcrDurationQualitative(raw));
   if (offset != null) {
     const abs = Math.abs(offset);
-    let score: number;
-    let signal: string;
-    let note: string;
-    if (abs <= THRESH.circadianGoodMaxMin) {
-      score = 90;
-      signal = "aligned";
-      note = "体内時計のずれは小さいです";
-    } else if (abs <= THRESH.circadianFairMaxMin) {
-      score =
-        72 +
-        ((THRESH.circadianFairMaxMin - abs) /
-          (THRESH.circadianFairMaxMin - THRESH.circadianGoodMaxMin)) *
-          14;
-      signal = "mild_shift";
-      note = "体内時計に軽度のずれがあります";
-    } else if (abs <= THRESH.circadianSoftMaxMin) {
-      score =
-        58 +
-        ((THRESH.circadianSoftMaxMin - abs) /
-          (THRESH.circadianSoftMaxMin - THRESH.circadianFairMaxMin)) *
-          12;
-      signal = offset < 0 ? "delayed" : "advanced";
-      note =
-        offset < 0
-          ? "体内時計の遅れが示唆されます。朝の光と起床固定が有効です"
-          : "体内時計がやや前倒しの可能性があります";
-    } else {
-      score = Math.max(30, 55 - (abs - THRESH.circadianSoftMaxMin) / 5);
-      signal = offset < 0 ? "delayed" : "advanced";
-      note = "体内時計のずれが大きめです。光環境と起床リズムを優先します";
-    }
+    const { score, signal, note } = circadianRhythmNoteForOffset(
+      abs,
+      directionAmbiguous,
+      offset,
+    );
     return scoredItem("circadianRhythm", raw, score, signal, note);
+  }
+
+  if (directionAmbiguous) {
+    return scoredItem(
+      "circadianRhythm",
+      raw,
+      65,
+      "direction_ambiguous",
+      CIRCADIAN_DIRECTION_AMBIGUOUS_NOTE,
+    );
   }
 
   const delayed = includesAny(raw, ["遅", "ディレイ", "遅れ", "夜型"]);
@@ -1373,7 +1433,7 @@ const INSIGHT_WEAK_THRESHOLD = 70;
 const INSIGHT_STRENGTH_THRESHOLD = 75;
 
 function formatInsightEvidence(item: AiAnalysisItem): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const v = withUnit(formatEvidenceValue(item.rawValue, item.key), item.key);
   return v ? `${item.label}${v}` : item.label;
 }
 
@@ -1543,7 +1603,7 @@ export function generateOverallEvaluation(
     goods.length > 0
       ? goods
           .map((g) => {
-            const v = formatEvidenceValue(g.rawValue);
+            const v = formatEvidenceValue(g.rawValue, g.key);
             return v ? `${g.label}${v}` : g.label;
           })
           .join("・")
@@ -1552,7 +1612,7 @@ export function generateOverallEvaluation(
     issues.length > 0
       ? issues
           .map((i) => {
-            const v = formatEvidenceValue(i.rawValue);
+            const v = formatEvidenceValue(i.rawValue, i.key);
             return v ? `${i.label}${v}` : i.label;
           })
           .join("・")
@@ -1608,7 +1668,7 @@ function goodPointLabel(key: AiAnalysisItemKey): string {
 }
 
 function metricGoodPointSentence(item: AiAnalysisItem): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const v = withUnit(formatEvidenceValue(item.rawValue, item.key), item.key);
   const tag = goodPointLabel(item.key);
   switch (item.key) {
     case "remSleep":
@@ -1672,7 +1732,7 @@ export const IMPROVEMENT_PRIORITY_KEYS: readonly AiAnalysisItemKey[] = [
 const IMPROVEMENT_WEAK_THRESHOLD = 70;
 
 function improvementActionText(item: AiAnalysisItem): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const v = withUnit(formatEvidenceValue(item.rawValue, item.key), item.key);
   switch (item.key) {
     case "sleepDuration":
       return v
@@ -1711,6 +1771,11 @@ function improvementActionText(item: AiAnalysisItem): string {
         ? `呼吸数${v}にばらつきがあります。就寝前のリラックスと鼻呼吸の意識が有効です`
         : `呼吸数にばらつきがあります。就寝前のリラックスが有効です`;
     case "circadianRhythm":
+      if (item.signal === "direction_ambiguous") {
+        return v
+          ? `体内時計（${v}）にずれの記録があります。方向は確定できないため、起床リズムの継続観察を優先しましょう`
+          : `体内時計にずれの記録があります。継続観察で傾向を確認しましょう`;
+      }
       return v
         ? `体内時計（${v}）にずれがあります。起床時刻の固定と朝の光浴でリズムを整えることが期待できます`
         : `体内時計にずれがあります。起床固定と朝の光浴が期待できます`;
@@ -1722,7 +1787,7 @@ function improvementActionText(item: AiAnalysisItem): string {
 }
 
 function improvementWhyNow(item: AiAnalysisItem, rank: number): string {
-  const v = withUnit(formatEvidenceValue(item.rawValue), item.key);
+  const v = withUnit(formatEvidenceValue(item.rawValue, item.key), item.key);
   const priorityHint =
     rank === 0
       ? "改善優先順位で最も効果が高い位置にあるため、いま着手する価値が大きいです。"
@@ -1768,6 +1833,11 @@ function improvementWhyNow(item: AiAnalysisItem, rank: number): string {
         ? `呼吸数${v}の安定は睡眠の連続性に関わりやすいです。${priorityHint}`
         : `呼吸の安定は睡眠の連続性に関わりやすいです。${priorityHint}`;
     case "circadianRhythm":
+      if (item.signal === "direction_ambiguous") {
+        return v
+          ? `体内時計（${v}）にずれの記録がありますが、方向は確定できません。${priorityHint}`
+          : `体内時計のずれは総睡眠や入眠に波及しうるため、継続観察が有効です。${priorityHint}`;
+      }
       return v
         ? `体内時計（${v}）のずれは総睡眠や入眠に波及しやすいです。${priorityHint}`
         : `体内時計のずれは総睡眠や入眠に波及しやすいです。${priorityHint}`;
@@ -1806,9 +1876,16 @@ export function generateImprovementPoints(items: AiAnalysisItem[]): string[] {
   return generateImprovementItems(items).map((item) => item.text);
 }
 
-function formatEvidenceValue(rawValue: string | number | null): string {
+function formatEvidenceValue(
+  rawValue: string | number | null,
+  key?: AiAnalysisItemKey,
+): string {
   if (rawValue == null || rawValue === "") return "";
-  return String(rawValue).trim();
+  const text = String(rawValue).trim();
+  if (key === "circadianRhythm" || key === "sleepDebt") {
+    return normalizeMetricDisplayValue(key, text);
+  }
+  return text;
 }
 
 function withUnit(value: string, key: AiAnalysisItemKey): string {

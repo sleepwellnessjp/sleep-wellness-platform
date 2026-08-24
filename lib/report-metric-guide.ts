@@ -10,6 +10,11 @@ import {
   parsePercent,
 } from "@/lib/soxai-graphs";
 import { evaluateSleepDebtDisplay } from "@/lib/sleep-debt-evaluation";
+import {
+  DURATION_AMBIGUOUS_LABEL_CIRCADIAN,
+  DURATION_AMBIGUOUS_LABEL_SLEEP_DEBT,
+  isDurationDirectionAmbiguous,
+} from "@/lib/duration-direction-ambiguity";
 
 export type MetricStars = 1 | 2 | 3 | 4 | 5;
 
@@ -90,7 +95,12 @@ export function evaluateMetric(
       return evalFrom(1, "要改善");
     }
     case "sleepDebt": {
-      const m = parseDurationMinutes(metrics.sleepDebt);
+      const raw = metrics.sleepDebt?.trim();
+      if (!raw) return null;
+      if (isDurationDirectionAmbiguous(raw, "sleepDebt").ambiguous) {
+        return evalFrom(null, DURATION_AMBIGUOUS_LABEL_SLEEP_DEBT);
+      }
+      const m = parseDurationMinutes(raw);
       if (m == null) return null;
       const debt = evaluateSleepDebtDisplay(m);
       if (!debt) return null;
@@ -223,6 +233,14 @@ export function evaluateMetric(
       if (abs <= 1.0) return evalFrom(3, "普通");
       if (abs <= 1.5) return evalFrom(2, "やや大きい");
       return evalFrom(1, "要確認");
+    }
+    case "circadianRhythm": {
+      const raw = metrics.circadianRhythm?.trim();
+      if (!raw) return null;
+      if (isDurationDirectionAmbiguous(raw, "circadian").ambiguous) {
+        return evalFrom(null, DURATION_AMBIGUOUS_LABEL_CIRCADIAN);
+      }
+      return null;
     }
     default:
       return null;

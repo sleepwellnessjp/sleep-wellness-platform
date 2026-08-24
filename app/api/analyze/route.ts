@@ -48,7 +48,9 @@ import {
   detectLifestyleMentionHits,
   formatUnfilledCategoriesForPrompt,
   lifestyleMentionHasIssues,
+  mergeLifestyleMentionSource,
   sanitizeLifestyleMentionsInRecord,
+  sanitizeImprovementsInRecord,
   snapshotLifestyleGuardedFields,
   type LifestyleRewritePayload,
 } from "@/lib/analysis-lifestyle-mention-guard";
@@ -1413,7 +1415,14 @@ ${
       }
 
       // 未入力生活習慣への言及ガード：検出 → 該当フィールド1回再生成 → 残れば削除／安全文
-      const unfilledLifestyle = collectUnfilledLifestyleCategories(lifestyle);
+      const unfilledLifestyle = collectUnfilledLifestyleCategories(
+        mergeLifestyleMentionSource(lifestyle, {
+          drinkingHabit: lifestyle.drinkingHabit,
+          exerciseHabit: lifestyle.exerciseHabit,
+          snoringNasal: lifestyle.snoringNasal,
+          medications: lifestyle.medications,
+        }),
+      );
       if (
         unfilledLifestyle.length > 0 &&
         lifestyleMentionHasIssues(record, unfilledLifestyle)
@@ -1496,6 +1505,9 @@ ${
           );
           sanitizeLifestyleMentionsInRecord(record, unfilledLifestyle);
         }
+      }
+      if (unfilledLifestyle.length > 0) {
+        sanitizeImprovementsInRecord(record, unfilledLifestyle);
       }
 
       // profileRelation: 4領域点・総合スコア言及は書き換えず文ごと除去（PDF⑥矛盾防止）

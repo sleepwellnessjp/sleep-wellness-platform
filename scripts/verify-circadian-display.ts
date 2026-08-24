@@ -15,6 +15,11 @@ const CASES = [
   { label: "2026-08-20 相当（負）", circadian: "-1:21", expect: "-1時間21分" },
   { label: "負の短い偏移", circadian: "-0:39", expect: "-39分" },
   {
+    label: "OCR suffix 付き（進み気味）",
+    circadian: "-1:00 進み気味",
+    expect: "-1時間",
+  },
+  {
     label: "正の値（時間分・変更なし）",
     circadian: "1時間32分",
     expect: "1時間32分",
@@ -84,11 +89,16 @@ for (const c of CASES) {
 }
 
 console.log("\n=== sleepDebt unchanged (same formatter) ===");
-const debtSamples = ["-1時間37分", "-40分", "1時間20分"];
+const debtSamples = ["-1時間37分", "-40分", "1時間20分", "-1:00 進み気味"];
 for (const raw of debtSamples) {
   const viaDebt = normalizeMetricDisplayValue("sleepDebt", raw);
-  const viaFormat = formatDurationDisplay(raw);
-  const pass = viaDebt === raw && viaFormat === raw;
+  const expect =
+    raw === "-1:00 進み気味"
+      ? "-1時間"
+      : raw === "-1時間37分" || raw === "-40分" || raw === "1時間20分"
+        ? raw
+        : viaDebt;
+  const pass = viaDebt === expect;
   console.log(`[${pass ? "PASS" : "FAIL"}] sleepDebt ${raw} → ${viaDebt}`);
   if (!pass) ok = false;
 }

@@ -12,6 +12,11 @@ import {
   formatUnfilledCategoriesForPrompt,
   lifestyleMentionHasIssues,
   sanitizeLifestyleMentionsInRecord,
+  sanitizeLifestyleMentionText,
+  sanitizeImprovementsInRecord,
+  sentenceIsSelfContradictoryLifestyle,
+  sentenceReferencesUnfilledCategory,
+  buildMeasurementFallbackFromText,
   snapshotLifestyleGuardedFields,
   type LifestyleRewritePayload,
 } from "../lib/analysis-lifestyle-mention-guard";
@@ -206,6 +211,123 @@ async function main() {
     process.exit(1);
   }
   console.log("OK detector unit checks");
+
+  // 飲酒量・運動量・いびき・鼻づまりキーワード
+  const allUnfilled = collectUnfilledLifestyleCategories(EMPTY_LIFESTYLE);
+  const alcoholHits = categoriesMentionedInText(
+    "飲酒量が多いことが深い睡眠に寄与している可能性があります。",
+    allUnfilled,
+  );
+  if (!alcoholHits.includes("alcohol")) {
+    console.error("FAIL: 飲酒量 should match alcohol category");
+    process.exit(1);
+  }
+  const exerciseHits = categoriesMentionedInText(
+    "日常的な運動量が多いことが良好な結果に寄与しています。",
+    allUnfilled,
+  );
+  if (!exerciseHits.includes("exercise")) {
+    console.error("FAIL: 運動量 should match exercise category");
+    process.exit(1);
+  }
+  const snoringHits = categoriesMentionedInText(
+    "いびき・鼻づまりの確認をおすすめします。",
+    allUnfilled,
+  );
+  if (
+    !snoringHits.includes("snoring") ||
+    !snoringHits.includes("nasalCongestion")
+  ) {
+    console.error("FAIL: いびき・鼻づまり should match snoring/nasal");
+    process.exit(1);
+  }
+  console.log("OK extended keyword checks");
+
+  // 自己矛盾文の除去
+  const contradictory =
+    "飲酒量が多いことが普段の睡眠パターンに影響を与えているかもしれませんが、今回具体的な当日飲酒情報はありませんでした。";
+  if (!sentenceIsSelfContradictoryLifestyle(contradictory)) {
+    console.error("FAIL: contradictory sentence should be detected");
+    process.exit(1);
+  }
+  const strippedContradiction = sanitizeLifestyleMentionText(
+    contradictory,
+    allUnfilled,
+  );
+  if (strippedContradiction.trim()) {
+    console.error("FAIL: contradictory sentence should be removed entirely");
+    process.exit(1);
+  }
+  console.log("OK self-contradiction strip");
+
+  // 入力ありの運動は言及を残す
+  const yogaFilled = collectUnfilledLifestyleCategories({
+    exerciseHabit: "週3回ヨガ",
+  });
+  const yogaText = sanitizeLifestyleMentionText(
+    "日常的にヨガを実施されていることが、回復に寄与している可能性があります。",
+    yogaFilled,
+  );
+  if (!/ヨガ/u.test(yogaText)) {
+    console.error("FAIL: filled exercise should keep yoga mention");
+    process.exit(1);
+  }
+  console.log("OK filled exercise preserved");
+
+  // ⑦ partial: 未入力語のみ除去し測定記述は残す
+  const breathingReason =
+    "SpO₂の低さ・いびき・鼻づまり・覚醒時間など、夜間の呼吸に関わる要素が複数重なっています。";
+  const partialBreathing = sanitizeLifestyleMentionText(
+    breathingReason,
+    allUnfilled,
+    { mode: "partial" },
+  );
+  if (!partialBreathing.trim()) {
+    console.error("FAIL: partial mode should keep SpO₂/覚醒 content");
+    process.exit(1);
+  }
+  if (/いびき|鼻づま/u.test(partialBreathing)) {
+    console.error("FAIL: partial mode should remove snoring/nasal terms");
+    process.exit(1);
+  }
+  if (!/SpO|覚醒/u.test(partialBreathing)) {
+    console.error("FAIL: partial mode should keep measurement terms");
+    process.exit(1);
+  }
+  console.log("OK partial redaction for action why");
+
+  // ⑥ strict: 仮定形の未入力言及も除去
+  const conditionalExercise =
+    "身体の回復力は、十分な運動習慣がある場合、ポジティブな影響を受ける可能性があります。";
+  if (!sentenceReferencesUnfilledCategory(conditionalExercise, allUnfilled)) {
+    console.error("FAIL: conditional exercise mention should be detected");
+    process.exit(1);
+  }
+  const strictSix = sanitizeLifestyleMentionText(conditionalExercise, allUnfilled, {
+    mode: "strict",
+  });
+  if (strictSix.trim()) {
+    console.error("FAIL: strict mode should remove conditional exercise sentence");
+    process.exit(1);
+  }
+  console.log("OK strict conditional strip for section 6");
+
+  // improvements サニタイズ
+  const improvementsRecord: Record<string, unknown> = {
+    improvements: [
+      {
+        text: "いびきの確認",
+        whyNow: "鼻づまりがある場合は睡眠の質に影響する可能性があります。",
+      },
+    ],
+  };
+  sanitizeImprovementsInRecord(improvementsRecord, allUnfilled);
+  const imp = improvementsRecord.improvements as Array<{ text?: string }>;
+  if (imp.length > 0 && (imp[0]?.text?.trim() ?? "").length > 0) {
+    console.error("FAIL: improvements should be stripped when snoring unfilled");
+    process.exit(1);
+  }
+  console.log("OK improvements sanitize");
 
   // sanitize fallback
   const sanitized = structuredClone(BAD_SAMPLE) as Record<string, unknown>;
