@@ -20,7 +20,7 @@ function FeaturedCard({ article }: { article: SleepContent }) {
         {/* width/height を同値・borderRadius 50% で確実に円形にする */}
         <div
           style={{
-            width: "48%",
+            width: "44%",
             aspectRatio: "1 / 1",
             borderRadius: "50%",
             overflow: "hidden",
@@ -56,7 +56,16 @@ function FeaturedCard({ article }: { article: SleepContent }) {
         className="px-3 pt-3 md:px-4 md:pt-4"
         style={{ paddingBottom: "16px" }}
       >
-        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-[-0.02em] text-white">
+        <h3
+          className="text-[15px] font-semibold tracking-[-0.02em] text-white"
+          style={{
+            lineHeight: 1.4,
+            display: "-webkit-box",
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
           {article.title}
         </h3>
         {article.summary ? (
