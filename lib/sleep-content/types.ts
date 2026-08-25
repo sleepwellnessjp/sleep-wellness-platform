@@ -29,11 +29,13 @@ export const SLEEP_CONTENT_CATEGORIES = [
 
 export const SLEEP_CONTENT_SUBCATEGORIES = [
   "basic",
-  "practice",
   "life",
+  "practice",
   "women",
   "men",
   "work",
+  "meditation",
+  "voices",
 ] as const;
 
 export const SLEEP_CONTENT_KINDS = [
@@ -173,12 +175,14 @@ export const SLEEP_CONTENT_SUBCATEGORY_LABELS: Record<
   SleepContentSubcategory,
   string
 > = {
-  basic: "基礎",
-  practice: "実践",
-  life: "暮らし",
-  women: "女性",
-  men: "男性",
-  work: "仕事",
+  basic: "睡眠のしくみ",
+  life: "暮らしと睡眠",
+  practice: "ライフステージと睡眠",
+  women: "女性の睡眠",
+  men: "男性の睡眠",
+  work: "仕事と睡眠",
+  meditation: "瞑想",
+  voices: "クライアントの声から",
 };
 
 export const SLEEP_CONTENT_KIND_LABELS: Record<SleepContentKind, string> = {

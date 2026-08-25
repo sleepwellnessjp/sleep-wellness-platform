@@ -52,7 +52,16 @@ create table if not exists public.sleep_contents (
     check (
       (
         category = 'science'
-        and subcategory in ('basic', 'practice', 'life', 'women', 'men', 'work')
+        and subcategory in (
+          'basic',
+          'life',
+          'practice',
+          'women',
+          'men',
+          'work',
+          'meditation',
+          'voices'
+        )
       )
       or (category <> 'science' and subcategory is null)
     ),
@@ -67,7 +76,7 @@ comment on column public.sleep_contents.slug is
 comment on column public.sleep_contents.category is
   'rest=入眠 / science=睡眠学 / interview=インタビュー';
 comment on column public.sleep_contents.subcategory is
-  '睡眠学のみ: basic / practice / life / women / men / work';
+  '睡眠学のみ: basic / life / practice / women / men / work / meditation / voices';
 comment on column public.sleep_contents.kind is
   'talk_video / nature_sound / practice_video / sleep_music / article / interview';
 comment on column public.sleep_contents.body_blocks is

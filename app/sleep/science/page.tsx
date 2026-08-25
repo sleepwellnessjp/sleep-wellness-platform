@@ -5,6 +5,7 @@ import PublicIntroLayout from "@/components/site/PublicIntroLayout";
 import { listPublishedScienceArticles } from "@/lib/sleep-content/service";
 import {
   SLEEP_CONTENT_SUBCATEGORIES,
+  SLEEP_CONTENT_SUBCATEGORY_LABELS,
   type SleepContent,
   type SleepContentSubcategory,
 } from "@/lib/sleep-content/types";
@@ -16,15 +17,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const SCIENCE_SUBCATEGORY_LABELS: Record<SleepContentSubcategory, string> = {
-  basic: "基礎",
-  practice: "実践",
-  life: "暮らし",
-  women: "女性のための",
-  men: "男性のための",
-  work: "仕事と睡眠",
-};
 
 type Search = { searchParams: Promise<{ sub?: string }> };
 
@@ -83,7 +75,7 @@ export default async function SleepSciencePage({ searchParams }: Search) {
                   : "border border-slate-200 text-[#071426]"
               }`}
             >
-              {SCIENCE_SUBCATEGORY_LABELS[subcategory]}
+              {SLEEP_CONTENT_SUBCATEGORY_LABELS[subcategory]}
             </Link>
           ))}
         </div>
@@ -98,7 +90,7 @@ export default async function SleepSciencePage({ searchParams }: Search) {
           {visibleSections.map((section) => (
             <section key={section.subcategory}>
               <h2 className="mb-4 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
-                {SCIENCE_SUBCATEGORY_LABELS[section.subcategory]}
+                {SLEEP_CONTENT_SUBCATEGORY_LABELS[section.subcategory]}
               </h2>
               <CategoryScrollStrip articles={section.articles} />
             </section>
