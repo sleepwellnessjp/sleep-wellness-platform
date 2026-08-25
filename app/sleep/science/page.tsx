@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import FeaturedScrollStrip, { CategoryScrollStrip } from "@/components/sleep-content/FeaturedScrollStrip";
+import { CategoryScrollStrip } from "@/components/sleep-content/FeaturedScrollStrip";
 import PublicIntroLayout from "@/components/site/PublicIntroLayout";
 import { listPublishedScienceArticles } from "@/lib/sleep-content/service";
 import {
@@ -59,14 +59,8 @@ export default async function SleepSciencePage({ searchParams }: Search) {
       eyebrow="SLEEP SCIENCE"
       title="睡眠学"
       lead="自律神経、ホルモン、暮らし、仕事まで。睡眠の基礎をわかりやすく解説します。"
-      contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
+      contentClassName="pb-[var(--sw-sleep-tabbar-clearance)] lg:pb-0"
     >
-      {/* 注目の記事（横スクロール帯）
-          PublicIntroLayout の px-6 を打ち消して全幅に戻す */}
-      <div className="-mx-6 sm:-mx-8 lg:-mx-10">
-        <FeaturedScrollStrip articles={articles} />
-      </div>
-
       {filterOptions.length > 0 ? (
         <div className="mb-8 flex flex-wrap gap-2">
           <Link
@@ -106,10 +100,7 @@ export default async function SleepSciencePage({ searchParams }: Search) {
               <h2 className="mb-4 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
                 {SCIENCE_SUBCATEGORY_LABELS[section.subcategory]}
               </h2>
-              {/* カテゴリ別横スクロール帯（コンテナのpaddingを打ち消して全幅） */}
-              <div className="-mx-6 sm:-mx-8 lg:-mx-10">
-                <CategoryScrollStrip articles={section.articles} />
-              </div>
+              <CategoryScrollStrip articles={section.articles} />
             </section>
           ))}
         </div>
