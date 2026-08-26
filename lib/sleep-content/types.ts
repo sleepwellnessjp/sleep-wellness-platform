@@ -181,7 +181,7 @@ export const SLEEP_CONTENT_SUBCATEGORY_LABELS: Record<
   women: "女性の睡眠",
   men: "男性の睡眠",
   work: "仕事と睡眠",
-  meditation: "瞑想",
+  meditation: "ヨガと瞑想",
   voices: "クライアントの声から",
 };
 
