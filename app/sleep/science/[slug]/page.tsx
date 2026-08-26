@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import ArticleGuideNeko from "@/components/sleep-content/ArticleGuideNeko";
 import ScienceArticleBody, {
   ScienceMedicalNote,
 } from "@/components/sleep-content/ScienceArticleBody";
@@ -32,6 +33,7 @@ export default async function SleepScienceArticlePage({ params }: Params) {
       eyebrow="SLEEP SCIENCE"
       title={article.title}
       lead={article.summary || "睡眠の基礎をわかりやすく解説します。"}
+      afterLead={<ArticleGuideNeko subcategory={article.subcategory} />}
       contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
     >
       <ScienceArticleBody blocks={article.bodyBlocks} />

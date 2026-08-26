@@ -9,6 +9,8 @@ type PublicIntroLayoutProps = {
   title: string;
   lead: string;
   children: ReactNode;
+  /** リード文の直後（本文の手前）に差し込む要素 */
+  afterLead?: ReactNode;
   /** メインコンテンツ div に追加する Tailwind クラス（例: モバイルタブバー分の余白） */
   contentClassName?: string;
 };
@@ -21,6 +23,7 @@ export default function PublicIntroLayout({
   title,
   lead,
   children,
+  afterLead,
   contentClassName = "",
 }: PublicIntroLayoutProps) {
   return (
@@ -54,6 +57,7 @@ export default function PublicIntroLayout({
           <p className="mt-5 max-w-2xl text-[15px] leading-8 text-slate-600 sm:text-base sm:leading-8">
             {lead}
           </p>
+          {afterLead ? <div className="mt-6 max-w-2xl sm:mt-8">{afterLead}</div> : null}
         </div>
       </section>
 

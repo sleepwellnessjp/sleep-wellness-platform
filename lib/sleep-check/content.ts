@@ -1,3 +1,5 @@
+import type { SleepContentSubcategory } from "@/lib/sleep-content/types";
+
 export const SLEEP_CHECK_IMAGE_BASE =
   "https://cqfclbyzdmxfgktkbbsz.supabase.co/storage/v1/object/public/sleep-content-images";
 
@@ -8,6 +10,62 @@ export const SLEEP_CHECK_IMAGES = {
   otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare-v2.png`,
   ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v4.png`,
 } as const;
+
+/** 睡眠学一覧 — サブカテゴリ見出し横のまもりねこ */
+export const SCIENCE_SECTION_NEKO: Record<SleepContentSubcategory, string> = {
+  basic: SLEEP_CHECK_IMAGES.tsujo,
+  life: SLEEP_CHECK_IMAGES.tsujo,
+  practice: SLEEP_CHECK_IMAGES.gussuri,
+  women: SLEEP_CHECK_IMAGES.relax,
+  men: SLEEP_CHECK_IMAGES.ouen,
+  work: SLEEP_CHECK_IMAGES.otsukare,
+  meditation: SLEEP_CHECK_IMAGES.relax,
+  voices: SLEEP_CHECK_IMAGES.ouen,
+};
+
+export type ScienceArticleGuide = {
+  nekoSrc: string;
+  message: string;
+};
+
+/** 睡眠学記事 — 冒頭案内のまもりねこと吹き出し文言 */
+export const SCIENCE_ARTICLE_GUIDE: Record<
+  SleepContentSubcategory,
+  ScienceArticleGuide
+> = {
+  basic: {
+    nekoSrc: SLEEP_CHECK_IMAGES.tsujo,
+    message: "仕組みがわかると、安心して眠れるよ",
+  },
+  life: {
+    nekoSrc: SLEEP_CHECK_IMAGES.tsujo,
+    message: "今夜から使えるヒントがあるよ",
+  },
+  practice: {
+    nekoSrc: SLEEP_CHECK_IMAGES.gussuri,
+    message: "その時期に合った眠り方を、いっしょに見ていこう",
+  },
+  women: {
+    nekoSrc: SLEEP_CHECK_IMAGES.relax,
+    message: "眠れない週があるのは、あなたのせいじゃないよ",
+  },
+  men: {
+    nekoSrc: SLEEP_CHECK_IMAGES.ouen,
+    message: "できることから、ひとつずつでいいんだよ",
+  },
+  work: {
+    nekoSrc: SLEEP_CHECK_IMAGES.otsukare,
+    message: "睡眠は、いちばんの仕事の道具だよ",
+  },
+  meditation: {
+    nekoSrc: SLEEP_CHECK_IMAGES.relax,
+    message: "うまくやろうとしなくて、だいじょうぶ",
+  },
+  voices: {
+    nekoSrc: SLEEP_CHECK_IMAGES.ouen,
+    message: "あなたのペースで、いっしょに見ていこうね",
+  },
+};
 
 export const SLEEP_CHECK_PREAMBLE =
   "過去1か月間で、週3回以上あてはまるものを選んでください";

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CategoryScrollStrip } from "@/components/sleep-content/FeaturedScrollStrip";
+import ScienceSectionHeading from "@/components/sleep-content/ScienceSectionHeading";
 import PublicIntroLayout from "@/components/site/PublicIntroLayout";
 import { listPublishedScienceArticles } from "@/lib/sleep-content/service";
 import {
@@ -89,9 +90,10 @@ export default async function SleepSciencePage({ searchParams }: Search) {
         <div className="space-y-10">
           {visibleSections.map((section) => (
             <section key={section.subcategory}>
-              <h2 className="mb-4 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
-                {SLEEP_CONTENT_SUBCATEGORY_LABELS[section.subcategory]}
-              </h2>
+              <ScienceSectionHeading
+                subcategory={section.subcategory}
+                label={SLEEP_CONTENT_SUBCATEGORY_LABELS[section.subcategory]}
+              />
               <CategoryScrollStrip articles={section.articles} />
             </section>
           ))}
