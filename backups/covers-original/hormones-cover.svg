@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="discH" cx="50%" cy="45%" r="62%">
+      <stop offset="0%" stop-color="#1B2740"/>
+      <stop offset="70%" stop-color="#141D31"/>
+      <stop offset="100%" stop-color="#101828"/>
+    </radialGradient>
+    <radialGradient id="glowH" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EFE7D4" stop-opacity="0.52"/>
+      <stop offset="55%" stop-color="#EFE7D4" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#EFE7D4" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="asanohaCH" width="60" height="104" patternUnits="userSpaceOnUse">
+      <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.07">
+        <path d="M30 0 L60 17 L60 52 L30 69 L0 52 L0 17 Z"/>
+        <path d="M30 0 L30 69 M0 17 L60 52 M60 17 L0 52"/>
+        <path d="M30 52 L0 69 M30 52 L60 69"/>
+      </g>
+    </pattern>
+    <clipPath id="clipDiscH">
+      <circle cx="400" cy="500" r="300"/>
+    </clipPath>
+  </defs>
+
+  <rect width="800" height="1000" fill="#33456B"/>
+  <rect width="800" height="1000" fill="url(#asanohaCH)"/>
+
+  <g fill="none" stroke="#B8945F" opacity="0.20">
+    <circle cx="400" cy="500" r="330" stroke-width="1"/>
+    <circle cx="400" cy="500" r="362" stroke-width="0.8"/>
+  </g>
+
+  <circle cx="400" cy="500" r="300" fill="url(#discH)"/>
+
+  <g clip-path="url(#clipDiscH)">
+    <!-- four orbits -->
+    <g fill="none" stroke="#B8945F">
+      <circle cx="400" cy="500" r="86"  stroke-width="1.5" opacity="0.62"/>
+      <circle cx="400" cy="500" r="134" stroke-width="1.3" opacity="0.48"/>
+      <circle cx="400" cy="500" r="186" stroke-width="1.2" opacity="0.34"/>
+      <circle cx="400" cy="500" r="242" stroke-width="1.1" opacity="0.22"/>
+    </g>
+
+    <line x1="100" y1="500" x2="700" y2="500" stroke="#EFE7D4" stroke-width="0.9" opacity="0.16"/>
+
+    <!-- four markers, one per orbit, spaced around -->
+    <g>
+      <circle cx="400" cy="414" r="11" fill="#EFE7D4" opacity="0.92"/>
+      <circle cx="495" cy="595" r="10" fill="#B8945F" opacity="0.95"/>
+      <circle cx="268" cy="428" r="9"  fill="#EFE7D4" opacity="0.62"/>
+      <circle cx="571" cy="358" r="8"  fill="#B8945F" opacity="0.70"/>
+    </g>
+
+    <ellipse cx="400" cy="330" rx="230" ry="70" fill="#EFE7D4" opacity="0.045"/>
+  </g>
+
+  <circle cx="400" cy="500" r="86" fill="url(#glowH)"/>
+  <circle cx="400" cy="500" r="26" fill="#EFE7D4"/>
+  <circle cx="400" cy="500" r="26" fill="none" stroke="#B8945F" stroke-width="1.2" opacity="0.7"/>
+
+  <circle cx="400" cy="500" r="300" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.5"/>
+
+  <g fill="#EFE7D4">
+    <circle cx="286" cy="296" r="4.4" opacity="0.26"/>
+    <circle cx="548" cy="278" r="3.6" opacity="0.20"/>
+    <circle cx="238" cy="656" r="4" opacity="0.18"/>
+    <circle cx="586" cy="684" r="4.6" opacity="0.22"/>
+    <circle cx="404" cy="756" r="3.2" opacity="0.16"/>
+  </g>
+</svg>

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="glowDC" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2A3E5E"/>
+      <stop offset="100%" stop-color="#16233A"/>
+    </radialGradient>
+    <clipPath id="discDC">
+      <circle cx="400" cy="420" r="230"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(400,420) scale(1.72) translate(-400,-420)">
+  <circle cx="400" cy="420" r="230" fill="url(#glowDC)"/>
+
+  <g clip-path="url(#discDC)">
+    <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.14">
+      <circle cx="400" cy="420" r="182"/>
+    </g>
+
+    <path d="M244 556 L556 556" stroke="#E8E0CE" stroke-width="3" opacity="0.5" stroke-linecap="round"/>
+
+    <rect x="286" y="470" width="228" height="20" rx="10" fill="#B8945F" opacity="0.45"/>
+    <rect x="286" y="492" width="228" height="16" rx="8" fill="#B8945F" opacity="0.28"/>
+    <rect x="286" y="510" width="228" height="16" rx="8" fill="#B8945F" opacity="0.18"/>
+    <rect x="286" y="528" width="228" height="14" rx="7" fill="#B8945F" opacity="0.12"/>
+
+    <g stroke="#E8E0CE" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+      <circle cx="400" cy="352" r="76"/>
+      <path d="M400 306 L400 352 L436 374"/>
+    </g>
+    <g fill="#E8E0CE" opacity="0.55">
+      <circle cx="400" cy="284" r="4"/>
+      <circle cx="468" cy="352" r="4"/>
+      <circle cx="400" cy="420" r="4"/>
+      <circle cx="332" cy="352" r="4"/>
+    </g>
+
+    <g stroke="#B8945F" stroke-width="2.4" fill="none" opacity="0.6" stroke-linecap="round">
+      <path d="M544 300 q14 -18 0 -36 q-14 -18 0 -36"/>
+      <path d="M582 288 q12 -16 0 -32 q-12 -16 0 -32"/>
+    </g>
+
+    <g fill="#E8E0CE" opacity="0.45">
+      <circle cx="264" cy="300" r="3.2"/>
+      <circle cx="292" cy="256" r="2.4"/>
+      <circle cx="556" cy="470" r="2.8"/>
+    </g>
+  </g>
+
+  <circle cx="400" cy="420" r="230" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.45"/>
+  </g>
+</svg>

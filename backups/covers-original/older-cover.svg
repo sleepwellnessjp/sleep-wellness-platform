@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="glowOC" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2A3E5E"/>
+      <stop offset="100%" stop-color="#16233A"/>
+    </radialGradient>
+    <clipPath id="discOC">
+      <circle cx="400" cy="420" r="230"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(400,420) scale(1.72) translate(-400,-420)">
+  <circle cx="400" cy="420" r="230" fill="url(#glowOC)"/>
+
+  <g clip-path="url(#discOC)">
+    <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.14">
+      <circle cx="400" cy="420" r="184"/>
+    </g>
+
+    <path d="M232 512 L568 512" stroke="#E8E0CE" stroke-width="2.6" opacity="0.4" stroke-linecap="round"/>
+
+    <path d="M236 512 q0 -80 60 -80 L504 432 q60 0 60 80 z" fill="#1F3A5F" opacity="0.5"/>
+
+    <circle cx="400" cy="392" r="86" fill="none" stroke="#E8E0CE" stroke-width="2.6" opacity="0.7"/>
+    <path d="M400 392 L400 322" stroke="#E8E0CE" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+    <path d="M400 392 L346 420" stroke="#B8945F" stroke-width="3.4" stroke-linecap="round"/>
+    <circle cx="400" cy="392" r="6" fill="#F0E9D8"/>
+
+    <path d="M330 306 a30 30 0 1 0 22 38 a23 23 0 1 1 -22 -38 z" fill="#F0E9D8" opacity="0.7"/>
+    <g fill="#F0E9D8" opacity="0.85">
+      <circle cx="502" cy="308" r="16"/>
+      <g stroke="#F0E9D8" stroke-width="2.4" stroke-linecap="round">
+        <path d="M502 278 L502 288"/>
+        <path d="M502 328 L502 338"/>
+        <path d="M472 308 L482 308"/>
+        <path d="M522 308 L532 308"/>
+        <path d="M481 287 L488 294"/>
+        <path d="M516 322 L523 329"/>
+        <path d="M523 287 L516 294"/>
+        <path d="M488 322 L481 329"/>
+      </g>
+    </g>
+
+    <g fill="#E8E0CE" opacity="0.4">
+      <circle cx="274" cy="360" r="3"/>
+      <circle cx="556" cy="392" r="2.6"/>
+      <circle cx="300" cy="560" r="2.6"/>
+    </g>
+  </g>
+
+  <circle cx="400" cy="420" r="230" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.45"/>
+  </g>
+</svg>

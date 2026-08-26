@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="glowZC" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2A3E5E"/>
+      <stop offset="100%" stop-color="#16233A"/>
+    </radialGradient>
+    <clipPath id="discZC">
+      <circle cx="400" cy="420" r="230"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(400,420) scale(1.72) translate(-400,-420)">
+  <circle cx="400" cy="420" r="230" fill="url(#glowZC)"/>
+
+  <g clip-path="url(#discZC)">
+    <g stroke="#E8E0CE" stroke-width="1.4" fill="none" opacity="0.22">
+      <circle cx="400" cy="420" r="196"/>
+      <circle cx="400" cy="420" r="164"/>
+      <circle cx="400" cy="420" r="132"/>
+      <circle cx="400" cy="420" r="100"/>
+    </g>
+
+    <g stroke="#E8E0CE" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+      <circle cx="400" cy="360" r="30"/>
+      <path d="M400 390 L400 470"/>
+      <path d="M400 414 L332 452 M400 414 L468 452"/>
+      <path d="M332 452 L348 486 M468 452 L452 486"/>
+      <path d="M336 512 L400 486 L464 512"/>
+      <path d="M336 512 L464 512"/>
+    </g>
+
+    <circle cx="400" cy="326" r="7" fill="#B8945F" opacity="0.85"/>
+
+    <g stroke="#B8945F" stroke-width="2" fill="none" opacity="0.5">
+      <path d="M262 420 q30 -16 60 0" />
+      <path d="M478 420 q30 -16 60 0" />
+    </g>
+
+    <path d="M534 292 a32 32 0 1 0 24 42 a25 25 0 1 1 -24 -42 z" fill="#F0E9D8" opacity="0.8"/>
+
+    <g fill="#E8E0CE" opacity="0.45">
+      <circle cx="272" cy="300" r="3"/>
+      <circle cx="300" cy="264" r="2.4"/>
+      <circle cx="290" cy="556" r="2.8"/>
+      <circle cx="522" cy="560" r="2.4"/>
+    </g>
+  </g>
+
+  <circle cx="400" cy="420" r="230" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.45"/>
+  </g>
+</svg>

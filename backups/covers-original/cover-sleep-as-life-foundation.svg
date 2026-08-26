@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <pattern id="asanoha" width="46" height="79.7" patternUnits="userSpaceOnUse">
+      <path d="M 0 0 L 46 0 M 0 0 L 23.0 39.8 M 46 0 L 23.0 39.8 M 0 79.7 L 46 79.7 M 0 79.7 L 23.0 39.8 M 46 79.7 L 23.0 39.8 M 23.0 0 L 23.0 39.8 M 23.0 39.8 L 23.0 79.7 M 0 0 L 0 79.7 M 46 0 L 46 79.7" stroke="#B8945F" stroke-width="0.7" fill="none" opacity="0.055"/>
+    </pattern>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141d2b"/>
+      <stop offset="100%" stop-color="#0f1723"/>
+    </linearGradient>
+    <radialGradient id="orb" cx="42%" cy="34%" r="72%">
+      <stop offset="0%" stop-color="#22334d"/>
+      <stop offset="100%" stop-color="#16202f"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="800" height="1000" fill="url(#bg)"/>
+  <rect width="800" height="1000" fill="url(#asanoha)"/>
+
+  <circle cx="491" cy="88" r="7" fill="#E8E0CE" opacity="0.27"/>
+  <circle cx="227" cy="213" r="17" fill="#E8E0CE" opacity="0.19"/>
+  <circle cx="500" cy="151" r="13" fill="#E8E0CE" opacity="0.20"/>
+  <circle cx="138" cy="201" r="17" fill="#E8E0CE" opacity="0.19"/>
+  <circle cx="640" cy="262" r="10" fill="#E8E0CE" opacity="0.15"/>
+  <circle cx="558" cy="838" r="14" fill="#E8E0CE" opacity="0.22"/>
+  <circle cx="240" cy="880" r="16" fill="#E8E0CE" opacity="0.12"/>
+  <circle cx="661" cy="905" r="11" fill="#E8E0CE" opacity="0.20"/>
+
+  <circle cx="400" cy="420" r="215" fill="url(#orb)"/>
+  <circle cx="400" cy="420" r="215" fill="none" stroke="#B8945F" stroke-width="1.6" opacity="0.55"/>
+  <circle cx="400" cy="420" r="229" fill="none" stroke="#8f7549" stroke-width="0.9" opacity="0.30"/>
+
+  <g opacity="0.95">
+    <circle cx="400" cy="360" r="58" fill="#E8E0CE" opacity="0.90"/>
+    <circle cx="424" cy="342" r="52" fill="#1a2536"/>
+    <circle cx="478" cy="306" r="4" fill="#B8945F" opacity="0.8"/>
+    <circle cx="322" cy="330" r="3" fill="#E8E0CE" opacity="0.5"/>
+  </g>
+
+  <g>
+    <rect x="238" y="472" width="324" height="17" rx="4" fill="#B8945F" opacity="0.85"/>
+    <rect x="272" y="440" width="120" height="14" rx="4" fill="#2F4666"/>
+    <rect x="408" y="440" width="120" height="14" rx="4" fill="#2F4666"/>
+  </g>
+
+  <line x1="200" y1="512" x2="600" y2="512" stroke="#B8945F" stroke-width="0.9" opacity="0.28"/>
+
+  <g stroke="#B8945F" fill="none" opacity="0.5">
+    <path d="M256 560 L544 560" stroke-width="1.2"/>
+    <path d="M286 592 L514 592" stroke-width="0.9" opacity="0.7"/>
+    <path d="M320 624 L480 624" stroke-width="0.8" opacity="0.5"/>
+  </g>
+</svg>

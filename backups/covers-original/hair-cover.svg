@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="glowHCa" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2A3E5E"/>
+      <stop offset="100%" stop-color="#16233A"/>
+    </radialGradient>
+    <clipPath id="discHCa">
+      <circle cx="400" cy="420" r="230"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(400,420) scale(1.72) translate(-400,-420)">
+  <circle cx="400" cy="420" r="230" fill="url(#glowHCa)"/>
+
+  <g clip-path="url(#discHCa)">
+    <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.14">
+      <circle cx="400" cy="420" r="186"/>
+    </g>
+
+    <path d="M256 520 q0 -60 48 -60 L496 460 q48 0 48 60 z" fill="#1F3A5F" opacity="0.45"/>
+    <path d="M256 520 L544 520" stroke="#E8E0CE" stroke-width="2" opacity="0.4"/>
+
+    <g stroke="#E8E0CE" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85">
+      <path d="M304 460 q10 -70 34 -104"/>
+      <path d="M338 460 q6 -76 26 -112"/>
+      <path d="M372 460 q2 -80 14 -118"/>
+      <path d="M428 460 q-2 -80 -14 -118"/>
+      <path d="M462 460 q-6 -76 -26 -112"/>
+      <path d="M496 460 q-10 -70 -34 -104"/>
+    </g>
+
+    <g fill="#B8945F" opacity="0.7">
+      <circle cx="338" cy="352" r="6"/>
+      <circle cx="364" cy="344" r="5"/>
+      <circle cx="386" cy="338" r="6"/>
+      <circle cx="414" cy="338" r="5"/>
+      <circle cx="436" cy="344" r="6"/>
+      <circle cx="462" cy="352" r="5"/>
+    </g>
+
+    <path d="M546 300 a32 32 0 1 0 24 42 a25 25 0 1 1 -24 -42 z" fill="#F0E9D8" opacity="0.85"/>
+
+    <g fill="#E8E0CE" opacity="0.42">
+      <circle cx="272" cy="316" r="3"/>
+      <circle cx="290" cy="566" r="2.6"/>
+      <circle cx="524" cy="562" r="2.4"/>
+    </g>
+  </g>
+
+  <circle cx="400" cy="420" r="230" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.45"/>
+  </g>
+</svg>

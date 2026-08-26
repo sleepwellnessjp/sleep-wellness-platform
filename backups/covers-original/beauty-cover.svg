@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="glowBC" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#2A3E5E"/>
+      <stop offset="100%" stop-color="#16233A"/>
+    </radialGradient>
+    <clipPath id="discBC">
+      <circle cx="400" cy="420" r="230"/>
+    </clipPath>
+  </defs>
+  <g transform="translate(400,420) scale(1.72) translate(-400,-420)">
+  <circle cx="400" cy="420" r="230" fill="url(#glowBC)"/>
+
+  <g clip-path="url(#discBC)">
+    <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.14">
+      <circle cx="400" cy="420" r="184"/>
+      <circle cx="400" cy="420" r="132"/>
+    </g>
+
+    <g stroke="#E8E0CE" stroke-width="1.6" fill="none" opacity="0.30">
+      <path d="M280 340 L340 306 L400 340 L460 306 L520 340"/>
+      <path d="M280 340 L280 408 L340 442 L340 374 Z"/>
+      <path d="M340 374 L400 340 L400 408 L340 442 Z"/>
+      <path d="M400 408 L460 374 L460 442 L400 476 Z"/>
+      <path d="M460 374 L520 340 L520 408 L460 442 Z"/>
+      <path d="M340 442 L400 476 L400 544 L340 510 Z"/>
+      <path d="M400 476 L460 442 L460 510 L400 544 Z"/>
+    </g>
+
+    <path d="M400 296 a56 56 0 1 0 42 70 a44 44 0 1 1 -42 -70 z" fill="#F0E9D8" opacity="0.88"/>
+
+    <g stroke="#B8945F" stroke-width="2.2" fill="none" opacity="0.6" stroke-linecap="round">
+      <path d="M264 470 q34 -20 68 0"/>
+      <path d="M468 470 q34 -20 68 0"/>
+    </g>
+
+    <g fill="#E8E0CE" opacity="0.55">
+      <path d="M562 306 l6 16 16 6 -16 6 -6 16 -6 -16 -16 -6 16 -6 z"/>
+      <path d="M252 542 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5 z"/>
+      <path d="M540 566 l4 11 11 4 -11 4 -4 11 -4 -11 -11 -4 11 -4 z"/>
+    </g>
+
+    <g fill="#E8E0CE" opacity="0.4">
+      <circle cx="272" cy="284" r="3"/>
+      <circle cx="300" cy="580" r="2.6"/>
+    </g>
+  </g>
+
+  <circle cx="400" cy="420" r="230" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.45"/>
+  </g>
+</svg>

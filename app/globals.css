@@ -535,10 +535,19 @@ body {
   padding-bottom: calc(var(--sw-sleep-tabbar-clearance) + 0.75rem);
 }
 
+/* /sleep/* : ヘッダー右配置のため下部タブバー用の padding は不要 */
+[data-beta-chrome][data-beta-chrome-placement="sleep-header-right"] {
+  padding-bottom: 0;
+}
+
 @media (min-width: 1024px) {
   [data-beta-chrome] {
     z-index: 70;
     padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  [data-beta-chrome][data-beta-chrome-placement="sleep-header-right"] {
+    padding-bottom: 0;
   }
 }
 

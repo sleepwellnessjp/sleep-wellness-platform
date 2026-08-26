@@ -1,0 +1,87 @@
+<svg viewBox="0 0 480 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="自律神経とは？のカバーイラスト">
+  <defs>
+    <!-- 夜の空気感 -->
+    <linearGradient id="cvBg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0%" stop-color="#0B1730"/>
+      <stop offset="55%" stop-color="#0A1426"/>
+      <stop offset="100%" stop-color="#060D1B"/>
+    </linearGradient>
+
+    <!-- 円の中：夜明けと夜の境目 -->
+    <linearGradient id="cvOrb" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#26405F"/>
+      <stop offset="45%" stop-color="#16283F"/>
+      <stop offset="100%" stop-color="#0C1728"/>
+    </linearGradient>
+
+    <!-- ゴールドの細い光 -->
+    <linearGradient id="cvGold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#B8945F" stop-opacity="0"/>
+      <stop offset="45%" stop-color="#D8B77E" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#B8945F" stop-opacity="0"/>
+    </linearGradient>
+
+    <radialGradient id="cvGlow" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0%" stop-color="#D8B77E" stop-opacity="0.20"/>
+      <stop offset="60%" stop-color="#D8B77E" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#D8B77E" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 麻の葉ふうの格子 -->
+    <pattern id="cvLattice" width="48" height="56" patternUnits="userSpaceOnUse">
+      <g fill="none" stroke="#D8B77E" stroke-opacity="0.10" stroke-width="0.9">
+        <path d="M24 0 L48 14 L48 42 L24 56 L0 42 L0 14 Z"/>
+        <path d="M24 0 L24 56"/>
+        <path d="M0 14 L48 42"/>
+        <path d="M48 14 L0 42"/>
+      </g>
+    </pattern>
+
+    <!-- 円形マスク -->
+    <clipPath id="cvOrbClip">
+      <circle cx="240" cy="252" r="132"/>
+    </clipPath>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="480" height="600" fill="url(#cvBg)"/>
+  <rect width="480" height="600" fill="url(#cvLattice)"/>
+  <rect width="480" height="600" fill="url(#cvGlow)"/>
+
+  <!-- 中央の円 -->
+  <circle cx="240" cy="252" r="132" fill="url(#cvOrb)"/>
+
+  <g clip-path="url(#cvOrbClip)">
+    <!-- 呼吸のゆらぎを表す弧 -->
+    <g fill="none" stroke="#8FA6C4" stroke-opacity="0.30" stroke-width="1.1">
+      <path d="M92 296 C140 258 200 258 248 296 C296 334 356 334 404 296"/>
+      <path d="M92 268 C140 230 200 230 248 268 C296 306 356 306 404 268"/>
+      <path d="M92 324 C140 286 200 286 248 324 C296 362 356 362 404 324"/>
+    </g>
+    <!-- 中央の一本だけ金 -->
+    <path d="M92 282 C140 244 200 244 248 282 C296 320 356 320 404 282"
+          fill="none" stroke="url(#cvGold)" stroke-width="1.6"/>
+
+    <!-- 月 -->
+    <path d="M262 168 A34 34 0 1 0 274 218 A27 27 0 1 1 262 168 Z" fill="#E8D9BC" fill-opacity="0.85"/>
+  </g>
+
+  <!-- 円の縁 -->
+  <circle cx="240" cy="252" r="132" fill="none" stroke="#D8B77E" stroke-opacity="0.35" stroke-width="1"/>
+  <circle cx="240" cy="252" r="144" fill="none" stroke="#D8B77E" stroke-opacity="0.12" stroke-width="0.8"/>
+
+  <!-- 散る桜 -->
+  <g fill="#E7C9C6" fill-opacity="0.55">
+    <path d="M78 96 C86 88 98 90 100 100 C102 110 92 118 82 114 C74 111 72 102 78 96 Z" transform="rotate(-18 89 102)"/>
+    <path d="M392 148 C399 141 409 143 411 151 C413 160 404 166 396 163 C389 160 387 153 392 148 Z" transform="rotate(24 401 152)"/>
+    <path d="M132 470 C139 463 149 465 151 473 C153 482 144 488 136 485 C129 482 127 475 132 470 Z" transform="rotate(-8 141 474)"/>
+  </g>
+  <g fill="#E7C9C6" fill-opacity="0.30">
+    <path d="M420 372 C426 366 434 368 436 375 C437 382 430 387 423 384 C418 382 416 376 420 372 Z" transform="rotate(38 428 375)"/>
+    <path d="M56 322 C62 316 70 318 72 325 C73 332 66 337 59 334 C54 332 52 326 56 322 Z" transform="rotate(-30 64 325)"/>
+    <path d="M320 486 C326 480 334 482 336 489 C337 496 330 501 323 498 C318 496 316 490 320 486 Z" transform="rotate(12 328 489)"/>
+  </g>
+
+  <!-- 下部の落ち着き -->
+  <rect y="430" width="480" height="170" fill="#060D1B" opacity="0.35"/>
+</svg>

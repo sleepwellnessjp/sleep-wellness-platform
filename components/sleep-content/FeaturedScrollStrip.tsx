@@ -3,84 +3,36 @@
 import Link from "next/link";
 import type { SleepContent } from "@/lib/sleep-content/types";
 
-const CARD_NAVY = "#2F4666";
-
 function FeaturedCard({ article }: { article: SleepContent }) {
   return (
     <Link
       href={`/sleep/science/${article.slug}`}
-      className="block w-full overflow-hidden rounded-2xl"
-      style={{
-        background: CARD_NAVY,
-        border: `1px solid rgba(184,148,95,0.3)`,
-      }}
+      aria-label={article.title}
+      className="flex w-[150px] shrink-0 flex-col items-center gap-3"
     >
-      {/* カバー画像（円形） */}
-      <div className="flex justify-center" style={{ paddingTop: "16px" }}>
-        {/* width/height を同値・borderRadius 50% で確実に円形にする */}
-        <div
-          style={{
-            width: "44%",
-            aspectRatio: "1 / 1",
-            borderRadius: "50%",
-            overflow: "hidden",
-            flexShrink: 0,
-          }}
-        >
-          {article.coverImageUrl ? (
-            <img
-              src={article.coverImageUrl}
-              alt=""
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center",
-                display: "block",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: "100%",
-                height: "100%",
-                background: "rgba(184,148,95,0.15)",
-              }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* テキスト — 高さはコンテンツに従う */}
       <div
-        className="px-3 pt-3 md:px-4 md:pt-4"
-        style={{ paddingBottom: "16px" }}
-      >
-        <h3
-          className="text-[15px] font-semibold tracking-[-0.02em] text-white"
-          style={{
-            lineHeight: 1.4,
-            display: "-webkit-box",
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {article.title}
-        </h3>
-        {article.summary ? (
-          <p className="mt-1.5 hidden text-[13px] leading-5 text-white/70 md:line-clamp-1 md:block">
-            {article.summary}
-          </p>
-        ) : null}
-      </div>
+        aria-hidden
+        className="shrink-0 self-center overflow-hidden rounded-full bg-cover bg-center bg-no-repeat"
+        style={{
+          width: 120,
+          height: 120,
+          ...(article.coverImageUrl
+            ? {
+                backgroundImage: `url(${JSON.stringify(article.coverImageUrl)})`,
+              }
+            : null),
+        }}
+      />
+      <h3 className="line-clamp-2 w-full text-center text-sm font-semibold leading-snug tracking-[-0.02em] text-[#071426]">
+        {article.title}
+      </h3>
     </Link>
   );
 }
 
 function ArticleGrid({ articles }: { articles: SleepContent[] }) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
+    <div className="flex flex-wrap justify-center gap-x-4 gap-y-6 sm:justify-start">
       {articles.map((article) => (
         <FeaturedCard key={article.id} article={article} />
       ))}

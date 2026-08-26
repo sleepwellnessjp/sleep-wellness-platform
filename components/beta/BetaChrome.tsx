@@ -46,16 +46,19 @@ function frostClass(extra: string): string {
 }
 
 /**
- * Version 1.0 Beta 運用用の固定 UI（全画面右下）
+ * Version 1.0 Beta 運用用の固定 UI
  * BETA バッジ · Version · フィードバック導線
  *
- * モバイルでは全ページのタブバーより下の z-index にし、
- * 余白は globals.css の [data-beta-chrome] でタブバーの上へ積む。
- * 幅広のフィードバックボタンはタブバーと重ならないようモバイルでは出さない。
+ * 通常は右下（タブバーより下の z-index、余白は globals.css）。
+ * /sleep/* ではカード円形カバーと重ならないよう、サイトヘッダー右
+ * （ハンバーガー左）に置く。
  */
 export default function BetaChrome() {
   const pathname = usePathname() || "/";
-  const onFeedback = pathname === "/feedback" || pathname.startsWith("/feedback/");
+  const onFeedback =
+    pathname === "/feedback" || pathname.startsWith("/feedback/");
+  const sleepSurface =
+    pathname === "/sleep" || pathname.startsWith("/sleep/");
 
   let badge: ReactNode;
   if (!onFeedback) {
@@ -83,13 +86,21 @@ export default function BetaChrome() {
 
   return (
     <div
-      className="pointer-events-none fixed right-0 bottom-0 z-40 flex flex-col items-end gap-2 px-3 pt-3 pr-[max(0.75rem,env(safe-area-inset-right))] sm:z-[70] sm:px-4 sm:pt-4"
+      className={
+        sleepSurface
+          ? "pointer-events-none fixed right-0 top-0 z-40 flex flex-col items-end gap-2 px-3 pt-[calc(env(safe-area-inset-top,0px)+1.15rem)] pr-[max(3.75rem,calc(env(safe-area-inset-right)+3.25rem))] sm:z-[70] sm:pt-3.5 sm:pr-[5.5rem]"
+          : "pointer-events-none fixed right-0 bottom-0 z-40 flex flex-col items-end gap-2 px-3 pt-3 pr-[max(0.75rem,env(safe-area-inset-right))] sm:z-[70] sm:px-4 sm:pt-4"
+      }
       data-beta-chrome
+      data-beta-chrome-placement={
+        sleepSurface ? "sleep-header-right" : "default"
+      }
       aria-label="Version 1.0 Beta 情報"
     >
       {badge}
 
-      {!onFeedback ? (
+      {/* /sleep はヘッダー帯の省スペースのため広いフィードバックボタンは出さない（バッジ自体が導線） */}
+      {!onFeedback && !sleepSurface ? (
         <Link
           href={feedbackHref(pathname)}
           className={frostClass(

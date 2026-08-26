@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000">
+  <defs>
+    <radialGradient id="disc" cx="50%" cy="45%" r="62%">
+      <stop offset="0%" stop-color="#1B2740"/>
+      <stop offset="70%" stop-color="#141D31"/>
+      <stop offset="100%" stop-color="#101828"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#EFE7D4" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#EFE7D4" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#EFE7D4" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="asanohaC" width="60" height="104" patternUnits="userSpaceOnUse">
+      <g stroke="#B8945F" stroke-width="1" fill="none" opacity="0.07">
+        <path d="M30 0 L60 17 L60 52 L30 69 L0 52 L0 17 Z"/>
+        <path d="M30 0 L30 69 M0 17 L60 52 M60 17 L0 52"/>
+        <path d="M30 52 L0 69 M30 52 L60 69"/>
+      </g>
+    </pattern>
+    <clipPath id="clipDisc">
+      <circle cx="400" cy="500" r="300"/>
+    </clipPath>
+  </defs>
+
+  <rect width="800" height="1000" fill="#33456B"/>
+  <rect width="800" height="1000" fill="url(#asanohaC)"/>
+
+  <!-- outer soft ripples on the field -->
+  <g fill="none" stroke="#B8945F" opacity="0.20">
+    <circle cx="400" cy="500" r="330" stroke-width="1"/>
+    <circle cx="400" cy="500" r="362" stroke-width="0.8"/>
+  </g>
+
+  <!-- main disc -->
+  <circle cx="400" cy="500" r="300" fill="url(#disc)"/>
+
+  <g clip-path="url(#clipDisc)">
+    <!-- inner ripples : exhale spreading outward -->
+    <g fill="none" stroke="#B8945F">
+      <circle cx="400" cy="500" r="62"  stroke-width="1.6" opacity="0.75"/>
+      <circle cx="400" cy="500" r="104" stroke-width="1.4" opacity="0.58"/>
+      <circle cx="400" cy="500" r="150" stroke-width="1.2" opacity="0.44"/>
+      <circle cx="400" cy="500" r="200" stroke-width="1.1" opacity="0.30"/>
+      <circle cx="400" cy="500" r="254" stroke-width="1"   opacity="0.18"/>
+    </g>
+
+    <!-- horizon line -->
+    <line x1="100" y1="500" x2="700" y2="500" stroke="#EFE7D4" stroke-width="0.9" opacity="0.22"/>
+
+    <!-- breath curve : rising and falling across the disc -->
+    <path d="M100,562 C160,470 220,470 280,562 C340,654 400,654 460,562 C520,470 580,470 640,562 C670,608 690,616 700,614"
+          fill="none" stroke="#B8945F" stroke-width="2.4" opacity="0.55" stroke-linecap="round"/>
+
+    <!-- faint upper mist -->
+    <ellipse cx="400" cy="330" rx="230" ry="70" fill="#EFE7D4" opacity="0.05"/>
+  </g>
+
+  <!-- center glow and core -->
+  <circle cx="400" cy="500" r="92" fill="url(#glow)"/>
+  <circle cx="400" cy="500" r="30" fill="#EFE7D4"/>
+  <circle cx="400" cy="500" r="30" fill="none" stroke="#B8945F" stroke-width="1.2" opacity="0.7"/>
+
+  <!-- rim -->
+  <circle cx="400" cy="500" r="300" fill="none" stroke="#B8945F" stroke-width="1.4" opacity="0.5"/>
+
+  <!-- scattered motes -->
+  <g fill="#EFE7D4">
+    <circle cx="286" cy="316" r="5" opacity="0.30"/>
+    <circle cx="520" cy="284" r="4" opacity="0.22"/>
+    <circle cx="596" cy="392" r="3.4" opacity="0.26"/>
+    <circle cx="238" cy="628" r="4.2" opacity="0.20"/>
+    <circle cx="548" cy="686" r="5" opacity="0.24"/>
+    <circle cx="404" cy="742" r="3.4" opacity="0.18"/>
+  </g>
+</svg>
