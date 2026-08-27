@@ -121,6 +121,7 @@ export function ouraVisionToAnalysisMetrics(
 
   out.restingHeartRate = bpmToDisplay(metrics.restingHeartRate);
   out.restingHeartRateMin = bpmToDisplay(metrics.lowestHeartRate);
+  out.averageHeartRate = bpmToDisplay(metrics.averageHeartRate);
   out.hrv = msToDisplay(metrics.averageHrv);
   out.hrvMax = msToDisplay(metrics.maximumHrv);
   out.hrvMin = msToDisplay(metrics.minimumHrv);
@@ -129,6 +130,8 @@ export function ouraVisionToAnalysisMetrics(
   out.skinTemperature = tempDevToDisplay(metrics.bodyTemperatureDeviation);
   out.sleepDebt = minutesToDisplay(metrics.sleepDebtMinutes);
   out.stress = minutesToDisplay(metrics.daytimeStressMinutes);
+  out.breathingDisturbances = metrics.breathingDisturbances?.trim() || "";
+  out.previousDayActivity = metrics.previousDayActivity?.trim() || "";
 
   return out;
 }

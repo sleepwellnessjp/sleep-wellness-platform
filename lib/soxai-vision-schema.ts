@@ -242,6 +242,7 @@ export function mapVision24ToAnalysisMetrics(
   metrics.stress = asText(v.stress);
   metrics.skinTemperature = asText(v.skinTemperature);
   metrics.circadianRhythm = asText(v.circadianShift);
+  metrics.breathingDisturbances = asText(v.breathingEvents);
   return metrics;
 }
 

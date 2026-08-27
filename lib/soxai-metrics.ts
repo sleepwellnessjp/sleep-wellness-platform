@@ -32,6 +32,8 @@ export type AnalysisMetrics = {
   restingHeartRateMin: string;
   /** SOXAI 安静時心拍数の最大（分析用・画面非表示） */
   restingHeartRateMax: string;
+  /** 夜間の平均心拍数（Oura Average Heart Rate 等） */
+  averageHeartRate: string;
   hrv: string;
   /** SOXAI 心拍変動の最大値（平均は hrv） */
   hrvMax: string;
@@ -39,6 +41,13 @@ export type AnalysisMetrics = {
   hrvMin: string;
   skinTemperature: string;
   stress: string;
+  /**
+   * 呼吸の乱れ・イベント表記。
+   * Oura: breathingDisturbances / SOXAI Vision: breathingEvents
+   */
+  breathingDisturbances: string;
+  /** Oura: Previous Day Activity（前日活動の画面表記） */
+  previousDayActivity: string;
 };
 
 export type MetricFieldKey = keyof AnalysisMetrics;
@@ -242,6 +251,14 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     hideFromUi: true,
   },
   {
+    key: "averageHeartRate",
+    label: "平均心拍数",
+    hint: "Average Heart Rate / 夜間平均",
+    inputType: "text",
+    placeholder: "例：58 bpm",
+    hideFromUi: true,
+  },
+  {
     key: "hrv",
     label: "平均HRV",
     hint: "心拍変動の平均 / RMSSD",
@@ -277,6 +294,22 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     inputType: "text",
     placeholder: "例：32 / 低め",
   },
+  {
+    key: "breathingDisturbances",
+    label: "呼吸の乱れ",
+    hint: "Breathing Disturbances / Breathing Events",
+    inputType: "text",
+    placeholder: "例：Few / Good",
+    hideFromUi: true,
+  },
+  {
+    key: "previousDayActivity",
+    label: "前日の活動",
+    hint: "Previous Day Activity（Oura）",
+    inputType: "text",
+    placeholder: "例：Good",
+    hideFromUi: true,
+  },
 ];
 
 export function emptyMetrics(): AnalysisMetrics {
@@ -307,11 +340,14 @@ export function emptyMetrics(): AnalysisMetrics {
     restingHeartRate: "",
     restingHeartRateMin: "",
     restingHeartRateMax: "",
+    averageHeartRate: "",
     hrv: "",
     hrvMax: "",
     hrvMin: "",
     skinTemperature: "",
     stress: "",
+    breathingDisturbances: "",
+    previousDayActivity: "",
   };
 }
 
@@ -335,6 +371,7 @@ export function normalizeMetrics(
         respiration?: unknown;
         respiratory?: unknown;
         respirationRate?: unknown;
+        breathingEvents?: unknown;
       })
     | undefined;
 
@@ -353,6 +390,10 @@ export function normalizeMetrics(
     asString(raw?.breathingRate).trim() ||
     asString(raw?.respirationRate).trim() ||
     asString(raw?.respiratory).trim();
+
+  const breathingDisturbances =
+    asString(metrics?.breathingDisturbances).trim() ||
+    asString(raw?.breathingEvents).trim();
 
   let sleepScore: number | null = null;
   const rawScore = metrics?.sleepScore as unknown;
@@ -390,11 +431,14 @@ export function normalizeMetrics(
     restingHeartRate,
     restingHeartRateMin: asString(metrics?.restingHeartRateMin),
     restingHeartRateMax: asString(metrics?.restingHeartRateMax),
+    averageHeartRate: asString(metrics?.averageHeartRate),
     hrv: asString(metrics?.hrv),
     hrvMax: asString(metrics?.hrvMax),
     hrvMin: asString(metrics?.hrvMin),
     skinTemperature: asString(metrics?.skinTemperature),
     stress: asString(metrics?.stress),
+    breathingDisturbances,
+    previousDayActivity: asString(metrics?.previousDayActivity),
   };
 }
 

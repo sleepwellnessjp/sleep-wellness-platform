@@ -21,6 +21,15 @@ console.log("lightSleep:", mapped.metrics.lightSleep);
 console.log("remSleep:", mapped.metrics.remSleep);
 console.log("nonRem (internal):", mapped.metrics.nonRemSleep);
 console.log("hrv:", mapped.metrics.hrv);
+console.log("averageHeartRate:", mapped.metrics.averageHeartRate);
+console.log(
+  "breathingDisturbances:",
+  mapped.metrics.breathingDisturbances || "(empty)",
+);
+console.log(
+  "previousDayActivity:",
+  mapped.metrics.previousDayActivity || "(empty)",
+);
 console.log("readiness:", mapped.ouraScores.readinessScore);
 console.log("timeInBed:", mapped.visionMetrics.timeInBed);
 console.log("imageKeys:", mapped.imageKeys.length);

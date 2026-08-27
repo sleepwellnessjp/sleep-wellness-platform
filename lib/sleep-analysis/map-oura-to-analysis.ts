@@ -95,6 +95,7 @@ function fromAnalysisMetrics(
     lightMinutes: parseMetricMinutes(metrics.lightSleep),
     deepMinutes: parseMetricMinutes(metrics.deepSleep),
     lowestHeartRate: parseMetricWithUnit(metrics.restingHeartRateMin),
+    averageHeartRate: parseMetricWithUnit(metrics.averageHeartRate),
     restingHeartRate: parseMetricWithUnit(metrics.restingHeartRate),
     hrv: parseMetricWithUnit(metrics.hrv),
     respiratoryRate: parseMetricWithUnit(metrics.respiratoryRate),
