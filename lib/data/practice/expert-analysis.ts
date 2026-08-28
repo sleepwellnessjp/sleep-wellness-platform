@@ -1,5 +1,6 @@
 import { appendKudasaiIfNeeded } from "@/lib/append-kudasai-if-needed";
 import { getPrescription } from "@/lib/data/practice/prescriptions";
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type {
   ChallengeTypeId,
   PracticeMetrics,
@@ -21,15 +22,15 @@ const TEMPLATES: Record<ChallengeTypeId, ExpertAnalysisTemplate> = {
   onset: {
     challengeType: "onset",
     paragraphs: [
-      "眠りに入るまでに{X}分かかっています。身体は横になっていても、心がまだ一日を手放せずにいた時間です。",
-      "活動から眠りへは、本来なだらかな坂道です。その坂を飛ばそうとすると、身体は身構えます。{X}分は、その身構えがほどけるまでの時間でした。",
+      "眠りに入るまでに{X}かかっています。身体は横になっていても、心がまだ一日を手放せずにいた時間です。",
+      "活動から眠りへは、本来なだらかな坂道です。その坂を飛ばそうとすると、身体は身構えます。{X}は、その身構えがほどけるまでの時間でした。",
       "今夜は「眠ろう」とせず、ただ横になって呼吸を見ていてください。眠りは、迎えにいくものではなく、訪れるものです。",
     ],
   },
   midwake: {
     challengeType: "midwake",
     paragraphs: [
-      "夜のあいだに{X}分、目が覚めています。眠りが途切れたのではなく、深く沈みきる前に浮かび上がってきた、と考えてみてください。",
+      "夜のあいだに{X}、目が覚めています。眠りが途切れたのではなく、深く沈みきる前に浮かび上がってきた、と考えてみてください。",
       "眠りは一本の線ではなく、寄せては返す波に似ています。浅くなる瞬間そのものは自然なことで、そこから戻れるかどうかが分かれ目になります。",
       "目が覚めても、時計を見ないでいてください。確かめようとした瞬間に、身体は起きる準備を始めてしまいます。",
     ],
@@ -53,7 +54,7 @@ const TEMPLATES: Record<ChallengeTypeId, ExpertAnalysisTemplate> = {
   deep: {
     challengeType: "deep",
     paragraphs: [
-      "深い睡眠が{X}分。眠ってはいたけれど、いちばん深いところまでは降りきれていない夜でした。",
+      "深い睡眠が{X}。眠ってはいたけれど、いちばん深いところまでは降りきれていない夜でした。",
       "深く眠るには、眠る前に一度、身体を十分に使っておく必要があります。日中に何もしていない身体は、夜にも沈む理由を持ちません。",
       "昼のあいだに、身体を動かす時間をつくってください。夜の深さは、昼の充実の裏返しです。",
     ],
@@ -61,7 +62,7 @@ const TEMPLATES: Record<ChallengeTypeId, ExpertAnalysisTemplate> = {
   maintenance: {
     challengeType: "maintenance",
     paragraphs: [
-      "睡眠効率{X}%、深い睡眠{Y}分。今の暮らし方が、そのまま眠りに現れています。",
+      "睡眠効率{X}%、深い睡眠{Y}。今の暮らし方が、そのまま眠りに現れています。",
       "良い状態というのは、努力して掴んでいるものではなく、無理をしていないから保たれているものです。変えるべきことは、今はありません。",
       "このまま続けてください。整っている時期にすることは、整えることではなく、崩さないことです。",
     ],
@@ -72,23 +73,50 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function formatSlot(value: number): string {
+type SlotFormat = "number" | "duration";
+
+function formatSlot(value: number, format: SlotFormat): string {
+  if (format === "duration") return formatMinutesAsDuration(value);
   return String(Math.round(value));
+}
+
+function slotFormatsForType(
+  challengeType: ChallengeTypeId,
+): { X?: SlotFormat; Y?: SlotFormat } {
+  switch (challengeType) {
+    case "onset":
+    case "midwake":
+    case "deep":
+      return { X: "duration" };
+    case "recovery":
+      return { X: "number", Y: "number" };
+    case "maintenance":
+      return { X: "number", Y: "duration" };
+    case "rhythm":
+      return {};
+  }
 }
 
 function fillParagraph(
   template: string,
   slots: { X?: number | null; Y?: number | null },
+  formats: { X?: SlotFormat; Y?: SlotFormat },
 ): string | null {
   if (template.includes("{X}") && !isFiniteNumber(slots.X)) return null;
   if (template.includes("{Y}") && !isFiniteNumber(slots.Y)) return null;
 
   let filled = template;
   if (isFiniteNumber(slots.X)) {
-    filled = filled.replaceAll("{X}", formatSlot(slots.X));
+    filled = filled.replaceAll(
+      "{X}",
+      formatSlot(slots.X, formats.X ?? "number"),
+    );
   }
   if (isFiniteNumber(slots.Y)) {
-    filled = filled.replaceAll("{Y}", formatSlot(slots.Y));
+    filled = filled.replaceAll(
+      "{Y}",
+      formatSlot(slots.Y, formats.Y ?? "number"),
+    );
   }
   if (filled.includes("{X}") || filled.includes("{Y}")) return null;
   return filled;
@@ -123,8 +151,9 @@ function fillTemplate(
 ): string[] {
   const template = TEMPLATES[challengeType];
   const slots = slotsForType(challengeType, metrics);
+  const formats = slotFormatsForType(challengeType);
   const paragraphs = template.paragraphs
-    .map((paragraph) => fillParagraph(paragraph, slots))
+    .map((paragraph) => fillParagraph(paragraph, slots, formats))
     .filter((paragraph): paragraph is string => Boolean(paragraph));
   if (paragraphs.length < 2) return [];
   return paragraphs;
