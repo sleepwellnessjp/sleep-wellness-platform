@@ -259,6 +259,7 @@ export function metricGuideline(
     | "respiration"
     | "skin-temp"
     | "stage-detail",
+  inputSource?: "soxai" | "manual" | "oura" | null,
 ): string {
   switch (key) {
     case "sleepScore":
@@ -270,6 +271,9 @@ export function metricGuideline(
     case "sleepLatency":
       return "一般：15〜20分以内　30分超が続く場合は入眠環境を確認";
     case "sleepDebt":
+      if (inputSource === "oura") {
+        return "過去2週間の睡眠不足の累積です。\n0に近いほど理想。直近の睡眠に比重を置いて算出されます";
+      }
       return "0に近いほど理想　積み重なると日中の回復感に影響しやすい\nマイナスは、それだけ早く就寝する余地があることを示します";
     case "bedtime":
     case "wakeTime":

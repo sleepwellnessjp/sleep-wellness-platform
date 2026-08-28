@@ -170,6 +170,8 @@ export type OcrProgressSnapshot = {
   estimatedRemainingMs: number | null;
   images: OcrImageProgress[];
   cancelled: boolean;
+  /** 進捗・見出しのデバイス出し分け用（runner が設定） */
+  inputSource?: "soxai" | "oura" | "manual";
 };
 
 export type SoxaiOcrImageStatusRecord = {
@@ -258,6 +260,7 @@ function emptySnapshot(
     startedAt,
     estimatedRemainingMs: null,
     cancelled: false,
+    inputSource: "soxai",
     images: labels.map((label, index) => ({
       index,
       section: sections[index] ?? "",

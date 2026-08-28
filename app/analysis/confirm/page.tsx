@@ -300,9 +300,19 @@ export default function ConfirmExtractionPage() {
 
   const confidenceMap = useMemo(() => draft?.ocrConfidence ?? {}, [draft]);
 
+  const consistencyCheckOptions = useMemo(
+    () => ({
+      inputSource: draft?.inputSource,
+      timeInBedMinutes: draft?.ouraVisionMetrics?.timeInBed ?? null,
+    }),
+    [draft?.inputSource, draft?.ouraVisionMetrics?.timeInBed],
+  );
   const consistencyWarnings = useMemo(
-    () => (metrics ? detectMetricConsistencyWarnings(metrics) : []),
-    [metrics],
+    () =>
+      metrics
+        ? detectMetricConsistencyWarnings(metrics, consistencyCheckOptions)
+        : [],
+    [metrics, consistencyCheckOptions],
   );
   const consistencyKeySet = useMemo(
     () => consistencyWarningKeys(consistencyWarnings),
@@ -795,6 +805,7 @@ export default function ConfirmExtractionPage() {
           progress={ocrProgress}
           showCancelConfirm={showOcrCancelConfirm}
           cancelledMenu={ocrCancelledMenu}
+          inputSource={draft?.inputSource ?? "soxai"}
           onRequestCancel={() => setShowOcrCancelConfirm(true)}
           onContinue={() => setShowOcrCancelConfirm(false)}
           onConfirmCancel={() => {

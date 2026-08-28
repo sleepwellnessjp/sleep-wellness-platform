@@ -535,14 +535,18 @@ function MetricGuideCard({
   label,
   metricKey,
   metrics,
+  inputSource,
 }: {
   label: string;
   metricKey: keyof AnalysisMetrics | "hrvRange";
   metrics: AnalysisMetrics;
+  inputSource?: AnalysisResult["inputSource"];
 }) {
   const evaluation = evaluateMetric(metricKey, metrics);
   const guide =
-    metricKey === "hrvRange" ? metricGuideline("hrv") : metricGuideline(metricKey);
+    metricKey === "hrvRange"
+      ? metricGuideline("hrv", inputSource)
+      : metricGuideline(metricKey, inputSource);
   const valueText =
     metricKey === "hrvRange"
       ? formatHrvRange(metrics)
@@ -2173,6 +2177,7 @@ function ResultContent({
                       label={label}
                       metricKey={key}
                       metrics={confirmedMetrics}
+                      inputSource={result.inputSource}
                     />
                   ))}
                 </div>
@@ -2192,6 +2197,7 @@ function ResultContent({
                         label={label}
                         metricKey={key}
                         metrics={confirmedMetrics}
+                        inputSource={result.inputSource}
                       />
                       {key === "spo2" ? (
                         <p className="col-span-full rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2 text-[11px] leading-5 text-slate-500 sm:text-[12px] sm:leading-6">
@@ -2204,6 +2210,7 @@ function ResultContent({
                     label="HRVレンジ"
                     metricKey="hrvRange"
                     metrics={confirmedMetrics}
+                    inputSource={result.inputSource}
                   />
                 </div>
               </div>

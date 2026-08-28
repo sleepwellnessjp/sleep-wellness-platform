@@ -4,6 +4,7 @@
  */
 
 import { formatDurationDisplay } from "@/lib/soxai-display-normalize";
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
 import {
   emptyMetrics,
   type AnalysisMetrics,
@@ -90,6 +91,86 @@ export function ouraVisionToAnalysisMetrics(
     if (awakeAsDuration) out.awakenings = awakeAsDuration;
   }
   out.awakeningRate = percentToDisplay(metrics.awakePercent);
+  // SOXAI と同一定義: 覚醒率 = 覚醒分 /（レム+浅い+深い+覚醒）＝就床寄りの分母。
+  // Vision の awakePercent が欠けるときだけ算出。欠損は埋めず「未測定」のまま。
+  if (!out.awakeningRate.trim()) {
+    const awakeMin =
+      metrics.awakeDuration != null && Number.isFinite(metrics.awakeDuration)
+        ? metrics.awakeDuration
+        : parseDurationMinutes(out.awakenings);
+    const rem = metrics.remDuration;
+    const light = metrics.lightSleepDuration;
+    const deep = metrics.deepSleepDuration;
+    let denom: number | null = null;
+    let denomKind: "stageSum" | "timeInBed" | "totalSleepPlusAwake" | null =
+      null;
+    if (
+      awakeMin != null &&
+      rem != null &&
+      light != null &&
+      deep != null &&
+      Number.isFinite(rem) &&
+      Number.isFinite(light) &&
+      Number.isFinite(deep)
+    ) {
+      denom = rem + light + deep + awakeMin;
+      denomKind = "stageSum";
+    } else if (
+      metrics.timeInBed != null &&
+      Number.isFinite(metrics.timeInBed) &&
+      metrics.timeInBed > 0
+    ) {
+      denom = metrics.timeInBed;
+      denomKind = "timeInBed";
+    } else if (
+      awakeMin != null &&
+      metrics.totalSleep != null &&
+      Number.isFinite(metrics.totalSleep)
+    ) {
+      denom = metrics.totalSleep + awakeMin;
+      denomKind = "totalSleepPlusAwake";
+    }
+    console.log("[oura-metrics] awakePercent fallback check", {
+      awakeMin,
+      awakePercentFromVision: metrics.awakePercent,
+      rem,
+      light,
+      deep,
+      timeInBed: metrics.timeInBed,
+      totalSleep: metrics.totalSleep,
+      denomKind,
+      denom,
+    });
+    if (awakeMin != null && denom != null && denom > 0 && denomKind != null) {
+      out.awakeningRate = percentToDisplay((awakeMin / denom) * 100);
+      const logLine = `[oura-metrics] awakePercent denominator=${denomKind} value=${Math.round(denom)}`;
+      if (denomKind === "stageSum") {
+        console.log(logLine);
+      } else {
+        console.warn(logLine);
+      }
+    } else {
+      console.warn("[oura-metrics] awakePercent fallback skipped", {
+        reason:
+          awakeMin == null
+            ? "no awakeMin"
+            : denom == null
+              ? "no denominator (need stageSum or timeInBed or totalSleep+awake)"
+              : "denom <= 0",
+        awakeMin,
+        rem,
+        light,
+        deep,
+        timeInBed: metrics.timeInBed,
+        totalSleep: metrics.totalSleep,
+      });
+    }
+  } else {
+    console.log("[oura-metrics] awakePercent from Vision (fallback skipped)", {
+      awakePercent: metrics.awakePercent,
+      awakeningRate: out.awakeningRate,
+    });
+  }
   out.remSleep = minutesToDisplay(metrics.remDuration);
   out.remSleepRate = percentToDisplay(metrics.remPercent);
   out.lightSleep = minutesToDisplay(metrics.lightSleepDuration);

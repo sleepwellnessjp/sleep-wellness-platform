@@ -9,7 +9,10 @@ import {
   parseDurationMinutes,
   parsePercent,
 } from "@/lib/soxai-graphs";
-import { evaluateSleepBalanceGate } from "@/lib/soxai-consistency";
+import {
+  evaluateSleepBalanceGate,
+  type ConsistencyCheckOptions,
+} from "@/lib/soxai-consistency";
 import {
   collectUnfilledLifestyleCategories,
   fallbackLifestyleSafeText,
@@ -194,9 +197,10 @@ function enrichMetric(
   metrics: AnalysisMetrics,
   item: KeyMetricDef,
   value: string,
+  inputSource?: AnalysisResult["inputSource"],
 ): CounselingKeyMetric {
   const evaluation = item.key ? evaluateMetric(item.key, metrics) : null;
-  const guide = item.key ? metricGuideline(item.key) : "";
+  const guide = item.key ? metricGuideline(item.key, inputSource) : "";
   return {
     label: item.label,
     value,
@@ -207,7 +211,10 @@ function enrichMetric(
   };
 }
 
-function buildKeyMetrics(metrics: AnalysisMetrics): CounselingKeyMetric[] {
+function buildKeyMetrics(
+  metrics: AnalysisMetrics,
+  inputSource?: AnalysisResult["inputSource"],
+): CounselingKeyMetric[] {
   const rows: CounselingKeyMetric[] = [];
   const seen = new Set<string>();
   for (const item of [...KEY_METRIC_PRIORITY, ...KEY_METRIC_FILL]) {
@@ -215,7 +222,7 @@ function buildKeyMetrics(metrics: AnalysisMetrics): CounselingKeyMetric[] {
     const value = displayMeasured(item.pick(metrics), item.key);
     if (!value) continue;
     seen.add(item.label);
-    rows.push(enrichMetric(metrics, item, value));
+    rows.push(enrichMetric(metrics, item, value, inputSource));
     if (rows.length >= 8) break;
   }
   return rows;
@@ -224,6 +231,7 @@ function buildKeyMetrics(metrics: AnalysisMetrics): CounselingKeyMetric[] {
 function buildAnalysisGuideMetrics(
   metrics: AnalysisMetrics,
   keyMetrics: CounselingKeyMetric[],
+  inputSource?: AnalysisResult["inputSource"],
 ): CounselingKeyMetric[] {
   const usedKeys = new Set(
     keyMetrics.map((item) => item.key).filter(Boolean) as MetricFieldKey[],
@@ -234,7 +242,7 @@ function buildAnalysisGuideMetrics(
     const value = displayMeasured(item.pick(metrics), item.key);
     if (!value) continue;
     if (item.key) usedKeys.add(item.key);
-    rows.push(enrichMetric(metrics, item, value));
+    rows.push(enrichMetric(metrics, item, value, inputSource));
     if (rows.length >= 8) break;
   }
   return rows;
@@ -247,11 +255,14 @@ function formatAwakeStageText(metrics: AnalysisMetrics): string {
   return duration || rate || "";
 }
 
-function buildStages(metrics: AnalysisMetrics): {
+function buildStages(
+  metrics: AnalysisMetrics,
+  consistencyOptions?: ConsistencyCheckOptions,
+): {
   stages: CounselingStageBar[];
   stagesUnavailableMessage: string | null;
 } {
-  const gate = evaluateSleepBalanceGate(metrics);
+  const gate = evaluateSleepBalanceGate(metrics, consistencyOptions);
   if (!gate.ok) {
     console.warn("[counseling-report] sleep balance gate blocked stages", {
       failedChecks: gate.failedChecks,
@@ -701,13 +712,20 @@ export function buildCounselingReportContent(
   const mentionContext = lifestyleMentionContext(result, lifestyle);
   const unfilledLifestyle = collectUnfilledLifestyleCategories(mentionContext);
   const actions = buildActions(model, unfilledLifestyle);
-  const keyMetrics = buildKeyMetrics(result.metrics);
-  const stageBuild = buildStages(result.metrics);
+  const keyMetrics = buildKeyMetrics(result.metrics, result.inputSource);
+  const stageBuild = buildStages(result.metrics, {
+    inputSource: result.inputSource,
+    timeInBedMinutes: result.ouraVisionMetrics?.timeInBed ?? null,
+  });
 
   return {
     overallComment: buildOverallComment(result, model),
     keyMetrics,
-    analysisGuideMetrics: buildAnalysisGuideMetrics(result.metrics, keyMetrics),
+    analysisGuideMetrics: buildAnalysisGuideMetrics(
+      result.metrics,
+      keyMetrics,
+      result.inputSource,
+    ),
     stages: stageBuild.stages,
     stagesUnavailableMessage: stageBuild.stagesUnavailableMessage,
     goodPoints,

@@ -76,6 +76,7 @@ function emitProgress(
     startedAt,
     estimatedRemainingMs: null,
     cancelled: false,
+    inputSource: "soxai",
     images: images.map((_, index) => ({
       index,
       section: (sections[index] ?? "") as SoxaiExtractSection | "",

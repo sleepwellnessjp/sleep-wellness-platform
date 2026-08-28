@@ -106,6 +106,7 @@ function emitProgress(
     startedAt,
     estimatedRemainingMs: null,
     cancelled: false,
+    inputSource: "oura",
     images: images.map((_, index) => ({
       index,
       section: "" as const,

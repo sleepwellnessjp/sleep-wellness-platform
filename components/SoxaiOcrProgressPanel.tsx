@@ -13,6 +13,8 @@ type SoxaiOcrProgressPanelProps = {
   progress: OcrProgressSnapshot | null;
   showCancelConfirm: boolean;
   cancelledMenu: boolean;
+  /** 選択デバイス。oura のとき見出しを Oura Vision 表記にする */
+  inputSource?: "soxai" | "manual" | "oura" | null;
   onRequestCancel: () => void;
   onContinue: () => void;
   onConfirmCancel: () => void;
@@ -32,6 +34,7 @@ export default function SoxaiOcrProgressPanel({
   progress,
   showCancelConfirm,
   cancelledMenu,
+  inputSource = "soxai",
   onRequestCancel,
   onContinue,
   onConfirmCancel,
@@ -62,6 +65,21 @@ export default function SoxaiOcrProgressPanel({
   const eta = formatOcrEta(progress?.estimatedRemainingMs ?? null);
   const symbols = total > 0 ? ocrProgressBarSymbols(completed, total) : "□";
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  // 進捗メッセージと同じ経路（progress.inputSource）を優先し、prop はフォールバック
+  const resolvedSource = progress?.inputSource ?? inputSource ?? "soxai";
+  const isOura = resolvedSource === "oura";
+  const eyebrow = isOura ? "OURA VISION" : "SOXAI OCR";
+  const title = isOura ? "Oura Vision 解析中" : "SOXAI OCR解析中";
+
+  useEffect(() => {
+    console.log("[SoxaiOcrProgressPanel] inputSource prop:", inputSource);
+    console.log("[SoxaiOcrProgressPanel] progress.inputSource:", progress?.inputSource);
+    console.log("[SoxaiOcrProgressPanel] resolvedSource:", resolvedSource, {
+      eyebrow,
+      title,
+      progressMessage: progress?.message ?? null,
+    });
+  }, [inputSource, progress?.inputSource, resolvedSource, eyebrow, title, progress?.message]);
 
   if (!mounted) return null;
 
@@ -77,13 +95,13 @@ export default function SoxaiOcrProgressPanel({
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top,rgba(49,95,104,0.18),transparent_70%)]" />
         <div className="relative px-6 py-8 sm:px-8 sm:py-10">
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#8a6a2d]">
-            SOXAI OCR
+            {eyebrow}
           </p>
           <h2
             id="soxai-ocr-overlay-title"
             className="mt-3 text-2xl font-semibold tracking-[-0.04em] text-[#071426]"
           >
-            SOXAI OCR解析中
+            {title}
           </h2>
 
           {cancelledMenu ? (

@@ -1759,6 +1759,7 @@ function NewAnalysisPageInner() {
           progress={ocrProgress}
           showCancelConfirm={showOcrCancelConfirm}
           cancelledMenu={ocrCancelledMenu}
+          inputSource={inputMethod === "oura" ? "oura" : "soxai"}
           onRequestCancel={() => setShowOcrCancelConfirm(true)}
           onContinue={() => setShowOcrCancelConfirm(false)}
           onConfirmCancel={handleOcrConfirmCancel}
