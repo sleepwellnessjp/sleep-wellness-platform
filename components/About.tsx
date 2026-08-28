@@ -18,11 +18,7 @@ const principles = [
   },
 ];
 
-export default function About({
-  analysisHref,
-}: {
-  analysisHref: string;
-}) {
+export default function About() {
   return (
     <section
       id="about"
@@ -33,18 +29,6 @@ export default function About({
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
         <div className="max-w-3xl">
-          <div className="mb-10 sm:mb-12">
-            <Link
-              href={analysisHref}
-              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/30 bg-white/10 px-8 text-sm font-semibold text-white backdrop-blur-sm transition duration-500 hover:-translate-y-0.5 hover:border-white/45 hover:bg-white/18 sm:text-base"
-            >
-              クライアントの分析
-            </Link>
-            <p className="mt-2 px-1 text-[11px] leading-5 text-white/50 sm:text-xs">
-              認定講師専用
-            </p>
-          </div>
-
           <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
             METHOD
           </p>
