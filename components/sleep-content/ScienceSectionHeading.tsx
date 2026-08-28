@@ -5,7 +5,7 @@ import {
 } from "@/lib/sleep-check/content";
 import type { SleepContentSubcategory } from "@/lib/sleep-content/types";
 
-const NEKO_SIZE = 48;
+const NEKO_SIZE = 72;
 const OUEN_INTRINSIC = { width: 506, height: 588 };
 
 function nekoDisplaySize(src: string): { width: number; height: number } {
@@ -29,7 +29,7 @@ export default function ScienceSectionHeading({
   const { width, height } = nekoDisplaySize(src);
 
   return (
-    <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
+    <h2 className="mb-4 flex items-center gap-3 text-2xl font-semibold tracking-[-0.02em] text-[#071426]">
       <Image
         src={src}
         alt=""
@@ -38,7 +38,7 @@ export default function ScienceSectionHeading({
         className="shrink-0 object-contain"
         style={{ width, height }}
       />
-      {label}
+      <span className="min-w-0">{label}</span>
     </h2>
   );
 }
