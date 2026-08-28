@@ -5,7 +5,7 @@ import {
 } from "@/lib/sleep-check/content";
 import type { SleepContentSubcategory } from "@/lib/sleep-content/types";
 
-const NEKO_SIZE = 72;
+const NEKO_SIZE = 108;
 const OUEN_INTRINSIC = { width: 506, height: 588 };
 
 function nekoDisplaySize(src: string): { width: number; height: number } {
@@ -28,7 +28,7 @@ export default function ArticleGuideNeko({
   const { width, height } = nekoDisplaySize(nekoSrc);
 
   return (
-    <div className="inline-flex items-end gap-3">
+    <div className="flex w-full items-end gap-3">
       <Image
         src={nekoSrc}
         alt=""
@@ -38,7 +38,7 @@ export default function ArticleGuideNeko({
         style={{ width, height }}
       />
       <div
-        className="w-fit max-w-[24rem] border px-4 py-[10px] text-sm leading-relaxed text-[#071426]"
+        className="min-w-0 w-fit max-w-[calc(100%-8rem)] border px-4 py-[10px] text-sm leading-relaxed text-[#071426] sm:max-w-[24rem]"
         style={{
           background: "#F7F1E8",
           borderColor: "rgba(7, 20, 38, 0.08)",
