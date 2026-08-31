@@ -82,6 +82,8 @@ import {
   emptyMetrics,
   SOXAI_METRIC_FIELDS,
 } from "@/lib/soxai-metrics";
+import { filesFingerprint } from "@/lib/soxai-image-fingerprint";
+import type { SoxaiVisionPreviewCacheEntry } from "@/lib/soxai-vision-preview-cache";
 
 const SLOT_MAX_FILES: Record<SoxaiExtractSection, number> = {
   home: 1,
@@ -268,10 +270,6 @@ const SOXAI_UPLOAD_SLOTS = SOXAI_IMAGE_SPECS.filter(
   description: spec.description,
   items: spec.metrics,
 }));
-
-function fileFingerprint(file: File): string {
-  return `${file.name}::${file.size}::${file.lastModified}::${file.type}`;
-}
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -560,6 +558,8 @@ function NewAnalysisPageInner() {
     fingerprint: string;
     images: string[];
   } | null>(null);
+  const [bulkVisionPreviewCache, setBulkVisionPreviewCache] =
+    useState<SoxaiVisionPreviewCacheEntry | null>(null);
   const ocrRequestIdRef = useRef(0);
   const submitGenerationRef = useRef(0);
   /** isSubmitting は非同期なので、同ティック二重 submit を同期的に防ぐ */
@@ -677,7 +677,7 @@ function NewAnalysisPageInner() {
     }
 
     const requestId = ++ocrRequestIdRef.current;
-    const filesFingerprint = files.map(fileFingerprint).join("||");
+    const submitFilesFingerprint = filesFingerprint(files);
     let cancelled = false;
 
     (async () => {
@@ -690,7 +690,7 @@ function NewAnalysisPageInner() {
         const images = await Promise.all(files.map(fileToDataUrl));
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
 
-        setOcrImageCache({ fingerprint: filesFingerprint, images });
+        setOcrImageCache({ fingerprint: submitFilesFingerprint, images });
         // Vision 方式: バックグラウンド OCR は使用停止（提出時に Vision 一括解析）
         if (cancelled || requestId !== ocrRequestIdRef.current) return;
         setError(null);
@@ -750,6 +750,7 @@ function NewAnalysisPageInner() {
     beginNewSoxaiAnalysisSession();
     resetProgressiveAnalysisJobs();
     setOcrImageCache(null);
+    setBulkVisionPreviewCache(null);
     setOcrStatus("idle");
     revokeWearablePreviewUrls(
       Object.values(soxaiImagesByCategory).flatMap((list) => list ?? []),
@@ -765,6 +766,12 @@ function NewAnalysisPageInner() {
     setSoxaiImagesByCategory(next);
     setSlotFiles(soxaiSlotFilesFromCategoryMap(SOXAI_IMAGE_SPECS, next));
     setError(null);
+  };
+
+  const handleBulkVisionPreviewCacheChange = (
+    entry: SoxaiVisionPreviewCacheEntry | null,
+  ) => {
+    setBulkVisionPreviewCache(entry);
   };
 
   const handleOuraFilesChange = (nextFiles: File[]) => {
@@ -987,16 +994,16 @@ function NewAnalysisPageInner() {
       let images: string[] = [];
 
       if (inputMethod === "soxai") {
-        const filesFingerprint = files.map(fileFingerprint).join("||");
+        const submitFilesFingerprint = filesFingerprint(files);
         if (
           ocrImageCache &&
-          ocrImageCache.fingerprint === filesFingerprint &&
+          ocrImageCache.fingerprint === submitFilesFingerprint &&
           ocrImageCache.images.length === files.length
         ) {
           images = ocrImageCache.images;
         } else {
           images = await Promise.all(files.map(fileToDataUrl));
-          setOcrImageCache({ fingerprint: filesFingerprint, images });
+          setOcrImageCache({ fingerprint: submitFilesFingerprint, images });
         }
       }
 
@@ -1433,6 +1440,12 @@ function NewAnalysisPageInner() {
 
       const extraction = await resolveSoxaiExtraction(images, sections, {
         signal: abortController.signal,
+        previewCache: bulkVisionPreviewCache
+          ? {
+              entry: bulkVisionPreviewCache,
+              submitFingerprint: filesFingerprint(files),
+            }
+          : undefined,
         onProgress: (snapshot) => {
           if (
             !adoptSubmitGeneration(submitGeneration, submitGenerationRef, {
@@ -2129,6 +2142,9 @@ function NewAnalysisPageInner() {
                   specs={SOXAI_IMAGE_SPECS}
                   imagesByCategory={soxaiImagesByCategory}
                   onChange={handleSoxaiImagesChange}
+                  onBulkVisionPreviewCacheChange={
+                    handleBulkVisionPreviewCacheChange
+                  }
                   showMissingAlert={uploadMissing}
                 />
                 {uploadMissing ? (

@@ -2425,26 +2425,80 @@ export async function resolveSoxaiExtraction(
   options?: {
     onProgress?: (snapshot: OcrProgressSnapshot) => void;
     signal?: AbortSignal;
+    /** 確認画面の再解析など、キャッシュを使わず必ず API を呼ぶ */
+    forceRefresh?: boolean;
+    /** 一括アップロードのプレビュー解析結果（fingerprint 一致時のみ再利用） */
+    previewCache?: import("@/lib/soxai-vision-preview-cache").SoxaiVisionPreviewCacheLookup;
   },
 ): Promise<SoxaiOcrRunResult> {
+  const resolvedSections = sections ?? [];
+  const {
+    logVisionPreviewCacheHit,
+    logVisionPreviewCacheMiss,
+    visionPreviewToOcrRunResult,
+  } = await import("@/lib/soxai-vision-preview-cache");
+
+  if (
+    !options?.forceRefresh &&
+    options?.previewCache &&
+    images.length > 0
+  ) {
+    const { entry, submitFingerprint } = options.previewCache;
+    if (entry.vision.cancelled) {
+      logVisionPreviewCacheMiss("プレビュー解析が中止済み");
+    } else if (entry.fingerprint !== submitFingerprint) {
+      logVisionPreviewCacheMiss(
+        "fingerprint不一致（枚数・内容・順序のいずれかが異なる）",
+      );
+    } else {
+      logVisionPreviewCacheHit();
+      const cached = visionPreviewToOcrRunResult(
+        entry.vision,
+        resolvedSections,
+        images.length,
+        true,
+      );
+      options.onProgress?.({
+        phase: "done",
+        message: `Vision解析完了（キャッシュ・${collectedMetricKeys(cached.metrics).length}項目）`,
+        total: images.length,
+        completed: images.length,
+        activeLabels: [],
+        startedAt: Date.now() - entry.vision.elapsedMs,
+        estimatedRemainingMs: 0,
+        cancelled: false,
+        inputSource: "soxai",
+        images: cached.imageStatuses.map((item) => ({
+          index: item.index,
+          section: item.section,
+          label: item.label,
+          status: item.status,
+          startedAt: Date.now() - entry.vision.elapsedMs,
+          endedAt: Date.now(),
+        })),
+      });
+      return cached;
+    }
+  } else if (options?.forceRefresh) {
+    logVisionPreviewCacheMiss("forceRefresh（再解析）");
+  } else if (!options?.previewCache) {
+    logVisionPreviewCacheMiss("preview cache なし");
+  }
+
   const { resolveSoxaiVisionExtraction } = await import(
     "@/lib/soxai-vision-runner"
   );
   const visionResult = await resolveSoxaiVisionExtraction(
     images,
-    sections ?? [],
+    resolvedSections,
     options,
   );
-  return {
-    metrics: visionResult.metrics,
-    conflicts: [],
-    graphs: emptyGraphBundle(),
-    confidence: {},
-    imageStatuses: visionResult.imageStatuses,
-    cancelled: visionResult.cancelled,
-    elapsedMs: visionResult.elapsedMs,
-    fromCache: false,
-  };
+  return visionPreviewToOcrRunResult(
+    visionResult,
+    resolvedSections,
+    images.length,
+    false,
+  );
 }
 
 export function cancelBackgroundSoxaiExtraction(): void {
@@ -2479,6 +2533,7 @@ export async function reanalyzeSoxaiImages(params: {
   return resolveSoxaiExtraction(params.images, params.sections, {
     signal: params.signal,
     onProgress: params.onProgress,
+    forceRefresh: true,
   });
 }
 

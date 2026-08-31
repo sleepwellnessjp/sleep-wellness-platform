@@ -26,6 +26,11 @@ import {
   buildBulkExtractSummary,
   type BulkExtractSummary,
 } from "@/lib/soxai-bulk-extract-summary";
+import { filesFingerprint } from "@/lib/soxai-image-fingerprint";
+import {
+  logVisionPreviewCacheCleared,
+  type SoxaiVisionPreviewCacheEntry,
+} from "@/lib/soxai-vision-preview-cache";
 
 export type CategoryImageMap = Partial<
   Record<WearableImageCategory, WearableUploadedImage[]>
@@ -37,6 +42,11 @@ type MultiImageUploaderProps = {
   imagesByCategory: CategoryImageMap;
   onChange: (next: CategoryImageMap) => void;
   showMissingAlert?: boolean;
+  /** 一括プレビュー解析結果（SOXAI のみ）。null でキャッシュ破棄 */
+  onBulkVisionPreviewCacheChange?: (
+    entry: SoxaiVisionPreviewCacheEntry | null,
+    reason?: string,
+  ) => void;
 };
 
 function flattenImages(map: CategoryImageMap): WearableUploadedImage[] {
@@ -81,6 +91,7 @@ export default function MultiImageUploader({
   imagesByCategory,
   onChange,
   showMissingAlert = false,
+  onBulkVisionPreviewCacheChange,
 }: MultiImageUploaderProps) {
   const [dragOver, setDragOver] = useState(false);
   const [localErrors, setLocalErrors] = useState<string[]>([]);
@@ -129,6 +140,15 @@ export default function MultiImageUploader({
     [onChange],
   );
 
+  const clearBulkVisionPreviewCache = useCallback(
+    (reason: string) => {
+      if (!onBulkVisionPreviewCacheChange) return;
+      logVisionPreviewCacheCleared(reason);
+      onBulkVisionPreviewCacheChange(null, reason);
+    },
+    [onBulkVisionPreviewCacheChange],
+  );
+
   /**
    * SOXAI 一括解析専用: 画面種類の事前分類は行わない。
    * （Oura は OuraAnalysisPanel を使用。このコンポーネントでは扱わない）
@@ -141,6 +161,7 @@ export default function MultiImageUploader({
 
       setBulkExtractSummary(null);
       setBulkExtractError(null);
+      clearBulkVisionPreviewCache("プレビュー解析の再実行");
       setExtractPhase(`${allForExtract.length}枚の画像を解析中…`);
       setExtracting(true);
 
@@ -167,6 +188,14 @@ export default function MultiImageUploader({
             "数値を取得できませんでした。画像が鮮明か、下の1〜7から不足項目だけ追加してください。",
           );
         }
+
+        if (!vision.cancelled && onBulkVisionPreviewCacheChange) {
+          onBulkVisionPreviewCacheChange({
+            fingerprint: filesFingerprint(allForExtract),
+            vision,
+            cachedAt: Date.now(),
+          });
+        }
       } catch (extractError) {
         setBulkExtractError(
           extractError instanceof Error
@@ -178,7 +207,7 @@ export default function MultiImageUploader({
         setExtractPhase(null);
       }
     },
-    [deviceType],
+    [clearBulkVisionPreviewCache, deviceType, onBulkVisionPreviewCacheChange],
   );
 
   const ingestBulkFiles = useCallback(
@@ -251,6 +280,7 @@ export default function MultiImageUploader({
       setLocalErrors(errors);
       if (accepted.length === 0) return;
 
+      clearBulkVisionPreviewCache("カテゴリ枠への画像追加");
       setClassifying(true);
       const { items, elapsedMs, successRate } = await classifyWearableImages({
         files: accepted,
@@ -274,11 +304,12 @@ export default function MultiImageUploader({
         [category]: [...existingInCategory, ...created],
       });
     },
-    [commitMap, deviceType, imagesByCategory, specs],
+    [clearBulkVisionPreviewCache, commitMap, deviceType, imagesByCategory, specs],
   );
 
   const removeImage = useCallback(
     (category: WearableImageCategory, imageId: string) => {
+      clearBulkVisionPreviewCache("画像の削除");
       const list = imagesByCategory[category] ?? [];
       const target = list.find((item) => item.id === imageId);
       if (target) revokeWearablePreviewUrls([target]);
@@ -288,7 +319,7 @@ export default function MultiImageUploader({
       else next[category] = remaining;
       commitMap(next);
     },
-    [commitMap, imagesByCategory],
+    [clearBulkVisionPreviewCache, commitMap, imagesByCategory],
   );
 
   const replaceImage = useCallback(
@@ -346,6 +377,7 @@ export default function MultiImageUploader({
       });
       setClassifying(false);
 
+      clearBulkVisionPreviewCache("カテゴリ枠画像の差し替え");
       const classified = items[0]?.image;
       const nextList = list.map((item) => {
         if (item.id !== imageId) return item;
@@ -367,11 +399,12 @@ export default function MultiImageUploader({
       });
       commitMap({ ...imagesByCategory, [category]: nextList });
     },
-    [commitMap, deviceType, imagesByCategory, runBulkVisionOnMap, specs],
+    [clearBulkVisionPreviewCache, commitMap, deviceType, imagesByCategory, runBulkVisionOnMap, specs],
   );
 
   const assignUnknownCategory = useCallback(
     (imageId: string, category: WearableImageCategory) => {
+      clearBulkVisionPreviewCache("unknown からカテゴリ枠への移動");
       const unknownList = imagesByCategory.unknown ?? [];
       const target = unknownList.find((item) => item.id === imageId);
       if (!target) return;
@@ -394,11 +427,12 @@ export default function MultiImageUploader({
       setLocalErrors([]);
       commitMap(next);
     },
-    [commitMap, imagesByCategory, specs],
+    [clearBulkVisionPreviewCache, commitMap, imagesByCategory, specs],
   );
 
   const clearAll = useCallback(() => {
     bulkAbortRef.current?.abort();
+    clearBulkVisionPreviewCache("すべてクリア");
     revokeWearablePreviewUrls(flattenImages(imagesByCategory));
     setLocalErrors([]);
     setSlotNote(null);
@@ -408,7 +442,7 @@ export default function MultiImageUploader({
     setExtracting(false);
     setExtractPhase(null);
     commitMap({});
-  }, [commitMap, imagesByCategory]);
+  }, [clearBulkVisionPreviewCache, commitMap, imagesByCategory]);
 
   return (
     <div className="space-y-5">
