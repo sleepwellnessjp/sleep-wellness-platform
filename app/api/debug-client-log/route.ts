@@ -4,6 +4,10 @@ import { appendFileSync } from "node:fs";
 const LOG_PATH = "/tmp/user-ocr-button-console.log";
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     const body = await request.json();
     const line = `${new Date().toISOString()} ${JSON.stringify(body)}\n`;

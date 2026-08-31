@@ -13,6 +13,10 @@ export const runtime = "nodejs";
 
 /** schema.sql / platform-v1.sql の内容を返す（コピー用）＋テーブル存在確認 */
 export async function GET() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     const schemaPath = path.join(process.cwd(), "supabase", "schema.sql");
     const platformPath = path.join(process.cwd(), "supabase", "platform-v1.sql");
