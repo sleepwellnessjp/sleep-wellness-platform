@@ -303,87 +303,6 @@ function LoginForm() {
     }
   };
 
-  const handleSignUp = async () => {
-    setError(null);
-    setMessage(null);
-
-    if (!supabaseEnabled) return;
-
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !password) {
-      setError("メールアドレスとパスワードを入力してください。");
-      return;
-    }
-
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(
-        `パスワードは${MIN_PASSWORD_LENGTH}文字以上で入力してください。`,
-      );
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const supabase = createBrowserClient();
-      if (!supabase) {
-        setError("Supabase の設定を確認してください。");
-        return;
-      }
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: trimmedEmail,
-        password,
-        options: {
-          emailRedirectTo: `${getPublicAppOrigin() || window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-        },
-      });
-
-      if (signUpError) {
-        setError(signUpError.message);
-        return;
-      }
-
-      const identities = data.user?.identities ?? [];
-      if (data.user && identities.length === 0) {
-        setError(
-          "このメールアドレスは既に登録されています。ログインするか、パスワード再設定をご利用ください。",
-        );
-        return;
-      }
-
-      if (!data.user) {
-        setError(
-          "ユーザーの作成に失敗しました。入力内容を確認して再度お試しください。",
-        );
-        return;
-      }
-
-      if (data.session) {
-        const destination = await resolvePostAuthDestination(
-          supabase,
-          redirectTo,
-          hasExplicitRedirect,
-        );
-        setMessage("登録が完了しました。移動します。");
-        router.replace(destination);
-        router.refresh();
-        return;
-      }
-
-      setMessage(
-        "登録を受け付けました。確認メールを送信したので、メール内のリンクから登録を完了してください。",
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "新規登録に失敗しました。しばらくしてから再度お試しください。",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleForgotPassword = async () => {
     setError(null);
     setMessage(null);
@@ -699,21 +618,12 @@ function LoginForm() {
               {busy ? "処理中..." : "ログイン"}
             </button>
 
-            <div className="flex flex-col gap-1 pt-1 sm:flex-row sm:justify-between sm:gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleSignUp}
-                className="inline-flex min-h-11 items-center justify-center text-sm font-semibold transition active:opacity-70 disabled:opacity-60 sm:min-h-0 sm:justify-start sm:hover:underline sm:active:opacity-100"
-                style={{ color: GOLD }}
-              >
-                認定講師として新規登録
-              </button>
+            <div className="pt-1">
               <button
                 type="button"
                 disabled={busy}
                 onClick={handleForgotPassword}
-                className="inline-flex min-h-11 items-center justify-center text-sm font-medium text-slate-500 transition active:text-slate-700 disabled:opacity-60 sm:min-h-0 sm:justify-start sm:hover:text-slate-700 sm:active:text-slate-500"
+                className="inline-flex min-h-11 w-full items-center justify-center text-sm font-medium text-slate-500 transition active:text-slate-700 disabled:opacity-60 sm:min-h-0 sm:w-auto sm:justify-start sm:hover:text-slate-700 sm:active:text-slate-500"
               >
                 パスワードを忘れた方
               </button>
