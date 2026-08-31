@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import {
   searchKnowledgeBase,
   toJapaneseAiIntelligenceError,
 } from "@/lib/ai-intelligence";
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const body = (await request.json()) as { query?: string; limit?: number };
     const answer = await searchKnowledgeBase(
@@ -24,6 +28,9 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q") ?? searchParams.get("query") ?? "";

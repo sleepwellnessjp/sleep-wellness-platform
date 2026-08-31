@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import {
   getSleepCoachBriefing,
   toJapaneseAiIntelligenceError,
@@ -6,6 +7,9 @@ import {
 } from "@/lib/ai-intelligence";
 
 export async function GET(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const { searchParams } = new URL(request.url);
     const ctx: Partial<SleepCoachContext> = {
@@ -31,6 +35,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const body = (await request.json()) as Partial<SleepCoachContext>;
     const briefing = await getSleepCoachBriefing(body);

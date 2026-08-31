@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import {
   getInstructorAssistantBriefing,
   toJapaneseAiIntelligenceError,
@@ -6,6 +7,9 @@ import {
 } from "@/lib/ai-intelligence";
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const body = (await request.json()) as Partial<InstructorAssistantContext>;
     const briefing = await getInstructorAssistantBriefing(body);
@@ -22,6 +26,9 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   try {
     const briefing = await getInstructorAssistantBriefing();
     return NextResponse.json({ briefing });

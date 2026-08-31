@@ -5,6 +5,7 @@
 
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import {
   isImageDataUrl,
   normalizeImageDataUrl,
@@ -199,6 +200,9 @@ function normalizeResults(
 }
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   const startedAt = Date.now();
 
   if (!process.env.OPENAI_API_KEY?.trim()) {
