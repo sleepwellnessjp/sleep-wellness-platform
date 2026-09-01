@@ -3,6 +3,7 @@
 import Link from "next/link";
 import InstructorClientFacingProfileCard from "@/components/InstructorClientFacingProfileCard";
 import InstructorNav from "@/components/InstructorNav";
+import CreditPackRequestSection from "@/components/CreditPackRequestSection";
 import PlatformStatusCard from "@/components/PlatformStatusCard";
 import EmptyState from "@/components/ui/EmptyState";
 import ErrorState from "@/components/ui/ErrorState";
@@ -61,6 +62,8 @@ export default function InstructorPortalPage() {
         {data && (
           <div className="mt-8 space-y-6 sm:mt-10">
             <PlatformStatusCard data={data} />
+
+            {data.profile.role === "instructor" && <CreditPackRequestSection />}
 
             <InstructorClientFacingProfileCard />
 

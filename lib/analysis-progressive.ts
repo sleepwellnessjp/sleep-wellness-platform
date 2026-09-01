@@ -88,6 +88,69 @@ export function bootstrapScoreFirstAnalysis(): ProgressiveAnalysisBootstrap {
   return sharedBootstrap;
 }
 
+const CREDIT_CONSUME_WARNING =
+  "分析結果は保存されましたが、今月の分析回数の記録に失敗しました。お手数ですが管理者にお問い合わせください。";
+
+type ConsumeCreditPayload = {
+  clientName: string;
+  measurementDate?: string;
+  sleepScore?: number | null;
+  clientId: string;
+  analysisId: string;
+};
+
+async function tryConsumeAnalysisCredit(
+  payload: ConsumeCreditPayload,
+): Promise<{ ok: boolean; message: string }> {
+  const maxAttempts = 2;
+  let lastMessage = CREDIT_CONSUME_WARNING;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const creditResponse = await fetch("/api/platform/consume-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const body = (await creditResponse.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      } | null;
+
+      if (creditResponse.ok && body?.ok !== false) {
+        return { ok: true, message: body?.message ?? "ok" };
+      }
+
+      lastMessage =
+        body?.error ||
+        body?.message ||
+        `クレジット記録に失敗しました（HTTP ${creditResponse.status}）`;
+
+      const retryable =
+        creditResponse.status >= 500 || creditResponse.status === 429;
+      if (attempt < maxAttempts - 1 && retryable) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      }
+      return { ok: false, message: lastMessage };
+    } catch (error) {
+      lastMessage =
+        error instanceof Error
+          ? error.message
+          : "クレジット記録の通信に失敗しました";
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      }
+      return { ok: false, message: lastMessage };
+    }
+  }
+
+  return { ok: false, message: lastMessage };
+}
+
 async function persistAndConsumeCredit(
   result: AnalysisResult,
 ): Promise<AnalysisResult> {
@@ -131,30 +194,27 @@ async function persistAndConsumeCredit(
     }),
   }).catch(() => undefined);
 
-  try {
-    const creditResponse = await fetch("/api/platform/consume-credit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientName: result.clientName ?? "睡眠分析",
-        measurementDate: result.measurementDate,
-        sleepScore:
-          typeof result.metrics?.sleepScore === "number"
-            ? result.metrics.sleepScore
-            : result.score,
-        clientId: savedRef.clientId,
-        analysisId: savedRef.analysisId,
-      }),
+  if (isSupabaseConfigured()) {
+    const consume = await tryConsumeAnalysisCredit({
+      clientName: result.clientName ?? "睡眠分析",
+      measurementDate: result.measurementDate,
+      sleepScore:
+        typeof result.metrics?.sleepScore === "number"
+          ? result.metrics.sleepScore
+          : result.score,
+      clientId: savedRef.clientId,
+      analysisId: savedRef.analysisId,
     });
 
-    if (!creditResponse.ok) {
-      const payload = (await creditResponse.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      console.error("Credit consume failed:", payload);
+    if (!consume.ok) {
+      console.error("[analysis-progressive] Credit consume failed", {
+        analysisId: savedRef.analysisId,
+        clientId: savedRef.clientId,
+        message: consume.message,
+      });
+      result.creditConsumeWarning = consume.message || CREDIT_CONSUME_WARNING;
+      hydrateAnalysisSession(result);
     }
-  } catch (creditError) {
-    console.error("Failed to consume analysis credit:", creditError);
   }
 
   return result;

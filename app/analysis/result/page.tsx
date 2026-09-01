@@ -1702,6 +1702,13 @@ function ResultContent({
           </div>
         )}
 
+        {result.creditConsumeWarning ? (
+          <div className="no-print mb-4 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-[13px] leading-6 text-amber-950 sm:mb-5 sm:px-5">
+            <p className="font-semibold">分析回数の記録に問題がありました</p>
+            <p className="mt-1">{result.creditConsumeWarning}</p>
+          </div>
+        ) : null}
+
         {/* ===== Expert Report（認定講師用カルテ・画面固定。PDFには出さない） ===== */}
         <article className="report-page report-page-text no-print overflow-hidden rounded-[28px] border border-slate-200/80 bg-white px-4 py-6 shadow-[0_24px_70px_-48px_rgba(7,20,38,.22)] sm:px-9 sm:py-10 md:px-11 md:py-11">
           {/* —— 画面 page 1: ①基本情報 → ②データ → ③AIカルテ —— */}

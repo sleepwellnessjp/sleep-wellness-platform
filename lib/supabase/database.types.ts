@@ -2047,6 +2047,63 @@ export type Database = {
           },
         ];
       };
+      credit_requests: {
+        Row: {
+          id: string;
+          user_id: string;
+          sets: number;
+          credits: number;
+          amount_yen: number;
+          status: string;
+          note: string;
+          admin_memo: string;
+          requested_at: string;
+          approved_at: string | null;
+          approved_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          sets: number;
+          credits: number;
+          amount_yen: number;
+          status?: string;
+          note?: string;
+          admin_memo?: string;
+          requested_at?: string;
+          approved_at?: string | null;
+          approved_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          sets?: number;
+          credits?: number;
+          amount_yen?: number;
+          status?: string;
+          note?: string;
+          admin_memo?: string;
+          requested_at?: string;
+          approved_at?: string | null;
+          approved_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_requests_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_requests_approved_by_fkey";
+            columns: ["approved_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       credit_transactions: {
         Row: {
           id: string;

@@ -453,6 +453,11 @@ export type AnalysisResult = {
   medicalHistory?: string;
   /** 保存済み分析の再表示用 ID */
   analysisId?: string;
+  /**
+   * 分析保存後にクレジット消費 RPC が失敗した場合の警告。
+   * 結果表示は継続する（保存済みデータは失わさない）。
+   */
+  creditConsumeWarning?: string;
   /** 当日の生活習慣（day_context）。旧レコードは未設定 */
   dayContext?: AnalysisDayContext;
   /** 項目別 OCR 信頼度（保存用） */
@@ -1643,6 +1648,11 @@ export function normalizeAnalysisResult(
     snoringNasal: extras?.snoringNasal ?? raw.snoringNasal,
     medicalHistory: extras?.medicalHistory ?? raw.medicalHistory,
     analysisId: typeof raw.analysisId === "string" ? raw.analysisId : undefined,
+    creditConsumeWarning:
+      typeof (raw as { creditConsumeWarning?: unknown }).creditConsumeWarning ===
+      "string"
+        ? (raw as { creditConsumeWarning: string }).creditConsumeWarning.trim()
+        : undefined,
     dayContext:
       raw.dayContext && typeof raw.dayContext === "object"
         ? (raw.dayContext as AnalysisDayContext)

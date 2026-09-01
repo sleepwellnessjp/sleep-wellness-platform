@@ -12,7 +12,10 @@ import {
 } from "./platform-service";
 import type { PlatformAccessStatus, PlatformMeResponse } from "./types";
 
-/** localhost（next dev）のみ。Vercel 本番・プレビューでは false。 */
+/**
+ * ローカル next dev のみ true。Vercel 本番・プレビューは NODE_ENV=production のため常に false。
+ * 未ログイン時の access / consume 緩和はこの関数が true のときだけ（本番には影響しない）。
+ */
 function isLocalDevAuthBypass(): boolean {
   return process.env.NODE_ENV === "development";
 }

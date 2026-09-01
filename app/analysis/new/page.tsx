@@ -14,6 +14,8 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import AnalysisFlow from "@/components/AnalysisFlow";
+import AnalysisAccessBanner from "@/components/AnalysisAccessBanner";
+import AnalysisCreditsRemainder from "@/components/AnalysisCreditsRemainder";
 import SiteNavMenu from "@/components/site/SiteNavMenu";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
@@ -84,6 +86,7 @@ import {
 } from "@/lib/soxai-metrics";
 import { filesFingerprint } from "@/lib/soxai-image-fingerprint";
 import type { SoxaiVisionPreviewCacheEntry } from "@/lib/soxai-vision-preview-cache";
+import type { PlatformAccessStatus } from "@/lib/platform/types";
 
 const SLOT_MAX_FILES: Record<SoxaiExtractSection, number> = {
   home: 1,
@@ -560,6 +563,9 @@ function NewAnalysisPageInner() {
   } | null>(null);
   const [bulkVisionPreviewCache, setBulkVisionPreviewCache] =
     useState<SoxaiVisionPreviewCacheEntry | null>(null);
+  const [analysisAccess, setAnalysisAccess] =
+    useState<PlatformAccessStatus | null>(null);
+  const [analysisAccessLoading, setAnalysisAccessLoading] = useState(true);
   const ocrRequestIdRef = useRef(0);
   const submitGenerationRef = useRef(0);
   /** isSubmitting は非同期なので、同ティック二重 submit を同期的に防ぐ */
@@ -707,6 +713,25 @@ function NewAnalysisPageInner() {
       cancelled = true;
     };
   }, [files, inputMethod, sections]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAnalysisAccessLoading(true);
+    void fetch("/api/platform/analysis-access", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((json: PlatformAccessStatus) => {
+        if (!cancelled) setAnalysisAccess(json);
+      })
+      .catch(() => {
+        if (!cancelled) setAnalysisAccess(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAnalysisAccessLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1816,6 +1841,15 @@ function NewAnalysisPageInner() {
         <div className="mb-6 sm:mb-10">
           <AnalysisFlow current={1} />
         </div>
+
+        <AnalysisAccessBanner
+          access={analysisAccess}
+          loading={analysisAccessLoading}
+        />
+        <AnalysisCreditsRemainder
+          access={analysisAccess}
+          loading={analysisAccessLoading}
+        />
 
         {flowStep === "method" ? (
           <DeviceSelector

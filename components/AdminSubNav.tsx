@@ -69,6 +69,12 @@ const ITEMS: NavItem[] = [
     match: "prefix",
     hqOnly: true,
   },
+  {
+    href: "/admin/credit-requests",
+    label: "追加パック申請",
+    match: "prefix",
+    hqOnly: true,
+  },
   { href: "/admin/clients", label: "クライアント", match: "prefix", hqOnly: true },
   { href: "/admin/ai", label: "AI Intelligence", match: "prefix", hqOnly: true },
   { href: "/admin/journey", label: "Journey", match: "prefix", hqOnly: true },
