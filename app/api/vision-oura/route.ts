@@ -5,6 +5,7 @@
 
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import {
   isImageDataUrl,
   normalizeImageDataUrl,
@@ -118,6 +119,9 @@ ${imageCount}枚の画像を横断して読み、見える数値・文言だけ�
 }
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   const startedAt = Date.now();
   const apiKeyPresent = Boolean(process.env.OPENAI_API_KEY?.trim());
 

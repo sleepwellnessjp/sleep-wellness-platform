@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { requireApiUser } from "@/lib/auth/require-api-user";
 import { appendFileSync } from "node:fs";
 import {
   isImageDataUrl,
@@ -892,6 +893,9 @@ function buildVerifyDiagnostics(params: {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireApiUser();
+  if ("error" in auth && auth.error) return auth.error;
+
   const life = (msg: string, extra?: Record<string, unknown>) => {
     const line = `${new Date().toISOString()} ${msg}${
       extra ? ` ${JSON.stringify(extra)}` : ""
