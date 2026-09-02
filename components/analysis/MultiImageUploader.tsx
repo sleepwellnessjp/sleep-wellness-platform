@@ -189,7 +189,12 @@ export default function MultiImageUploader({
           );
         }
 
-        if (!vision.cancelled && onBulkVisionPreviewCacheChange) {
+        if (
+          !vision.cancelled &&
+          !vision.error &&
+          summary.confirmedCount > 0 &&
+          onBulkVisionPreviewCacheChange
+        ) {
           onBulkVisionPreviewCacheChange({
             fingerprint: filesFingerprint(allForExtract),
             vision,

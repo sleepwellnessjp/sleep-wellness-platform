@@ -2460,6 +2460,8 @@ export async function resolveSoxaiExtraction(
       logVisionPreviewCacheMiss(
         "fingerprint不一致（枚数・内容・順序のいずれかが異なる）",
       );
+    } else if (collectedMetricKeys(entry.vision.metrics).length === 0) {
+      logVisionPreviewCacheMiss("キャッシュ結果が空");
     } else {
       logVisionPreviewCacheHit();
       const cached = visionPreviewToOcrRunResult(
