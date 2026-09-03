@@ -227,6 +227,72 @@ export type Database = {
           },
         ];
       };
+      sleep_contents: {
+        Row: {
+          id: string;
+          slug: string;
+          category: string;
+          subcategory: string | null;
+          kind: string;
+          title: string;
+          summary: string;
+          body_blocks: Json;
+          youtube_url: string;
+          audio_url: string;
+          cover_image_url: string;
+          duration_seconds: number | null;
+          sort_order: number;
+          status: string;
+          published: boolean;
+          published_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          category: string;
+          subcategory?: string | null;
+          kind: string;
+          title: string;
+          summary?: string;
+          body_blocks?: Json;
+          youtube_url?: string;
+          audio_url?: string;
+          cover_image_url?: string;
+          duration_seconds?: number | null;
+          sort_order?: number;
+          status?: string;
+          published?: boolean;
+          published_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          category?: string;
+          subcategory?: string | null;
+          kind?: string;
+          title?: string;
+          summary?: string;
+          body_blocks?: Json;
+          youtube_url?: string;
+          audio_url?: string;
+          cover_image_url?: string;
+          duration_seconds?: number | null;
+          sort_order?: number;
+          status?: string;
+          published?: boolean;
+          published_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       sleep_journeys: {
         Row: {
           id: string;
@@ -3144,6 +3210,151 @@ export type Database = {
             columns: ["level_id"];
             isOneToOne: false;
             referencedRelation: "certification_levels";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      instructor_activities: {
+        Row: {
+          id: string;
+          slug: string;
+          instructor_id: string;
+          created_by: string;
+          title: string;
+          image_url: string;
+          event_date: string;
+          start_time: string | null;
+          end_time: string | null;
+          location: string;
+          is_online: boolean;
+          summary: string;
+          description: string;
+          target: string;
+          capacity: string;
+          price: string;
+          application_url: string;
+          application_method: string;
+          notes: string;
+          instructor_name: string;
+          status: string;
+          published: boolean;
+          featured: boolean;
+          approval_status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          instructor_id: string;
+          created_by: string;
+          title: string;
+          image_url?: string;
+          event_date: string;
+          start_time?: string | null;
+          end_time?: string | null;
+          location?: string;
+          is_online?: boolean;
+          summary?: string;
+          description?: string;
+          target?: string;
+          capacity?: string;
+          price?: string;
+          application_url?: string;
+          application_method?: string;
+          notes?: string;
+          instructor_name?: string;
+          status?: string;
+          published?: boolean;
+          featured?: boolean;
+          approval_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          instructor_id?: string;
+          created_by?: string;
+          title?: string;
+          image_url?: string;
+          event_date?: string;
+          start_time?: string | null;
+          end_time?: string | null;
+          location?: string;
+          is_online?: boolean;
+          summary?: string;
+          description?: string;
+          target?: string;
+          capacity?: string;
+          price?: string;
+          application_url?: string;
+          application_method?: string;
+          notes?: string;
+          instructor_name?: string;
+          status?: string;
+          published?: boolean;
+          featured?: boolean;
+          approval_status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "instructor_activities_instructor_id_fkey";
+            columns: ["instructor_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_instructors";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      instructor_activity_schedules: {
+        Row: {
+          id: string;
+          instructor_id: string;
+          created_by: string;
+          activity_date: string;
+          title: string;
+          summary: string;
+          external_url: string;
+          instructor_name: string;
+          published: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          instructor_id: string;
+          created_by: string;
+          activity_date: string;
+          title: string;
+          summary?: string;
+          external_url: string;
+          instructor_name?: string;
+          published?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          instructor_id?: string;
+          created_by?: string;
+          activity_date?: string;
+          title?: string;
+          summary?: string;
+          external_url?: string;
+          instructor_name?: string;
+          published?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "instructor_activity_schedules_instructor_id_fkey";
+            columns: ["instructor_id"];
+            isOneToOne: false;
+            referencedRelation: "certified_instructors";
             referencedColumns: ["id"];
           },
         ];

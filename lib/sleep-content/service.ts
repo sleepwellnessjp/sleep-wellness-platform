@@ -29,7 +29,7 @@ const CONTENT_SELECT = `
 `;
 
 function contentsFrom(client: Client) {
-  return client.from("sleep_contents" as never);
+  return client.from("sleep_contents");
 }
 
 async function requireClient(): Promise<Client> {

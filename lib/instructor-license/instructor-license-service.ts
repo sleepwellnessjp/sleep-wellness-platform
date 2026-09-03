@@ -1207,8 +1207,8 @@ async function syncInstructorNameOnActivities(
   previousNames: string[] = [],
 ): Promise<void> {
   const { error: activityError } = await supabase
-    .from("instructor_activities" as never)
-    .update({ instructor_name: publicName } as never)
+    .from("instructor_activities")
+    .update({ instructor_name: publicName })
     .eq("instructor_id", instructorId);
   if (activityError && !isMissingRelationError(activityError.message)) {
     console.warn(

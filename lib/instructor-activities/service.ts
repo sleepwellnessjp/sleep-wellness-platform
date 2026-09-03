@@ -32,7 +32,7 @@ const ACTIVITY_SELECT = `
 `;
 
 function activitiesFrom(client: Client) {
-  return client.from("instructor_activities" as never);
+  return client.from("instructor_activities");
 }
 
 async function requireClient(): Promise<Client> {
