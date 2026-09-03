@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { requireApiUser } from "@/lib/auth/require-api-user";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import {
   isImageDataUrl,
   normalizeImageDataUrl,
@@ -90,7 +90,7 @@ const VISION_TRANSIENT_RETRIES = 1;
 /** critical 再OCRの候補画像上限（優先画面から） */
 const CRITICAL_REOCR_MAX_IMAGES = 2;
 /** サーバー温インスタンス内の画像ハッシュキャッシュ（不完全結果は採用しない） */
-const SERVER_OCR_CACHE_VERSION = "v21";
+const SERVER_OCR_CACHE_VERSION = "v22";
 const serverOcrCache = new Map<
   string,
   {
@@ -627,9 +627,11 @@ function singleImagePrompt(imageIndex: number, total: number): string {
 
 【画面 → 取得項目】
 - home: QoL / 昨日のスコア / 睡眠 / 体調 / 心拍数（睡眠スコアの正）
-- sleep_overview: 睡眠スコア / 睡眠時間（ホームが無いときの睡眠スコア正）
-- sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計
+- sleep_overview: 睡眠スコア / 睡眠時間 / 全就床時間（ホームが無いときの睡眠スコア正）
+  ※全就床時間は睡眠時間と別エントリ。必要睡眠・目標達成率を睡眠時間にしない
+- sleep_detail / bed_wake: 入眠時間・起床時間（HH:mm）/ 睡眠時間 / 全就床時間 / 睡眠効率（%）/ 睡眠負債（時間分）/ 入眠潜時（分）/ 体内時計
   ※sleep_detail から睡眠スコアは返さない。入眠・起床の正
+  ※全就床時間は睡眠時間と混同しない（別エントリ・主値のみ）
 - sleep_stages: 覚醒・レム・浅い・深いの4行すべて必須（各行は「ラベル直後の%」が率、右の時間が時間。右端比較矢印は昨日差で率にしない）。「浅い睡眠」行を省略しない。深い睡眠率は「深い睡眠」行の%のみ。浅い率と合算しない / SpO₂（「--」は省略） ※端点時刻を入眠・起床にしない
 - circadian: 体内時計のみ（入眠・起床は返さない）
 - skin_temp: 皮膚温度 / 皮膚温 / 平均 / 偏差（+0.2℃ や単位なし +0.2 も）
@@ -715,7 +717,9 @@ function criticalOnlyScreenPrompt(
       ? `
 【sleep_detail / circadian 専用】
 - 睡眠時間: 見出し「睡眠時間」の値だけ（例: { label: "睡眠時間", value: "5:10" } または "5時間10分"）
+- 全就床時間: 見出し「全就床時間」の主値（例: { label: "全就床時間", value: "5:47" }）。下段の小さな比較値は捨てる。見えるときは省略禁止
 - 「全就床時間」「ベッド滞在時間」「必要睡眠時間」「目標達成率」は睡眠時間にしない
+- 睡眠時間を全就床時間にしない（別エントリ）
 - 就床〜起床差や睡眠ステージ合計から計算しない。別画面の同名候補で上書きしない
 - 睡眠効率（%）: 見出し「睡眠効率」「Efficiency」（例: { label: "睡眠効率", value: "87%" }）
 - 睡眠負債（時間/分）: 見出し「睡眠負債」「Sleep Debt」（例: { label: "睡眠負債", value: "-1時間20分" }）
@@ -725,15 +729,24 @@ function criticalOnlyScreenPrompt(
 - 上記はラベルと値を必ずペアで返す。値が「--」等で読めない場合のみ省略`
       : "";
 
+  const sleepOverviewExtra =
+    screenType === "sleep_overview"
+      ? `
+【sleep_overview 専用】
+- 睡眠スコア / 睡眠時間（見出し「睡眠時間」のみ）
+- 全就床時間: 睡眠トレンド内の見出し「全就床時間」の主値（例: { label: "全就床時間", value: "5:47" }）。見えるときは省略禁止
+- 必要睡眠・目標達成率・全就床を睡眠時間にしない。睡眠時間を全就床にしない`
+      : "";
+
   return `この画像は screenType「${screenType}」の候補です。
 画像全体ではなく、この画面の見出しと数値だけを再OCRしてください。
 
 不足している重点項目: ${missingDisplay}
 この画面で探す見出し: ${focus}
-${stagesExtra}${respirationExtra}${sleepDetailExtra}
+${stagesExtra}${respirationExtra}${sleepDetailExtra}${sleepOverviewExtra}
 ルール:
 - ラベル（見出し）と値を必ずペアで visibleReadings に入れる
-- 入眠≠入眠潜時≠就床 / 起床≠覚醒時間
+- 入眠≠入眠潜時≠全就床 / 起床≠覚醒時間 / 睡眠時間≠全就床時間
 - 皮膚温度は絶対値または ±差分（単位なし +0.2 も可）
 - ストレスは明示数値のみ（平均の捏造禁止）
 - 見えない項目は作らない
@@ -1461,6 +1474,55 @@ export async function POST(request: Request) {
             roiIds: crops.map((c) => c.roi.id),
           });
 
+          // 調査用: sleep_overview / sleep_detail の ROI 切り出し画像と Vision 生 readings を /tmp へ保存
+          if (
+            isDev &&
+            (screenType === "sleep_overview" || screenType === "sleep_detail")
+          ) {
+            try {
+              const dumpDir = `/tmp/soxai-roi-debug/live-${Date.now()}-img${imageIndex}-${screenType}`;
+              mkdirSync(dumpDir, { recursive: true });
+              for (const crop of crops) {
+                const b64 = crop.dataUrl.replace(/^data:image\/\w+;base64,/, "");
+                const filePath = `${dumpDir}/${crop.roi.id}.jpg`;
+                writeFileSync(filePath, Buffer.from(b64, "base64"));
+                console.info("[soxai-roi-debug] saved crop", {
+                  imageIndex,
+                  screenType,
+                  roiId: crop.roi.id,
+                  path: filePath,
+                  pixel: crop.pixel,
+                });
+              }
+              writeFileSync(
+                `${dumpDir}/meta.json`,
+                JSON.stringify(
+                  {
+                    imageIndex,
+                    screenType,
+                    rois: crops.map((c) => ({
+                      id: c.roi.id,
+                      label: c.roi.label,
+                      rect: c.roi.rect,
+                      focusLabels: c.roi.focusLabels,
+                      focusKeys: c.roi.focusKeys,
+                      pixel: c.pixel,
+                    })),
+                  },
+                  null,
+                  2,
+                ),
+              );
+            } catch (dumpError) {
+              console.warn("[soxai-roi-debug] crop dump failed", {
+                message:
+                  dumpError instanceof Error
+                    ? dumpError.message
+                    : String(dumpError),
+              });
+            }
+          }
+
           const roiResults = await Promise.all(
             crops.map(async (crop) => {
               try {
@@ -1478,6 +1540,22 @@ export async function POST(request: Request) {
                     detail: OCR_DETAIL_ACCURATE,
                   },
                 );
+                if (
+                  isDev &&
+                  (screenType === "sleep_overview" ||
+                    screenType === "sleep_detail")
+                ) {
+                  console.info("[soxai-roi-debug] Vision visibleReadings", {
+                    imageIndex,
+                    screenType,
+                    roiId: crop.roi.id,
+                    readingCount: result.readings.length,
+                    visibleReadings: result.readings,
+                    hasZenshushou: result.readings.some((r) =>
+                      /全就床/.test(`${r.label ?? ""}${r.value ?? ""}`),
+                    ),
+                  });
+                }
                 return {
                   roiId: crop.roi.id,
                   readings: result.readings,
@@ -2304,6 +2382,7 @@ export async function POST(request: Request) {
         sleepDebt: ["sleep_detail", "circadian", "other"],
         sleepLatency: ["sleep_detail", "bed_wake", "other"],
         circadianRhythm: ["circadian", "sleep_detail", "other"],
+        timeInBed: ["sleep_detail", "sleep_overview", "other"],
         respiratoryRate: ["respiration", "rhr", "hrv", "other"],
         restingHeartRate: ["rhr", "respiration", "hrv", "other"],
       };
