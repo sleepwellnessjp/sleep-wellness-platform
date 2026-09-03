@@ -75,7 +75,7 @@ export function mapSoxaiToAnalysis(
     readinessScore: null,
     activityScore: null,
     totalSleepMinutes: parseMetricMinutes(metrics.sleepDuration),
-    timeInBedMinutes: null,
+    timeInBedMinutes: parseMetricMinutes(metrics.timeInBed),
     sleepEfficiency: parseMetricPercent(metrics.sleepEfficiency),
     sleepLatencyMinutes: parseMetricMinutes(metrics.sleepLatency),
     awakeMinutes: parseMetricMinutes(metrics.awakenings),

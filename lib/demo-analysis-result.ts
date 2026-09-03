@@ -164,6 +164,7 @@ export function buildDemoAnalysisResult(): AnalysisResult {
       bedtime: "23:40",
       wakeTime: "06:50",
       sleepDuration: "6時間40分",
+      timeInBed: "7時間28分",
       sleepEfficiency: "89%",
       awakenings: "0:28",
       awakeningRate: "8%",

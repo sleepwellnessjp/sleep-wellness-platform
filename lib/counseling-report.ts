@@ -5,7 +5,6 @@
 
 import type { AnalysisResult } from "@/lib/analysis-session";
 import {
-  computeSleepStageSummary,
   parseDurationMinutes,
   parsePercent,
 } from "@/lib/soxai-graphs";
@@ -248,13 +247,6 @@ function buildAnalysisGuideMetrics(
   return rows;
 }
 
-function formatAwakeStageText(metrics: AnalysisMetrics): string {
-  const duration = displayMeasured(metrics.awakenings);
-  const rate = displayMeasured(metrics.awakeningRate);
-  if (duration && rate) return `${duration} · ${rate}`;
-  return duration || rate || "";
-}
-
 function buildStages(
   metrics: AnalysisMetrics,
   consistencyOptions?: ConsistencyCheckOptions,
@@ -268,12 +260,14 @@ function buildStages(
       failedChecks: gate.failedChecks,
       stageSumMinutes: gate.stageSumMinutes,
       sleepMinutes: gate.sleepMinutes,
+      timeInBedMinutes: gate.timeInBedMinutes,
       durationDiffMinutes: gate.durationDiffMinutes,
       rateSum: gate.rateSum,
       rateDiffFrom100: gate.rateDiffFrom100,
       messages: gate.messages,
       metrics: {
         sleepDuration: metrics.sleepDuration,
+        timeInBed: metrics.timeInBed,
         awakenings: metrics.awakenings,
         awakeningRate: metrics.awakeningRate,
         remSleep: metrics.remSleep,
@@ -290,52 +284,58 @@ function buildStages(
     };
   }
 
-  const summary = computeSleepStageSummary(metrics);
-  const candidates: Array<{
+  const stageDefs: Array<{
     id: CounselingStageBar["id"];
     label: string;
-    present: boolean;
-    valueText: string;
-    percent: number | null;
+    durationRaw: string;
+    rateRaw: string;
   }> = [
     {
       id: "awake",
       label: "覚醒",
-      present:
-        hasMeasuredValue(metrics.awakenings) ||
-        hasMeasuredValue(metrics.awakeningRate),
-      valueText: formatAwakeStageText(metrics),
-      percent: parsePercent(metrics.awakeningRate),
+      durationRaw: metrics.awakenings,
+      rateRaw: metrics.awakeningRate,
     },
     {
       id: "rem",
       label: "レム",
-      present:
-        hasMeasuredValue(metrics.remSleep) ||
-        hasMeasuredValue(metrics.remSleepRate),
-      valueText: summary.rem.combined !== "未測定" ? summary.rem.combined : "",
-      percent: summary.rem.percent,
+      durationRaw: metrics.remSleep,
+      rateRaw: metrics.remSleepRate,
     },
     {
       id: "light",
       label: "浅い睡眠",
-      present:
-        hasMeasuredValue(metrics.lightSleep) ||
-        hasMeasuredValue(metrics.lightSleepRate),
-      valueText:
-        summary.light.combined !== "未測定" ? summary.light.combined : "",
-      percent: summary.light.percent,
+      durationRaw: metrics.lightSleep,
+      rateRaw: metrics.lightSleepRate,
     },
     {
       id: "deep",
       label: "深い睡眠",
-      present:
-        hasMeasuredValue(metrics.deepSleep) ||
-        hasMeasuredValue(metrics.deepSleepRate),
-      valueText: summary.deep.combined !== "未測定" ? summary.deep.combined : "",
-      percent: summary.deep.percent,
+      durationRaw: metrics.deepSleep,
+      rateRaw: metrics.deepSleepRate,
     },
   ];
+
+  const candidates = stageDefs.map((def) => {
+    const durationText = displayMeasured(def.durationRaw);
+    const rateText = displayMeasured(def.rateRaw);
+    const ratePct = parsePercent(def.rateRaw);
+    const durationMin = parseDurationMinutes(def.durationRaw);
+    let valueText = "";
+    if (durationText && rateText) {
+      valueText = `${durationText} · ${rateText}`;
+    } else {
+      valueText = durationText || rateText || "";
+    }
+    return {
+      id: def.id,
+      label: def.label,
+      present: Boolean(durationText || rateText),
+      valueText,
+      percent: ratePct,
+      durationMin,
+    };
+  });
 
   const present = candidates.filter(
     (item) => item.present && (item.valueText || item.percent != null),
@@ -344,31 +344,32 @@ function buildStages(
     return { stages: [], stagesUnavailableMessage: null };
   }
 
-  const percentSum = present.reduce(
-    (sum, item) => sum + (item.percent ?? 0),
+  const ratesPresent = present.filter((item) => item.percent != null);
+  const useRates = ratesPresent.length >= 2;
+  const percentSum = useRates
+    ? ratesPresent.reduce((sum, item) => sum + (item.percent ?? 0), 0)
+    : 0;
+  const minuteSum = present.reduce(
+    (sum, item) => sum + (item.durationMin ?? 0),
     0,
   );
-  const minuteWeights = present.map((item) => {
-    if (item.id === "awake") return parseDurationMinutes(metrics.awakenings) ?? 0;
-    if (item.id === "rem") return parseDurationMinutes(metrics.remSleep) ?? 0;
-    if (item.id === "light") return parseDurationMinutes(metrics.lightSleep) ?? 0;
-    return parseDurationMinutes(metrics.deepSleep) ?? 0;
-  });
-  const minuteSum = minuteWeights.reduce((sum, n) => sum + n, 0);
 
   return {
-    stages: present.map((item, index) => {
-      let percent = item.percent ?? 0;
-      if (percentSum >= 40) {
-        percent = ((item.percent ?? 0) / percentSum) * 100;
-      } else if (minuteSum > 0) {
-        percent = (minuteWeights[index]! / minuteSum) * 100;
+    stages: present.map((item) => {
+      let percent = 0;
+      if (useRates && percentSum > 0 && item.percent != null) {
+        // SOXAI表示の率を帯幅の基準にする（微差は正規化）
+        percent = (item.percent / percentSum) * 100;
+      } else if (minuteSum > 0 && item.durationMin != null) {
+        // 率が無いときだけ時間から算出
+        percent = (item.durationMin / minuteSum) * 100;
       } else {
         percent = 100 / present.length;
       }
       return {
         id: item.id,
         label: item.label,
+        // 分数は SOXAI 表示値をそのまま使う（再計算しない）
         valueText: item.valueText || `${Math.round(percent)}%`,
         percent,
         color: STAGE_COLORS[item.id],

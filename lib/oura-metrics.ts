@@ -69,6 +69,7 @@ export function ouraVisionToAnalysisMetrics(
   const out = emptyMetrics();
   out.sleepScore = scoreToNumber(metrics.sleepScore);
   out.sleepDuration = minutesToDisplay(metrics.totalSleep);
+  out.timeInBed = minutesToDisplay(metrics.timeInBed);
   out.sleepEfficiency = percentToDisplay(metrics.sleepEfficiency);
   out.sleepLatency = minutesToDisplay(metrics.sleepLatency);
   out.bedtime = metrics.bedtime?.trim() || "";

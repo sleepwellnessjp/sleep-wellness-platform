@@ -19,13 +19,22 @@ export type MetricConsistencyWarning = {
   severity: "warning" | "info" | "blocking";
 };
 
-/** 睡眠バランス印刷ゲート用の許容差 */
+/**
+ * 睡眠バランス印刷ゲート用の許容差。
+ * 時間は分単位丸めがあるため固定分数ではなく全就床に対する割合で判定する。
+ */
+/** @deprecated ゲート時間判定は SLEEP_BALANCE_DURATION_TOLERANCE_PCT を使う */
 export const SLEEP_BALANCE_DURATION_TOLERANCE_MIN = 2;
+/** 全就床時間に対するステージ合計の許容相対誤差（%） */
+export const SLEEP_BALANCE_DURATION_TOLERANCE_PCT = 8;
 export const SLEEP_BALANCE_RATE_TOLERANCE_PCT = 1;
 
 export type ConsistencyCheckOptions = {
   inputSource?: "soxai" | "manual" | "oura";
-  /** Oura: ベッドにいた時間（分）。(b) 合計睡眠+覚醒 ≒ timeInBed 用 */
+  /**
+   * 全就床 / Time in Bed（分）。
+   * metrics.timeInBed が無いとき（主に Oura Vision）のフォールバック。
+   */
   timeInBedMinutes?: number | null;
 };
 
@@ -36,8 +45,12 @@ export type SleepBalanceGateResult = {
   ratesEvaluated: boolean;
   durationOk: boolean | null;
   ratesOk: boolean | null;
+  /** 覚醒+レム+浅い+深い（分）。評価できないとき null */
   stageSumMinutes: number | null;
+  /** 睡眠時間（分・参考）。ゲート分母ではない */
   sleepMinutes: number | null;
+  /** 全就床時間（分）。時間ゲートの分母 */
+  timeInBedMinutes: number | null;
   durationDiffMinutes: number | null;
   rateSum: number | null;
   rateDiffFrom100: number | null;
@@ -48,10 +61,24 @@ export type SleepBalanceGateResult = {
 const labelOf = (key: MetricFieldKey): string =>
   SOXAI_METRIC_FIELDS.find((f) => f.key === key)?.label ?? key;
 
+function resolveTimeInBedMinutes(
+  metrics: AnalysisMetrics,
+  options?: ConsistencyCheckOptions,
+): number | null {
+  const fromMetrics = parseDurationMinutes(metrics.timeInBed);
+  if (fromMetrics != null && fromMetrics > 0) return fromMetrics;
+  const fromOptions = options?.timeInBedMinutes;
+  if (fromOptions != null && Number.isFinite(fromOptions) && fromOptions > 0) {
+    return fromOptions;
+  }
+  return null;
+}
+
 /**
  * PDF③・確認画面ゲート用。
- * - |（レム+浅い+深い）−睡眠時間| <= 2分
- * - |率合計（覚醒+レム+浅い+深い）−100| <= 1
+ * - 全就床があるとき: |（覚醒+レム+浅い+深い）−全就床| / 全就床 ≤ 8%
+ * - 全就床が無いとき: 時間検証はスキップ（率のみ）
+ * - |率合計 − 100| ≤ 1pt（Oura はレム+浅い+深い、SOXAI は覚醒込み）
  * 評価できる側で満たさないものがあれば ok=false。
  */
 export function evaluateSleepBalanceGate(
@@ -68,49 +95,29 @@ export function evaluateSleepBalanceGate(
   const lightP = parsePercent(metrics.lightSleepRate);
   const deepP = parsePercent(metrics.deepSleepRate);
   const awakeP = parsePercent(metrics.awakeningRate);
+  const timeInBedMinutes = resolveTimeInBedMinutes(metrics, options);
+
+  const stagesComplete =
+    awakeMin != null && remMin != null && lightMin != null && deepMin != null;
+  const stageSumMinutes = stagesComplete
+    ? awakeMin! + remMin! + lightMin! + deepMin!
+    : null;
 
   const durationEvaluated =
-    sleepMinutes != null &&
-    remMin != null &&
-    lightMin != null &&
-    deepMin != null;
-  const stageSumMinutes = durationEvaluated
-    ? remMin! + lightMin! + deepMin!
-    : null;
-  const durationDiffMinutes =
-    durationEvaluated && stageSumMinutes != null && sleepMinutes != null
-      ? Math.abs(stageSumMinutes - sleepMinutes)
-      : null;
-  const stageDurationOk =
-    durationDiffMinutes == null
-      ? null
-      : durationDiffMinutes <= SLEEP_BALANCE_DURATION_TOLERANCE_MIN;
+    timeInBedMinutes != null &&
+    stagesComplete &&
+    stageSumMinutes != null;
 
-  let timeInBedEvaluated = false;
-  let timeInBedDiffMinutes: number | null = null;
-  let timeInBedOk: boolean | null = null;
-  if (isOura) {
-    const timeInBed = options?.timeInBedMinutes;
-    if (
-      timeInBed != null &&
-      Number.isFinite(timeInBed) &&
-      timeInBed > 0 &&
-      sleepMinutes != null &&
-      awakeMin != null
-    ) {
-      timeInBedEvaluated = true;
-      timeInBedDiffMinutes = Math.abs(sleepMinutes + awakeMin - timeInBed);
-      timeInBedOk =
-        timeInBedDiffMinutes <= SLEEP_BALANCE_DURATION_TOLERANCE_MIN;
-    }
-  }
+  const durationDiffMinutes =
+    durationEvaluated && stageSumMinutes != null && timeInBedMinutes != null
+      ? Math.abs(stageSumMinutes - timeInBedMinutes)
+      : null;
 
   const durationOk =
-    stageDurationOk === false || timeInBedOk === false
-      ? false
-      : stageDurationOk === true && (!timeInBedEvaluated || timeInBedOk === true)
-        ? true
-        : stageDurationOk;
+    !durationEvaluated || timeInBedMinutes == null || durationDiffMinutes == null
+      ? null
+      : (durationDiffMinutes / timeInBedMinutes) * 100 <=
+        SLEEP_BALANCE_DURATION_TOLERANCE_PCT;
 
   let ratesEvaluated: boolean;
   let rateSum: number | null;
@@ -135,16 +142,17 @@ export function evaluateSleepBalanceGate(
   const failedChecks: Array<"duration" | "rates"> = [];
   const messages: string[] = [];
 
-  if (stageDurationOk === false && stageSumMinutes != null && sleepMinutes != null) {
+  if (
+    durationOk === false &&
+    stageSumMinutes != null &&
+    timeInBedMinutes != null &&
+    durationDiffMinutes != null
+  ) {
     failedChecks.push("duration");
+    const pct =
+      Math.round((durationDiffMinutes / timeInBedMinutes) * 1000) / 10;
     messages.push(
-      `ステージ合計${Math.round(stageSumMinutes)}分（レム+浅い+深い）/ 睡眠時間${Math.round(sleepMinutes)}分（差${Math.round(durationDiffMinutes ?? 0)}分）`,
-    );
-  }
-  if (isOura && timeInBedOk === false && sleepMinutes != null && awakeMin != null) {
-    failedChecks.push("duration");
-    messages.push(
-      `合計睡眠${Math.round(sleepMinutes)}分+覚醒${Math.round(awakeMin)}分 / ベッドにいた時間${Math.round(options?.timeInBedMinutes ?? 0)}分（差${Math.round(timeInBedDiffMinutes ?? 0)}分）`,
+      `ステージ合計${Math.round(stageSumMinutes)}分（覚醒+レム+浅い+深い）/ 全就床${Math.round(timeInBedMinutes)}分（差${Math.round(durationDiffMinutes)}分・${pct}%）`,
     );
   }
   if (ratesOk === false && rateSum != null) {
@@ -167,6 +175,7 @@ export function evaluateSleepBalanceGate(
     ratesOk,
     stageSumMinutes,
     sleepMinutes,
+    timeInBedMinutes,
     durationDiffMinutes,
     rateSum,
     rateDiffFrom100,
@@ -190,39 +199,21 @@ export function detectMetricConsistencyWarnings(
   const lightMin = parseDurationMinutes(metrics.lightSleep);
   const deepMin = parseDurationMinutes(metrics.deepSleep);
   const awakeMin = parseDurationMinutes(metrics.awakenings);
+  const timeInBedMin = resolveTimeInBedMinutes(metrics, options);
 
   const gate = evaluateSleepBalanceGate(metrics, options);
-  const stageDurationFailed =
-    gate.stageSumMinutes != null &&
-    gate.sleepMinutes != null &&
-    gate.durationDiffMinutes != null &&
-    gate.durationDiffMinutes > SLEEP_BALANCE_DURATION_TOLERANCE_MIN;
-  if (stageDurationFailed) {
+  if (gate.durationOk === false) {
     warnings.push({
-      keys: ["sleepDuration", "remSleep", "lightSleep", "deepSleep"],
-      message: `睡眠ステージ時間の合計（${Math.round(gate.stageSumMinutes ?? 0)}分＝レム+浅い+深い）と睡眠時間（${Math.round(gate.sleepMinutes ?? 0)}分）が一致しません（許容±${SLEEP_BALANCE_DURATION_TOLERANCE_MIN}分）。画像を照合して修正してください。`,
+      keys: [
+        "timeInBed",
+        "awakenings",
+        "remSleep",
+        "lightSleep",
+        "deepSleep",
+      ],
+      message: `睡眠ステージ時間の合計（${Math.round(gate.stageSumMinutes ?? 0)}分＝覚醒+レム+浅い+深い）と全就床時間（${Math.round(gate.timeInBedMinutes ?? 0)}分）が一致しません（許容±${SLEEP_BALANCE_DURATION_TOLERANCE_PCT}%）。画像を照合して修正してください。`,
       severity: "blocking",
     });
-  }
-
-  if (isOura) {
-    const timeInBed = options?.timeInBedMinutes;
-    if (
-      timeInBed != null &&
-      Number.isFinite(timeInBed) &&
-      timeInBed > 0 &&
-      sleepMin != null &&
-      awakeMin != null
-    ) {
-      const diff = Math.abs(sleepMin + awakeMin - timeInBed);
-      if (diff > SLEEP_BALANCE_DURATION_TOLERANCE_MIN) {
-        warnings.push({
-          keys: ["sleepDuration", "awakenings"],
-          message: `合計睡眠時間（${Math.round(sleepMin)}分）と覚醒時間（${Math.round(awakeMin)}分）の合計が、ベッドにいた時間（${Math.round(timeInBed)}分）と一致しません（許容±${SLEEP_BALANCE_DURATION_TOLERANCE_MIN}分）。画像を照合して修正してください。`,
-          severity: "blocking",
-        });
-      }
-    }
   }
 
   if (gate.ratesOk === false) {
@@ -242,7 +233,7 @@ export function detectMetricConsistencyWarnings(
             "awakeningRate",
           ],
       message: isOura
-        ? `レム・浅い・深い睡眠の割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。画像と照合して修正してください。`
+        ? `レム・浅い・深い睡眠の割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。画像を照合して修正してください。`
         : `睡眠ステージ割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。覚醒・レム・浅い・深いの率を画像と照合してください。`,
       severity: "blocking",
     });
@@ -284,7 +275,7 @@ export function detectMetricConsistencyWarnings(
   const awakeP = parsePercent(metrics.awakeningRate);
 
   // 時間と割合の対応（同一ステージで両方が読めた場合）
-  // ※ SOXAIの%分母は就床寄りだが、ここでは従来どおり睡眠時間基準のソフト警告のみ
+  // SOXAIの%分母は全就床時間。無いときだけ睡眠時間でソフト警告。
   const pairs: Array<{
     durKey: MetricFieldKey;
     rateKey: MetricFieldKey;
@@ -317,16 +308,26 @@ export function detectMetricConsistencyWarnings(
     },
   ];
 
-  if (sleepMin != null && sleepMin > 0) {
+  const rateDenom =
+    timeInBedMin != null && timeInBedMin > 0 ? timeInBedMin : sleepMin;
+  const rateDenomKey: MetricFieldKey =
+    timeInBedMin != null && timeInBedMin > 0 ? "timeInBed" : "sleepDuration";
+  if (rateDenom != null && rateDenom > 0) {
     for (const pair of pairs) {
       // Oura: 覚醒率は就床寄り。睡眠時間基準の対応チェックはしない
-      if (isOura && pair.rateKey === "awakeningRate") continue;
+      if (
+        isOura &&
+        pair.rateKey === "awakeningRate" &&
+        rateDenomKey === "sleepDuration"
+      ) {
+        continue;
+      }
       if (pair.dur == null || pair.rate == null) continue;
-      const expected = (pair.dur / sleepMin) * 100;
+      const expected = (pair.dur / rateDenom) * 100;
       if (Math.abs(expected - pair.rate) > 12) {
         warnings.push({
-          keys: [pair.durKey, pair.rateKey, "sleepDuration"],
-          message: `${labelOf(pair.durKey)}と${labelOf(pair.rateKey)}が睡眠時間から見た割合と大きく食い違います。`,
+          keys: [pair.durKey, pair.rateKey, rateDenomKey],
+          message: `${labelOf(pair.durKey)}と${labelOf(pair.rateKey)}が${labelOf(rateDenomKey)}から見た割合と大きく食い違います。`,
           severity: "warning",
         });
       }

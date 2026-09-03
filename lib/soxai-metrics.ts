@@ -9,6 +9,11 @@ export type AnalysisMetrics = {
   bedtime: string;
   wakeTime: string;
   sleepDuration: string;
+  /**
+   * 全就床時間（SOXAI「全就床時間」）。
+   * 睡眠ステージの率・時間合計の分母。表示文字列（例: 8時間53分）。
+   */
+  timeInBed: string;
   sleepEfficiency: string;
   awakenings: string;
   awakeningRate: string;
@@ -98,6 +103,13 @@ export const SOXAI_METRIC_FIELDS: MetricFieldDef[] = [
     hint: "Total Sleep / 総睡眠",
     inputType: "text",
     placeholder: "例：6時間42分",
+  },
+  {
+    key: "timeInBed",
+    label: "全就床時間",
+    hint: "Time in Bed / 全就床",
+    inputType: "text",
+    placeholder: "例：8時間53分",
   },
   {
     key: "bedtime",
@@ -321,6 +333,7 @@ export function emptyMetrics(): AnalysisMetrics {
     bedtime: "",
     wakeTime: "",
     sleepDuration: "",
+    timeInBed: "",
     sleepEfficiency: "",
     awakenings: "",
     awakeningRate: "",
@@ -412,6 +425,7 @@ export function normalizeMetrics(
     bedtime: asString(metrics?.bedtime),
     wakeTime: asString(metrics?.wakeTime),
     sleepDuration: asString(metrics?.sleepDuration),
+    timeInBed: asString(metrics?.timeInBed),
     sleepEfficiency: asString(metrics?.sleepEfficiency),
     awakenings: asString(metrics?.awakenings),
     awakeningRate: asString(metrics?.awakeningRate),

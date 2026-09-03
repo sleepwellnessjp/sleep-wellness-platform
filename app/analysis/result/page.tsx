@@ -1249,10 +1249,7 @@ function ResultContent({
 
   useEffect(() => {
     if (!sheetOpen) return;
-    const timer = window.setTimeout(() => {
-      void runPdfFromPreview();
-    }, 280);
-    return () => window.clearTimeout(timer);
+    void runPdfFromPreview();
     // overlay を開いたときだけ自動生成。result 更新で多重生成しない
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetOpen]);

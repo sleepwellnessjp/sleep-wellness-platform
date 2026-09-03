@@ -12,6 +12,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const line = `${new Date().toISOString()} ${JSON.stringify(body)}\n`;
     appendFileSync(LOG_PATH, line, "utf8");
+    // npm run dev のターミナルでも確認できるようにする
+    console.log("[debug-client-log]", body);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

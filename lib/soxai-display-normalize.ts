@@ -23,6 +23,7 @@ function normalizeSkinTemperatureDisplay(value: string): string {
 
 const DURATION_KEYS = new Set<MetricFieldKey>([
   "sleepDuration",
+  "timeInBed",
   "awakenings",
   "remSleep",
   "nonRemSleep",

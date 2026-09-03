@@ -405,6 +405,7 @@ export function valueShapeFitsKey(key: MetricFieldKey, value: string): boolean {
     }
 
     case "sleepDuration":
+    case "timeInBed":
     case "remSleep":
     case "nonRemSleep":
     case "lightSleep":
@@ -680,6 +681,14 @@ const MAPPING_RULES: MappingRule[] = [
       !/レム|rem|浅い|light|深い|deep|負債|効率|スコア|潜時|全就床|就床|ノンレム|nrem|必要|目標|推奨|全体|ベッド|滞在/.test(
         l,
       ),
+    valueHint: "duration",
+  },
+  {
+    key: "timeInBed",
+    test: (l) =>
+      /^全就床時間$|^全就床$/.test(l) ||
+      (/time.?in.?bed|ベッド滞在時間|^滞在時間$/.test(l) &&
+        !/睡眠時間|必要|目標|推奨/.test(l)),
     valueHint: "duration",
   },
   {
@@ -1036,6 +1045,13 @@ export function labelMatchScore(key: MetricFieldKey, label: string): number {
         return 0;
       // 見出し「睡眠時間」完全一致のみ
       if (/^睡眠時間$/.test(l)) return 120;
+      return 0;
+
+    case "timeInBed":
+      if (/^全就床時間$/.test(l)) return 120;
+      if (/^全就床$/.test(l)) return 110;
+      if (/time.?in.?bed|ベッド滞在/.test(l)) return 90;
+      if (/滞在時間/.test(l) && !/睡眠/.test(l)) return 70;
       return 0;
 
     case "remSleep":

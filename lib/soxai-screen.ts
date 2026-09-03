@@ -66,6 +66,7 @@ export const SCREEN_PRIMARY_METRICS: Record<
     "bedtime",
     "wakeTime",
     "sleepDuration",
+    "timeInBed",
     "sleepEfficiency",
     "sleepDebt",
     "sleepLatency",
