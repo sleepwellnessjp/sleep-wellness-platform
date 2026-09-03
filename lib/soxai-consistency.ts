@@ -275,7 +275,8 @@ export function detectMetricConsistencyWarnings(
   const awakeP = parsePercent(metrics.awakeningRate);
 
   // 時間と割合の対応（同一ステージで両方が読めた場合）
-  // SOXAIの%分母は全就床時間。無いときだけ睡眠時間でソフト警告。
+  // SOXAIの%分母は全就床時間。取れないときは睡眠時間比較をしない（必ず外れるため）。
+  // Oura のみ全就床が無いときの睡眠時間フォールバックを残す。
   const pairs: Array<{
     durKey: MetricFieldKey;
     rateKey: MetricFieldKey;
@@ -308,10 +309,15 @@ export function detectMetricConsistencyWarnings(
     },
   ];
 
-  const rateDenom =
-    timeInBedMin != null && timeInBedMin > 0 ? timeInBedMin : sleepMin;
-  const rateDenomKey: MetricFieldKey =
-    timeInBedMin != null && timeInBedMin > 0 ? "timeInBed" : "sleepDuration";
+  const hasTimeInBed = timeInBedMin != null && timeInBedMin > 0;
+  const rateDenom = hasTimeInBed
+    ? timeInBedMin
+    : isOura
+      ? sleepMin
+      : null;
+  const rateDenomKey: MetricFieldKey = hasTimeInBed
+    ? "timeInBed"
+    : "sleepDuration";
   if (rateDenom != null && rateDenom > 0) {
     for (const pair of pairs) {
       // Oura: 覚醒率は就床寄り。睡眠時間基準の対応チェックはしない

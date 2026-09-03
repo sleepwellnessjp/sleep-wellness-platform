@@ -666,6 +666,7 @@ export const RECOVERABLE_METRIC_KEYS: MetricFieldKey[] = [
   "yesterdayQol",
   "conditionScore",
   "sleepDuration",
+  "timeInBed",
   "bedtime",
   "wakeTime",
   "sleepEfficiency",

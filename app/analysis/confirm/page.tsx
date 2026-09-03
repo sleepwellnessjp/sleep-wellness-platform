@@ -33,7 +33,7 @@ import {
 } from "@/lib/oura-display-categories";
 import OuraCategoryResults from "@/components/analysis/OuraCategoryResults";
 import { getClientById } from "@/lib/repositories/client-repository";
-import { graphPanelCount } from "@/lib/soxai-graphs";
+import { graphPanelCount, parseDurationMinutes } from "@/lib/soxai-graphs";
 import {
   detectMetricConsistencyWarnings,
   consistencyWarningKeys,
@@ -300,13 +300,25 @@ export default function ConfirmExtractionPage() {
 
   const confidenceMap = useMemo(() => draft?.ocrConfidence ?? {}, [draft]);
 
-  const consistencyCheckOptions = useMemo(
-    () => ({
+  const consistencyCheckOptions = useMemo(() => {
+    const fromMetrics =
+      metrics != null ? parseDurationMinutes(metrics.timeInBed) : null;
+    const fromOura = draft?.ouraVisionMetrics?.timeInBed ?? null;
+    const timeInBedMinutes =
+      fromMetrics != null && fromMetrics > 0
+        ? fromMetrics
+        : fromOura != null && Number.isFinite(fromOura) && fromOura > 0
+          ? fromOura
+          : null;
+    return {
       inputSource: draft?.inputSource,
-      timeInBedMinutes: draft?.ouraVisionMetrics?.timeInBed ?? null,
-    }),
-    [draft?.inputSource, draft?.ouraVisionMetrics?.timeInBed],
-  );
+      timeInBedMinutes,
+    };
+  }, [
+    draft?.inputSource,
+    draft?.ouraVisionMetrics?.timeInBed,
+    metrics?.timeInBed,
+  ]);
   const consistencyWarnings = useMemo(
     () =>
       metrics
