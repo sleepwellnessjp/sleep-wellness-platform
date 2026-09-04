@@ -196,6 +196,44 @@ export const soxaiVision24JsonSchema = {
   ),
 } as const;
 
+/** ホーム系スコア（0–100）を比較用に正規化。取れなければ null */
+function comparableHomeScore(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n);
+}
+
+/**
+ * sleepScore / conditionScore / qol が同一値のとき、qol を捨てる。
+ * QoL 表示が消えた UI で他スコアを流用した可能性が高いため。
+ * QoL が画面にあり、かつ他と数値が異なる場合はそのまま残す。
+ */
+export function guardQolAgainstHomeScoreCrossFill(
+  vision: SoxaiVision24,
+): { vision: SoxaiVision24; qolCleared: boolean; sharedScore: number | null } {
+  const sleep = comparableHomeScore(vision.sleepScore);
+  const condition = comparableHomeScore(vision.conditionScore);
+  const qol = comparableHomeScore(vision.qol);
+  if (
+    sleep == null ||
+    condition == null ||
+    qol == null ||
+    sleep !== condition ||
+    condition !== qol
+  ) {
+    return { vision, qolCleared: false, sharedScore: null };
+  }
+  return {
+    vision: { ...vision, qol: null },
+    qolCleared: true,
+    sharedScore: sleep,
+  };
+}
+
 /**
  * Vision 結果 → 既存 AnalysisMetrics（result / PDF 再利用用）
  * - light/deep は画像値をそのまま格納

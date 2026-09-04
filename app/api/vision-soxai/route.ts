@@ -14,6 +14,7 @@ import {
 import { tokensFromUsage } from "@/lib/openai-usage";
 import {
   emptySoxaiVision24,
+  guardQolAgainstHomeScoreCrossFill,
   mapVision24ToAnalysisMetrics,
   normalizeSoxaiVision24,
   soxaiVision24JsonSchema,
@@ -63,8 +64,13 @@ ${imageCount}枚の画像を横断して読み、見える数値だけを JSON �
 - 平均酸素レベルは spo2
 - 呼吸速度は respirationRate
 - 体内時計の位相差は circadianShift
-- ホーム画面の QoL / 昨日のスコア / 体調 も取る（qol / yesterdayQol / conditionScore）
-- 睡眠スコアはホーム「睡眠」行または睡眠画面のスコア
+- ホーム画面のスコアはそれぞれ独立。互いに流用・コピーしてはならない:
+  - sleepScore → 見出し「睡眠」行、または睡眠画面のスコア
+  - conditionScore → 見出し「体調」「体調スコア」
+  - qol → 「QoL」「現在のスコア」などの QoL 円／ラベルが画面にあるときだけ
+  - yesterdayQol → 「昨日のスコア」「昨日のQoL」
+- QoL の円や「QoL」ラベルが画面に存在しない場合、qol は必ず null（SOXAIアップデートで QoL 表示が消えているケースがある）
+- 同じ数値を sleepScore / conditionScore / qol / yesterdayQol の複数キーに入れない（偶然の一致でも、見出しが無いキーは null）
 - 睡眠ステージは画面の行どおりに分ける（合算・言い換え禁止）:
   - 「覚醒」行 → awakeDuration / awakePercent
   - 「レム睡眠」行 → remDuration / remPercent
@@ -185,6 +191,17 @@ export async function POST(request: Request) {
       throw new Error("Vision JSON の解析に失敗しました。");
     }
 
+    const qolGuard = guardQolAgainstHomeScoreCrossFill(vision);
+    vision = qolGuard.vision;
+    if (isDev && qolGuard.qolCleared) {
+      console.info("[vision-soxai] qol cleared (home score cross-fill)", {
+        sharedScore: qolGuard.sharedScore,
+        sleepScore: vision.sleepScore,
+        conditionScore: vision.conditionScore,
+        qol: vision.qol,
+      });
+    }
+
     const metrics = normalizeMetricsForDisplay(
       mapVision24ToAnalysisMetrics(vision),
     );
@@ -196,7 +213,11 @@ export async function POST(request: Request) {
         metrics: {
           sleepDuration: metrics.sleepDuration,
           timeInBed: metrics.timeInBed,
+          qol: metrics.qol,
+          conditionScore: metrics.conditionScore,
+          sleepScore: metrics.sleepScore,
         },
+        qolClearedByGuard: qolGuard.qolCleared,
         collectedCount: collectedMetricKeys(metrics).length,
       });
     }
