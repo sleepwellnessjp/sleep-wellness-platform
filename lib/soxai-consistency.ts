@@ -27,7 +27,15 @@ export type MetricConsistencyWarning = {
 export const SLEEP_BALANCE_DURATION_TOLERANCE_MIN = 2;
 /** 全就床時間に対するステージ合計の許容相対誤差（%） */
 export const SLEEP_BALANCE_DURATION_TOLERANCE_PCT = 8;
+/** Oura（レム+浅い+深い）の率合計許容 ±% */
 export const SLEEP_BALANCE_RATE_TOLERANCE_PCT = 1;
+/**
+ * SOXAI（覚醒+レム+浅い+深い）率合計の段階許容。
+ * 各率が独立四捨五入されるため ±3pt までは丸め由来として問題なし。
+ */
+export const SLEEP_BALANCE_RATE_SOXAI_OK_PCT = 3;
+/** SOXAI: これを超えると blocking（これ以下かつ OK 超えは warning） */
+export const SLEEP_BALANCE_RATE_SOXAI_WARN_PCT = 6;
 
 export type ConsistencyCheckOptions = {
   inputSource?: "soxai" | "manual" | "oura";
@@ -38,13 +46,21 @@ export type ConsistencyCheckOptions = {
   timeInBedMinutes?: number | null;
 };
 
+export type SleepBalanceRateSeverity = "ok" | "warning" | "blocking";
+
 export type SleepBalanceGateResult = {
   /** true なら帯グラフ・内訳を出してよい */
   ok: boolean;
   durationEvaluated: boolean;
   ratesEvaluated: boolean;
   durationOk: boolean | null;
+  /**
+   * 率チェック。null=未評価。
+   * true= PDF 可（ok / warning 帯）。false= blocking。
+   */
   ratesOk: boolean | null;
+  /** 率合計の段階。null=未評価 */
+  ratesSeverity: SleepBalanceRateSeverity | null;
   /** 覚醒+レム+浅い+深い（分）。評価できないとき null */
   stageSumMinutes: number | null;
   /** 睡眠時間（分・参考）。ゲート分母ではない */
@@ -57,6 +73,20 @@ export type SleepBalanceGateResult = {
   failedChecks: Array<"duration" | "rates">;
   messages: string[];
 };
+
+function classifyRateSumSeverity(
+  rateDiffFrom100: number,
+  isOura: boolean,
+): SleepBalanceRateSeverity {
+  if (isOura) {
+    return rateDiffFrom100 <= SLEEP_BALANCE_RATE_TOLERANCE_PCT
+      ? "ok"
+      : "blocking";
+  }
+  if (rateDiffFrom100 <= SLEEP_BALANCE_RATE_SOXAI_OK_PCT) return "ok";
+  if (rateDiffFrom100 <= SLEEP_BALANCE_RATE_SOXAI_WARN_PCT) return "warning";
+  return "blocking";
+}
 
 const labelOf = (key: MetricFieldKey): string =>
   SOXAI_METRIC_FIELDS.find((f) => f.key === key)?.label ?? key;
@@ -78,8 +108,9 @@ function resolveTimeInBedMinutes(
  * PDF③・確認画面ゲート用。
  * - 全就床があるとき: |（覚醒+レム+浅い+深い）−全就床| / 全就床 ≤ 8%
  * - 全就床が無いとき: 時間検証はスキップ（率のみ）
- * - |率合計 − 100| ≤ 1pt（Oura はレム+浅い+深い、SOXAI は覚醒込み）
- * 評価できる側で満たさないものがあれば ok=false。
+ * - 率合計: Oura は |合計−100| ≤ 1pt（レム+浅い+深い）
+ *   SOXAI は |合計−100| ≤ 3 問題なし / ≤ 6 warning（PDF可）/ 超え blocking
+ * 評価できる側で blocking があれば ok=false。
  */
 export function evaluateSleepBalanceGate(
   metrics: AnalysisMetrics,
@@ -134,10 +165,13 @@ export function evaluateSleepBalanceGate(
   }
   const rateDiffFrom100 =
     rateSum == null ? null : Math.abs(rateSum - 100);
-  const ratesOk =
+  const ratesSeverity =
     rateDiffFrom100 == null
       ? null
-      : rateDiffFrom100 <= SLEEP_BALANCE_RATE_TOLERANCE_PCT;
+      : classifyRateSumSeverity(rateDiffFrom100, isOura);
+  // warning 帯は PDF をブロックしない
+  const ratesOk =
+    ratesSeverity == null ? null : ratesSeverity !== "blocking";
 
   const failedChecks: Array<"duration" | "rates"> = [];
   const messages: string[] = [];
@@ -155,7 +189,7 @@ export function evaluateSleepBalanceGate(
       `ステージ合計${Math.round(stageSumMinutes)}分（覚醒+レム+浅い+深い）/ 全就床${Math.round(timeInBedMinutes)}分（差${Math.round(durationDiffMinutes)}分・${pct}%）`,
     );
   }
-  if (ratesOk === false && rateSum != null) {
+  if (ratesSeverity === "blocking" && rateSum != null) {
     failedChecks.push("rates");
     const shown = Number.isInteger(rateSum)
       ? String(rateSum)
@@ -173,6 +207,7 @@ export function evaluateSleepBalanceGate(
     ratesEvaluated,
     durationOk,
     ratesOk,
+    ratesSeverity,
     stageSumMinutes,
     sleepMinutes,
     timeInBedMinutes,
@@ -216,27 +251,40 @@ export function detectMetricConsistencyWarnings(
     });
   }
 
-  if (gate.ratesOk === false) {
+  if (gate.ratesSeverity === "blocking" || gate.ratesSeverity === "warning") {
     const shown =
       gate.rateSum == null
         ? "?"
         : Number.isInteger(gate.rateSum)
           ? String(gate.rateSum)
           : String(Math.round(gate.rateSum * 10) / 10);
-    warnings.push({
-      keys: isOura
-        ? ["remSleepRate", "lightSleepRate", "deepSleepRate"]
-        : [
-            "remSleepRate",
-            "lightSleepRate",
-            "deepSleepRate",
-            "awakeningRate",
-          ],
-      message: isOura
-        ? `レム・浅い・深い睡眠の割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。画像を照合して修正してください。`
-        : `睡眠ステージ割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。覚醒・レム・浅い・深いの率を画像と照合してください。`,
-      severity: "blocking",
-    });
+    const rateKeys: MetricFieldKey[] = isOura
+      ? ["remSleepRate", "lightSleepRate", "deepSleepRate"]
+      : [
+          "remSleepRate",
+          "lightSleepRate",
+          "deepSleepRate",
+          "awakeningRate",
+        ];
+    if (isOura) {
+      warnings.push({
+        keys: rateKeys,
+        message: `レム・浅い・深い睡眠の割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_TOLERANCE_PCT}%）。画像を照合して修正してください。`,
+        severity: "blocking",
+      });
+    } else if (gate.ratesSeverity === "blocking") {
+      warnings.push({
+        keys: rateKeys,
+        message: `睡眠ステージ割合の合計が ${shown}% です（期待 100%・許容±${SLEEP_BALANCE_RATE_SOXAI_WARN_PCT}%を超過）。覚醒・レム・浅い・深いの率を画像と照合してください。`,
+        severity: "blocking",
+      });
+    } else {
+      warnings.push({
+        keys: rateKeys,
+        message: `睡眠ステージ割合の合計が ${shown}% です（期待 100%・丸め許容±${SLEEP_BALANCE_RATE_SOXAI_OK_PCT}%をやや超過）。印刷は可能ですが、画像と照合してください。`,
+        severity: "warning",
+      });
+    }
   }
 
   // SOXAIの「睡眠時間」はレム+浅い+深い（覚醒を含まない）。

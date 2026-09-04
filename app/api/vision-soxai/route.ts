@@ -56,7 +56,8 @@ ${imageCount}枚の画像を横断して読み、見える数値だけを JSON �
 - 単位が画面にあれば値に含める（%、bpm、ms、rpm、℃、時間分 など）
 - 入眠時間(bedTime)と入眠潜時(sleepLatency)を取り違えない
 - 起床時間(wakeTime)と覚醒時間(awakeDuration)を取り違えない
-- 睡眠時間(sleepDuration)と全就床時間を取り違えない
+- 睡眠時間(sleepDuration)と全就床時間(timeInBed)を取り違えない（別項目）
+- 全就床時間(timeInBed): 見出し「全就床時間」の主値（例: 5:47）。下段の小さな比較値は捨てる。見えるときは省略禁止
 - 睡眠効率(sleepEfficiency)と覚醒率(awakePercent)を取り違えない
 - 安静時心拍(bpm)とHRV(ms)を取り違えない
 - 平均酸素レベルは spo2
@@ -73,7 +74,7 @@ ${imageCount}枚の画像を横断して読み、見える数値だけを JSON �
 - breathingEvents が見えなければ null
 
 必須キー（すべて返す）:
-sleepScore, qol, yesterdayQol, conditionScore, sleepDuration, sleepEfficiency,
+sleepScore, qol, yesterdayQol, conditionScore, sleepDuration, timeInBed, sleepEfficiency,
 sleepDebt, bedTime, wakeTime, sleepLatency, awakeDuration, awakePercent,
 remDuration, remPercent, lightSleepDuration, lightSleepPercent,
 deepSleepDuration, deepSleepPercent, restingHeartRateAvg, restingHeartRateMin,
@@ -188,6 +189,17 @@ export async function POST(request: Request) {
       mapVision24ToAnalysisMetrics(vision),
     );
     const usage = tokensFromUsage(response.usage);
+
+    if (isDev) {
+      console.info("[vision-soxai] response JSON", {
+        vision,
+        metrics: {
+          sleepDuration: metrics.sleepDuration,
+          timeInBed: metrics.timeInBed,
+        },
+        collectedCount: collectedMetricKeys(metrics).length,
+      });
+    }
 
     console.info("[api/vision-soxai] done", {
       imageCount: images.length,

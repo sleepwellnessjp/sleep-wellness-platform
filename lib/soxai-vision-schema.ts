@@ -25,6 +25,8 @@ export type SoxaiVision24 = {
   /** ホーム 体調 */
   conditionScore: string | null;
   sleepDuration: string | null;
+  /** 全就床時間（Time in Bed）。睡眠時間とは別項目 */
+  timeInBed: string | null;
   sleepEfficiency: string | null;
   sleepDebt: string | null;
   bedTime: string | null;
@@ -64,6 +66,7 @@ export const SOXAI_VISION_EXTRACT_KEYS = [
   "yesterdayQol",
   "conditionScore",
   "sleepDuration",
+  "timeInBed",
   "sleepEfficiency",
   "sleepDebt",
   "bedTime",
@@ -105,6 +108,7 @@ export function emptySoxaiVision24(): SoxaiVision24 {
     yesterdayQol: null,
     conditionScore: null,
     sleepDuration: null,
+    timeInBed: null,
     sleepEfficiency: null,
     sleepDebt: null,
     bedTime: null,
@@ -208,6 +212,7 @@ export function mapVision24ToAnalysisMetrics(
   metrics.yesterdayQol = asText(v.yesterdayQol);
   metrics.conditionScore = asText(v.conditionScore);
   metrics.sleepDuration = asText(v.sleepDuration);
+  metrics.timeInBed = asText(v.timeInBed);
   metrics.sleepEfficiency = asText(v.sleepEfficiency);
   metrics.sleepDebt = asText(v.sleepDebt);
   metrics.bedtime = asText(v.bedTime);
