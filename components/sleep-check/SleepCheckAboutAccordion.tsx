@@ -27,7 +27,7 @@ export default function SleepCheckAboutAccordion() {
         className={`mx-auto flex min-h-11 items-center justify-center gap-2 px-3 text-[13px] font-semibold transition ${FOCUS_RING}`}
         style={{ color: GOLD }}
       >
-        <span>この質問について</span>
+        <span>睡眠テストの根拠</span>
         <span
           aria-hidden
           className="text-[10px] transition-transform duration-200"

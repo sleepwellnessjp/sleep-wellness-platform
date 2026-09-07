@@ -6,7 +6,7 @@ import {
 import type { SleepContentSubcategory } from "@/lib/sleep-content/types";
 
 const NEKO_SIZE = 72;
-const OUEN_INTRINSIC = { width: 506, height: 588 };
+const OUEN_INTRINSIC = { width: 526, height: 594 };
 
 function nekoDisplaySize(src: string): { width: number; height: number } {
   if (src === SLEEP_CHECK_IMAGES.ouen) {

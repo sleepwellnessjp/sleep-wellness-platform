@@ -4,11 +4,11 @@ export const SLEEP_CHECK_IMAGE_BASE =
   "https://cqfclbyzdmxfgktkbbsz.supabase.co/storage/v1/object/public/sleep-content-images";
 
 export const SLEEP_CHECK_IMAGES = {
-  gussuri: `${SLEEP_CHECK_IMAGE_BASE}/neko-gussuri-v2.png`,
-  relax: `${SLEEP_CHECK_IMAGE_BASE}/neko-relax-v2.png`,
-  tsujo: `${SLEEP_CHECK_IMAGE_BASE}/neko-tsujo-v2.png`,
-  otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare-v2.png`,
-  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v4.png`,
+  gussuri: `${SLEEP_CHECK_IMAGE_BASE}/neko-gussuri-v5.png`,
+  relax: `${SLEEP_CHECK_IMAGE_BASE}/neko-relax-v5.png`,
+  tsujo: `${SLEEP_CHECK_IMAGE_BASE}/neko-tsujo-v5.png`,
+  otsukare: `${SLEEP_CHECK_IMAGE_BASE}/neko-otsukare-v5.png`,
+  ouen: `${SLEEP_CHECK_IMAGE_BASE}/neko-ouen-v5.png`,
 } as const;
 
 /** 睡眠学一覧 — サブカテゴリ見出し横のまもりねこ */

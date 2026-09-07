@@ -169,11 +169,11 @@ const NEKO_INTRINSIC_SIZE: Record<string, { width: number; height: number }> = {
   [SLEEP_CHECK_IMAGES.relax]: { width: 480, height: 480 },
   [SLEEP_CHECK_IMAGES.tsujo]: { width: 480, height: 480 },
   [SLEEP_CHECK_IMAGES.otsukare]: { width: 480, height: 480 },
-  [SLEEP_CHECK_IMAGES.ouen]: { width: 506, height: 588 },
+  [SLEEP_CHECK_IMAGES.ouen]: { width: 526, height: 594 },
 };
 
 function nekoDisplayHeight(src: string, imageWidth: number): number {
-  const intrinsic = NEKO_INTRINSIC_SIZE[src] ?? { width: 506, height: 588 };
+  const intrinsic = NEKO_INTRINSIC_SIZE[src] ?? { width: 526, height: 594 };
   return Math.round((imageWidth * intrinsic.height) / intrinsic.width);
 }
 
@@ -186,7 +186,7 @@ function NekoWithCushion({
   src: string;
   widthClass: string;
   imageWidth: number;
-  /** 未指定時は元画像実寸比から算出（ouen=506:588、他=1:1） */
+  /** 未指定時は元画像実寸比から算出（ouen=526:594、他=1:1） */
   imageHeight?: number;
 }) {
   const resolvedHeight = imageHeight ?? nekoDisplayHeight(src, imageWidth);
