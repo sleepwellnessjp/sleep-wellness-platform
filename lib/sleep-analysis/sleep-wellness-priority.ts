@@ -7,6 +7,7 @@
  * Score・Insight は変更せず、上位レイヤーとして追加する。
  */
 
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type { SleepAnalysisData } from "@/lib/sleep-analysis/sleep-analysis-model";
 import { computeSleepWellnessInsight } from "@/lib/sleep-analysis/sleep-wellness-insight";
 import type { SleepWellnessInsight } from "@/lib/sleep-analysis/sleep-wellness-insight";
@@ -215,10 +216,7 @@ function buildReason(args: {
 
 function formatValue(value: number, unit: string): string {
   if (unit === "min") {
-    const h = Math.floor(value / 60);
-    const m = Math.round(value % 60);
-    if (h > 0) return `${h}時間${m}分`;
-    return `${Math.round(value)}分`;
+    return formatMinutesAsDuration(value);
   }
   if (unit === "%") return `${Math.round(value * 10) / 10}%`;
   if (unit === "ms") return `${Math.round(value)} ms`;

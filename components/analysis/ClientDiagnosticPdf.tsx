@@ -535,7 +535,7 @@ export function ClientDiagnosticPdf({
         <section>
           <SectionEyebrow
             eyebrow="WELLNESS SCORE"
-            title="Sleep Wellness Score（4領域）"
+            title="Sleep Wellness Score（４領域）"
           />
           {scoreComment ? (
             <p

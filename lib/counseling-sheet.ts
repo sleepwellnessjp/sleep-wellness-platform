@@ -5,6 +5,7 @@
  */
 
 import type { AnalysisResult } from "@/lib/analysis-session";
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type { LifestyleSnapshot, SleepRiskHint } from "@/lib/wellness-client-report";
 import {
   evaluateSleepRiskFlag,
@@ -70,14 +71,6 @@ function parseMinutesRough(value?: string): number | null {
   const minOnly = value.match(/(\d+)\s*分/);
   if (minOnly) return Number(minOnly[1]);
   return null;
-}
-
-function formatDurationJa(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (h <= 0) return `${m}分`;
-  if (m === 0) return `${h}時間`;
-  return `${h}時間${m}分`;
 }
 
 function num(value: string | number | null | undefined): number | null {
@@ -274,7 +267,7 @@ function buildImpactFactors(
   if (durationMin != null && durationMin < 360) {
     hits.push({
       label: "睡眠時間不足",
-      reason: `睡眠時間が${formatDurationJa(durationMin)}と短く、身体回復が十分でなかった可能性があります。`,
+      reason: `睡眠時間が${formatMinutesAsDuration(durationMin)}と短く、身体回復が十分でなかった可能性があります。`,
       weight: 90,
     });
   }
@@ -659,7 +652,7 @@ function buildPriorities(
   if (durationMin != null && durationMin < 360) {
     push(
       "睡眠時間の確保",
-      `実睡眠が${formatDurationJa(durationMin)}と短く、回復が足りない可能性があります。`,
+      `実睡眠が${formatMinutesAsDuration(durationMin)}と短く、回復が足りない可能性があります。`,
       "今夜は就寝時刻を15〜30分早めてください。",
       95,
     );

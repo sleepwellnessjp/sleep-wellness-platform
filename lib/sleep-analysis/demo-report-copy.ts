@@ -4,6 +4,7 @@
  * エンジン文章は維持し、表示時の重複だけを整理する。
  */
 
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type { CounselingPriorityCard } from "@/lib/sleep-analysis/counseling-view-model";
 import type { SleepWellnessGrade } from "@/lib/sleep-analysis/sleep-wellness-score";
 import type { SleepWellnessScoreFactor } from "@/lib/sleep-analysis/sleep-wellness-score";
@@ -212,10 +213,7 @@ function formatEvidenceValue(factor: SleepWellnessScoreFactor): string {
   if (u === "rpm") return `${Math.round(v * 10) / 10} rpm`;
   if (u === "°C") return `${Math.round(v * 100) / 100} °C`;
   if (u === "min") {
-    const h = Math.floor(v / 60);
-    const m = Math.round(v % 60);
-    if (h > 0) return m === 0 ? `${h}時間` : `${h}時間${m}分`;
-    return `${Math.round(v)}分`;
+    return formatMinutesAsDuration(v);
   }
   return String(Math.round(v * 10) / 10);
 }

@@ -528,13 +528,14 @@ export const REM_NREM_COLORS = {
   deep: "#1e4a52",
 } as const;
 
+/** soxai-display-normalize は本ファイルを import するため、同等実装を置く */
 function formatStageMinutes(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes)) return "";
+  const sign = totalMinutes < 0 ? "-" : "";
   const abs = Math.abs(Math.round(totalMinutes));
   const h = Math.floor(abs / 60);
   const m = abs % 60;
-  if (h === 0) return `${m}分`;
-  if (m === 0) return `${h}時間`;
-  return `${h}時間${m}分`;
+  return `${sign}${h}:${String(m).padStart(2, "0")}`;
 }
 
 function formatStagePercent(pct: number): string {

@@ -78,22 +78,8 @@ export function formatMinutesAsDuration(totalMinutes: number): string {
   const abs = Math.abs(Math.round(totalMinutes));
   const h = Math.floor(abs / 60);
   const m = abs % 60;
-  if (h === 0) return `${sign}${m}分`;
-  if (m === 0) return `${sign}${h}時間`;
-  return `${sign}${h}時間${m}分`;
+  return `${sign}${h}:${String(m).padStart(2, "0")}`;
 }
-
-/** 「87」「87%」「87％」→「87%」 */
-export function formatPercentDisplay(raw: string): string {
-  const text = raw.normalize("NFKC").trim().replace(/％/g, "%");
-  if (!text) return "";
-  const n = parseLeadingNumber(text.replace(/%/g, ""));
-  if (n == null) return text;
-  // 整数っぽいものは整数表示
-  const shown = Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
-  return `${shown}%`;
-}
-
 /** キーに応じた表示用正規化（推測補完はしない） */
 export function normalizeMetricDisplayValue(
   key: MetricFieldKey,
@@ -172,4 +158,16 @@ export function normalizeMetricsForDisplay(
   }
 
   return next;
+}
+
+
+
+/** 「87」「87%」「87％」→「87%」 */
+export function formatPercentDisplay(raw: string): string {
+  const text = raw.normalize("NFKC").trim().replace(/％/g, "%");
+  if (!text) return "";
+  const n = parseLeadingNumber(text.replace(/%/g, ""));
+  if (n == null) return text;
+  const shown = Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10);
+  return `${shown}%`;
 }

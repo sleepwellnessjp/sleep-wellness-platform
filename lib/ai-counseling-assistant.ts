@@ -18,6 +18,7 @@ import {
   parseHHMM,
   parseLeadingNumber,
 } from "@/lib/soxai-graphs";
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import { generateRuleBasedSleepWellnessJourney } from "@/lib/sleep-wellness-journey";
 import {
   generateRuleBasedInstructorInsight,
@@ -303,17 +304,13 @@ function snapOf(analysis: StoredAnalysis | null): MetricSnap {
 }
 
 function formatMinutesDelta(delta: number): string {
-  const abs = Math.abs(Math.round(delta));
-  const hours = Math.floor(abs / 60);
-  const minutes = abs % 60;
-  if (hours > 0 && minutes > 0) return `${hours}時間${minutes}分`;
-  if (hours > 0) return `${hours}時間`;
-  return `${minutes}分`;
+  const rounded = Math.round(delta);
+  if (rounded === 0) return "±0:00";
+  return `${rounded > 0 ? "+" : "-"}${formatMinutesAsDuration(Math.abs(rounded))}`;
 }
 
 function formatHours(minutes: number): string {
-  const hours = minutes / 60;
-  return `${hours.toFixed(1)}時間`;
+  return formatMinutesAsDuration(minutes);
 }
 
 function buildCurrentState(

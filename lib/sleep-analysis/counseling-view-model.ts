@@ -3,6 +3,7 @@
  * Score / Insight / Priority / Report Builder は変更せず、出力を整形する。
  */
 
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type { SleepAnalysisData } from "@/lib/sleep-analysis/sleep-analysis-model";
 import { getPriorityCounselingCopy } from "@/lib/sleep-analysis/sleep-wellness-counseling-copy";
 import type { SleepWellnessInsight } from "@/lib/sleep-analysis/sleep-wellness-insight";
@@ -103,14 +104,6 @@ function starsFromLevel(level: PriorityLevel): string {
   if (level === "高") return "★★★";
   if (level === "中") return "★★☆";
   return "★☆☆";
-}
-
-function formatMinutes(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  if (h <= 0) return `${m}分`;
-  if (m === 0) return `${h}時間`;
-  return `${h}時間${m}分`;
 }
 
 function evalLabel(score: number | null): string | null {
@@ -221,13 +214,13 @@ function relatedValueText(
     return `睡眠効率：${Math.round(data.sleepEfficiency * 10) / 10}%`;
   }
   if (item === "sleepDuration" && data.totalSleepMinutes != null) {
-    return `合計睡眠：${formatMinutes(data.totalSleepMinutes)}`;
+    return `合計睡眠：${formatMinutesAsDuration(data.totalSleepMinutes)}`;
   }
   if (item === "deepSleep" && data.deepMinutes != null) {
-    return `深睡眠：${formatMinutes(data.deepMinutes)}`;
+    return `深睡眠：${formatMinutesAsDuration(data.deepMinutes)}`;
   }
   if (item === "rem" && data.remMinutes != null) {
-    return `REM：${formatMinutes(data.remMinutes)}`;
+    return `REM：${formatMinutesAsDuration(data.remMinutes)}`;
   }
   if (item === "hrv" && data.hrv != null) {
     return `HRV：${Math.round(data.hrv)} ms`;
@@ -443,7 +436,7 @@ function buildKeyMetrics(data: SleepAnalysisData): CounselingMetricCard[] {
       value: data.recoveryMinutes,
       display:
         data.recoveryMinutes != null
-          ? formatMinutes(data.recoveryMinutes)
+          ? formatMinutesAsDuration(data.recoveryMinutes)
           : null,
       score:
         data.recoveryMinutes != null
@@ -455,7 +448,7 @@ function buildKeyMetrics(data: SleepAnalysisData): CounselingMetricCard[] {
       key: "totalSleep",
       label: "合計睡眠時間",
       value: total,
-      display: total != null ? formatMinutes(total) : null,
+      display: total != null ? formatMinutesAsDuration(total) : null,
       score: total != null ? scoreSleepDurationMinutes(total) : null,
       note: "成人の目安はおおよそ7〜9時間です。",
     },
@@ -477,7 +470,7 @@ function buildKeyMetrics(data: SleepAnalysisData): CounselingMetricCard[] {
       key: "deep",
       label: "深睡眠",
       value: deep,
-      display: deep != null ? formatMinutes(deep) : null,
+      display: deep != null ? formatMinutesAsDuration(deep) : null,
       score: deep != null ? scoreDeepSleep(deep, total) : null,
       note: "身体的な回復と関わりやすい睡眠段階です。",
     },
@@ -485,7 +478,7 @@ function buildKeyMetrics(data: SleepAnalysisData): CounselingMetricCard[] {
       key: "rem",
       label: "REM睡眠",
       value: rem,
-      display: rem != null ? formatMinutes(rem) : null,
+      display: rem != null ? formatMinutesAsDuration(rem) : null,
       score: rem != null ? scoreRem(rem, total) : null,
       note: "記憶や情動の整理と関連が指摘されます。",
     },

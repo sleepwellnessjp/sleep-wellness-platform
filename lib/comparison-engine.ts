@@ -1,4 +1,5 @@
 import type { StoredAnalysis } from "@/lib/repositories/client-repository";
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import { parseDurationMinutes, parseLeadingNumber } from "@/lib/soxai-graphs";
 
 export type CompareMetricKey =
@@ -225,14 +226,8 @@ function parsePercent(value: string): number | null {
 function formatDelta(delta: number, key: CompareMetricKey): string {
   if (key === "deepSleep" || key === "sleepDuration" || key === "sleepLatency") {
     const rounded = Math.round(delta);
-    if (rounded === 0) return "±0分";
-    const sign = rounded > 0 ? "+" : "";
-    const abs = Math.abs(rounded);
-    const hours = Math.floor(abs / 60);
-    const minutes = abs % 60;
-    if (hours > 0 && minutes > 0) return `${sign}${hours}時間${minutes}分`;
-    if (hours > 0) return `${sign}${hours}時間`;
-    return `${sign}${minutes}分`;
+    if (rounded === 0) return "±0:00";
+    return `${rounded > 0 ? "+" : "-"}${formatMinutesAsDuration(Math.abs(rounded))}`;
   }
 
   if (key === "sleepEfficiency" || key === "spo2") {

@@ -331,7 +331,10 @@ function SectionLabel({
         />
         <h2
           className="min-w-0 break-words text-[15px] font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
-          style={{ color: NAVY }}
+          style={{
+            color: NAVY,
+            fontFamily: '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
+          }}
         >
           {title}
         </h2>
@@ -1901,7 +1904,7 @@ function ResultContent({
 
             <section className="report-wellness-radar mt-5 rounded-xl border border-[#071426]/10 bg-[#fafaf8] px-4 py-4 sm:mt-6 sm:px-5">
               <SectionLabel
-                title="Sleep Wellness Score（4領域）"
+                title="Sleep Wellness Score（４領域）"
                 eyebrow="WELLNESS SCORE"
               />
               <ReportLead>
