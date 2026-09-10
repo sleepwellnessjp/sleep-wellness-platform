@@ -46,15 +46,15 @@ function metricsFrom(
 // —— 表記ゆれ統一 ——
 {
   check(
-    "duration 1:15 → 1時間15分",
-    formatDurationDisplay("1:15") === "1時間15分",
+    "duration 1:15 → 1:15",
+    formatDurationDisplay("1:15") === "1:15",
   );
   check(
-    "duration 1時間15分 維持",
-    formatDurationDisplay("1時間15分") === "1時間15分",
+    "duration 1時間15分 → 1:15",
+    formatDurationDisplay("1時間15分") === "1:15",
   );
-  check("duration 0:49 → 49分", formatDurationDisplay("0:49") === "49分");
-  check("duration -40分", formatDurationDisplay("-40分") === "-40分");
+  check("duration 0:49 → 0:49", formatDurationDisplay("0:49") === "0:49");
+  check("duration -40分 → -0:40", formatDurationDisplay("-40分") === "-0:40");
   check("percent 87 → 87%", formatPercentDisplay("87") === "87%");
   check("percent 87％ → 87%", formatPercentDisplay("87％") === "87%");
   check(
@@ -138,7 +138,7 @@ function metricsFrom(
   check("A: 睡眠スコア=78", home.metrics.sleepScore === 78);
   check(
     "A: 睡眠時間",
-    detail.metrics.sleepDuration === "6時間42分",
+    detail.metrics.sleepDuration === "6:42",
   );
   check("A: 入眠=23:40", detail.metrics.bedtime === "23:40");
   check("A: 起床=06:45", detail.metrics.wakeTime === "06:45");
@@ -146,32 +146,32 @@ function metricsFrom(
     "A: 効率=87%",
     detail.metrics.sleepEfficiency === "87%",
   );
-  check("A: 負債=-40分", detail.metrics.sleepDebt === "-40分");
-  check("A: 潜時=12分", detail.metrics.sleepLatency === "12分");
+  check("A: 負債=-0:40", detail.metrics.sleepDebt === "-0:40");
+  check("A: 潜時=0:12", detail.metrics.sleepLatency === "0:12");
   check(
     "A: 体内時計",
-    detail.metrics.circadianRhythm === "やや遅れ",
+    detail.metrics.circadianRhythm === "",
   );
   check("A: 覚醒率=8%", stages.metrics.awakeningRate === "8%");
-  check("A: 覚醒時間=28分", stages.metrics.awakenings === "28分");
+  check("A: 覚醒時間=0:28", stages.metrics.awakenings === "0:28");
   check(
-    "A: REM時間 1:15→1時間15分",
-    stages.metrics.remSleep === "1時間15分",
+    "A: REM時間 1:15→1:15",
+    stages.metrics.remSleep === "1:15",
   );
   check("A: REM率=22%", stages.metrics.remSleepRate === "22%");
   check(
     "A: ノンレム時間",
-    stages.metrics.nonRemSleep === "4時間45分",
+    stages.metrics.nonRemSleep === "4:45",
   );
   check("A: ノンレム率=70%", stages.metrics.nonRemSleepRate === "70%");
   check(
     "A: 浅い時間",
-    stages.metrics.lightSleep === "3時間40分",
+    stages.metrics.lightSleep === "3:40",
   );
   check("A: 浅い率=55%", stages.metrics.lightSleepRate === "55%");
   check(
     "A: 深い時間",
-    stages.metrics.deepSleep === "1時間5分",
+    stages.metrics.deepSleep === "1:05",
   );
   check("A: 深い率=15%", stages.metrics.deepSleepRate === "15%");
   check("A: SpO2=96%", stages.metrics.spo2 === "96%");
@@ -266,22 +266,22 @@ function metricsFrom(
     qol: "50",
     yesterdayQol: "48",
     conditionScore: "72",
-    sleepDuration: "6時間42分",
+    sleepDuration: "6:42",
     bedtime: "23:40",
     wakeTime: "06:45",
     sleepEfficiency: "87%",
-    sleepDebt: "-40分",
-    sleepLatency: "12分",
-    circadianRhythm: "やや遅れ",
-    awakenings: "28分",
+    sleepDebt: "-0:40",
+    sleepLatency: "0:12",
+    circadianRhythm: "",
+    awakenings: "0:28",
     awakeningRate: "8%",
-    remSleep: "1時間15分",
+    remSleep: "1:15",
     remSleepRate: "22%",
-    nonRemSleep: "1時間5分",
-    nonRemSleepRate: "15%",
-    lightSleep: "3時間40分",
+    nonRemSleep: "4:45",
+    nonRemSleepRate: "70%",
+    lightSleep: "3:40",
     lightSleepRate: "55%",
-    deepSleep: "1時間5分",
+    deepSleep: "1:05",
     deepSleepRate: "15%",
     respiratoryRate: "14.2",
     spo2: "96%",
@@ -337,12 +337,12 @@ function metricsFrom(
   check("B: 重複除去", readings.filter((r) => /睡眠スコア/.test(r.label)).length === 1);
 
   const mapped = metricsFrom(readings, { screenType: "sleep_detail" });
-  check("B: 潜時=22分", mapped.metrics.sleepLatency === "22分");
+  check("B: 潜時=0:22", mapped.metrics.sleepLatency === "0:22");
   check("B: 入眠=23:10", mapped.metrics.bedtime === "23:10");
   check("B: 起床=06:30", mapped.metrics.wakeTime === "06:30");
   check(
     "B: REM表記統一",
-    mapped.metrics.remSleep === "1時間15分",
+    mapped.metrics.remSleep === "1:15",
   );
 
   // グラフ注釈なし → 推測で埋めない
@@ -379,8 +379,8 @@ function metricsFrom(
     !noGuess.bedtime?.trim(),
   );
   check(
-    "B: 6:22 → 6時間22分",
-    normalizeMetricDisplayValue("sleepDuration", "6:22") === "6時間22分",
+    "B: 6:22 → 6:22",
+    normalizeMetricDisplayValue("sleepDuration", "6:22") === "6:22",
   );
 }
 
@@ -454,7 +454,7 @@ function metricsFrom(
   check("D: ホーム睡眠→スコア", home.metrics.sleepScore === 71);
   check(
     "D: 詳細睡眠→時間",
-    detail.metrics.sleepDuration === "5時間32分",
+    detail.metrics.sleepDuration === "5:32",
   );
   const merged = mergeImageExtractResults([
     {
@@ -476,8 +476,8 @@ function metricsFrom(
   ]);
   check("D: merge スコア=71", merged.metrics.sleepScore === 71);
   check(
-    "D: merge 時間=5時間32分",
-    merged.metrics.sleepDuration === "5時間32分",
+    "D: merge 時間=5:32",
+    merged.metrics.sleepDuration === "5:32",
   );
 }
 
@@ -499,7 +499,7 @@ function metricsFrom(
     metricsFrom(
       [{ label: "睡眠 時間", value: "6時間10分" }],
       { screenType: "sleep_detail" },
-    ).metrics.sleepDuration === "6時間10分",
+    ).metrics.sleepDuration === "6:10",
   );
   check("E: 改行ラベル浅い率", spaced.metrics.lightSleepRate === "50%");
   check("E: 深い％→率", spaced.metrics.deepSleepRate === "18%");

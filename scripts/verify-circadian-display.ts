@@ -1,30 +1,29 @@
 /**
- * 体内時計の表示を「〜時間〜分」に統一する検証。
+ * 体内時計の表示を「N:MM」に統一する検証。
  * 実行: npx tsx scripts/verify-circadian-display.ts
  */
 
 import { buildCounselingReportContent } from "../lib/counseling-report";
 import {
-  formatDurationDisplay,
   normalizeMetricDisplayValue,
 } from "../lib/soxai-display-normalize";
 import type { AnalysisResult } from "../lib/analysis-session";
 import { emptyMetrics } from "../lib/soxai-metrics";
 
 const CASES = [
-  { label: "2026-08-20 相当（負）", circadian: "-1:21", expect: "-1時間21分" },
-  { label: "負の短い偏移", circadian: "-0:39", expect: "-39分" },
+  { label: "2026-08-20 相当（負）", circadian: "-1:21", expect: "-1:21" },
+  { label: "負の短い偏移", circadian: "-0:39", expect: "-0:39" },
   {
     label: "OCR suffix 付き（進み気味）",
     circadian: "-1:00 進み気味",
-    expect: "-1時間",
+    expect: "-1:00",
   },
   {
-    label: "正の値（時間分・変更なし）",
+    label: "正の値（時間分→N:MM）",
     circadian: "1時間32分",
-    expect: "1時間32分",
+    expect: "1:32",
   },
-  { label: "正の値（分のみ・変更なし）", circadian: "21分", expect: "21分" },
+  { label: "正の値（分のみ→N:MM）", circadian: "21分", expect: "0:21" },
 ] as const;
 
 function findCircadianValue(result: ReturnType<typeof buildCounselingReportContent>): string | null {
@@ -94,10 +93,14 @@ for (const raw of debtSamples) {
   const viaDebt = normalizeMetricDisplayValue("sleepDebt", raw);
   const expect =
     raw === "-1:00 進み気味"
-      ? "-1時間"
-      : raw === "-1時間37分" || raw === "-40分" || raw === "1時間20分"
-        ? raw
-        : viaDebt;
+      ? "-1:00"
+      : raw === "-1時間37分"
+        ? "-1:37"
+        : raw === "-40分"
+          ? "-0:40"
+          : raw === "1時間20分"
+            ? "1:20"
+            : viaDebt;
   const pass = viaDebt === expect;
   console.log(`[${pass ? "PASS" : "FAIL"}] sleepDebt ${raw} → ${viaDebt}`);
   if (!pass) ok = false;
@@ -115,7 +118,7 @@ for (const c of CASES) {
     `[${pass ? "PASS" : "FAIL"}] ${c.label}: circadian=${value} debt=${debt ?? "(not in key tiles)"}`,
   );
   if (!pass) ok = false;
-  if (debt && debt !== "-1時間37分") {
+  if (debt && debt !== "-1:37") {
     console.error("  sleepDebt changed unexpectedly:", debt);
     ok = false;
   }
