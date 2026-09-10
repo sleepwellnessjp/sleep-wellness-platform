@@ -497,6 +497,51 @@ export type Database = {
           },
         ];
       };
+      recipes: {
+        Row: {
+          id: string;
+          title: string;
+          lead: string | null;
+          servings: string | null;
+          image_path: string | null;
+          ingredient_groups: Json;
+          steps: Json;
+          one_point: string | null;
+          is_published: boolean;
+          sort_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          lead?: string | null;
+          servings?: string | null;
+          image_path?: string | null;
+          ingredient_groups?: Json;
+          steps?: Json;
+          one_point?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          lead?: string | null;
+          servings?: string | null;
+          image_path?: string | null;
+          ingredient_groups?: Json;
+          steps?: Json;
+          one_point?: string | null;
+          is_published?: boolean;
+          sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       client_homeworks: {
         Row: {
           id: string;
