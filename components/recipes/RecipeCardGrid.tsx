@@ -17,14 +17,14 @@ export default function RecipeCardGrid({ recipes, emptyMessage }: Props) {
   }
 
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid grid-cols-2 items-stretch gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
       {recipes.map((recipe) => (
-        <li key={recipe.id}>
+        <li key={recipe.id} className="min-w-0">
           <Link
             href={`/recipes/${recipe.id}`}
-            className="block overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-[#8a6a2d]/35"
+            className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-[#8a6a2d]/35"
           >
-            <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+            <div className="aspect-[4/3] shrink-0 overflow-hidden bg-slate-100">
               {recipe.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -38,10 +38,17 @@ export default function RecipeCardGrid({ recipes, emptyMessage }: Props) {
                 </div>
               )}
             </div>
-            <div className="p-4">
+            <div className="flex min-h-[4.5rem] flex-1 flex-col px-3 pb-3 pt-2.5 md:min-h-[5rem] md:px-4 md:pb-4 md:pt-3">
               <h2
-                className="font-semibold leading-snug tracking-[-0.02em]"
-                style={{ color: NAVY }}
+                className="mt-auto text-left text-[15px] font-semibold tracking-[-0.02em]"
+                style={{
+                  color: NAVY,
+                  lineHeight: 1.4,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 3,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
               >
                 {recipe.title}
               </h2>
