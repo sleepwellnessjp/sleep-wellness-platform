@@ -217,3 +217,52 @@ export async function deleteRecipeAsAdmin(id: string): Promise<void> {
   const { error } = await recipesFrom(supabase).delete().eq("id", id);
   if (error) missingTableError(error);
 }
+
+export async function listPublishedRecipes(): Promise<Recipe[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const supabase = await requireClient();
+    const { data, error } = await recipesFrom(supabase)
+      .select(RECIPE_SELECT)
+      .eq("is_published", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: false });
+    if (error) {
+      if (isMissingTable(error.message)) return [];
+      console.error("[recipes] listPublished:", error.message);
+      return [];
+    }
+    return ((data as unknown as RecipeRow[]) ?? []).map((row) =>
+      mapRecipe(row, supabase),
+    );
+  } catch (error) {
+    console.error("[recipes] listPublished:", error);
+    return [];
+  }
+}
+
+export async function getPublishedRecipeById(
+  id: string,
+): Promise<Recipe | null> {
+  const recipeId = text(id);
+  if (!recipeId) return null;
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const supabase = await requireClient();
+    const { data, error } = await recipesFrom(supabase)
+      .select(RECIPE_SELECT)
+      .eq("id", recipeId)
+      .eq("is_published", true)
+      .maybeSingle();
+    if (error) {
+      if (isMissingTable(error.message)) return null;
+      console.error("[recipes] getPublishedById:", error.message);
+      return null;
+    }
+    if (!data) return null;
+    return mapRecipe(data as unknown as RecipeRow, supabase);
+  } catch (error) {
+    console.error("[recipes] getPublishedById:", error);
+    return null;
+  }
+}

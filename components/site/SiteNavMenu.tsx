@@ -23,6 +23,7 @@ export const SITE_NAV_ITEMS = [
   { label: "研究・実証", href: "/research" },
   { label: "エビデンス", href: "/evidence" },
   { label: "睡眠学", href: "/sleep/science" },
+  { label: "睡眠レシピ", href: "/recipes" },
   {
     label: "クライアントの分析",
     href: ANALYSIS_HREF,

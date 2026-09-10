@@ -40,12 +40,20 @@ const TABS = [
       pathname === "/sleep/science" || pathname.startsWith("/sleep/science/"),
     icon: ScienceIcon,
   },
+  {
+    /** 5タブ時の幅のため短縮。ページタイトルは「睡眠のための料理」 */
+    label: "レシピ",
+    href: "/recipes",
+    match: (pathname: string) =>
+      pathname === "/recipes" || pathname.startsWith("/recipes/"),
+    icon: RecipeIcon,
+  },
 ] as const;
 
 function iconProps(active: boolean) {
   return {
     viewBox: "0 0 24 24",
-    className: "h-[22px] w-[22px]",
+    className: "h-5 w-5",
     fill: "none" as const,
     stroke: active ? ACTIVE : INACTIVE,
     strokeWidth: active ? "2" : "1.75",
@@ -95,8 +103,18 @@ function ScienceIcon({ active }: { active: boolean }) {
   );
 }
 
+function RecipeIcon({ active }: { active: boolean }) {
+  return (
+    <svg {...iconProps(active)}>
+      <path d="M12 3v7" />
+      <path d="M9 4.5c0 2 1.3 3.5 3 3.5s3-1.5 3-3.5" />
+      <path d="M8 10h8l-.8 9.2A2 2 0 0 1 13.2 21h-2.4a2 2 0 0 1-2-1.8L8 10z" />
+    </svg>
+  );
+}
+
 /**
- * モバイル向け浮遊カプセル型タブバー（ホーム含む 4 タブ）。
+ * モバイル向け浮遊カプセル型タブバー（ホーム含む 5 タブ）。
  * トップを含む全ページで表示。デスクトップ（lg+ / 1024px以上）では非表示。
  * ホームイントロ中は非表示し、完了後にフェードインする。
  */
@@ -122,13 +140,13 @@ export default function MobileSleepTabBar() {
     <nav
       aria-label="主要ナビゲーション"
       data-sleep-tabbar=""
-      className={`pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-3 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] md:px-6 lg:hidden ${
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] md:px-6 lg:hidden ${
         visible ? "opacity-100" : "opacity-0"
       }`}
       aria-hidden={!visible}
     >
       <div
-        className={`mx-auto flex w-full max-w-md items-stretch justify-between gap-0.5 rounded-full border border-white/50 px-1.5 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150 ${
+        className={`mx-auto flex w-full max-w-md items-stretch justify-between gap-0 rounded-full border border-white/50 px-1 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150 ${
           visible ? "pointer-events-auto" : "pointer-events-none"
         }`}
         style={{
@@ -146,17 +164,18 @@ export default function MobileSleepTabBar() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 transition duration-200 active:opacity-90 ${FOCUS_RING}`}
+              className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-full px-0.5 py-1.5 transition duration-200 active:opacity-90 ${FOCUS_RING}`}
               style={{
                 backgroundColor: active
                   ? "rgba(255, 255, 255, 0.12)"
                   : "transparent",
               }}
               aria-current={active ? "page" : undefined}
+              aria-label={tab.label === "レシピ" ? "睡眠レシピ" : tab.label}
             >
               <Icon active={active} />
               <span
-                className="whitespace-nowrap text-[10px] font-semibold leading-none tracking-[-0.02em]"
+                className="max-w-full truncate whitespace-nowrap text-[9px] font-semibold leading-none tracking-[-0.02em] sm:text-[10px]"
                 style={{ color: active ? ACTIVE : INACTIVE }}
               >
                 {tab.label}

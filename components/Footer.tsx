@@ -10,6 +10,7 @@ const navigation = [
   { label: "認定インストラクターの活動", href: "/instructor-activities" },
   { label: "Evidence", href: "/evidence" },
   { label: "睡眠学", href: "/sleep/science" },
+  { label: "睡眠レシピ", href: "/recipes" },
   { label: "Partners", href: "/#partners" },
   { label: "Founder", href: "/#founder" },
   { label: "Contact", href: "/contact" },
