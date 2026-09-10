@@ -1843,7 +1843,7 @@ function ResultContent({
                     className="text-[11px] font-semibold tracking-[0.12em]"
                     style={{ color: GOLD }}
                   >
-                    総合評価（100点満点）
+                    総合評価（１００点満点）
                   </p>
                   <p
                     className="mt-1 text-[3rem] leading-none font-semibold tracking-[-0.06em] sm:text-[3.6rem]"

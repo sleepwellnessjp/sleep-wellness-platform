@@ -245,7 +245,7 @@ export default function ClosedBetaOperationDashboard({
             {formatPct(readinessPercent)}
           </p>
           <p className="mt-1 text-[13px] text-slate-500">
-            Closed Beta 運営準備率（6 モジュール）
+            Closed Beta 運営準備率（６ モジュール）
           </p>
         </div>
         <Link

@@ -88,7 +88,7 @@ export default function AdminAcademyPage() {
           </div>
 
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
-            <SectionCard eyebrow="RENEWAL" title="更新予定者（90日以内）">
+            <SectionCard eyebrow="RENEWAL" title="更新予定者（９０日以内）">
               <ul className="space-y-3">
                 {academy.renewingSoon.map((item) => (
                   <li
