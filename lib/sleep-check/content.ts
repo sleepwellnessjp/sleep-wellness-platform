@@ -23,6 +23,26 @@ export const SCIENCE_SECTION_NEKO: Record<SleepContentSubcategory, string> = {
   voices: SLEEP_CHECK_IMAGES.ouen,
 };
 
+/** 入眠音ページ — セクション見出し横のまもりねこ（睡眠学と同じ画像パス） */
+export const SLEEP_SOUND_NEKO = {
+  music: SLEEP_CHECK_IMAGES.gussuri,
+  nature: SLEEP_CHECK_IMAGES.relax,
+} as const;
+
+/** 入眠音カード — 睡眠学カバーSVGの割り当て（slug / title） */
+export const SLEEP_SOUND_COVERS: Record<string, string> = {
+  "sleep-music-01": `${SLEEP_CHECK_IMAGE_BASE}/breathing-cover.svg`,
+  "sleep-music-02": `${SLEEP_CHECK_IMAGE_BASE}/cover-melatonin.svg`,
+  "sleep-music-03": `${SLEEP_CHECK_IMAGE_BASE}/yoga-cover.svg`,
+  "nature-space": `${SLEEP_CHECK_IMAGE_BASE}/meditation-cover.svg`,
+  "nature-water-fountain": `${SLEEP_CHECK_IMAGE_BASE}/cover-core-body-temperature.svg`,
+  ほどける時間: `${SLEEP_CHECK_IMAGE_BASE}/breathing-cover.svg`,
+  夜がふかくなる: `${SLEEP_CHECK_IMAGE_BASE}/cover-melatonin.svg`,
+  息をあずける: `${SLEEP_CHECK_IMAGE_BASE}/yoga-cover.svg`,
+  しずかな余白: `${SLEEP_CHECK_IMAGE_BASE}/meditation-cover.svg`,
+  水のとおる音: `${SLEEP_CHECK_IMAGE_BASE}/cover-core-body-temperature.svg`,
+};
+
 export type ScienceArticleGuide = {
   nekoSrc: string;
   message: string;

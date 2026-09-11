@@ -521,6 +521,12 @@ body {
   );
 }
 
+/* 入眠音ページのみ: セーフエリアに明るい地色が覗かないようにする（富士夜と同系色） */
+body:has([data-sleep-sound-night]) {
+  background: #040c18;
+  color: #f5f2ea;
+}
+
 @media (min-width: 1024px) {
   body {
     padding-bottom: calc(

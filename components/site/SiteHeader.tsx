@@ -13,6 +13,8 @@ type SiteHeaderProps = {
   className?: string;
   maxWidthClassName?: string;
   tone?: "dark" | "light";
+  /** night: 入眠音などダークページ専用。既定は既存の白ヘッダー */
+  surface?: "default" | "night";
 };
 
 /**
@@ -26,10 +28,23 @@ export default function SiteHeader({
   className = "",
   maxWidthClassName = "max-w-7xl",
   tone = "dark",
+  surface = "default",
 }: SiteHeaderProps) {
+  const night = surface === "night";
+
   return (
     <header
-      className={`border-b border-[rgba(7,20,38,0.08)] bg-white/90 backdrop-blur-md ${className}`}
+      data-site-header-surface={night ? "night" : "default"}
+      className={
+        night
+          ? `border-b border-white/10 backdrop-blur-md ${className}`
+          : `border-b border-[rgba(7,20,38,0.08)] bg-white/90 backdrop-blur-md ${className}`
+      }
+      style={
+        night
+          ? { backgroundColor: "rgba(2, 11, 26, 0.94)" }
+          : undefined
+      }
     >
       <div
         className={`mx-auto flex items-center justify-between gap-3 px-5 pb-3 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] sm:gap-4 sm:px-8 sm:py-4 sm:pt-4 lg:px-10 ${maxWidthClassName}`}
@@ -39,7 +54,11 @@ export default function SiteHeader({
           className="inline-flex min-h-11 min-w-11 items-center gap-3 py-1.5 pr-2 sm:min-h-0 sm:py-0 sm:pr-0"
         >
           <Image
-            src="/swij-logo-horizontal.png"
+            src={
+              night
+                ? "/swij-logo-horizontal-on-dark.png"
+                : "/swij-logo-horizontal.png"
+            }
             alt="Sleep Wellness Institute Japan"
             width={180}
             height={44}
@@ -49,7 +68,7 @@ export default function SiteHeader({
           {eyebrow ? (
             <span
               className="hidden text-[10px] font-semibold tracking-[0.2em] sm:inline"
-              style={{ color: NAVY }}
+              style={{ color: night ? "#F5F2EA" : NAVY }}
             >
               {eyebrow}
             </span>
@@ -62,7 +81,7 @@ export default function SiteHeader({
               {actions}
             </div>
           ) : null}
-          <SiteNavMenu tone={tone} />
+          <SiteNavMenu tone={night ? "light" : tone} />
         </div>
       </div>
     </header>

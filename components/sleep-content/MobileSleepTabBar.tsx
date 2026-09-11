@@ -121,6 +121,8 @@ function RecipeIcon({ active }: { active: boolean }) {
 export default function MobileSleepTabBar() {
   const pathname = usePathname() || "/";
   const [visible, setVisible] = useState(pathname !== "/");
+  const nightSound =
+    pathname === "/sleep/sound" || pathname.startsWith("/sleep/sound/");
 
   useEffect(() => {
     const html = document.documentElement;
@@ -140,21 +142,26 @@ export default function MobileSleepTabBar() {
     <nav
       aria-label="主要ナビゲーション"
       data-sleep-tabbar=""
+      data-sleep-sound-night-tabbar={nightSound ? "" : undefined}
       className={`pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] md:px-6 lg:hidden ${
         visible ? "opacity-100" : "opacity-0"
       }`}
       aria-hidden={!visible}
     >
       <div
-        className={`mx-auto flex w-full max-w-md items-stretch justify-between gap-0 rounded-full border border-white/50 px-1 py-1.5 shadow-[0_8px_32px_-8px_rgba(7,20,38,0.22)] backdrop-blur-xl backdrop-saturate-150 ${
+        className={`mx-auto flex w-full max-w-md items-stretch justify-between gap-0 rounded-full border px-1 py-1.5 backdrop-blur-xl backdrop-saturate-150 ${
           visible ? "pointer-events-auto" : "pointer-events-none"
         }`}
         style={{
-          background: FROST_BG,
-          borderColor: FROST_BORDER,
+          background: nightSound ? "rgba(2, 11, 26, 0.82)" : FROST_BG,
+          borderColor: nightSound
+            ? "rgba(198, 168, 106, 0.28)"
+            : FROST_BORDER,
           backdropFilter: FROST_FILTER,
           WebkitBackdropFilter: FROST_FILTER,
-          boxShadow: FROST_SHADOW,
+          boxShadow: nightSound
+            ? "0 8px 28px rgba(0, 0, 0, 0.45)"
+            : FROST_SHADOW,
         }}
       >
         {TABS.map((tab) => {

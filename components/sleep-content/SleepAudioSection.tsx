@@ -1,193 +1,274 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { NAVY } from "@/components/ui/tokens";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+import { SLEEP_SOUND_COVERS } from "@/lib/sleep-check/content";
 import type { SleepContent } from "@/lib/sleep-content/types";
+import { GOLD, GOLD_LIGHT } from "@/components/ui/tokens";
 
 type Props = {
   title: string;
   items: SleepContent[];
   emptyMessage: string;
-  defaultLoop: boolean;
+  /** true: 自然音（常時ループ） / false: 入眠音楽（ループなし） */
+  loop: boolean;
+  nekoSrc: string;
 };
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds || seconds <= 0) return "再生時間: 未設定";
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `再生時間: ${m}:${String(s).padStart(2, "0")}`;
+/**
+ * 半透明ダーク。背景の富士・桜が透け、音源ごとにごく薄い色味だけ変える。
+ */
+const GRADIENTS = [
+  "linear-gradient(152deg, rgba(72,48,40,0.38) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // warm ash
+  "linear-gradient(152deg, rgba(48,58,40,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // olive ash
+  "linear-gradient(152deg, rgba(58,52,40,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // sand ash
+  "linear-gradient(152deg, rgba(58,42,48,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // rose ash
+  "linear-gradient(152deg, rgba(40,56,48,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // moss ash
+  "linear-gradient(152deg, rgba(56,46,38,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // clay ash
+  "linear-gradient(152deg, rgba(54,48,36,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // ochre ash
+  "linear-gradient(152deg, rgba(44,48,56,0.36) 0%, rgba(8,16,32,0.58) 48%, rgba(4,10,22,0.66) 100%)", // cool ash
+] as const;
+
+function gradientForIndex(index: number): string {
+  return GRADIENTS[index % GRADIENTS.length] ?? GRADIENTS[0];
 }
 
-function formatBytes(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) return `容量: ${mb.toFixed(2)}MB`;
-  const kb = bytes / 1024;
-  return `容量: ${kb.toFixed(0)}KB`;
+function coverForItem(item: SleepContent): string | null {
+  return (
+    SLEEP_SOUND_COVERS[item.slug] ??
+    SLEEP_SOUND_COVERS[item.title] ??
+    null
+  );
 }
 
-type SizeState =
-  | { state: "idle" }
-  | { state: "loading" }
-  | { state: "ok"; bytes: number }
-  | { state: "error" };
+/** 「8分」形式。秒は四捨五入。 */
+function formatMinutesLabel(seconds: number | null): string | null {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes}分`;
+}
+
+const NEKO_SIZE = 72;
+/** サムネイル内カバーの占有率（周囲に余白） */
+const COVER_SIZE_PERCENT = 68;
 
 export default function SleepAudioSection({
   title,
   items,
   emptyMessage,
-  defaultLoop,
+  loop,
+  nekoSrc,
 }: Props) {
-  const [loopById, setLoopById] = useState<Record<string, boolean>>({});
-  const [sizeById, setSizeById] = useState<Record<string, SizeState>>({});
+  const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
 
   useEffect(() => {
-    const next: Record<string, boolean> = {};
-    for (const item of items) next[item.id] = defaultLoop;
-    setLoopById(next);
-  }, [items, defaultLoop]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-
-    const load = async () => {
-      for (const item of items) {
-        if (!item.audioUrl) continue;
-        setSizeById((prev) => ({ ...prev, [item.id]: { state: "loading" } }));
-        try {
-          const response = await fetch(item.audioUrl, {
-            method: "HEAD",
-            signal: controller.signal,
-          });
-          const raw = response.headers.get("content-length");
-          const bytes = raw ? Number(raw) : NaN;
-          if (!cancelled && Number.isFinite(bytes) && bytes > 0) {
-            setSizeById((prev) => ({ ...prev, [item.id]: { state: "ok", bytes } }));
-          } else if (!cancelled) {
-            setSizeById((prev) => ({ ...prev, [item.id]: { state: "error" } }));
-          }
-        } catch {
-          if (!cancelled) {
-            setSizeById((prev) => ({ ...prev, [item.id]: { state: "error" } }));
-          }
-        }
-      }
-    };
-
-    void load();
+    const audios = audioRefs.current;
     return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [items]);
-
-  useEffect(() => {
-    const stopAll = () => {
-      Object.values(audioRefs.current).forEach((audio) => {
+      Object.values(audios).forEach((audio) => {
         if (!audio) return;
-        if (!audio.paused) {
-          audio.pause();
-          audio.currentTime = 0;
-        }
+        audio.pause();
+        audio.currentTime = 0;
       });
-    };
-    window.addEventListener("pagehide", stopAll);
-    window.addEventListener("beforeunload", stopAll);
-    return () => {
-      window.removeEventListener("pagehide", stopAll);
-      window.removeEventListener("beforeunload", stopAll);
     };
   }, []);
 
-  const empty = items.length === 0;
-  const titleStyle = useMemo(() => ({ color: NAVY }), []);
+  const stopAllExcept = (keepId: string | null) => {
+    Object.entries(audioRefs.current).forEach(([id, audio]) => {
+      if (!audio || id === keepId) return;
+      audio.pause();
+      audio.currentTime = 0;
+    });
+  };
 
-  if (empty) {
-    return (
-      <section>
-        <h2 className="text-xl font-semibold tracking-[-0.03em] sm:text-2xl" style={titleStyle}>
-          {title}
-        </h2>
-        <div className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-          <p className="text-sm leading-6 text-slate-500">{emptyMessage}</p>
-        </div>
-      </section>
-    );
-  }
+  const togglePlay = async (id: string) => {
+    const audio = audioRefs.current[id];
+    if (!audio) return;
+
+    if (playingId === id && !audio.paused) {
+      audio.pause();
+      audio.currentTime = 0;
+      setPlayingId(null);
+      return;
+    }
+
+    stopAllExcept(id);
+    try {
+      audio.loop = loop;
+      await audio.play();
+      setPlayingId(id);
+    } catch {
+      setPlayingId(null);
+    }
+  };
 
   return (
     <section>
-      <h2 className="text-xl font-semibold tracking-[-0.03em] sm:text-2xl" style={titleStyle}>
-        {title}
+      <h2
+        className="mb-2 flex items-center gap-3 text-2xl font-semibold tracking-[-0.02em] text-[#F5F2EA]"
+        style={{ textShadow: "0 2px 16px rgba(0,0,0,0.55)" }}
+      >
+        <span
+          className="inline-flex shrink-0"
+          style={{
+            width: NEKO_SIZE,
+            height: NEKO_SIZE,
+            filter:
+              "drop-shadow(0 0 10px rgba(255,255,255,0.45)) drop-shadow(0 0 20px rgba(255,255,255,0.22))",
+          }}
+        >
+          <Image
+            src={nekoSrc}
+            alt=""
+            width={NEKO_SIZE}
+            height={NEKO_SIZE}
+            className="shrink-0 object-contain"
+            style={{ width: NEKO_SIZE, height: NEKO_SIZE }}
+          />
+        </span>
+        <span className="min-w-0">{title}</span>
       </h2>
-      <p className="mt-2 text-xs text-slate-500">再生は手動開始です。画面を消しても再生は続きます。</p>
-      <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => {
-          const loop = loopById[item.id] ?? defaultLoop;
-          const size = sizeById[item.id] ?? { state: "idle" };
-          return (
-            <li
-              key={item.id}
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-            >
-              {item.coverImageUrl ? (
-                <div className="aspect-[4/3] overflow-hidden bg-slate-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={item.coverImageUrl} alt="" className="h-full w-full object-cover" />
-                </div>
-              ) : null}
-              <div className="space-y-3 p-4">
-                <h3 className="font-semibold leading-snug" style={titleStyle}>
-                  {item.title}
-                </h3>
-                {item.summary ? (
-                  <p className="text-sm leading-relaxed text-slate-600">{item.summary}</p>
-                ) : null}
-                <div className="text-xs text-slate-500">
-                  <p>{formatDuration(item.durationSeconds)}</p>
-                  <p>
-                    {size.state === "ok"
-                      ? formatBytes(size.bytes)
-                      : size.state === "loading"
-                        ? "容量: 取得中"
-                        : "容量: 不明"}
-                  </p>
-                </div>
+      <p
+        className="text-xs text-white/55"
+        style={{ textShadow: "0 1px 10px rgba(0,0,0,0.5)" }}
+      >
+        再生は手動開始です。画面を消しても再生は続きます。
+      </p>
+
+      {items.length === 0 ? (
+        <div className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] px-6 py-12 text-center">
+          <p className="text-sm leading-6 text-white/50">{emptyMessage}</p>
+        </div>
+      ) : (
+        <ul className="mt-6 grid grid-cols-2 items-stretch gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-4">
+          {items.map((item, index) => {
+            const isPlaying = playingId === item.id;
+            const durationLabel = formatMinutesLabel(item.durationSeconds);
+            const gradientIndex = index + (loop ? 4 : 0);
+            const coverSrc = coverForItem(item);
+            return (
+              <li key={item.id} className="min-w-0">
                 {item.audioUrl ? (
-                  <>
-                    <label className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
-                      <span className="text-slate-600">ループ再生</span>
-                      <input
-                        type="checkbox"
-                        checked={loop}
-                        onChange={(e) =>
-                          setLoopById((prev) => ({ ...prev, [item.id]: e.target.checked }))
-                        }
-                        className="h-4 w-4 accent-[#071426]"
-                      />
-                    </label>
-                    <audio
-                      ref={(el) => {
-                        audioRefs.current[item.id] = el;
+                  <audio
+                    ref={(el) => {
+                      audioRefs.current[item.id] = el;
+                    }}
+                    preload="none"
+                    loop={loop}
+                    src={item.audioUrl}
+                    onEnded={() => {
+                      if (!loop) setPlayingId((prev) => (prev === item.id ? null : prev));
+                    }}
+                    className="hidden"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!item.audioUrl}
+                  onClick={() => {
+                    if (!item.audioUrl) return;
+                    void togglePlay(item.id);
+                  }}
+                  className="group flex h-full w-full flex-col overflow-hidden rounded-2xl text-left transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label={
+                    isPlaying
+                      ? `${item.title}を停止`
+                      : `${item.title}を再生`
+                  }
+                  aria-pressed={isPlaying}
+                >
+                  <div
+                    className="relative aspect-square w-full overflow-hidden rounded-2xl border-2 backdrop-blur-[2px]"
+                    style={{
+                      background: gradientForIndex(gradientIndex),
+                      borderColor: GOLD_LIGHT,
+                    }}
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-30"
+                      style={{
+                        background:
+                          "radial-gradient(circle at 28% 22%, rgba(255,255,255,0.14), transparent 58%)",
                       }}
-                      controls
-                      preload="none"
-                      loop={loop}
-                      className="w-full"
-                      src={item.audioUrl}
                     />
-                  </>
-                ) : (
-                  <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    音声を準備中です。
-                  </p>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                    {coverSrc ? (
+                      <span
+                        className="pointer-events-none absolute left-1/2 top-1/2 overflow-hidden rounded-full -translate-x-1/2 -translate-y-1/2"
+                        style={{
+                          width: `${COVER_SIZE_PERCENT}%`,
+                          height: `${COVER_SIZE_PERCENT}%`,
+                          boxShadow: "0 6px 18px rgba(7, 20, 38, 0.22)",
+                        }}
+                      >
+                        {/*
+                          SVG は viewBox が本体ディスクにフィット済み。
+                          円形クリップで四隅の濃紺フィールドを隠す。
+                          next/image はリモート SVG を最適化できないため img を使用。
+                        */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={coverSrc}
+                          alt=""
+                          className="h-full w-full object-cover object-center"
+                        />
+                      </span>
+                    ) : null}
+                    <span
+                      className="absolute bottom-2.5 left-2.5 z-[1] inline-flex h-10 w-10 items-center justify-center rounded-full"
+                      style={{
+                        background: isPlaying
+                          ? "rgba(245,242,234,0.92)"
+                          : "rgba(255,255,255,0.28)",
+                        color: isPlaying ? "#071426" : "#F5F2EA",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.28)",
+                      }}
+                      aria-hidden
+                    >
+                      {isPlaying ? (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                          <rect x="6" y="5" width="4" height="14" rx="1" />
+                          <rect x="14" y="5" width="4" height="14" rx="1" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                          <path d="M8 5.5v13l11-6.5L8 5.5z" />
+                        </svg>
+                      )}
+                    </span>
+                    {isPlaying ? (
+                      <span
+                        className="absolute right-2.5 top-2.5 z-[1] rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide"
+                        style={{
+                          background: "rgba(7,20,38,0.55)",
+                          color: GOLD,
+                        }}
+                      >
+                        再生中
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2.5 px-0.5 pb-1">
+                    <p
+                      className="text-[14px] font-semibold leading-snug tracking-[-0.02em] text-[#F5F2EA] line-clamp-2"
+                      style={{ textShadow: "0 1px 12px rgba(0,0,0,0.55)" }}
+                    >
+                      {item.title}
+                    </p>
+                    {durationLabel ? (
+                      <p
+                        className="mt-1 text-[12px] text-white/55"
+                        style={{ textShadow: "0 1px 10px rgba(0,0,0,0.5)" }}
+                      >
+                        {durationLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

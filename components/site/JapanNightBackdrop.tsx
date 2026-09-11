@@ -40,6 +40,7 @@ export default function JapanNightBackdrop({
     height: 1792,
     sizes: "100vw",
     quality: 75,
+    priority: true,
   });
   const { props: desktopBgProps } = getImageProps({
     src: "/japan-night-hero-pc.webp",
@@ -48,6 +49,7 @@ export default function JapanNightBackdrop({
     height: 1080,
     sizes: "100vw",
     quality: 75,
+    priority: true,
   });
 
   const isFirstView = variant === "firstView";
@@ -223,6 +225,7 @@ export default function JapanNightBackdrop({
           <img
             {...desktopBgProps}
             alt=""
+            loading="eager"
             fetchPriority="high"
             className={`absolute inset-0 h-full w-full object-cover ${
               variant === "firstView"

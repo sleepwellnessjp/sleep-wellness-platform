@@ -321,10 +321,10 @@ export default function SiteNavMenu({
           scrollLockY.current = window.scrollY;
           setOpen(true);
         }}
-        className={`inline-flex h-12 w-12 min-h-11 min-w-11 items-center justify-center rounded-full transition sm:h-11 sm:w-11 ${FOCUS_RING} ${
+        className={`inline-flex h-12 w-12 min-h-11 min-w-11 items-center justify-center rounded-full transition sm:h-11 sm:w-11 outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--sw-focus-ring)] focus-visible:ring-offset-2 ${
           lightIcon
-            ? "text-white hover:bg-white/10"
-            : "text-[#071426] hover:bg-[#071426]/05"
+            ? "text-white hover:bg-white/10 focus-visible:ring-offset-[#020b1a]"
+            : "text-[#071426] hover:bg-[#071426]/05 focus-visible:ring-offset-[color:var(--sw-surface)]"
         }`}
       >
         <span className="flex w-[18px] flex-col gap-[5px]" aria-hidden>
