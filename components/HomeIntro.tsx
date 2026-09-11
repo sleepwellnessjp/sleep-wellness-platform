@@ -524,12 +524,12 @@ export default function HomeIntro() {
             opacity: 0;
           }
 
-          /* 正式ロゴ */
+          /* 正式ロゴ（軌道枠は変えず、マークだけ 75% で内側に余白） */
           [data-swij-intro-v2] .intro-logo-mark {
             position: relative;
             z-index: 7;
-            width: 100%;
-            height: 100%;
+            width: 75%;
+            height: 75%;
             border-radius: 50%;
             overflow: hidden;
             background: transparent !important;
@@ -1007,11 +1007,12 @@ export default function HomeIntro() {
             opacity: 0;
           }
 
+          /* 正式ロゴ（軌道枠は変えず、マークだけ 75% で内側に余白） */
           [data-swij-intro-v2] .intro-logo-mark {
             position: relative;
             z-index: 7;
-            width: 100%;
-            height: 100%;
+            width: 75%;
+            height: 75%;
             border-radius: 50%;
             overflow: hidden;
             background: transparent !important;
