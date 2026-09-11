@@ -35,6 +35,7 @@ export default async function SleepScienceArticlePage({ params }: Params) {
       lead={article.summary || "睡眠の基礎をわかりやすく解説します。"}
       afterLead={<ArticleGuideNeko subcategory={article.subcategory} />}
       contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
+      surface="paper"
     >
       <ScienceArticleBody blocks={article.bodyBlocks} />
       <div className="max-w-2xl">

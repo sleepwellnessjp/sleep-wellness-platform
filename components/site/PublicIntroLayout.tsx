@@ -4,6 +4,10 @@ import Footer from "@/components/Footer";
 import SiteHeader from "@/components/site/SiteHeader";
 import { GOLD, NAVY } from "@/components/ui/tokens";
 
+/** 生成り紙トーン（睡眠学記事本文専用）。眩しさを抑えつつ長文可読性を保つ */
+const PAPER = "#f5f2ec";
+const PAPER_RAISED = "#faf8f3";
+
 type PublicIntroLayoutProps = {
   eyebrow: string;
   title: string;
@@ -13,6 +17,11 @@ type PublicIntroLayoutProps = {
   afterLead?: ReactNode;
   /** メインコンテンツ div に追加する Tailwind クラス（例: モバイルタブバー分の余白） */
   contentClassName?: string;
+  /**
+   * default: 既存の明るい灰白（他の紹介ページ）。
+   * paper: 生成り紙トーン（睡眠学記事本文のみ）。
+   */
+  surface?: "default" | "paper";
 };
 
 /**
@@ -25,9 +34,21 @@ export default function PublicIntroLayout({
   children,
   afterLead,
   contentClassName = "",
+  surface = "default",
 }: PublicIntroLayoutProps) {
+  const paper = surface === "paper";
+  const pageBg = paper ? PAPER : "#f7f7f5";
+  const bandBg = paper ? PAPER_RAISED : "#ffffff";
+  const bandBorder = paper
+    ? "border-[rgba(7,20,38,0.07)]"
+    : "border-[rgba(7,20,38,0.06)]";
+
   return (
-    <main className="min-h-screen bg-[#f7f7f5] text-[#071426]">
+    <main
+      className="min-h-screen text-[#071426]"
+      style={{ background: pageBg }}
+      data-public-intro-surface={surface}
+    >
       <SiteHeader
         actions={
           <Link
@@ -40,7 +61,10 @@ export default function PublicIntroLayout({
         }
       />
 
-      <section className="border-b border-[rgba(7,20,38,0.06)] bg-white">
+      <section
+        className={`border-b ${bandBorder}`}
+        style={{ background: bandBg }}
+      >
         <div className="mx-auto max-w-7xl px-6 py-14 sm:px-8 sm:py-16 lg:px-10 lg:py-20">
           <p
             className="text-[11px] font-semibold tracking-[0.28em]"
@@ -65,7 +89,10 @@ export default function PublicIntroLayout({
         {children}
       </div>
 
-      <section className="border-t border-[rgba(7,20,38,0.06)] bg-white py-16 sm:py-20">
+      <section
+        className={`border-t ${bandBorder} py-16 sm:py-20`}
+        style={{ background: bandBg }}
+      >
         <div className="mx-auto max-w-3xl px-6 text-center sm:px-8">
           <h2
             className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl"

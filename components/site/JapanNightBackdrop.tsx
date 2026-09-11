@@ -27,9 +27,12 @@ const PETALS = [
  */
 export default function JapanNightBackdrop({
   variant = "hero",
+  atmosphere = "night",
 }: {
   /** firstView: 1画面全体（MY SLEEP まで）向けの構図 */
   variant?: "hero" | "firstView";
+  /** predawn: 夜明け前（睡眠学一覧）。night: 深い夜（入眠音・トップ） */
+  atmosphere?: "night" | "predawn";
 }) {
   const {
     props: { srcSet: mobileBgSrcSet },
@@ -53,10 +56,13 @@ export default function JapanNightBackdrop({
   });
 
   const isFirstView = variant === "firstView";
+  const isPredawn = atmosphere === "predawn";
 
   return (
     <div
-      className={`pointer-events-none z-0 overflow-hidden bg-[#040c18] ${
+      className={`pointer-events-none z-0 overflow-hidden ${
+        isPredawn ? "bg-[#101c32]" : "bg-[#040c18]"
+      } ${
         isFirstView
           ? "fixed inset-0"
           : "absolute inset-0"
@@ -64,6 +70,7 @@ export default function JapanNightBackdrop({
       aria-hidden="true"
       data-swij-japan-night=""
       data-variant={variant}
+      data-atmosphere={atmosphere}
     >
       <style>{`
         [data-swij-japan-night] {

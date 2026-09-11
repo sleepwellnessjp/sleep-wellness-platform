@@ -52,7 +52,7 @@ export default async function SleepSoundPage() {
           }
         />
 
-        <section className="border-b border-white/10">
+        <section>
           <div className="mx-auto max-w-7xl px-6 py-14 sm:px-8 sm:py-16 lg:px-10 lg:py-20">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"

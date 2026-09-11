@@ -1,18 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { GOLD_LIGHT } from "@/components/ui/tokens";
 import type { SleepContent } from "@/lib/sleep-content/types";
-
-const CARD_NAVY = "#2F4666";
 
 function FeaturedCard({ article }: { article: SleepContent }) {
   return (
     <Link
       href={`/sleep/science/${article.slug}`}
-      className="flex h-full flex-col overflow-hidden rounded-2xl"
+      className="flex h-full flex-col overflow-hidden rounded-2xl border-2 backdrop-blur-[2px]"
       style={{
-        background: CARD_NAVY,
-        border: "1px solid rgba(184,148,95,0.3)",
+        background:
+          "linear-gradient(152deg, rgba(48,58,78,0.42) 0%, rgba(12,22,40,0.58) 52%, rgba(8,16,30,0.66) 100%)",
+        borderColor: GOLD_LIGHT,
       }}
     >
       {/* カバー画像（円形・カード上部中央） */}
@@ -42,6 +42,7 @@ function FeaturedCard({ article }: { article: SleepContent }) {
             WebkitLineClamp: 3,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
+            textShadow: "0 1px 12px rgba(0,0,0,0.45)",
           }}
         >
           {article.title}

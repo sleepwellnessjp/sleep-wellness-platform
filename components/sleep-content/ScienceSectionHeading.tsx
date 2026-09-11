@@ -21,23 +21,47 @@ function nekoDisplaySize(src: string): { width: number; height: number } {
 export default function ScienceSectionHeading({
   subcategory,
   label,
+  tone = "light",
 }: {
   subcategory: SleepContentSubcategory;
   label: string;
+  /** onDark: 睡眠学一覧（夜明け前）。light: 既定（明るいページ向け） */
+  tone?: "light" | "onDark";
 }) {
   const src = SCIENCE_SECTION_NEKO[subcategory];
   const { width, height } = nekoDisplaySize(src);
+  const onDark = tone === "onDark";
 
   return (
-    <h2 className="mb-4 flex items-center gap-3 text-2xl font-semibold tracking-[-0.02em] text-[#071426]">
-      <Image
-        src={src}
-        alt=""
-        width={width}
-        height={height}
-        className="shrink-0 object-contain"
-        style={{ width, height }}
-      />
+    <h2
+      className={`mb-4 flex items-center gap-3 text-2xl font-semibold tracking-[-0.02em] ${
+        onDark ? "text-[#F5F2EA]" : "text-[#071426]"
+      }`}
+      style={onDark ? { textShadow: "0 2px 16px rgba(0,0,0,0.45)" } : undefined}
+    >
+      <span
+        className="inline-flex shrink-0"
+        style={
+          onDark
+            ? {
+                width,
+                height,
+                filter:
+                  "drop-shadow(0 0 10px rgba(255,255,255,0.45)) drop-shadow(0 0 20px rgba(255,255,255,0.22))",
+              }
+            : { width, height }
+        }
+      >
+        <Image
+          src={src}
+          alt=""
+          width={width}
+          height={height}
+          priority
+          className="shrink-0 object-contain"
+          style={{ width, height }}
+        />
+      </span>
       <span className="min-w-0">{label}</span>
     </h2>
   );

@@ -43,8 +43,8 @@ function Callout({
     <aside
       className={`rounded-2xl px-4 py-4 sm:px-5 sm:py-5 ${className} ${
         quiet
-          ? "border border-slate-200 bg-slate-50 text-sm leading-[1.75] text-slate-500 sm:leading-7"
-          : "border border-[#8a6a2d]/25 bg-[#fbf9f4] text-[15px] leading-[1.8] text-[#071426]"
+          ? "border border-[rgba(7,20,38,0.1)] bg-white text-sm leading-[1.75] text-slate-500 sm:leading-7"
+          : "border border-[#8a6a2d]/30 bg-white text-[15px] leading-[1.8] text-[#071426]"
       }`}
     >
       {children}
@@ -106,7 +106,7 @@ export default function ScienceArticleBody({
               <img
                 src={block.image_url}
                 alt={block.alt || block.caption || ""}
-                className="w-full rounded-2xl bg-slate-50 object-contain"
+                className="w-full rounded-2xl border border-[rgba(7,20,38,0.06)] bg-white object-contain"
               />
               {block.caption ? (
                 <figcaption

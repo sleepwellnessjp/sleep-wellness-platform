@@ -121,8 +121,10 @@ function RecipeIcon({ active }: { active: boolean }) {
 export default function MobileSleepTabBar() {
   const pathname = usePathname() || "/";
   const [visible, setVisible] = useState(pathname !== "/");
-  const nightSound =
-    pathname === "/sleep/sound" || pathname.startsWith("/sleep/sound/");
+  const nightChrome =
+    pathname === "/sleep/sound" ||
+    pathname.startsWith("/sleep/sound/") ||
+    pathname === "/sleep/science";
 
   useEffect(() => {
     const html = document.documentElement;
@@ -142,7 +144,7 @@ export default function MobileSleepTabBar() {
     <nav
       aria-label="主要ナビゲーション"
       data-sleep-tabbar=""
-      data-sleep-sound-night-tabbar={nightSound ? "" : undefined}
+      data-sleep-sound-night-tabbar={nightChrome ? "" : undefined}
       className={`pointer-events-none fixed inset-x-0 bottom-0 z-[80] px-2.5 pb-[max(0.875rem,env(safe-area-inset-bottom,0px))] md:px-6 lg:hidden ${
         visible ? "opacity-100" : "opacity-0"
       }`}
@@ -153,13 +155,13 @@ export default function MobileSleepTabBar() {
           visible ? "pointer-events-auto" : "pointer-events-none"
         }`}
         style={{
-          background: nightSound ? "rgba(2, 11, 26, 0.82)" : FROST_BG,
-          borderColor: nightSound
+          background: nightChrome ? "rgba(2, 11, 26, 0.82)" : FROST_BG,
+          borderColor: nightChrome
             ? "rgba(198, 168, 106, 0.28)"
             : FROST_BORDER,
           backdropFilter: FROST_FILTER,
           WebkitBackdropFilter: FROST_FILTER,
-          boxShadow: nightSound
+          boxShadow: nightChrome
             ? "0 8px 28px rgba(0, 0, 0, 0.45)"
             : FROST_SHADOW,
         }}

@@ -527,6 +527,12 @@ body:has([data-sleep-sound-night]) {
   color: #f5f2ea;
 }
 
+/* 睡眠学一覧のみ: 夜明け前トーン（記事本文ページには付けない） */
+body:has([data-sleep-science-dawn]) {
+  background: #101c32;
+  color: #f5f2ea;
+}
+
 @media (min-width: 1024px) {
   body {
     padding-bottom: calc(
