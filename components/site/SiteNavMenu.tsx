@@ -11,28 +11,69 @@ import { HOME_TOP_HREF } from "@/lib/home-intro";
 const ANALYSIS_HREF = "/analysis/new";
 const ANALYSIS_LOGIN_HREF = `/login?redirect=${encodeURIComponent(ANALYSIS_HREF)}`;
 
-export const SITE_NAV_ITEMS = [
-  { label: "トップ", href: HOME_TOP_HREF },
-  { label: "Sleep Wellness Method™", href: "/#about" },
-  { label: "私たちについて", href: "/about" },
-  { label: "睡眠ウェルネス・プログラム", href: "/pricing" },
-  { label: "認定校・講座", href: "/school" },
-  { label: "メラトニンヨガ™認定講師", href: "/instructors" },
-  { label: "認定インストラクターの活動", href: "/instructor-activities" },
-  { label: "ワークショップ・リトリート", href: "/retreat" },
-  { label: "研究・実証", href: "/research" },
-  { label: "エビデンス", href: "/evidence" },
-  { label: "睡眠学", href: "/sleep/science" },
-  { label: "睡眠レシピ", href: "/recipes" },
+type NavItem = {
+  label: string;
+  href: string;
+  badge?: string;
+  requiresAuth?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: readonly NavItem[];
+};
+
+export const SITE_NAV_GROUPS = [
   {
-    label: "クライアントの分析",
-    href: ANALYSIS_HREF,
-    badge: "認定講師専用",
-    requiresAuth: true,
+    label: "見る・学ぶ",
+    items: [
+      { label: "トップ", href: HOME_TOP_HREF },
+      { label: "Sleep Wellness Method™", href: "/#about" },
+      { label: "睡眠ウェルネス・プログラム", href: "/pricing" },
+      { label: "睡眠学", href: "/sleep/science" },
+      { label: "睡眠レシピ", href: "/recipes" },
+    ],
   },
-  { label: "認定講師専用ページ", href: "/login" },
-  { label: "お問い合わせ", href: "/contact" },
-] as const;
+  {
+    label: "指導者を目指す方へ",
+    items: [
+      {
+        label: "メラトニンヨガ™認定インストラクター養成講座",
+        href: "/academy/certified-instructor",
+      },
+      {
+        label: "メラトニンヨガ™が目指すところ",
+        href: "/melatonin-yoga/vision",
+      },
+      { label: "ワークショップ・リトリート", href: "/retreat" },
+    ],
+  },
+  {
+    label: "認定講師",
+    items: [
+      { label: "メラトニンヨガ™認定講師", href: "/instructors" },
+      {
+        label: "クライアントの分析",
+        href: ANALYSIS_HREF,
+        badge: "認定講師専用",
+        requiresAuth: true,
+      },
+      { label: "認定講師専用ページ", href: "/login" },
+    ],
+  },
+  {
+    label: "Sleep Wellness Institute Japan",
+    items: [
+      { label: "私たちについて", href: "/about" },
+      { label: "研究・実証", href: "/research" },
+      { label: "エビデンス", href: "/evidence" },
+      { label: "お問い合わせ", href: "/contact" },
+    ],
+  },
+] as const satisfies readonly NavGroup[];
+
+/** @deprecated フラット一覧が必要な場合用。グループ定義から展開 */
+export const SITE_NAV_ITEMS = SITE_NAV_GROUPS.flatMap((group) => group.items);
 
 type SiteNavMenuProps = {
   /** Hero など暗い背景向け */
@@ -58,8 +99,11 @@ function isActivePath(
   if (base === "/analysis/new") {
     return pathname === "/analysis/new" || pathname.startsWith("/analysis/");
   }
-  if (base === "/school") {
-    return pathname === "/school" || pathname.startsWith("/school/");
+  if (base === "/academy/certified-instructor") {
+    return (
+      pathname === "/academy/certified-instructor" ||
+      pathname.startsWith("/academy/certified-instructor/")
+    );
   }
   if (base === "/retreat") {
     return pathname === "/retreat" || pathname.startsWith("/retreat/");
@@ -69,12 +113,6 @@ function isActivePath(
   }
   if (base === "/instructors") {
     return pathname === "/instructors" || pathname.startsWith("/instructors/");
-  }
-  if (base === "/instructor-activities") {
-    return (
-      pathname === "/instructor-activities" ||
-      pathname.startsWith("/instructor-activities/")
-    );
   }
   if (base === "/contact") {
     return pathname === "/contact" || pathname.startsWith("/contact/");
@@ -198,79 +236,99 @@ export default function SiteNavMenu({
 
               {/* 短い画面ではナビ領域のみ縦スクロール（ページ本体は固定） */}
               <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-0.5 [-webkit-overflow-scrolling:touch] sm:px-4 sm:py-1.5">
-                <ul className="flex flex-col gap-0">
-                  {SITE_NAV_ITEMS.map((item) => {
-                    const active = isActivePath(pathname, item.href, hash);
-                    const href =
-                      "requiresAuth" in item && item.requiresAuth
-                        ? canOpenAnalysis
-                          ? item.href
-                          : ANALYSIS_LOGIN_HREF
-                        : item.href;
-                    const badge = "badge" in item ? item.badge : null;
-                    const hashId = href.startsWith("/#")
-                      ? href.slice(2)
-                      : null;
-                    return (
-                      <li key={item.label}>
-                        <Link
-                          href={href}
-                          onClick={(event) => {
-                            if (!hashId) {
-                              setOpen(false);
-                              return;
-                            }
-                            event.preventDefault();
-                            const el = document.getElementById(hashId);
-                            if (pathname === "/" && el) {
-                              // メニュー閉じ時の scroll 復元先を Method セクションへ上書き
-                              const y =
-                                el.getBoundingClientRect().top +
-                                scrollLockY.current;
-                              scrollLockY.current = Math.max(0, y);
-                              setOpen(false);
-                              window.history.pushState(null, "", `/#${hashId}`);
-                              setHash(`#${hashId}`);
-                              window.setTimeout(() => {
-                                document
-                                  .getElementById(hashId)
-                                  ?.scrollIntoView({
-                                    behavior: "smooth",
-                                    block: "start",
-                                  });
-                              }, 40);
-                              return;
-                            }
-                            setOpen(false);
-                            window.setTimeout(() => {
-                              window.location.assign(`/#${hashId}`);
-                            }, 40);
-                          }}
-                          className={`flex min-h-9 flex-col justify-center rounded-lg px-2.5 py-0.5 transition sm:min-h-[36px] sm:rounded-lg sm:px-3 sm:py-1 ${FOCUS_RING} ${
-                            active
-                              ? "bg-[rgba(138,106,45,0.08)]"
-                              : "hover:bg-[#f7f7f5]"
-                          }`}
-                          style={{ color: active ? GOLD_MID : NAVY }}
-                        >
-                          <span className="block text-[14px] font-semibold leading-snug tracking-[-0.02em] sm:text-[15px] sm:leading-tight">
-                            {item.label}
-                          </span>
-                          {badge ? (
-                            <span
-                              className="mt-0 block text-[10px] font-medium leading-tight tracking-[0.04em] sm:text-[10.5px]"
-                              style={{ color: GOLD }}
-                            >
-                              {badge}
-                            </span>
-                          ) : null}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <div className="flex flex-col gap-5 sm:gap-6">
+                  {SITE_NAV_GROUPS.map((group) => (
+                    <div key={group.label}>
+                      <p
+                        className="px-2.5 text-[10px] font-semibold tracking-[0.22em] sm:px-3"
+                        style={{ color: GOLD }}
+                      >
+                        {group.label}
+                      </p>
+                      <ul className="mt-1.5 flex flex-col gap-0">
+                        {group.items.map((item) => {
+                          const active = isActivePath(
+                            pathname,
+                            item.href,
+                            hash,
+                          );
+                          const href =
+                            item.requiresAuth
+                              ? canOpenAnalysis
+                                ? item.href
+                                : ANALYSIS_LOGIN_HREF
+                              : item.href;
+                          const badge = item.badge ?? null;
+                          const hashId = href.startsWith("/#")
+                            ? href.slice(2)
+                            : null;
+                          return (
+                            <li key={item.label}>
+                              <Link
+                                href={href}
+                                onClick={(event) => {
+                                  if (!hashId) {
+                                    setOpen(false);
+                                    return;
+                                  }
+                                  event.preventDefault();
+                                  const el = document.getElementById(hashId);
+                                  if (pathname === "/" && el) {
+                                    // メニュー閉じ時の scroll 復元先を Method セクションへ上書き
+                                    const y =
+                                      el.getBoundingClientRect().top +
+                                      scrollLockY.current;
+                                    scrollLockY.current = Math.max(0, y);
+                                    setOpen(false);
+                                    window.history.pushState(
+                                      null,
+                                      "",
+                                      `/#${hashId}`,
+                                    );
+                                    setHash(`#${hashId}`);
+                                    window.setTimeout(() => {
+                                      document
+                                        .getElementById(hashId)
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "start",
+                                        });
+                                    }, 40);
+                                    return;
+                                  }
+                                  setOpen(false);
+                                  window.setTimeout(() => {
+                                    window.location.assign(`/#${hashId}`);
+                                  }, 40);
+                                }}
+                                className={`flex min-h-9 flex-col justify-center rounded-lg px-2.5 py-0.5 transition sm:min-h-[36px] sm:rounded-lg sm:px-3 sm:py-1 ${FOCUS_RING} ${
+                                  active
+                                    ? "bg-[rgba(138,106,45,0.08)]"
+                                    : "hover:bg-[#f7f7f5]"
+                                }`}
+                                style={{ color: active ? GOLD_MID : NAVY }}
+                              >
+                                <span className="block text-[14px] font-semibold leading-snug tracking-[-0.02em] sm:text-[15px] sm:leading-tight">
+                                  {item.label}
+                                </span>
+                                {badge ? (
+                                  <span
+                                    className="mt-0 block text-[10px] font-medium leading-tight tracking-[0.04em] sm:text-[10.5px]"
+                                    style={{ color: GOLD }}
+                                  >
+                                    {badge}
+                                  </span>
+                                ) : null}
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
 
-                <div className="mt-1 border-t border-[rgba(7,20,38,0.08)] pt-1 sm:mt-2 sm:pt-2">
+                <div className="mt-5 border-t border-[rgba(7,20,38,0.08)] pt-3 sm:mt-6 sm:pt-4">
                   <p
                     className="text-[12px] font-semibold leading-tight tracking-[0.02em] sm:text-[12.5px]"
                     style={{ color: NAVY }}

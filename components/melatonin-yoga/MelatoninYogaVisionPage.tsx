@@ -118,8 +118,14 @@ export default function MelatoninYogaVisionPage() {
 
         {/* ⓪ ヒーロー — min-height 88svh（ヘッダーはオーバーレイ）。下に次セクションがわずかに覗く */}
         <section className="relative flex min-h-[88svh] flex-col items-center justify-center px-4 pb-[calc(var(--sw-sleep-tabbar-clearance)+24px+56px)] pt-[calc(env(safe-area-inset-top,0px)+5.5rem)] sm:px-8 lg:px-10 lg:pb-24">
+          <p
+            className="text-[10px] font-semibold uppercase tracking-[0.32em]"
+            style={{ color: GOLD_LIGHT }}
+          >
+            Vision
+          </p>
           <h1
-            className="w-full max-w-[22.5rem] text-center font-medium text-[#F5F2EA] sm:max-w-xl lg:max-w-3xl"
+            className="mt-4 w-full max-w-[22.5rem] text-center font-medium text-[#F5F2EA] sm:max-w-xl lg:max-w-3xl"
             style={{
               fontFamily: SERIF,
               textShadow: "0 2px 24px rgba(0,0,0,0.35)",

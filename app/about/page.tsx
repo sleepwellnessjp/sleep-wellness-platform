@@ -208,19 +208,6 @@ export default function AboutPage() {
 
         <Divider />
 
-        {/* 未来像（旧 VISION。/melatonin-yoga/vision との導線混同を避ける） */}
-        <section>
-          <SectionHeading kicker="Future" title="私たちが見ている未来" />
-          <Lead>
-            眠りと目覚めが調和した、24時間のウェルネスが当たり前になる未来。
-          </Lead>
-          <Body>
-            夜は、メラトニンヨガ™で眠れる身体を育てる。昼は、間のヨガ™で選択できる自分を育てる。眠りは夜の回復装置、間は昼の回復装置。両方が揃ったとき、人は本来のリズムを取り戻します。そしてその先に、「間」という日本人が育んできた感性が、世界のウェルネスの共通語になる未来を見ています。忙しさが価値になった時代だからこそ、休む力の価値を、何もしない時間の豊かさを、日本から世界へ伝えていきます。
-          </Body>
-        </section>
-
-        <Divider />
-
         {/* バリュー */}
         <section>
           <SectionHeading
@@ -298,7 +285,29 @@ export default function AboutPage() {
           </Body>
         </section>
 
-        <Divider />
+        {/* VISION への渡し */}
+        <div className="py-16 text-center sm:py-20">
+          <div
+            aria-hidden="true"
+            className="mx-auto h-px w-10"
+            style={{ background: "rgba(216,179,106,0.45)" }}
+          />
+          <p className="mt-10 text-[0.98rem] leading-[2.05] tracking-[0.01em] text-white/72 sm:text-[1.02rem]">
+            この考え方を、睡眠という切り口から
+            <br />
+            指導者へ手渡していく取り組みが、
+            <br />
+            Sleep Wellness Institute Japan です。
+          </p>
+          <Link
+            href="/melatonin-yoga/vision"
+            className="mt-8 inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
+            style={{ color: GOLD }}
+          >
+            メラトニンヨガ™が目指すところ
+            <span aria-hidden>→</span>
+          </Link>
+        </div>
 
         {/* 結びに */}
         <section>
@@ -316,13 +325,14 @@ export default function AboutPage() {
               健幸スタジオ スタジオテラス　代表　TAKA（若林貴久）
             </p>
             <p className="mt-2 text-[12.5px] leading-[1.9] tracking-[0.04em] text-white/60">
-              E-RYT500／ニュートラルヨガ®︎創始者／ウェルネスアース協会 代表
+              {/* 区切り「／」「・」の直後だけ折り返し可。タグ間空白で文字が割れないよう1行に連結 */}
+              <span className="whitespace-nowrap">E-RYT500／</span><wbr /><span className="whitespace-nowrap">メラトニンヨガ™・</span><span className="whitespace-nowrap">間のヨガ™・</span><span className="whitespace-nowrap">ニュートラルヨガ® 創始者／</span><wbr /><span className="whitespace-nowrap">ウェルネスアース協会 代表</span>
             </p>
           </div>
         </section>
 
-        {/* 相互リンク */}
-        <div className="mt-16 mb-4 flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-10">
+        {/* 戻る導線 */}
+        <div className="mt-16 mb-4 text-center">
           <Link
             href={HOME_TOP_HREF}
             className="inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
@@ -330,14 +340,6 @@ export default function AboutPage() {
           >
             <span aria-hidden>←</span>
             トップへ戻る
-          </Link>
-          <Link
-            href="/melatonin-yoga/vision"
-            className="inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
-            style={{ color: GOLD }}
-          >
-            メラトニンヨガ™が目指すところ
-            <span aria-hidden>→</span>
           </Link>
         </div>
       </article>

@@ -46,6 +46,20 @@ const nextConfig: NextConfig = {
   },
   // 既定オフ。開発でバッジを見る場合は NEXT_PUBLIC_SHOW_DEV_INDICATORS=1
   devIndicators: showDevIndicators ? { position: "bottom-left" } : false,
+  async redirects() {
+    return [
+      {
+        source: "/school",
+        destination: "/academy/certified-instructor",
+        statusCode: 301,
+      },
+      {
+        source: "/school/:path*",
+        destination: "/academy/certified-instructor",
+        statusCode: 301,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

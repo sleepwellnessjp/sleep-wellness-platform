@@ -133,6 +133,14 @@ function needsSessionRefresh(pathname: string): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // 旧 /school 公開ページは養成講座へ集約
+  if (pathname === "/school" || pathname.startsWith("/school/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/academy/certified-instructor";
+    url.search = "";
+    return NextResponse.redirect(url, 301);
+  }
+
   // 本番で Supabase 未設定の場合も未ログイン扱いでガードを維持する
   if (!isSupabaseConfigured()) {
     if (requiresAuth(pathname)) {

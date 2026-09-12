@@ -427,7 +427,7 @@ export default function CertifiedInstructorProgramPage() {
                 受講料
               </p>
               <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#071426] sm:text-4xl">
-                150,000円（税込）
+                130,000円（税込）
               </p>
 
               {SHOW_EARLY_BIRD ? (
@@ -436,7 +436,7 @@ export default function CertifiedInstructorProgramPage() {
                     早割
                   </p>
                   <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#8a6a2d] sm:text-2xl">
-                    140,000円（税込）
+                    120,000円（税込）
                   </p>
                   <p className="mt-2 text-[14px] leading-7 text-[#8a6a2d]/90 sm:text-[15px]">
                     2026年12月26日までのお申し込みで10,000円引き
@@ -467,10 +467,33 @@ export default function CertifiedInstructorProgramPage() {
 
               <div className="mt-8">
                 <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">
+                  受講形式
+                </p>
+                <p className="mt-2 text-[15px] leading-8 text-[#071426] sm:text-base">
+                  オンライン・対面のどちらでも受講できます
+                  <br />
+                  アーカイブ動画で後から視聴も可能です
+                </p>
+              </div>
+
+              <div className="mt-8">
+                <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">
                   会場
                 </p>
                 <p className="mt-2 text-[15px] leading-8 text-[#071426] sm:text-base">
                   お申し込み後に別途ご案内します
+                </p>
+              </div>
+
+              <div className="mt-8 inline-block rounded-sm border border-[#8a6a2d] px-5 py-4">
+                <p className="text-[11px] font-semibold tracking-[0.18em] text-[#8a6a2d]">
+                  再受講制度
+                </p>
+                <p className="mt-1.5 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
+                  2回目以降の受講は65,000円（税込）
+                </p>
+                <p className="mt-1.5 text-[14px] leading-7 text-[#071426]/80 sm:text-[15px]">
+                  受講料130,000円の半額です
                 </p>
               </div>
 
