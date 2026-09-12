@@ -1,6 +1,7 @@
 import HomeIntro from "@/components/HomeIntro";
 import HomeIntroBridge from "@/components/HomeIntroBridge";
 import HomeFirstView from "@/components/home/HomeFirstView";
+import HomeVisionPromo from "@/components/home/HomeVisionPromo";
 import About from "@/components/About";
 import Services from "@/components/Services";
 import InstructorsCta from "@/components/InstructorsCta";
@@ -58,6 +59,7 @@ export default async function Home() {
             : "/login?redirect=%2Fanalysis%2Fnew"
         }
       />
+      <HomeVisionPromo />
       <About />
       <Services />
       <InstructorsCta />

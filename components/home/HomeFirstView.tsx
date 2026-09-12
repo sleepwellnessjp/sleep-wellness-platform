@@ -27,7 +27,7 @@ export default function HomeFirstView({ analysisHref }: HomeFirstViewProps) {
 
       <div
         data-swij-sleep-words=""
-        className="relative z-10 px-5 pt-2 pb-[calc(var(--sw-sleep-tabbar-clearance)+2.75rem)] sm:px-8 sm:pt-3 md:pt-2 md:pb-[calc(6.25rem+env(safe-area-inset-bottom,0px)+1.25rem)] lg:px-10 lg:pb-12 lg:pt-3"
+        className="relative z-10 px-5 pt-2 pb-[var(--sw-sleep-tabbar-clearance)] sm:px-8 sm:pt-3 md:pt-2 md:pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))] lg:px-10 lg:pb-8 lg:pt-3"
       >
         <SleepWordsBanner tone="onDark" />
       </div>

@@ -103,6 +103,7 @@ function toCard(activity: InstructorActivity): PublicActivityCard {
     locationLabel: locationLabelOf(activity),
     instructorName: activity.instructorName,
     instructorId: activity.instructorPublicId,
+    ended: !isUpcomingEventDate(activity.eventDate),
   };
 }
 
@@ -212,10 +213,17 @@ export async function listHomeFeaturedActivities(
   client?: Client,
 ): Promise<PublicActivityCard[]> {
   const published = await listPublishedActivities({ sort: "date", client });
-  const upcoming = published.filter((item) => isUpcomingEventDate(item.eventDate));
-  const featured = upcoming.filter((item) => item.featured);
-  const rest = upcoming.filter((item) => !item.featured);
-  return [...featured, ...rest].slice(0, limit).map(toCard);
+  const upcoming = published
+    .filter((item) => isUpcomingEventDate(item.eventDate))
+    .sort((a, b) => {
+      // トップ掲載ONを優先し、同群内は開催が近い順
+      if (a.featured !== b.featured) return a.featured ? -1 : 1;
+      return a.eventDate.localeCompare(b.eventDate);
+    });
+  const past = published
+    .filter((item) => !isUpcomingEventDate(item.eventDate))
+    .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+  return [...upcoming, ...past].slice(0, limit).map(toCard);
 }
 
 export async function getPublishedActivityBySlug(

@@ -58,7 +58,10 @@ export default function BetaChrome() {
   const onFeedback =
     pathname === "/feedback" || pathname.startsWith("/feedback/");
   const sleepSurface =
-    pathname === "/sleep" || pathname.startsWith("/sleep/");
+    pathname === "/sleep" ||
+    pathname.startsWith("/sleep/") ||
+    pathname === "/melatonin-yoga/vision" ||
+    pathname === "/academy/certified-instructor";
 
   let badge: ReactNode;
   if (!onFeedback) {

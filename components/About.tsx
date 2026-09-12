@@ -22,7 +22,7 @@ export default function About() {
   return (
     <section
       id="about"
-      className="relative scroll-mt-6 overflow-hidden bg-[#071426] py-28 text-white sm:scroll-mt-8 sm:py-24 lg:py-28"
+      className="relative z-10 scroll-mt-6 overflow-hidden bg-[#071426] pt-0 pb-28 text-white sm:scroll-mt-8 sm:pb-24 lg:pb-28"
     >
       <div className="absolute -left-40 top-10 h-[360px] w-[360px] rounded-full bg-cyan-300/8 blur-3xl" />
       <div className="absolute -right-48 bottom-0 h-[380px] w-[380px] rounded-full bg-amber-300/8 blur-3xl" />
@@ -66,18 +66,18 @@ export default function About() {
           </div>
         </div>
 
-        <div className="mt-14 grid gap-6 border-t border-white/10 pt-10 sm:grid-cols-3 sm:gap-8">
+        <div className="mt-8 grid gap-4 border-t border-white/10 pt-6 sm:mt-10 sm:grid-cols-3 sm:gap-4 sm:pt-8">
           {principles.map((item) => (
-            <article key={item.number} className="space-y-3">
+            <article key={item.number} className="space-y-1">
               <p className="text-xs font-semibold tracking-[0.22em] text-[#d8b36a]">
                 {item.number}
               </p>
-              <h3 className="text-xl font-semibold tracking-[-0.03em] text-white">
+              <p className="text-[11px] font-semibold tracking-[0.16em] text-white/50">
                 {item.title}
-              </h3>
-              <p className="text-[15px] leading-7 text-white/55">
-                {item.subtitle}
               </p>
+              <h3 className="text-lg font-semibold leading-snug tracking-[-0.03em] text-white sm:text-xl">
+                {item.subtitle}
+              </h3>
             </article>
           ))}
         </div>

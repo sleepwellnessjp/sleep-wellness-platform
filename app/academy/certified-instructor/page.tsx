@@ -11,6 +11,9 @@ export const metadata: Metadata = {
     "睡眠科学、ヨガ、呼吸法、データ分析、日本文化を体系的に学び、睡眠ウェルネスを伝える認定講師を育成する3日間集中プログラム。",
 };
 
+/** 早割ブロックの表示切替（非表示にする場合は false） */
+const SHOW_EARLY_BIRD = true;
+
 const features = [
   {
     title: "科学",
@@ -182,7 +185,7 @@ function SectionLabel({ children }: { children: string }) {
 export default function CertifiedInstructorProgramPage() {
   return (
     <InstructorPublicShell>
-      <main className="bg-[#f7f7f5] text-[#071426]">
+      <main className="bg-[#f7f7f5] pb-[var(--sw-sleep-page-bottom-pad)] text-[#071426] lg:pb-16">
         {/* Hero */}
         <section className="relative overflow-hidden bg-[#071426]">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(216,179,106,0.14),transparent_55%)]" />
@@ -223,6 +226,15 @@ export default function CertifiedInstructorProgramPage() {
                 開催情報を問い合わせる
               </Link>
             </div>
+
+            <p className="mt-6">
+              <Link
+                href="/melatonin-yoga/vision"
+                className="text-[13px] font-medium text-white/55 underline decoration-white/25 underline-offset-4 transition hover:text-white/75 hover:decoration-white/40 sm:text-sm"
+              >
+                メラトニンヨガ™が目指すところ →
+              </Link>
+            </p>
           </div>
         </section>
 
@@ -281,24 +293,42 @@ export default function CertifiedInstructorProgramPage() {
               3日間のカリキュラム
             </h2>
 
-            <div className="mt-10 space-y-6 sm:mt-12 sm:space-y-8">
+            <div className="mt-10 space-y-4 sm:mt-12 sm:space-y-5">
               {curriculum.map((day) => (
-                <article
+                <details
                   key={day.day}
-                  className="overflow-hidden rounded-[28px] border border-[#071426]/08 bg-white shadow-[0_24px_70px_-48px_rgba(7,20,38,0.28)]"
+                  className="group overflow-hidden rounded-[28px] border border-[#071426]/08 bg-white shadow-[0_24px_70px_-48px_rgba(7,20,38,0.28)]"
                 >
-                  <div className="border-b border-[#071426]/06 bg-[#071426] px-5 py-6 sm:px-8 sm:py-7">
-                    <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
-                      {day.day}
-                    </p>
-                    <h3 className="mt-3 text-xl font-semibold leading-snug tracking-[-0.03em] text-white sm:text-2xl">
-                      {day.title}
-                    </h3>
-                    <p className="mt-2 text-sm text-white/70 sm:text-[15px]">
-                      {day.subtitle}
-                    </p>
-                  </div>
-                  <div className="px-5 py-6 sm:px-8 sm:py-8">
+                  <summary className="cursor-pointer list-none bg-[#071426] px-5 py-6 marker:content-none sm:px-8 sm:py-7 [&::-webkit-details-marker]:hidden">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold tracking-[0.28em] text-[#d8b36a]">
+                          {day.day}
+                        </p>
+                        <h3 className="mt-3 text-xl font-semibold leading-snug tracking-[-0.03em] text-white sm:text-2xl">
+                          {day.title}
+                        </h3>
+                        <p className="mt-2 text-sm text-white/70 sm:text-[15px]">
+                          {day.subtitle}
+                        </p>
+                      </div>
+                      <span
+                        className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/20 text-white/80 transition group-open:rotate-180"
+                        aria-hidden
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                        >
+                          <path d="M5 7.5L10 12.5L15 7.5" />
+                        </svg>
+                      </span>
+                    </div>
+                  </summary>
+                  <div className="border-t border-[#071426]/06 px-5 py-6 sm:px-8 sm:py-8">
                     <ul className="grid gap-2.5 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-2.5">
                       {day.items.map((item) => (
                         <li
@@ -317,7 +347,7 @@ export default function CertifiedInstructorProgramPage() {
                       {day.summary}
                     </p>
                   </div>
-                </article>
+                </details>
               ))}
             </div>
           </div>
@@ -381,6 +411,83 @@ export default function CertifiedInstructorProgramPage() {
               ※本資格は医療資格ではありません。医療診断や治療を行うものではなく、
               睡眠ウェルネスの観点から生活習慣とセルフケアを支援する認定制度です。
             </p>
+          </div>
+        </section>
+
+        {/* Date & Fee — CERTIFICATION FLOW 直後 / PLATFORM PLAN 直前 */}
+        <section className="border-b border-[#071426]/06 bg-[#fafaf8] py-14 sm:py-16 lg:py-20">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <SectionLabel>DATE & FEE</SectionLabel>
+            <h2 className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl lg:text-4xl">
+              開催日程と受講料
+            </h2>
+
+            <div className="mt-8 max-w-2xl sm:mt-10">
+              <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">
+                受講料
+              </p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-[#071426] sm:text-4xl">
+                150,000円（税込）
+              </p>
+
+              {SHOW_EARLY_BIRD ? (
+                <div className="mt-5">
+                  <p className="text-[11px] font-semibold tracking-[0.18em] text-[#8a6a2d]">
+                    早割
+                  </p>
+                  <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[#8a6a2d] sm:text-2xl">
+                    140,000円（税込）
+                  </p>
+                  <p className="mt-2 text-[14px] leading-7 text-[#8a6a2d]/90 sm:text-[15px]">
+                    2026年12月26日までのお申し込みで10,000円引き
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-8 border-t border-[#071426]/08 pt-8">
+                <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">
+                  開催日
+                </p>
+                <p className="mt-2 text-[15px] font-semibold leading-8 text-[#071426] sm:text-base">
+                  2027年2月13日（土）／2月20日（土）／2月27日（土）
+                </p>
+                <p className="mt-2 text-[14px] leading-7 text-slate-600 sm:text-[15px]">
+                  3日間すべてのご受講が必要です
+                </p>
+              </div>
+
+              <div className="mt-8 inline-block rounded-sm border border-[#8a6a2d] px-5 py-4">
+                <p className="text-[11px] font-semibold tracking-[0.18em] text-[#8a6a2d]">
+                  定員
+                </p>
+                <p className="mt-1.5 text-lg font-semibold tracking-[-0.02em] text-[#071426]">
+                  12名
+                </p>
+              </div>
+
+              <div className="mt-8">
+                <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-500">
+                  会場
+                </p>
+                <p className="mt-2 text-[15px] leading-8 text-[#071426] sm:text-base">
+                  お申し込み後に別途ご案内します
+                </p>
+              </div>
+
+              <p className="mt-8 text-[12px] leading-6 text-slate-500 sm:text-[13px]">
+                ※Sleep Wellness Platform
+                の年額利用料（¥12,000）は受講料に含まれません。
+              </p>
+
+              <div className="mt-10">
+                <Link
+                  href="/contact"
+                  className="inline-flex min-h-12 items-center justify-center rounded-full border border-[#071426]/2 bg-[#071426] px-7 py-3.5 text-sm font-semibold text-white transition hover:bg-[#0c1f38] sm:text-base"
+                >
+                  開催情報を問い合わせる
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 

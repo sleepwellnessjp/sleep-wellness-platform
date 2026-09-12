@@ -65,34 +65,27 @@ function InstructorChartIcon() {
   );
 }
 
-function SleepStepsIcon() {
+function ComingSoonSleepSteps() {
   return (
-    <div className="flex flex-col items-center justify-center leading-none">
-      <svg viewBox="0 0 80 36" className="mb-1 h-7 w-[88%]" aria-hidden>
-        <path
-          d="M 10 30 A 30 30 0 0 1 70 30"
-          fill="none"
-          stroke={GOLD}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-      </svg>
-      <div className="flex items-baseline gap-0.5">
-        <span className="text-[1.1rem] font-semibold tabular-nums sm:text-[1.25rem]" style={{ color: CREAM }}>
-          6.8
-        </span>
-        <span className="text-[9px] sm:text-[10px]" style={{ color: "rgba(245,240,228,0.72)" }}>
-          時間
-        </span>
-      </div>
-      <div className="mt-0.5 flex items-baseline gap-0.5">
-        <span className="text-[0.9rem] font-semibold tabular-nums sm:text-[1rem]" style={{ color: GOLD }}>
-          8,000
-        </span>
-        <span className="text-[9px] sm:text-[10px]" style={{ color: "rgba(184,148,95,0.85)" }}>
-          歩
-        </span>
-      </div>
+    <div className="flex max-w-[90%] flex-col items-center justify-center px-0.5 text-center leading-tight">
+      <p
+        className="whitespace-nowrap text-[7px] font-semibold tracking-[0.18em] sm:text-[8px] sm:tracking-[0.2em]"
+        style={{ color: GOLD }}
+      >
+        COMING SOON
+      </p>
+      <p
+        className="mt-1 whitespace-nowrap text-[11px] font-semibold tracking-[0.02em] sm:text-[12px]"
+        style={{ color: CREAM }}
+      >
+        睡眠と歩数
+      </p>
+      <p
+        className="mt-1 text-[7.5px] leading-[1.35] tracking-[0.01em] sm:text-[8.5px] sm:leading-[1.35]"
+        style={{ color: "rgba(245, 240, 228, 0.7)" }}
+      >
+        アプリ公開後、リングと連携して表示されます
+      </p>
     </div>
   );
 }
@@ -246,14 +239,15 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
           </Link>
         </div>
 
-        {/* 右：睡眠と歩数（1時45分方向） */}
+        {/* 右：睡眠と歩数（1時45分方向）— アプリ公開まで予告表示 */}
         <div
-          className="absolute z-10 w-[28%] -translate-x-1/2 -translate-y-1/2 cursor-default"
+          className="absolute z-10 w-[28%] -translate-x-1/2 -translate-y-1/2 cursor-default select-none"
           style={{
             left: rightPos.left,
             top: rightPos.top,
             ...revealStyle(visible, 450, reducedMotion),
           }}
+          role="group"
           aria-label="睡眠と歩数（準備中）"
         >
           <div
@@ -263,9 +257,8 @@ export default function MySleepSection({ analysisHref }: MySleepSectionProps) {
               boxShadow: PLANET_SHADOW,
             }}
           >
-            <SleepStepsIcon />
+            <ComingSoonSleepSteps />
           </div>
-          <PlanetLabel>睡眠と歩数</PlanetLabel>
         </div>
       </div>
     </section>

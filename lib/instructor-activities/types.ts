@@ -87,6 +87,8 @@ export type PublicActivityCard = {
   locationLabel: string;
   instructorName: string;
   instructorId: string;
+  /** 開催日を過ぎたイベント（トップ等で終了表示に使用） */
+  ended?: boolean;
 };
 
 export type InstructorActivityJoin = {
