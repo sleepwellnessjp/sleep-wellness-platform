@@ -23,7 +23,7 @@ type NavGroup = {
   items: readonly NavItem[];
 };
 
-export const SITE_NAV_GROUPS = [
+export const SITE_NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "見る・学ぶ",
     items: [
@@ -70,10 +70,12 @@ export const SITE_NAV_GROUPS = [
       { label: "お問い合わせ", href: "/contact" },
     ],
   },
-] as const satisfies readonly NavGroup[];
+];
 
-/** @deprecated フラット一覧が必要な場合用。グループ定義から展開 */
-export const SITE_NAV_ITEMS = SITE_NAV_GROUPS.flatMap((group) => group.items);
+/** フラット一覧が必要な場合用。グループ定義から展開 */
+export const SITE_NAV_ITEMS: NavItem[] = SITE_NAV_GROUPS.flatMap(
+  (group) => group.items,
+);
 
 type SiteNavMenuProps = {
   /** Hero など暗い背景向け */
