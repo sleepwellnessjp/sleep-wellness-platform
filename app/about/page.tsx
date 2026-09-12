@@ -208,9 +208,9 @@ export default function AboutPage() {
 
         <Divider />
 
-        {/* ビジョン */}
+        {/* 未来像（旧 VISION。/melatonin-yoga/vision との導線混同を避ける） */}
         <section>
-          <SectionHeading kicker="Vision" title="ビジョン ― 私たちが見ている未来" />
+          <SectionHeading kicker="Future" title="私たちが見ている未来" />
           <Lead>
             眠りと目覚めが調和した、24時間のウェルネスが当たり前になる未来。
           </Lead>
@@ -321,8 +321,8 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* 戻る導線 */}
-        <div className="mt-16 mb-4 text-center">
+        {/* 相互リンク */}
+        <div className="mt-16 mb-4 flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-10">
           <Link
             href={HOME_TOP_HREF}
             className="inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
@@ -330,6 +330,14 @@ export default function AboutPage() {
           >
             <span aria-hidden>←</span>
             トップへ戻る
+          </Link>
+          <Link
+            href="/melatonin-yoga/vision"
+            className="inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
+            style={{ color: GOLD }}
+          >
+            メラトニンヨガ™が目指すところ
+            <span aria-hidden>→</span>
           </Link>
         </div>
       </article>
