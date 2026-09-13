@@ -29,6 +29,24 @@ function isMissingCookTimeColumn(message: string): boolean {
   return /cook_time/i.test(message) && /does not exist|Could not find the/i.test(message);
 }
 
+type QueryResult<T> = {
+  data: T;
+  error: { message: string } | null;
+};
+
+/** cook_time 未マイグレーション環境向け。型は select 結果を Recipe 行として扱う。 */
+async function withOptionalCookTimeColumn<T>(
+  primary: PromiseLike<QueryResult<T>>,
+  fallback: () => PromiseLike<QueryResult<unknown>>,
+): Promise<QueryResult<T>> {
+  const first = await primary;
+  if (first.error && isMissingCookTimeColumn(first.error.message)) {
+    const second = await fallback();
+    return { data: second.data as T, error: second.error };
+  }
+  return first;
+}
+
 function recipesFrom(client: Client) {
   return client.from("recipes");
 }
@@ -141,16 +159,17 @@ function fieldsFromInput(input: RecipeInput): Record<string, unknown> {
 export async function listAllRecipesForAdmin(): Promise<Recipe[]> {
   await requireAdminProfile();
   const supabase = await requireClient();
-  let { data, error } = await recipesFrom(supabase)
-    .select(RECIPE_SELECT)
-    .order("sort_order", { ascending: true })
-    .order("updated_at", { ascending: false });
-  if (error && isMissingCookTimeColumn(error.message)) {
-    ({ data, error } = await recipesFrom(supabase)
-      .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+  const { data, error } = await withOptionalCookTimeColumn(
+    recipesFrom(supabase)
+      .select(RECIPE_SELECT)
       .order("sort_order", { ascending: true })
-      .order("updated_at", { ascending: false }));
-  }
+      .order("updated_at", { ascending: false }),
+    () =>
+      recipesFrom(supabase)
+        .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+        .order("sort_order", { ascending: true })
+        .order("updated_at", { ascending: false }),
+  );
   if (error) {
     console.error("[recipes] listAll:", error.message);
     missingTableError(error);
@@ -164,16 +183,14 @@ async function getRowById(
   id: string,
   supabase: Client,
 ): Promise<Recipe | null> {
-  let { data, error } = await recipesFrom(supabase)
-    .select(RECIPE_SELECT)
-    .eq("id", id)
-    .maybeSingle();
-  if (error && isMissingCookTimeColumn(error.message)) {
-    ({ data, error } = await recipesFrom(supabase)
-      .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
-      .eq("id", id)
-      .maybeSingle());
-  }
+  const { data, error } = await withOptionalCookTimeColumn(
+    recipesFrom(supabase).select(RECIPE_SELECT).eq("id", id).maybeSingle(),
+    () =>
+      recipesFrom(supabase)
+        .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+        .eq("id", id)
+        .maybeSingle(),
+  );
   if (error) missingTableError(error);
   if (!data) return null;
   return mapRecipe(data as unknown as RecipeRow, supabase);
@@ -189,17 +206,17 @@ export async function createRecipeAsAdmin(input: RecipeInput): Promise<Recipe> {
   await requireAdminProfile();
   const supabase = await requireClient();
   const payload = fieldsFromInput(input);
-  let { data, error } = await recipesFrom(supabase)
+  const primary = recipesFrom(supabase)
     .insert(payload as never)
     .select(RECIPE_SELECT)
     .single();
-  if (error && isMissingCookTimeColumn(error.message)) {
+  const { data, error } = await withOptionalCookTimeColumn(primary, () => {
     const { cook_time: _omit, ...legacyPayload } = payload;
-    ({ data, error } = await recipesFrom(supabase)
+    return recipesFrom(supabase)
       .insert(legacyPayload as never)
       .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
-      .single());
-  }
+      .single();
+  });
   if (error) missingTableError(error);
   if (!data) throw new Error("レシピの登録に失敗しました");
   return mapRecipe(data as unknown as RecipeRow, supabase);
@@ -215,19 +232,19 @@ export async function updateRecipeAsAdmin(
   if (!existing) throw new Error("レシピが見つかりません");
 
   const payload = fieldsFromInput(input);
-  let { data, error } = await recipesFrom(supabase)
+  const primary = recipesFrom(supabase)
     .update(payload as never)
     .eq("id", id)
     .select(RECIPE_SELECT)
     .single();
-  if (error && isMissingCookTimeColumn(error.message)) {
+  const { data, error } = await withOptionalCookTimeColumn(primary, () => {
     const { cook_time: _omit, ...legacyPayload } = payload;
-    ({ data, error } = await recipesFrom(supabase)
+    return recipesFrom(supabase)
       .update(legacyPayload as never)
       .eq("id", id)
       .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
-      .single());
-  }
+      .single();
+  });
   if (error) missingTableError(error);
   if (!data) throw new Error("レシピの更新に失敗しました");
   return mapRecipe(data as unknown as RecipeRow, supabase);
@@ -239,18 +256,19 @@ export async function setRecipePublishedAsAdmin(
 ): Promise<Recipe> {
   await requireAdminProfile();
   const supabase = await requireClient();
-  let { data, error } = await recipesFrom(supabase)
-    .update({ is_published: isPublished } as never)
-    .eq("id", id)
-    .select(RECIPE_SELECT)
-    .single();
-  if (error && isMissingCookTimeColumn(error.message)) {
-    ({ data, error } = await recipesFrom(supabase)
+  const { data, error } = await withOptionalCookTimeColumn(
+    recipesFrom(supabase)
       .update({ is_published: isPublished } as never)
       .eq("id", id)
-      .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
-      .single());
-  }
+      .select(RECIPE_SELECT)
+      .single(),
+    () =>
+      recipesFrom(supabase)
+        .update({ is_published: isPublished } as never)
+        .eq("id", id)
+        .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+        .single(),
+  );
   if (error) missingTableError(error);
   if (!data) throw new Error("公開状態の更新に失敗しました");
   return mapRecipe(data as unknown as RecipeRow, supabase);
@@ -267,18 +285,19 @@ export async function listPublishedRecipes(): Promise<Recipe[]> {
   if (!isSupabaseConfigured()) return [];
   try {
     const supabase = await requireClient();
-    let { data, error } = await recipesFrom(supabase)
-      .select(RECIPE_SELECT)
-      .eq("is_published", true)
-      .order("sort_order", { ascending: true })
-      .order("created_at", { ascending: false });
-    if (error && isMissingCookTimeColumn(error.message)) {
-      ({ data, error } = await recipesFrom(supabase)
-        .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+    const { data, error } = await withOptionalCookTimeColumn(
+      recipesFrom(supabase)
+        .select(RECIPE_SELECT)
         .eq("is_published", true)
         .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: false }));
-    }
+        .order("created_at", { ascending: false }),
+      () =>
+        recipesFrom(supabase)
+          .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+          .eq("is_published", true)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false }),
+    );
     if (error) {
       if (isMissingTable(error.message)) return [];
       console.error("[recipes] listPublished:", error.message);
@@ -301,18 +320,19 @@ export async function getPublishedRecipeById(
   if (!isSupabaseConfigured()) return null;
   try {
     const supabase = await requireClient();
-    let { data, error } = await recipesFrom(supabase)
-      .select(RECIPE_SELECT)
-      .eq("id", recipeId)
-      .eq("is_published", true)
-      .maybeSingle();
-    if (error && isMissingCookTimeColumn(error.message)) {
-      ({ data, error } = await recipesFrom(supabase)
-        .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+    const { data, error } = await withOptionalCookTimeColumn(
+      recipesFrom(supabase)
+        .select(RECIPE_SELECT)
         .eq("id", recipeId)
         .eq("is_published", true)
-        .maybeSingle());
-    }
+        .maybeSingle(),
+      () =>
+        recipesFrom(supabase)
+          .select(RECIPE_SELECT_WITHOUT_COOK_TIME)
+          .eq("id", recipeId)
+          .eq("is_published", true)
+          .maybeSingle(),
+    );
     if (error) {
       if (isMissingTable(error.message)) return null;
       console.error("[recipes] getPublishedById:", error.message);
