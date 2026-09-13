@@ -286,27 +286,35 @@ export default function AboutPage() {
         </section>
 
         {/* VISION への渡し */}
-        <div className="py-16 text-center sm:py-20">
+        <div className="py-16 sm:py-20">
           <div
             aria-hidden="true"
             className="mx-auto h-px w-10"
             style={{ background: "rgba(216,179,106,0.45)" }}
           />
-          <p className="mt-10 text-[0.98rem] leading-[2.05] tracking-[0.01em] text-white/72 sm:text-[1.02rem]">
+          <p
+            className="mt-10 text-left text-[10px] font-semibold uppercase tracking-[0.32em]"
+            style={{ color: GOLD }}
+          >
+            To Vision
+          </p>
+          <p className="mt-6 text-center text-[0.98rem] leading-[2.05] tracking-[0.01em] text-white/72 sm:text-[1.02rem]">
             この考え方を、睡眠という切り口から
             <br />
             指導者へ手渡していく取り組みが、
             <br />
             Sleep Wellness Institute Japan です。
           </p>
-          <Link
-            href="/melatonin-yoga/vision"
-            className="mt-8 inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
-            style={{ color: GOLD }}
-          >
-            メラトニンヨガ™が目指すところ
-            <span aria-hidden>→</span>
-          </Link>
+          <div className="mt-8 text-center">
+            <Link
+              href="/melatonin-yoga/vision"
+              className="inline-flex items-center gap-2 text-[0.85rem] tracking-[0.06em] transition hover:opacity-80"
+              style={{ color: GOLD }}
+            >
+              メラトニンヨガ™が目指すところ
+              <span aria-hidden>→</span>
+            </Link>
+          </div>
         </div>
 
         {/* 結びに */}
