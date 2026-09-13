@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "睡眠のための料理 | Sleep Wellness",
   description:
-    "眠りを整える日常のひとつの選択肢として、料理のレシピをご紹介します。",
+    "時間のない日でも作れる、短時間の料理です。消化に負担をかけず、眠りへ向かう身体を整えます。",
 };
 
 export default async function RecipesPage() {
@@ -18,7 +18,10 @@ export default async function RecipesPage() {
     <PublicIntroLayout
       eyebrow="SLEEP RECIPE"
       title="睡眠のための料理"
-      lead="眠りを整える日常のひとつの選択肢として、料理のレシピをご紹介します。"
+      lead={
+        "時間のない日でも作れる、短時間の料理です。\n消化に負担をかけず、眠りへ向かう身体を整えます。"
+      }
+      leadClassName="max-sm:-mx-2 max-sm:w-[calc(100%+1rem)] max-sm:max-w-none"
       contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
     >
       <RecipeCardGrid

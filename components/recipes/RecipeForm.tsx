@@ -20,6 +20,7 @@ type FormState = {
   servings: string;
   imagePath: string;
   imageUrl: string;
+  cookTime: string;
   ingredientGroups: RecipeIngredientGroup[];
   steps: string[];
   onePoint: string;
@@ -38,6 +39,7 @@ function emptyForm(): FormState {
     servings: "",
     imagePath: "",
     imageUrl: "",
+    cookTime: "",
     ingredientGroups: [emptyGroup()],
     steps: [""],
     onePoint: "",
@@ -53,6 +55,7 @@ function fromRecipe(recipe: Recipe): FormState {
     servings: recipe.servings,
     imagePath: recipe.imagePath,
     imageUrl: recipe.imageUrl,
+    cookTime: recipe.cookTime,
     ingredientGroups:
       recipe.ingredientGroups.length > 0
         ? recipe.ingredientGroups.map((group) => ({
@@ -77,6 +80,7 @@ function toInput(form: FormState): RecipeInput {
     lead: form.lead,
     servings: form.servings,
     imagePath: form.imagePath,
+    cookTime: form.cookTime,
     ingredientGroups: form.ingredientGroups.map((group) => ({
       label: group.label?.trim() ? group.label : undefined,
       items: group.items,
@@ -214,6 +218,16 @@ export default function RecipeForm({
           </button>
         ) : null}
       </div>
+
+      <label className="block">
+        <span className={labelClass}>調理時間（任意）</span>
+        <input
+          className={inputClass}
+          value={form.cookTime}
+          onChange={(event) => setField("cookTime", event.target.value)}
+          placeholder="約20分"
+        />
+      </label>
 
       <label className="block">
         <span className={labelClass}>リード文</span>
@@ -376,6 +390,9 @@ export default function RecipeForm({
             手順を追加
           </button>
         </div>
+        <p className="text-[13px] leading-6 text-slate-500">
+          1つの欄に1手順だけ入力してください。「手順を追加」で欄を増やせます。
+        </p>
         <ol className="space-y-3">
           {form.steps.map((step, stepIndex) => (
             <li key={`step-${stepIndex}`} className="rounded-2xl border border-slate-200 p-3">
@@ -446,7 +463,7 @@ export default function RecipeForm({
                     ),
                   }))
                 }
-                placeholder="手順の説明"
+                placeholder="鶏肉は食べやすい大きさに切り、玉ねぎは薄切りにします"
               />
             </li>
           ))}

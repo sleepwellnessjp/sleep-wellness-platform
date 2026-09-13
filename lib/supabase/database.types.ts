@@ -504,6 +504,7 @@ export type Database = {
           lead: string | null;
           servings: string | null;
           image_path: string | null;
+          cook_time: string | null;
           ingredient_groups: Json;
           steps: Json;
           one_point: string | null;
@@ -518,6 +519,7 @@ export type Database = {
           lead?: string | null;
           servings?: string | null;
           image_path?: string | null;
+          cook_time?: string | null;
           ingredient_groups?: Json;
           steps?: Json;
           one_point?: string | null;
@@ -532,6 +534,7 @@ export type Database = {
           lead?: string | null;
           servings?: string | null;
           image_path?: string | null;
+          cook_time?: string | null;
           ingredient_groups?: Json;
           steps?: Json;
           one_point?: string | null;

@@ -24,6 +24,7 @@ export type RecipeRow = {
   lead: string | null;
   servings: string | null;
   image_path: string | null;
+  cook_time?: string | null;
   ingredient_groups: unknown;
   steps: unknown;
   one_point: string | null;
@@ -41,6 +42,7 @@ export type Recipe = {
   imagePath: string;
   /** Storage 公開 URL（プレビュー用。DB には持たない） */
   imageUrl: string;
+  cookTime: string;
   ingredientGroups: RecipeIngredientGroup[];
   steps: string[];
   onePoint: string;
@@ -55,6 +57,7 @@ export type RecipeInput = {
   lead?: string;
   servings?: string;
   imagePath?: string;
+  cookTime?: string;
   ingredientGroups?: RecipeIngredientGroup[];
   steps?: string[];
   onePoint?: string;

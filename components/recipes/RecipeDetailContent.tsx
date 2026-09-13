@@ -20,6 +20,18 @@ export default function RecipeDetailContent({ recipe }: { recipe: Recipe }) {
         )}
       </div>
 
+      {recipe.cookTime ? (
+        <p className="mt-4 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
+          <span className="font-semibold tracking-[0.04em]" style={{ color: GOLD }}>
+            調理時間
+          </span>
+          <span className="mx-2 text-slate-300" aria-hidden>
+            ·
+          </span>
+          <span>{recipe.cookTime}</span>
+        </p>
+      ) : null}
+
       <h1
         className="mt-8 text-[1.75rem] font-semibold tracking-[-0.04em] sm:text-[2rem]"
         style={{ color: NAVY }}
