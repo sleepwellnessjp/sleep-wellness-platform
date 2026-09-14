@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "睡眠のための料理 | Sleep Wellness",
   description:
-    "時間のない日でも作れる、短時間の料理です。消化に負担をかけず、眠りへ向かう身体を整えます。",
+    'ヨガジャーナルなどでも紹介されているヨガ料理研究家TAKAのオリジナルレシピです。時間のない時でも気軽に作れる「時短レシピ」から本格的なカレーレシピまで！睡眠ウェルネススパイスを使った"睡眠を整える料理"が作れます。',
 };
 
 export default async function RecipesPage() {
@@ -18,10 +18,7 @@ export default async function RecipesPage() {
     <PublicIntroLayout
       eyebrow="SLEEP RECIPE"
       title="睡眠のための料理"
-      lead={
-        "時間のない日でも作れる、短時間の料理です。\n消化に負担をかけず、眠りへ向かう身体を整えます。"
-      }
-      leadClassName="max-sm:-mx-2 max-sm:w-[calc(100%+1rem)] max-sm:max-w-none"
+      lead='ヨガジャーナルなどでも紹介されているヨガ料理研究家TAKAのオリジナルレシピです。時間のない時でも気軽に作れる「時短レシピ」から本格的なカレーレシピまで！睡眠ウェルネススパイスを使った"睡眠を整える料理"が作れます。'
       contentClassName="pb-[var(--sw-sleep-page-bottom-pad)] lg:pb-[5rem]"
     >
       <RecipeCardGrid

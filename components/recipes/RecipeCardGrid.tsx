@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NAVY } from "@/components/ui/tokens";
+import { GOLD, NAVY } from "@/components/ui/tokens";
 import type { Recipe } from "@/lib/recipes/types";
 
 type Props = {
@@ -38,7 +38,19 @@ export default function RecipeCardGrid({ recipes, emptyMessage }: Props) {
                 </div>
               )}
             </div>
-            <div className="flex min-h-[4.5rem] flex-1 flex-col px-3 pb-3 pt-2.5 md:min-h-[5rem] md:px-4 md:pb-4 md:pt-3">
+            {recipe.cookTime ? (
+              <p
+                className="shrink-0 px-3 pt-2.5 text-[12px] font-semibold leading-5 tracking-[0.02em] md:px-4 md:pt-3"
+                style={{ color: GOLD }}
+              >
+                {`調理時間 ${recipe.cookTime}`}
+              </p>
+            ) : null}
+            <div
+              className={`flex min-h-[4.5rem] flex-1 flex-col px-3 pb-3 md:min-h-[5rem] md:px-4 md:pb-4 ${
+                recipe.cookTime ? "pt-1 md:pt-1.5" : "pt-2.5 md:pt-3"
+              }`}
+            >
               <h2
                 className="mt-auto text-left text-[15px] font-semibold tracking-[-0.02em]"
                 style={{
