@@ -19,16 +19,18 @@ export default function Founder() {
 
       <div className="relative mx-auto max-w-7xl px-6 lg:px-8">
         <div className="grid items-center gap-10 lg:grid-cols-[40%_60%] lg:gap-16">
-          <div className="relative overflow-hidden rounded-[32px] shadow-[0_40px_120px_-50px_rgba(0,0,0,0.65)]">
-            <div className="relative aspect-[4/5] min-h-[360px] sm:min-h-[440px]">
-              <Image
-                src="/taka-photo-v2.jpg"
-                alt="若林貴久"
-                fill
-                className="object-cover object-[center_85%]"
-                sizes="(min-width:1024px) 40vw,100vw"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-transparent to-[#071426]/10" />
+          <div className="mx-auto w-[70%] lg:mx-0">
+            <div className="relative overflow-hidden rounded-[32px] shadow-[0_40px_120px_-50px_rgba(0,0,0,0.65)]">
+              <div className="relative aspect-square">
+                <Image
+                  src="/taka-founder-square.jpg"
+                  alt="若林貴久"
+                  fill
+                  className="object-cover object-center"
+                  sizes="(min-width:1024px) 28vw, 70vw"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-transparent to-[#071426]/10" />
+              </div>
             </div>
           </div>
 

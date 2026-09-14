@@ -26,6 +26,14 @@ const services = [
     href: "/academy/certified-instructor",
     cta: "認定講師になる",
   },
+  {
+    number: "04",
+    title: "睡眠のための料理",
+    description: "眠りを妨げない、短時間で作れる食事。",
+    image: "/sleep-recipe-card.jpg",
+    href: "/recipes",
+    cta: "レシピを見る",
+  },
 ];
 
 export default function Services() {
@@ -53,36 +61,36 @@ export default function Services() {
           </p>
         </div>
 
-        <div className="mt-14 grid gap-6 lg:grid-cols-3 lg:gap-7">
+        <div className="mt-10 grid grid-cols-2 items-stretch gap-3 sm:mt-12 sm:gap-4 lg:mt-14 lg:grid-cols-4 lg:gap-5">
           {services.map((service) => (
             <article
               key={service.title}
-              className="group overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.06]"
+              className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:rounded-[24px]"
             >
-              <div className="relative aspect-[16/10] overflow-hidden">
+              <div className="relative aspect-[4/3] shrink-0 overflow-hidden">
                 <Image
                   src={service.image}
                   alt={service.title}
                   fill
                   className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                  sizes="(min-width:1024px) 30vw, 100vw"
+                  sizes="(min-width:1024px) 22vw, 45vw"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-[#071426]/20 to-transparent" />
-                <p className="absolute bottom-4 left-5 text-xs font-semibold tracking-[0.2em] text-[#d8b36a]">
+                <p className="absolute bottom-2.5 left-3 text-[10px] font-semibold tracking-[0.2em] text-[#d8b36a] sm:bottom-3 sm:left-4 sm:text-xs">
                   {service.number}
                 </p>
               </div>
 
-              <div className="px-6 py-7 sm:px-7">
-                <h3 className="text-xl font-semibold tracking-[-0.03em] text-white">
+              <div className="flex flex-1 flex-col px-3 py-3.5 sm:px-4 sm:py-4">
+                <h3 className="text-[15px] font-semibold leading-snug tracking-[-0.03em] text-white sm:text-base">
                   {service.title}
                 </h3>
-                <p className="mt-3 text-[14px] leading-7 text-white/65">
+                <p className="mt-1.5 flex-1 text-[12px] leading-5 text-white/65 sm:mt-2 sm:text-[13px] sm:leading-6">
                   {service.description}
                 </p>
                 <Link
                   href={service.href}
-                  className="mt-5 inline-flex text-sm font-semibold text-[#d8b36a] transition hover:text-white"
+                  className="mt-2.5 inline-flex text-[12px] font-semibold text-[#d8b36a] transition hover:text-white sm:mt-3 sm:text-sm"
                 >
                   {service.cta} →
                 </Link>
