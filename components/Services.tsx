@@ -98,6 +98,35 @@ export default function Services() {
             </article>
           ))}
         </div>
+
+        <Link
+          href="/practice/1012"
+          className="group mt-4 flex w-full items-center justify-between gap-4 rounded-[22px] border px-5 py-5 transition duration-300 hover:-translate-y-0.5 sm:mt-5 sm:rounded-[24px] sm:px-7 sm:py-6 lg:mt-6"
+          style={{
+            borderColor: "rgba(216,179,106,0.35)",
+            background:
+              "linear-gradient(180deg, rgba(7,20,38,0.97) 0%, rgba(7,20,38,0.92) 100%)",
+            boxShadow: "inset 0 1px 0 rgba(216,179,106,0.12)",
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-[#d8b36a] sm:text-[11px] sm:tracking-[0.28em]">
+              昼・動かない
+            </p>
+            <p className="mt-2 text-[17px] font-semibold tracking-[-0.03em] text-white sm:mt-2.5 sm:text-xl">
+              Coming 10.12
+            </p>
+            <p className="mt-1.5 text-[13px] leading-6 text-white/70 sm:mt-2 sm:text-[14px] sm:leading-7">
+              音と静寂で、動かずに整える
+            </p>
+          </div>
+          <span
+            aria-hidden
+            className="shrink-0 text-lg font-semibold text-[#d8b36a] transition group-hover:translate-x-0.5 group-hover:text-white sm:text-xl"
+          >
+            →
+          </span>
+        </Link>
       </div>
     </section>
   );
