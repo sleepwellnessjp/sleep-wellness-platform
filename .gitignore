@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+tmp/
 /tmp-*
 .tmp-pdf-extract/
 .tmp-stage-debug/
