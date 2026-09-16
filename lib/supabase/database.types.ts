@@ -183,6 +183,59 @@ export type Database = {
           },
         ];
       };
+      glucose_readings: {
+        Row: {
+          id: string;
+          client_id: string;
+          owner_id: string;
+          recorded_at: string;
+          record_type: number;
+          source: string;
+          glucose_mg_dl: number | null;
+          device_name: string | null;
+          serial_number: string | null;
+          note: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          client_id: string;
+          owner_id: string;
+          recorded_at: string;
+          record_type: number;
+          source: string;
+          glucose_mg_dl?: number | null;
+          device_name?: string | null;
+          serial_number?: string | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          client_id?: string;
+          owner_id?: string;
+          recorded_at?: string;
+          record_type?: number;
+          source?: string;
+          glucose_mg_dl?: number | null;
+          device_name?: string | null;
+          serial_number?: string | null;
+          note?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "glucose_readings_client_id_fkey";
+            columns: ["client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       sleep_analyses: {
         Row: {
           id: string;

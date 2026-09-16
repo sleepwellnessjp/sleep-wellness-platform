@@ -8,6 +8,8 @@ export const REPORT_SECTIONS = {
   overall: true, // ① 今日の総合評価
   profile: true, // ② 基本情報
   measurement: true, // ③ SOXAIデータ
+  /** ③の直後・④の前。血糖（Libre）連携。初期オフ */
+  glucose: false,
   insight: false, // ④ 今日の睡眠の読み解き
   priority: true, // ⑤ 改善優先順位
   melatoninYoga: true, // ⑥ メラトニンヨガ™処方（結果画面）
@@ -27,6 +29,7 @@ export const RESULT_SECTION_FLAG: Record<string, ReportSectionKey> = {
   "result-section-1": "overall",
   "result-section-2": "profile",
   "result-section-3": "measurement",
+  "result-section-glucose": "glucose",
   "result-section-4": "insight",
   "result-section-5": "priority",
   "result-section-6": "melatoninYoga",

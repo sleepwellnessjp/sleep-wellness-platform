@@ -8,6 +8,7 @@ import ClientGoalsManager from "@/components/ClientGoalsManager";
 import ClientHomeworkManager from "@/components/ClientHomeworkManager";
 import ClientInviteCard from "@/components/ClientInviteCard";
 import ClientPortalLinkCard from "@/components/ClientPortalLinkCard";
+import GlucoseCsvUploadCard from "@/components/clients/GlucoseCsvUploadCard";
 import InstructorClientChatCard from "@/components/InstructorClientChatCard";
 import InstructorNav from "@/components/InstructorNav";
 import ErrorState from "@/components/ui/ErrorState";
@@ -490,6 +491,14 @@ export default function ClientDetailPage() {
           </SectionTitle>
           <div className="mt-4 sm:mt-6">
             <ClientGoalsManager clientId={client.id} />
+          </div>
+        </section>
+
+        {/* 血糖 CSV（Libre）取り込み */}
+        <section className="mt-10 sm:mt-16" aria-labelledby="glucose-csv-title">
+          <SectionTitle id="glucose-csv-title">Glucose CSV</SectionTitle>
+          <div className="mt-4 sm:mt-6">
+            <GlucoseCsvUploadCard clientId={client.id} />
           </div>
         </section>
 
