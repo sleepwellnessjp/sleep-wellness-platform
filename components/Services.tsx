@@ -160,13 +160,13 @@ export default function Services() {
 
         <Link
           href="/academy/certified-instructor"
-          className="group mt-4 flex w-full flex-row items-stretch overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:mt-5 sm:rounded-[24px] lg:mt-6"
+          className="group mt-4 flex min-h-[239px] w-full flex-row items-stretch overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:mt-5 sm:min-h-0 sm:rounded-[24px] lg:mt-6"
           style={{
             borderColor: "rgba(216,179,106,0.28)",
             boxShadow: "inset 0 1px 0 rgba(216,179,106,0.06)",
           }}
         >
-          <div className="relative w-[33%] shrink-0 self-stretch overflow-hidden sm:w-[40%] sm:min-h-[11.5rem] lg:min-h-[12.5rem]">
+          <div className="relative w-[33%] min-h-[239px] shrink-0 self-stretch overflow-hidden sm:w-[40%] sm:min-h-[11.5rem] lg:min-h-[12.5rem]">
             <Image
               src="/academy.jpg"
               alt="Academy"
@@ -178,7 +178,7 @@ export default function Services() {
           </div>
 
           <div
-            className="flex min-w-0 flex-1 flex-col justify-center px-3 py-3 pr-3 sm:w-[60%] sm:px-6 sm:py-5 sm:pr-6 lg:px-7 lg:py-6 lg:pr-7"
+            className="flex min-w-0 flex-1 flex-col justify-center px-3 py-4 pr-3 sm:w-[60%] sm:px-6 sm:py-5 sm:pr-6 lg:px-7 lg:py-6 lg:pr-7"
             style={{
               background:
                 "linear-gradient(180deg, rgba(7,20,38,0.97) 0%, rgba(7,20,38,0.92) 100%)",
@@ -187,7 +187,7 @@ export default function Services() {
             <p className="text-[9px] font-semibold tracking-[0.24em] text-[#d8b36a] sm:text-[10px] sm:tracking-[0.28em]">
               FOR INSTRUCTORS
             </p>
-            <h3 className="mt-1 text-[14px] font-semibold tracking-[-0.03em] text-white sm:mt-2 sm:text-[17px]">
+            <h3 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white sm:mt-2 sm:text-[17px]">
               Academy
             </h3>
             {/* モバイル: 短縮版 / sm以上: 変更前の全文 */}
