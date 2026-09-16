@@ -186,7 +186,7 @@ export default function Services() {
             <p className="text-[9px] font-semibold tracking-[0.24em] text-[#d8b36a] sm:text-[10px] sm:tracking-[0.28em]">
               FOR INSTRUCTORS
             </p>
-            <h3 className="mt-1 text-[15px] font-semibold tracking-[-0.03em] text-white sm:mt-2 sm:text-[17px]">
+            <h3 className="mt-1 text-[17px] font-semibold leading-snug tracking-[-0.03em] text-white sm:mt-2 sm:text-[17px]">
               Academy
             </h3>
             {/* モバイル: 短縮版 / sm以上: 変更前の全文 */}
