@@ -38,7 +38,6 @@ const services: ServiceCard[] = [
     href: "/practice/1012",
     cta: "10.12 発表",
     comingBadge: "Coming 10.12",
-    imageVariant: "contain-on-navy",
   },
   {
     number: "04",
