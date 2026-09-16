@@ -32,7 +32,6 @@ const services: ServiceCard[] = [
   },
   {
     number: "03",
-    label: "昼・動かない",
     title: "サウンドバス",
     description: "音と静寂で、動かずに整える",
     image: "/practice-1012-bowls.png",

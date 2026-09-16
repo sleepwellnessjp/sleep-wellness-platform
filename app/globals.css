@@ -586,18 +586,36 @@ body:has([data-melatonin-yoga-vision]) {
 /* モバイル: タブバーの上に積む。p-* ショートハンドで pb が潰されないよう CSS で指定 */
 [data-beta-chrome] {
   z-index: 40;
-  padding-bottom: calc(var(--sw-sleep-tabbar-clearance) + 0.75rem);
+  /* タブバー直上へ寄せ、カード本文帯への食い込みを減らす */
+  padding-bottom: calc(var(--sw-sleep-tabbar-clearance) + 0.2rem);
+  transition: opacity 160ms ease;
+}
+
+/* 右下固定でも下の文言が読めるよう、常時やや透過 */
+[data-beta-chrome][data-beta-chrome-placement="default"] {
+  opacity: 0.58;
+}
+
+/* スクロール中はさらに薄く＋クリック透過。カード CTA を隠さない */
+[data-beta-chrome][data-beta-chrome-scrolling="1"] {
+  opacity: 0.18;
+}
+
+[data-beta-chrome][data-beta-chrome-scrolling="1"] a,
+[data-beta-chrome][data-beta-chrome-scrolling="1"] [class*="pointer-events-auto"] {
+  pointer-events: none;
 }
 
 /* /sleep/* : ヘッダー右配置のため下部タブバー用の padding は不要 */
 [data-beta-chrome][data-beta-chrome-placement="sleep-header-right"] {
   padding-bottom: 0;
+  opacity: 1;
 }
 
 @media (min-width: 1024px) {
   [data-beta-chrome] {
     z-index: 70;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   }
 
   [data-beta-chrome][data-beta-chrome-placement="sleep-header-right"] {
