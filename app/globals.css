@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/*
+ * トップ `/` 初回ペイント専用（layout boot が data-swij-boot="intro" を付与）。
+ * :root の --background / --sw-surface は変更しない。
+ * 属性解除後は通常の body（--sw-surface）に戻る。
+ */
+html[data-swij-boot="intro"],
+html[data-swij-boot="intro"] body {
+  background-color: #020b1a !important;
+  color-scheme: dark;
+}
+
 /* ─── Version 2.3 design tokens (light default) ─── */
 :root {
   --background: #ffffff;

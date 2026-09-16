@@ -160,44 +160,50 @@ export default function Services() {
 
         <Link
           href="/academy/certified-instructor"
-          className="group mt-4 flex w-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:mt-5 sm:flex-row sm:items-stretch sm:rounded-[24px] lg:mt-6"
+          className="group mt-4 flex w-full flex-row items-stretch overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:mt-5 sm:rounded-[24px] lg:mt-6"
           style={{
             borderColor: "rgba(216,179,106,0.28)",
             boxShadow: "inset 0 1px 0 rgba(216,179,106,0.06)",
           }}
         >
-          <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden sm:aspect-auto sm:w-[40%] sm:min-h-[11.5rem] lg:min-h-[12.5rem]">
+          <div className="relative w-[33%] shrink-0 self-stretch overflow-hidden sm:w-[40%] sm:min-h-[11.5rem] lg:min-h-[12.5rem]">
             <Image
               src="/academy.jpg"
               alt="Academy"
               fill
               className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-              sizes="(min-width:640px) 40vw, 100vw"
+              sizes="(min-width:640px) 40vw, 33vw"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/70 via-[#071426]/10 to-transparent sm:bg-gradient-to-r sm:from-transparent sm:via-[#071426]/08 sm:to-[#071426]/45" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#071426]/08 to-[#071426]/45" />
           </div>
 
           <div
-            className="flex min-w-0 flex-1 flex-col justify-center px-5 pb-14 pt-4 pr-24 sm:w-[60%] sm:px-6 sm:py-5 sm:pr-6 lg:px-7 lg:py-6 lg:pr-7"
+            className="flex min-w-0 flex-1 flex-col justify-center px-3 py-3 pr-3 sm:w-[60%] sm:px-6 sm:py-5 sm:pr-6 lg:px-7 lg:py-6 lg:pr-7"
             style={{
               background:
                 "linear-gradient(180deg, rgba(7,20,38,0.97) 0%, rgba(7,20,38,0.92) 100%)",
             }}
           >
-            <p className="text-[10px] font-semibold tracking-[0.28em] text-[#d8b36a]">
+            <p className="text-[9px] font-semibold tracking-[0.24em] text-[#d8b36a] sm:text-[10px] sm:tracking-[0.28em]">
               FOR INSTRUCTORS
             </p>
-            <h3 className="mt-2 text-[16px] font-semibold tracking-[-0.03em] text-white sm:text-[17px]">
+            <h3 className="mt-1 text-[14px] font-semibold tracking-[-0.03em] text-white sm:mt-2 sm:text-[17px]">
               Academy
             </h3>
-            <p className="mt-2 max-w-xl text-[12px] leading-5 text-white/70 sm:text-[13px] sm:leading-6">
+            {/* モバイル: 短縮版 / sm以上: 変更前の全文 */}
+            <p className="mt-1.5 text-[11px] leading-4 text-white/70 sm:hidden">
               Sleep Wellness Method™ を学び、伝える人を育てる場です。
-              <br className="hidden sm:block" />
+              <br />
+              認定講師養成講座として提供しています。
+            </p>
+            <p className="mt-2 hidden max-w-xl text-[12px] leading-5 text-white/70 sm:block sm:text-[13px] sm:leading-6">
+              Sleep Wellness Method™ を学び、伝える人を育てる場です。
+              <br />
               昼と夜の実践、睡眠の科学、そして計測データの読み方まで。
-              <br className="hidden sm:block" />
+              <br />
               現場で使える形で体系化したプログラムを、認定講師養成講座として提供しています。
             </p>
-            <span className="mt-3 inline-flex w-fit text-[12px] font-semibold text-[#d8b36a] transition group-hover:text-white sm:mt-3.5 sm:text-[13px]">
+            <span className="mt-2 inline-flex w-fit text-[11px] font-semibold text-[#d8b36a] transition group-hover:text-white sm:mt-3.5 sm:text-[13px]">
               認定講師になる →
             </span>
           </div>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import BetaChrome from "@/components/beta/BetaChrome";
+import HomeIntroBootRelease from "@/components/home/HomeIntroBootRelease";
 import MobileSleepTabBar from "@/components/sleep-content/MobileSleepTabBar";
 import SkipLink from "@/components/ui/SkipLink";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -127,9 +128,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/*
+          トップ `/` のみ: 初回ペイントを HomeIntro と同じ濃紺にする。
+          :root トークンは触らず、data-swij-boot がある間だけ上書き。
+          イントロ / main 出現後、次のペイントを挟んでから解除する。
+        */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname;if(p==="/"||p===""){var r=document.documentElement;r.setAttribute("data-swij-boot","intro");r.style.backgroundColor="${INTRO_BG}";r.style.colorScheme="dark";var s=document.createElement("style");s.id="swij-boot-bg-style";s.textContent='html[data-swij-boot="intro"],html[data-swij-boot="intro"] body{background-color:${INTRO_BG}!important;color-scheme:dark}';r.appendChild(s);}}catch(e){}})();`,
+            __html: `(function(){try{var p=location.pathname;if(p!=="/"&&p!=="")return;var BG="${INTRO_BG}";var r=document.documentElement;r.setAttribute("data-swij-boot","intro");r.style.backgroundColor=BG;r.style.colorScheme="dark";var s=document.getElementById("swij-boot-bg-style");if(!s){s=document.createElement("style");s.id="swij-boot-bg-style";(document.head||r).insertBefore(s,(document.head||r).firstChild);}s.textContent='html[data-swij-boot="intro"],html[data-swij-boot="intro"] body{background-color:'+BG+'!important;color-scheme:dark}';var paintBody=function(){if(document.body&&r.getAttribute("data-swij-boot")==="intro")document.body.style.backgroundColor=BG;};paintBody();if(!document.body)document.addEventListener("DOMContentLoaded",paintBody);var cleared=false;var mo=null;var clear=function(){if(cleared)return;cleared=true;try{r.removeAttribute("data-swij-boot");r.style.removeProperty("background-color");r.style.removeProperty("color-scheme");var st=document.getElementById("swij-boot-bg-style");if(st)st.remove();if(document.body)document.body.style.removeProperty("background-color");}catch(e){}if(mo)mo.disconnect();};var scheduleClear=function(){if(cleared)return;requestAnimationFrame(function(){requestAnimationFrame(clear);});};var ready=function(){return!!(document.querySelector("[data-swij-intro]")||document.querySelector("main#top"));};if(ready()){scheduleClear();}else{mo=new MutationObserver(function(){if(ready())scheduleClear();});mo.observe(r,{childList:true,subtree:true});document.addEventListener("DOMContentLoaded",function(){if(ready())scheduleClear();});}}catch(e){}})();`,
           }}
         />
       </head>
@@ -142,6 +148,7 @@ export default function RootLayout({
           {children}
           <MobileSleepTabBar />
           <BetaChrome />
+          <HomeIntroBootRelease />
         </ToastProvider>
         <Analytics />
       </body>

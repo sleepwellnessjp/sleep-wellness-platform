@@ -3,7 +3,11 @@
 import { getImageProps } from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { pickMaNoShoQuote } from "@/lib/home-intro-quotes";
-import { homeIntroHash, shouldSkipHomeIntro } from "@/lib/home-intro";
+import {
+  clearHomeIntroBootBg,
+  homeIntroHash,
+  shouldSkipHomeIntro,
+} from "@/lib/home-intro";
 
 const STORAGE_KEY = "swij-home-intro-seen";
 
@@ -84,6 +88,7 @@ export default function HomeIntro() {
     if (shouldSkipHomeIntro()) {
       doneRef.current = true;
       setShowIntro(false);
+      clearHomeIntroBootBg();
       const id = hash.slice(1);
       const scrollToTarget = () => {
         if (!id || id === "top") {
@@ -97,7 +102,9 @@ export default function HomeIntro() {
         scrollToTarget();
         window.setTimeout(scrollToTarget, 80);
       });
-      return;
+      return () => {
+        clearHomeIntroBootBg();
+      };
     }
 
     if (!isLocalHost()) {
@@ -105,7 +112,10 @@ export default function HomeIntro() {
         if (sessionStorage.getItem(STORAGE_KEY) === "1") {
           doneRef.current = true;
           setShowIntro(false);
-          return;
+          clearHomeIntroBootBg();
+          return () => {
+            clearHomeIntroBootBg();
+          };
         }
       } catch {
         // continue
@@ -119,12 +129,23 @@ export default function HomeIntro() {
     document.body.style.overflow = "hidden";
     document.documentElement.classList.add("swij-intro-active");
 
+    // イントロレイヤー描画後に boot 濃紺を外し、body を通常の --sw-surface へ戻す
+    let bootCleared = false;
+    const releaseBoot = () => {
+      if (bootCleared) return;
+      bootCleared = true;
+      clearHomeIntroBootBg();
+    };
+    const bootTimer = window.setTimeout(releaseBoot, 0);
+    const bootTimer2 = window.setTimeout(releaseBoot, 120);
+
     const timers: number[] = [];
     const state = { minHold: false, assetsReady: true, fadeStarted: false };
 
     const finish = () => {
       if (doneRef.current) return;
       doneRef.current = true;
+      releaseBoot();
       if (!isLocalHost()) {
         try {
           sessionStorage.setItem(STORAGE_KEY, "1");
@@ -158,6 +179,9 @@ export default function HomeIntro() {
     timers.push(window.setTimeout(beginFade, MAX_FADE_START_MS));
 
     return () => {
+      window.clearTimeout(bootTimer);
+      window.clearTimeout(bootTimer2);
+      releaseBoot();
       for (const t of timers) window.clearTimeout(t);
       document.body.style.overflow = prevOverflow;
       document.documentElement.classList.remove("swij-intro-active");
