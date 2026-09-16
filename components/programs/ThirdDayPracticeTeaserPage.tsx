@@ -92,7 +92,7 @@ export default function ThirdDayPracticeTeaserPage() {
             <p>swij に、3つ目の実践が加わります。</p>
             <p>昼の、動かないヨガです。</p>
             <p className="!mt-3 sm:!mt-3.5">
-              音を浴びるためのものではありません。
+              サウンドバスです。でも、音を浴びるためだけのものではありません。
             </p>
             <p className="!mt-3 sm:!mt-3.5">
               音が消えたあとに残るものを聴く。練習することはひとつだけ、

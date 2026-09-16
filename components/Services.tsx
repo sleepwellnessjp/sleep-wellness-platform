@@ -1,7 +1,19 @@
 import Image from "next/image";
 import Link from "next/link";
 
-const services = [
+type ServiceCard = {
+  number: string;
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+  image: string;
+  label?: string;
+  comingBadge?: string;
+  imageVariant?: "cover" | "contain-on-navy";
+};
+
+const services: ServiceCard[] = [
   {
     number: "01",
     title: "間のヨガ™",
@@ -20,11 +32,14 @@ const services = [
   },
   {
     number: "03",
-    title: "Academy",
-    description: "認定講師が Method を伝え、社会へ広げていく。",
-    image: "/academy.jpg",
-    href: "/academy/certified-instructor",
-    cta: "認定講師になる",
+    label: "昼・動かない",
+    title: "サウンドバス",
+    description: "音と静寂で、動かずに整える",
+    image: "/practice-1012-bowls.png",
+    href: "/practice/1012",
+    cta: "10.12 発表",
+    comingBadge: "Coming 10.12",
+    imageVariant: "contain-on-navy",
   },
   {
     number: "04",
@@ -62,70 +77,131 @@ export default function Services() {
         </div>
 
         <div className="mt-10 grid grid-cols-2 items-stretch gap-3 sm:mt-12 sm:gap-4 lg:mt-14 lg:grid-cols-4 lg:gap-5">
-          {services.map((service) => (
-            <article
-              key={service.title}
-              className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:rounded-[24px]"
-            >
-              <div className="relative aspect-[4/3] shrink-0 overflow-hidden">
-                <Image
-                  src={service.image}
-                  alt={service.title}
-                  fill
-                  className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                  sizes="(min-width:1024px) 22vw, 45vw"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-[#071426]/20 to-transparent" />
-                <p className="absolute bottom-2.5 left-3 text-[10px] font-semibold tracking-[0.2em] text-[#d8b36a] sm:bottom-3 sm:left-4 sm:text-xs">
-                  {service.number}
-                </p>
-              </div>
-
-              <div className="flex flex-1 flex-col px-3 py-3.5 sm:px-4 sm:py-4">
-                <h3 className="text-[15px] font-semibold leading-snug tracking-[-0.03em] text-white sm:text-base">
-                  {service.title}
-                </h3>
-                <p className="mt-1.5 flex-1 text-[12px] leading-5 text-white/65 sm:mt-2 sm:text-[13px] sm:leading-6">
-                  {service.description}
-                </p>
-                <Link
-                  href={service.href}
-                  className="mt-2.5 inline-flex text-[12px] font-semibold text-[#d8b36a] transition hover:text-white sm:mt-3 sm:text-sm"
+          {services.map((service) => {
+            const onNavy = service.imageVariant === "contain-on-navy";
+            return (
+              <article
+                key={service.title}
+                className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:rounded-[24px]"
+              >
+                <div
+                  className={`relative aspect-[4/3] shrink-0 overflow-hidden ${
+                    onNavy ? "bg-[#071426]" : ""
+                  }`}
+                  style={
+                    onNavy
+                      ? {
+                          background:
+                            "linear-gradient(180deg, rgba(7,20,38,1) 0%, rgba(7,20,38,0.92) 100%)",
+                        }
+                      : undefined
+                  }
                 >
-                  {service.cta} →
-                </Link>
-              </div>
-            </article>
-          ))}
+                  <div
+                    className={
+                      onNavy
+                        ? "absolute inset-y-0 left-[8%] right-[8%]"
+                        : "absolute inset-0"
+                    }
+                  >
+                    <Image
+                      src={service.image}
+                      alt={service.title}
+                      fill
+                      className={
+                        onNavy
+                          ? "object-contain transition-transform duration-700 group-hover:scale-[1.03]"
+                          : "object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                      }
+                      sizes="(min-width:1024px) 22vw, 45vw"
+                    />
+                  </div>
+                  {!onNavy ? (
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/80 via-[#071426]/20 to-transparent" />
+                  ) : (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-[#071426]/70 to-transparent" />
+                  )}
+                  <p className="absolute bottom-2.5 left-3 text-[10px] font-semibold tracking-[0.2em] text-[#d8b36a] sm:bottom-3 sm:left-4 sm:text-xs">
+                    {service.number}
+                  </p>
+                  {service.comingBadge ? (
+                    <p className="absolute bottom-2.5 right-3 text-[10px] font-semibold tracking-[0.18em] text-[#d8b36a] sm:bottom-3 sm:right-4 sm:text-xs">
+                      {service.comingBadge}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-1 flex-col px-3 py-3.5 sm:px-4 sm:py-4">
+                  {service.label ? (
+                    <p className="text-[10px] font-semibold tracking-[0.18em] text-[#d8b36a]">
+                      {service.label}
+                    </p>
+                  ) : null}
+                  <h3
+                    className={`text-[15px] font-semibold leading-snug tracking-[-0.03em] text-white sm:text-base ${
+                      service.label ? "mt-1.5" : ""
+                    }`}
+                  >
+                    {service.title}
+                  </h3>
+                  <p className="mt-1.5 flex-1 text-[12px] leading-5 text-white/65 sm:mt-2 sm:text-[13px] sm:leading-6">
+                    {service.description}
+                  </p>
+                  <Link
+                    href={service.href}
+                    className="mt-2.5 inline-flex text-[12px] font-semibold text-[#d8b36a] transition hover:text-white sm:mt-3 sm:text-sm"
+                  >
+                    {service.cta} →
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
 
         <Link
-          href="/practice/1012"
-          className="group mt-4 flex w-full items-center justify-between gap-4 rounded-[22px] border px-5 py-5 transition duration-300 hover:-translate-y-0.5 sm:mt-5 sm:rounded-[24px] sm:px-7 sm:py-6 lg:mt-6"
+          href="/academy/certified-instructor"
+          className="group mt-4 flex w-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white/[0.04] backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.06] sm:mt-5 sm:flex-row sm:items-stretch sm:rounded-[24px] lg:mt-6"
           style={{
-            borderColor: "rgba(216,179,106,0.35)",
-            background:
-              "linear-gradient(180deg, rgba(7,20,38,0.97) 0%, rgba(7,20,38,0.92) 100%)",
-            boxShadow: "inset 0 1px 0 rgba(216,179,106,0.12)",
+            borderColor: "rgba(216,179,106,0.28)",
+            boxShadow: "inset 0 1px 0 rgba(216,179,106,0.06)",
           }}
         >
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-[#d8b36a] sm:text-[11px] sm:tracking-[0.28em]">
-              昼・動かない
-            </p>
-            <p className="mt-2 text-[17px] font-semibold tracking-[-0.03em] text-white sm:mt-2.5 sm:text-xl">
-              Coming 10.12
-            </p>
-            <p className="mt-1.5 text-[13px] leading-6 text-white/70 sm:mt-2 sm:text-[14px] sm:leading-7">
-              音と静寂で、動かずに整える
-            </p>
+          <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden sm:aspect-auto sm:w-[40%] sm:min-h-[11.5rem] lg:min-h-[12.5rem]">
+            <Image
+              src="/academy.jpg"
+              alt="Academy"
+              fill
+              className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+              sizes="(min-width:640px) 40vw, 100vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#071426]/70 via-[#071426]/10 to-transparent sm:bg-gradient-to-r sm:from-transparent sm:via-[#071426]/08 sm:to-[#071426]/45" />
           </div>
-          <span
-            aria-hidden
-            className="shrink-0 text-lg font-semibold text-[#d8b36a] transition group-hover:translate-x-0.5 group-hover:text-white sm:text-xl"
+
+          <div
+            className="flex min-w-0 flex-1 flex-col justify-center px-5 pb-14 pt-4 pr-24 sm:w-[60%] sm:px-6 sm:py-5 sm:pr-6 lg:px-7 lg:py-6 lg:pr-7"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(7,20,38,0.97) 0%, rgba(7,20,38,0.92) 100%)",
+            }}
           >
-            →
-          </span>
+            <p className="text-[10px] font-semibold tracking-[0.28em] text-[#d8b36a]">
+              FOR INSTRUCTORS
+            </p>
+            <h3 className="mt-2 text-[16px] font-semibold tracking-[-0.03em] text-white sm:text-[17px]">
+              Academy
+            </h3>
+            <p className="mt-2 max-w-xl text-[12px] leading-5 text-white/70 sm:text-[13px] sm:leading-6">
+              Sleep Wellness Method™ を学び、伝える人を育てる場です。
+              <br className="hidden sm:block" />
+              昼と夜の実践、睡眠の科学、そして計測データの読み方まで。
+              <br className="hidden sm:block" />
+              現場で使える形で体系化したプログラムを、認定講師養成講座として提供しています。
+            </p>
+            <span className="mt-3 inline-flex w-fit text-[12px] font-semibold text-[#d8b36a] transition group-hover:text-white sm:mt-3.5 sm:text-[13px]">
+              認定講師になる →
+            </span>
+          </div>
         </Link>
       </div>
     </section>
