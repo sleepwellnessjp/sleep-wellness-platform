@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import AdminShell from "@/components/AdminShell";
+import InstructorProfilePhotoEditor from "@/components/admin/InstructorProfilePhotoEditor";
 import { useResolvedOsRole } from "@/components/os/OsTopBar";
 import Button from "@/components/ui/Button";
 import SectionCard from "@/components/ui/SectionCard";
@@ -1842,6 +1843,13 @@ export default function AdminCertifiedInstructorsPage() {
                 </Button>
               </div>
               <div className="px-5 py-5 sm:px-6 sm:py-6">
+                <div className="mb-5">
+                  <InstructorProfilePhotoEditor
+                    instructorId={selected.instructorId}
+                    listUserId={selected.userId}
+                    activityName={selected.activityName}
+                  />
+                </div>
                 <InstructorEditForm
                   selected={selected}
                   editPublicName={editPublicName}

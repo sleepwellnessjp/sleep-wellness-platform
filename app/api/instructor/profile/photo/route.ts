@@ -4,17 +4,11 @@ import {
   updateOwnInstructorProfile,
 } from "@/lib/instructors/instructor-profile-service";
 import {
-  INSTRUCTOR_PROFILE_BUCKET,
-  PROFILE_IMAGE_MAX_BYTES,
-  PROFILE_IMAGE_MIME_TYPES,
-} from "@/lib/instructors/types";
+  deleteInstructorProfilePhotos,
+  uploadInstructorProfilePhoto,
+} from "@/lib/instructors/profile-photo-storage";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-
-function isAllowedMime(type: string): boolean {
-  const normalized = type.toLowerCase() === "image/jpg" ? "image/jpeg" : type;
-  return (PROFILE_IMAGE_MIME_TYPES as readonly string[]).includes(normalized);
-}
 
 export async function POST(request: Request) {
   try {
@@ -57,68 +51,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isAllowedMime(file.type)) {
-      return NextResponse.json(
-        { error: "対応形式は JPG / JPEG / PNG / WebP のみです" },
-        { status: 400 },
-      );
-    }
+    const { url } = await uploadInstructorProfilePhoto({
+      supabase,
+      ownerUserId: user.id,
+      file,
+    });
 
-    if (file.size > PROFILE_IMAGE_MAX_BYTES) {
-      return NextResponse.json(
-        {
-          error: `画像が大きすぎます（上限 ${Math.round(PROFILE_IMAGE_MAX_BYTES / (1024 * 1024))}MB）`,
-        },
-        { status: 400 },
-      );
-    }
-
-    const mime =
-      file.type.toLowerCase() === "image/jpg" ? "image/jpeg" : file.type;
-    const ext =
-      mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
-    const path = `${user.id}/profile.${ext}`;
-
-    // 旧拡張子のファイルを掃除
-    const { data: existing } = await supabase.storage
-      .from(INSTRUCTOR_PROFILE_BUCKET)
-      .list(user.id);
-    if (existing && existing.length > 0) {
-      const toRemove = existing
-        .map((item) => `${user.id}/${item.name}`)
-        .filter((name) => name !== path);
-      if (toRemove.length > 0) {
-        await supabase.storage.from(INSTRUCTOR_PROFILE_BUCKET).remove(toRemove);
-      }
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: uploadError } = await supabase.storage
-      .from(INSTRUCTOR_PROFILE_BUCKET)
-      .upload(path, buffer, {
-        contentType: mime,
-        upsert: true,
-        cacheControl: "3600",
-      });
-
-    if (uploadError) {
-      console.error("[api/instructor/profile/photo]", uploadError.message);
-      return NextResponse.json(
-        {
-          error:
-            uploadError.message.includes("Bucket not found")
-              ? "Storage バケット未設定です。supabase/instructor-profile-storage.sql を実行してください。"
-              : uploadError.message,
-        },
-        { status: 500 },
-      );
-    }
-
-    const { data: publicUrl } = supabase.storage
-      .from(INSTRUCTOR_PROFILE_BUCKET)
-      .getPublicUrl(path);
-
-    const url = `${publicUrl.publicUrl}?v=${Date.now()}`;
     const profile = await updateOwnInstructorProfile(
       { profileImageUrl: url },
       supabase,
@@ -171,14 +109,10 @@ export async function DELETE() {
       );
     }
 
-    const { data: existing } = await supabase.storage
-      .from(INSTRUCTOR_PROFILE_BUCKET)
-      .list(user.id);
-    if (existing && existing.length > 0) {
-      await supabase.storage
-        .from(INSTRUCTOR_PROFILE_BUCKET)
-        .remove(existing.map((item) => `${user.id}/${item.name}`));
-    }
+    await deleteInstructorProfilePhotos({
+      supabase,
+      ownerUserId: user.id,
+    });
 
     const profile = await updateOwnInstructorProfile(
       { profileImageUrl: null },

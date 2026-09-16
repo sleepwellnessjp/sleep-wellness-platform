@@ -174,6 +174,27 @@ export async function getOwnInstructorProfile(
   return toEditableProfile(withPublicDefaults(asRow(data)));
 }
 
+/** 管理者向け: 講師 ID でプロフィール取得（権限チェックは呼び出し側） */
+export async function getInstructorProfileById(
+  instructorId: string,
+  client?: Client,
+): Promise<InstructorProfileEditable | null> {
+  const supabase = client ?? (await requireClient());
+  const schema = await resolveCertifiedInstructorPublicSelect(supabase);
+  const { data, error } = await supabase
+    .from("certified_instructors")
+    .select(schema.select)
+    .eq("id", instructorId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[instructors] getInstructorProfileById:", error.message);
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+  return toEditableProfile(withPublicDefaults(asRow(data)));
+}
+
 function normalizeUrl(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
