@@ -114,26 +114,42 @@ export function getRosterInstructor(id: string): InstructorPublicDetail | null {
 
 /**
  * DB の公開講師と名簿を統合する。
- * 公開名簿の7名は名簿側を優先（表示順・本人提供プロフィールを維持）。
- * 名簿外の DB 公開講師は末尾に追加。
+ * 同名がある場合は DB（ビュー）側を採用（写真・紹介文などの実データ優先）。
+ * 名簿にのみいる講師は名簿カードのまま。
+ * 表示順: 名簿の固定順を維持し、その枠に DB があれば差し替え。名簿外の DB 公開講師は末尾。
  */
 export function mergePublicInstructorsWithRoster(
   fromDb: InstructorPublicCard[],
 ): InstructorPublicCard[] {
   const normalize = (name: string) => name.replace(/\s+/g, "");
-  const rosterKeys = new Set(
-    CERTIFIED_INSTRUCTOR_ROSTER.map((card) => normalize(card.activityName)),
-  );
 
-  const merged: InstructorPublicCard[] = [...CERTIFIED_INSTRUCTOR_ROSTER];
-  const used = new Set(rosterKeys);
+  const dbByName = new Map<string, InstructorPublicCard>();
+  for (const card of fromDb) {
+    const key = normalize(card.activityName);
+    if (!key) continue;
+    // 同名が複数ある場合は先勝ち（通常は1件）
+    if (!dbByName.has(key)) dbByName.set(key, card);
+  }
+
+  const merged: InstructorPublicCard[] = [];
+  const used = new Set<string>();
+
+  for (const rosterCard of CERTIFIED_INSTRUCTOR_ROSTER) {
+    const key = normalize(rosterCard.activityName);
+    const fromDatabase = dbByName.get(key);
+    if (fromDatabase) {
+      merged.push(fromDatabase);
+    } else {
+      merged.push(rosterCard);
+    }
+    used.add(key);
+  }
 
   for (const card of fromDb) {
     const key = normalize(card.activityName);
-    if (!used.has(key)) {
-      merged.push(card);
-      used.add(key);
-    }
+    if (!key || used.has(key)) continue;
+    merged.push(card);
+    used.add(key);
   }
 
   return merged;

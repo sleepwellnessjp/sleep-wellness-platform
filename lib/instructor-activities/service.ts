@@ -120,15 +120,29 @@ async function attachInstructors(
   const ids = [...new Set(rows.map((row) => row.instructor_id).filter(Boolean))];
   const byId = new Map<string, InstructorActivityJoin>();
   if (ids.length > 0) {
-    const { data } = await supabase
+    const instructorSelect =
+      "id, public_name, public_display_name, display_name, legal_name, headline, bio, profile_image_url";
+
+    // 本人・管理者はベース表。anon は公開ポリシー削除後は取得不可のため、不足分をディレクトリビューで補う。
+    const { data: fromBase } = await supabase
       .from("certified_instructors")
-      .select(
-        "id, public_name, public_display_name, display_name, legal_name, headline, bio, profile_image_url",
-      )
+      .select(instructorSelect)
       .in("id", ids);
-    for (const item of data ?? []) {
+    for (const item of fromBase ?? []) {
       const instructor = item as InstructorActivityJoin;
       if (instructor.id) byId.set(instructor.id, instructor);
+    }
+
+    const missing = ids.filter((id) => !byId.has(id));
+    if (missing.length > 0) {
+      const { data: fromDirectory } = await supabase
+        .from("certified_instructors_directory")
+        .select(instructorSelect)
+        .in("id", missing);
+      for (const item of fromDirectory ?? []) {
+        const instructor = item as InstructorActivityJoin;
+        if (instructor.id) byId.set(instructor.id, instructor);
+      }
     }
   }
   return rows.map((row) =>

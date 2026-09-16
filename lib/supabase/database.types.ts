@@ -4242,7 +4242,35 @@ export type Database = {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      certified_instructors_directory: {
+        Row: {
+          id: string;
+          public_name: string | null;
+          public_display_name: string | null;
+          display_name: string | null;
+          legal_name: string | null;
+          show_legal_name: boolean | null;
+          level_id: string | null;
+          headline: string | null;
+          bio: string | null;
+          career: string | null;
+          activity_area: string | null;
+          service_area: string | null;
+          online_available: boolean | null;
+          yoga_specialties: string[] | null;
+          pilates_specialties: string[] | null;
+          specialties: string[] | null;
+          available_programs: string[] | null;
+          profile_image_url: string | null;
+          instagram_url: string | null;
+          website_url: string | null;
+          contact_email: string | null;
+          display_order: number | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {
       is_super_admin: { Args: Record<string, never>; Returns: boolean };
       is_admin_or_above: { Args: Record<string, never>; Returns: boolean };
