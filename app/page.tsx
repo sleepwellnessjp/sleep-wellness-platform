@@ -3,6 +3,7 @@ import HomeIntroBridge from "@/components/HomeIntroBridge";
 import HomeFirstView from "@/components/home/HomeFirstView";
 import HomeVisionPromo from "@/components/home/HomeVisionPromo";
 import About from "@/components/About";
+import HomeDualMeasurement from "@/components/home/HomeDualMeasurement";
 import Services from "@/components/Services";
 import InstructorsCta from "@/components/InstructorsCta";
 import Partners from "@/components/Partners";
@@ -61,6 +62,7 @@ export default async function Home() {
       />
       <HomeVisionPromo />
       <About />
+      <HomeDualMeasurement />
       <Services />
       <InstructorsCta />
       <HomeActivitiesSection activities={featuredActivities} />

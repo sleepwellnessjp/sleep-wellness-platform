@@ -42,6 +42,9 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === "/practice" || pathname.startsWith("/practice/")) {
     return true;
   }
+  if (pathname === "/method" || pathname.startsWith("/method/")) {
+    return true;
+  }
   if (pathname === "/sleep-words" || pathname.startsWith("/sleep-words/")) {
     return true;
   }
