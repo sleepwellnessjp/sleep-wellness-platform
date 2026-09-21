@@ -12,6 +12,10 @@ import {
   type NightGlucoseStats,
   type NightGlucoseWindow,
 } from "@/lib/glucose/night-glucose-stats";
+import {
+  buildNightGlucoseReading,
+  type GlucoseReadingResult,
+} from "@/lib/glucose/night-glucose-reading";
 
 export const NIGHT_GLUCOSE_LOW_COVERAGE_NOTE =
   "記録が不足しているため参考表示";
@@ -29,6 +33,11 @@ export {
   resolveFallbackNightWindow,
   NIGHT_GLUCOSE_COVERAGE_WARN_RATIO,
 } from "@/lib/glucose/night-glucose-stats";
+
+export {
+  EARLY_SLEEP_DINNER_TIP,
+  GLUCOSE_READING_THRESHOLDS,
+} from "@/lib/glucose/night-glucose-reading";
 
 export function formatGlucoseClockTokyo(iso: string): string {
   try {
@@ -63,6 +72,8 @@ export type NightGlucoseReportPayload = {
   showAttentionNote: boolean;
   /** ⑤改善優先順位への添文が必要か */
   suggestPriorityNote: boolean;
+  /** ルールベースの読み取り文 */
+  reading: GlucoseReadingResult | null;
 };
 
 export function buildNightGlucoseReportPayload(options: {
@@ -71,6 +82,12 @@ export function buildNightGlucoseReportPayload(options: {
   wakeTime: string | null | undefined;
   readings: NightGlucoseReading[];
   awakeSegments?: Array<{ startTime?: string; endTime?: string }>;
+  /** 睡眠ステージの覚醒時間（分）。体内時計ではない */
+  awakeMinutes?: number | null;
+  /** 睡眠ステージの覚醒率（%） */
+  awakeRatePercent?: number | null;
+  /** 表示用（例: "1:26"） */
+  awakeDisplay?: string | null;
 }): NightGlucoseReportPayload {
   const {
     analysisDate,
@@ -78,6 +95,9 @@ export function buildNightGlucoseReportPayload(options: {
     wakeTime,
     readings,
     awakeSegments = [],
+    awakeMinutes = null,
+    awakeRatePercent = null,
+    awakeDisplay = null,
   } = options;
 
   const resolved =
@@ -119,19 +139,32 @@ export function buildNightGlucoseReportPayload(options: {
   const coverageBelowThreshold =
     stats != null && coverageRatio < NIGHT_GLUCOSE_COVERAGE_WARN_RATIO;
 
+  const historicPoints = points
+    .filter((p) => p.recordType === 0)
+    .map((p) => ({
+      recordedAtIso: p.recordedAtIso,
+      glucoseMgDl: p.glucoseMgDl,
+    }));
+
   const suggestPriorityNote =
     stats != null &&
     hasGlucoseChangeDuringAwake({
       coverageRatio,
-      glucosePoints: points
-        .filter((p) => p.recordType === 0)
-        .map((p) => ({
-          recordedAtIso: p.recordedAtIso,
-          glucoseMgDl: p.glucoseMgDl,
-        })),
+      glucosePoints: historicPoints,
       awakeSegments,
       analysisDate,
     });
+
+  const reading =
+    stats != null
+      ? buildNightGlucoseReading({
+          stats,
+          points: historicPoints,
+          awakeMinutes,
+          awakeRatePercent,
+          awakeDisplay,
+        })
+      : null;
 
   return {
     analysisDate,
@@ -148,5 +181,6 @@ export function buildNightGlucoseReportPayload(options: {
     coverageBelowThreshold,
     showAttentionNote: Boolean(stats?.hasAttentionValues),
     suggestPriorityNote,
+    reading,
   };
 }

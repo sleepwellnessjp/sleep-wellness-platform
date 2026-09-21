@@ -29,6 +29,11 @@ export async function GET(request: Request, context: RouteContext) {
   const analysisDate = url.searchParams.get("analysisDate")?.trim() ?? "";
   const sleepOnset = url.searchParams.get("sleepOnset")?.trim() || null;
   const wake = url.searchParams.get("wake")?.trim() || null;
+  const awakeRaw = url.searchParams.get("awakeMinutes")?.trim() || "";
+  const awakeMinutes = awakeRaw ? Number(awakeRaw) : null;
+  const awakeRateRaw = url.searchParams.get("awakeRate")?.trim() || "";
+  const awakeRatePercent = awakeRateRaw ? Number(awakeRateRaw) : null;
+  const awakeDisplay = url.searchParams.get("awakeDisplay")?.trim() || null;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(analysisDate)) {
     return NextResponse.json(
@@ -101,6 +106,15 @@ export async function GET(request: Request, context: RouteContext) {
     sleepOnsetTime: sleepOnset,
     wakeTime: wake,
     readings,
+    awakeMinutes:
+      awakeMinutes != null && Number.isFinite(awakeMinutes)
+        ? awakeMinutes
+        : null,
+    awakeRatePercent:
+      awakeRatePercent != null && Number.isFinite(awakeRatePercent)
+        ? awakeRatePercent
+        : null,
+    awakeDisplay,
   });
 
   return NextResponse.json({ ok: true, ...payload });

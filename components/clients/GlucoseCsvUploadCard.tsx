@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BORDER, GOLD, MUTED, NAVY } from "@/components/ui/tokens";
 
 type ImportSummary = {
@@ -28,18 +28,33 @@ function formatPeriod(iso: string | null): string {
 }
 
 type Props = {
-  clientId: string;
+  /** 未指定・空のときは取込不可（先にクライアント選択を促す） */
+  clientId?: string | null;
+  title?: string;
+  description?: string;
 };
 
 /**
- * FreeStyle Libre CSV をクライアント詳細から取り込む。
- * レポート表示は別ステップ。ここでは保存と件数サマリーのみ。
+ * FreeStyle Libre CSV をクライアントに取り込む。
+ * カルテ・分析フローの両方で同じ部品を使う。
  */
-export default function GlucoseCsvUploadCard({ clientId }: Props) {
+export default function GlucoseCsvUploadCard({
+  clientId,
+  title = "血糖CSV（Libre）",
+  description = "FreeStyle Libre の書き出しCSVを取り込みます。同一データの再取り込みは重複しません。",
+}: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+
+  const canUpload = Boolean(clientId?.trim());
+
+  useEffect(() => {
+    setError(null);
+    setSummary(null);
+    setFileName(null);
+  }, [clientId]);
 
   async function onFileChange(file: File | null) {
     setError(null);
@@ -48,15 +63,22 @@ export default function GlucoseCsvUploadCard({ clientId }: Props) {
       setFileName(null);
       return;
     }
+    if (!clientId?.trim()) {
+      setError("先にクライアントを選択してください");
+      return;
+    }
     setFileName(file.name);
     setBusy(true);
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}/glucose/import`, {
-        method: "POST",
-        body,
-      });
+      const res = await fetch(
+        `/api/clients/${encodeURIComponent(clientId.trim())}/glucose/import`,
+        {
+          method: "POST",
+          body,
+        },
+      );
       const json = (await res.json()) as {
         error?: string;
         summary?: ImportSummary;
@@ -77,7 +99,9 @@ export default function GlucoseCsvUploadCard({ clientId }: Props) {
 
   return (
     <div
-      className="rounded-3xl border bg-white p-5 sm:p-6"
+      className={`rounded-3xl border bg-white p-5 sm:p-6 ${
+        canUpload ? "" : "opacity-75"
+      }`}
       style={{ borderColor: BORDER }}
     >
       <p
@@ -90,31 +114,41 @@ export default function GlucoseCsvUploadCard({ clientId }: Props) {
         className="mt-2 text-[15px] font-semibold tracking-[-0.03em] sm:text-base"
         style={{ color: NAVY }}
       >
-        血糖CSV（Libre）
+        {title}
       </h3>
       <p className="mt-2 text-[13px] leading-6" style={{ color: MUTED }}>
-        FreeStyle Libre の書き出しCSVを取り込みます。同一データの再取り込みは重複しません。
+        {description}
       </p>
 
-      <label className="mt-4 flex min-h-12 cursor-pointer flex-col items-start justify-center gap-1 rounded-2xl border border-dashed px-4 py-3 transition hover:bg-slate-50">
-        <span className="text-[13px] font-semibold" style={{ color: NAVY }}>
-          {busy ? "取り込み中…" : "CSVファイルを選択"}
-        </span>
-        <span className="text-[12px]" style={{ color: MUTED }}>
-          {fileName ?? "Libre 日本語エクスポート（.csv）"}
-        </span>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          className="sr-only"
-          disabled={busy}
-          onChange={(event) => {
-            const next = event.target.files?.[0] ?? null;
-            void onFileChange(next);
-            event.target.value = "";
-          }}
-        />
-      </label>
+      {!canUpload ? (
+        <p
+          className="mt-4 rounded-2xl border border-dashed px-4 py-3 text-[13px] leading-6"
+          style={{ borderColor: BORDER, color: MUTED }}
+          role="status"
+        >
+          先にクライアントを選択
+        </p>
+      ) : (
+        <label className="mt-4 flex min-h-12 cursor-pointer flex-col items-start justify-center gap-1 rounded-2xl border border-dashed px-4 py-3 transition hover:bg-slate-50">
+          <span className="text-[13px] font-semibold" style={{ color: NAVY }}>
+            {busy ? "取り込み中…" : "CSVファイルを選択"}
+          </span>
+          <span className="text-[12px]" style={{ color: MUTED }}>
+            {fileName ?? "Libre 日本語エクスポート（.csv）"}
+          </span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="sr-only"
+            disabled={busy || !canUpload}
+            onChange={(event) => {
+              const next = event.target.files?.[0] ?? null;
+              void onFileChange(next);
+              event.target.value = "";
+            }}
+          />
+        </label>
+      )}
 
       {error ? (
         <p className="mt-3 text-[13px] leading-6 text-red-600" role="alert">
@@ -143,7 +177,7 @@ export default function GlucoseCsvUploadCard({ clientId }: Props) {
             </dd>
           </div>
           <div className="sm:col-span-2">
-            <dt style={{ color: MUTED }}>期間</dt>
+            <dt style={{ color: MUTED }}>対象期間</dt>
             <dd className="font-semibold" style={{ color: NAVY }}>
               {formatPeriod(summary.periodStart)}
               {" 〜 "}

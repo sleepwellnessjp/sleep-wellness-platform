@@ -282,6 +282,20 @@ export function NightGlucoseReportView({
         />
       </div>
 
+      {payload.reading?.text ? (
+        <div className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3.5 py-3">
+          <p
+            className="text-[10px] font-semibold tracking-[0.14em]"
+            style={{ color: GOLD }}
+          >
+            読み取り
+          </p>
+          <p className="mt-1.5 text-[13px] leading-6 text-slate-700 sm:text-[14px] sm:leading-7">
+            {payload.reading.text}
+          </p>
+        </div>
+      ) : null}
+
       {payload.showAttentionNote ? (
         <p className="text-[12px] leading-5 text-slate-600 sm:text-[13px]">
           {NIGHT_GLUCOSE_ATTENTION_NOTE}
@@ -300,10 +314,21 @@ type Props = {
   analysisDate: string;
   sleepOnsetTime?: string | null;
   wakeTime?: string | null;
+  /**
+   * 睡眠ステージの覚醒時間（分）。
+   * metrics.awakenings 由来。体内時計（circadianRhythm）は渡さない。
+   */
+  awakeMinutes?: number | null;
+  /** 睡眠ステージの覚醒率（%） */
+  awakeRatePercent?: number | null;
+  /** 表示用（例: "1:26"） */
+  awakeDisplay?: string | null;
   /** データが無いときは false。読み込み中は null */
   onAvailabilityChange?: (hasData: boolean | null) => void;
   /** ⑤添文の要否 */
   onPriorityNoteChange?: (show: boolean) => void;
+  /** ペイロード全体（PDF・⑦宿題用） */
+  onPayloadChange?: (payload: NightGlucoseReportPayload | null) => void;
   awakeSegments?: Array<{ startTime?: string; endTime?: string }>;
 };
 
@@ -316,8 +341,12 @@ export default function NightGlucoseReportSection({
   analysisDate,
   sleepOnsetTime,
   wakeTime,
+  awakeMinutes = null,
+  awakeRatePercent = null,
+  awakeDisplay = null,
   onAvailabilityChange,
   onPriorityNoteChange,
+  onPayloadChange,
   awakeSegments = [],
 }: Props) {
   const [payload, setPayload] = useState<NightGlucoseReportPayload | null>(
@@ -332,10 +361,28 @@ export default function NightGlucoseReportSection({
     setError(null);
     onAvailabilityChange?.(null);
     onPriorityNoteChange?.(false);
+    onPayloadChange?.(null);
 
     const params = new URLSearchParams({ analysisDate });
     if (sleepOnsetTime?.trim()) params.set("sleepOnset", sleepOnsetTime.trim());
     if (wakeTime?.trim()) params.set("wake", wakeTime.trim());
+    if (
+      awakeMinutes != null &&
+      Number.isFinite(awakeMinutes) &&
+      awakeMinutes >= 0
+    ) {
+      params.set("awakeMinutes", String(Math.round(awakeMinutes)));
+    }
+    if (
+      awakeRatePercent != null &&
+      Number.isFinite(awakeRatePercent) &&
+      awakeRatePercent >= 0
+    ) {
+      params.set("awakeRate", String(awakeRatePercent));
+    }
+    if (awakeDisplay?.trim()) {
+      params.set("awakeDisplay", awakeDisplay.trim());
+    }
 
     void fetch(
       `/api/clients/${encodeURIComponent(clientId)}/glucose/night?${params}`,
@@ -369,12 +416,14 @@ export default function NightGlucoseReportSection({
         setPayload(next);
         onAvailabilityChange?.(Boolean(next.hasData && next.stats));
         onPriorityNoteChange?.(suggestPriorityNote);
+        onPayloadChange?.(next.hasData && next.stats ? next : null);
       })
       .catch((err) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "取得に失敗しました");
           onAvailabilityChange?.(false);
           onPriorityNoteChange?.(false);
+          onPayloadChange?.(null);
         }
       })
       .finally(() => {
@@ -391,6 +440,9 @@ export default function NightGlucoseReportSection({
     analysisDate,
     sleepOnsetTime,
     wakeTime,
+    awakeMinutes,
+    awakeRatePercent,
+    awakeDisplay,
     JSON.stringify(awakeSegments),
   ]);
 

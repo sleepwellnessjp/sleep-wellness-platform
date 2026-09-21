@@ -25,11 +25,17 @@ import {
   type PrescriptionCard,
 } from "@/lib/data/practice";
 import { isReportSectionVisible } from "@/lib/report-sections";
+import {
+  formatGlucoseClockTokyo,
+  NIGHT_GLUCOSE_DISCLAIMER,
+  type NightGlucoseReportPayload,
+} from "@/lib/glucose/night-glucose-report";
 
 const NAVY = "#071426";
 const GOLD = "#8a6a2d";
 const GOLD_SOFT = "#fbf9f4";
 const SURFACE = "#fafaf8";
+const TEAL = "#315f68";
 
 const CATEGORY_ORDER: WellnessCategoryKey[] = [
   "body",
@@ -99,6 +105,207 @@ function clampPdfComment(text: string, maxSentences = 2): string {
   const parts = trimmed.match(/[^.!?。！？]+[.!?。！？]?/g);
   if (!parts || parts.length <= maxSentences) return trimmed;
   return parts.slice(0, maxSentences).join("").trim();
+}
+
+/** PDF 1ページ目用の小さな夜間グルコース推移 */
+function PdfNightGlucoseMiniChart({
+  payload,
+}: {
+  payload: NightGlucoseReportPayload;
+}) {
+  const points = payload.points.filter((p) => p.recordType === 0);
+  if (points.length === 0) return null;
+
+  const width = 520;
+  const height = 72;
+  const padding = { top: 6, right: 8, bottom: 14, left: 28 };
+  const innerW = width - padding.left - padding.right;
+  const innerH = height - padding.top - padding.bottom;
+  const startMs = Date.parse(payload.window.startAtIso);
+  const endMs = Date.parse(payload.window.endAtIso);
+  const span = Math.max(1, endMs - startMs);
+  const values = points.map((p) => p.glucoseMgDl);
+  // 画面版と同じ既定レンジ 60〜160（データがはみ出すときだけ広げる）
+  const minValue = Math.min(60, ...values);
+  const maxValue = Math.max(160, ...values);
+  const range = Math.max(1, maxValue - minValue);
+  const xAt = (iso: string) => {
+    const ratio = (Date.parse(iso) - startMs) / span;
+    return padding.left + Math.min(1, Math.max(0, ratio)) * innerW;
+  };
+  const yAt = (v: number) =>
+    padding.top + (1 - (v - minValue) / range) * innerH;
+  const linePath = points
+    .map((p, i) => {
+      const x = xAt(p.recordedAtIso);
+      const y = yAt(p.glucoseMgDl);
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const yTicks = [60, 100, 140].filter(
+    (tick) => tick >= minValue && tick <= maxValue,
+  );
+  const bandTop = Math.min(140, maxValue);
+  const bandBottom = Math.max(70, minValue);
+  const showGuideBand = bandTop > bandBottom;
+  const xLabels = [0, 1].map((ratio) => ({
+    x: padding.left + ratio * innerW,
+    label: formatGlucoseClockTokyo(
+      new Date(startMs + span * ratio).toISOString(),
+    ),
+  }));
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-auto w-full"
+      aria-hidden
+    >
+      <rect
+        x={padding.left}
+        y={padding.top}
+        width={innerW}
+        height={innerH}
+        fill={SURFACE}
+        stroke="rgba(7,20,38,0.08)"
+      />
+      {showGuideBand ? (
+        <rect
+          x={padding.left}
+          y={yAt(bandTop)}
+          width={innerW}
+          height={Math.max(0, yAt(bandBottom) - yAt(bandTop))}
+          fill="rgba(49, 95, 104, 0.08)"
+        />
+      ) : null}
+      {yTicks.map((tick) => {
+        const y = yAt(tick);
+        return (
+          <g key={`y-${tick}`}>
+            <line
+              x1={padding.left}
+              x2={padding.left + innerW}
+              y1={y}
+              y2={y}
+              stroke="rgba(7,20,38,0.06)"
+            />
+            <text
+              x={padding.left - 4}
+              y={y + 2.5}
+              textAnchor="end"
+              style={{ fontSize: 7, fill: "#94a3b8" }}
+            >
+              {tick}
+            </text>
+          </g>
+        );
+      })}
+      {linePath ? (
+        <path
+          d={linePath}
+          fill="none"
+          stroke={TEAL}
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ) : null}
+      {xLabels.map((lab) => (
+        <text
+          key={lab.label}
+          x={lab.x}
+          y={height - 3}
+          textAnchor={lab.x <= padding.left + 2 ? "start" : "end"}
+          style={{ fontSize: 8, fill: "#64748b" }}
+        >
+          {lab.label}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+function PdfNightGlucoseBlock({
+  payload,
+}: {
+  payload: NightGlucoseReportPayload;
+}) {
+  if (!payload.hasData || !payload.stats) return null;
+  const coveragePct = Math.round(payload.stats.coverageRatio * 100);
+  const minClock = formatGlucoseClockTokyo(payload.stats.min.recordedAtIso);
+  const maxClock = formatGlucoseClockTokyo(payload.stats.max.recordedAtIso);
+  return (
+    <section className="mt-2.5">
+      <SectionEyebrow
+        eyebrow="NIGHT GLUCOSE"
+        title="夜間のグルコース（参考）"
+      />
+      <PdfNightGlucoseMiniChart payload={payload} />
+      <div className="mt-1 grid grid-cols-4 gap-1.5">
+        <div className="rounded px-1.5 py-1" style={{ background: SURFACE }}>
+          <p className="text-[7px] tracking-[0.04em] text-slate-500">平均</p>
+          <p
+            className="text-[11px] font-semibold leading-tight tracking-[-0.02em]"
+            style={{ color: NAVY }}
+          >
+            {payload.stats.averageMgDl}
+            <span className="ml-0.5 text-[7px] font-medium text-slate-400">
+              mg/dL
+            </span>
+          </p>
+        </div>
+        <div className="rounded px-1.5 py-1" style={{ background: SURFACE }}>
+          <p className="text-[7px] tracking-[0.04em] text-slate-500">最低</p>
+          <p
+            className="text-[11px] font-semibold leading-tight tracking-[-0.02em]"
+            style={{ color: NAVY }}
+          >
+            {payload.stats.min.glucoseMgDl}
+            <span className="ml-0.5 text-[7px] font-medium text-slate-400">
+              mg/dL
+            </span>
+          </p>
+          <p className="text-[7px] leading-tight text-slate-500">{minClock}</p>
+        </div>
+        <div className="rounded px-1.5 py-1" style={{ background: SURFACE }}>
+          <p className="text-[7px] tracking-[0.04em] text-slate-500">最高</p>
+          <p
+            className="text-[11px] font-semibold leading-tight tracking-[-0.02em]"
+            style={{ color: NAVY }}
+          >
+            {payload.stats.max.glucoseMgDl}
+            <span className="ml-0.5 text-[7px] font-medium text-slate-400">
+              mg/dL
+            </span>
+          </p>
+          <p className="text-[7px] leading-tight text-slate-500">{maxClock}</p>
+        </div>
+        <div className="rounded px-1.5 py-1" style={{ background: SURFACE }}>
+          <p className="text-[7px] tracking-[0.04em] text-slate-500">取得率</p>
+          <p
+            className="text-[11px] font-semibold leading-tight tracking-[-0.02em]"
+            style={{ color: NAVY }}
+          >
+            {coveragePct}%
+          </p>
+        </div>
+      </div>
+      {payload.reading?.text ? (
+        <p
+          className="mt-1.5 text-[9px] leading-[1.45]"
+          style={{ color: "rgba(7,20,38,0.78)" }}
+        >
+          <span className="font-semibold" style={{ color: GOLD }}>
+            読み取り：
+          </span>
+          {payload.reading.text}
+        </p>
+      ) : null}
+      <p className="mt-1 text-[7px] leading-[1.35] text-slate-400">
+        {NIGHT_GLUCOSE_DISCLAIMER}
+      </p>
+    </section>
+  );
 }
 
 function MetricGuideTile({
@@ -228,12 +435,15 @@ export function ClientDiagnosticPdf({
   deviceName,
   recovery,
   preview = false,
+  nightGlucose = null,
 }: {
   result: AnalysisResult;
   lifestyle?: LifestyleSnapshot | null;
   deviceName?: string;
   recovery: RecoveryIndexResult;
   preview?: boolean;
+  /** 夜間グルコース。データ無し・未取得時は null（ブロック非表示） */
+  nightGlucose?: NightGlucoseReportPayload | null;
 }) {
   const resolvedDeviceName =
     deviceName?.trim() ||
@@ -429,6 +639,10 @@ export function ClientDiagnosticPdf({
               </>
             )}
           </section>
+        ) : null}
+
+        {nightGlucose?.hasData && nightGlucose.stats ? (
+          <PdfNightGlucoseBlock payload={nightGlucose} />
         ) : null}
 
         {isReportSectionVisible("insight") &&

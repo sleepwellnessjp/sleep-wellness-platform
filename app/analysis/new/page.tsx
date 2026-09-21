@@ -16,6 +16,7 @@ import { flushSync } from "react-dom";
 import AnalysisFlow from "@/components/AnalysisFlow";
 import AnalysisAccessBanner from "@/components/AnalysisAccessBanner";
 import AnalysisCreditsRemainder from "@/components/AnalysisCreditsRemainder";
+import GlucoseCsvUploadCard from "@/components/clients/GlucoseCsvUploadCard";
 import SiteNavMenu from "@/components/site/SiteNavMenu";
 import SoxaiOcrProgressPanel from "@/components/SoxaiOcrProgressPanel";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
@@ -2203,6 +2204,30 @@ function NewAnalysisPageInner() {
               </div>
             </section>
           )}
+
+          {inputMethod === "soxai" ? (
+            <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">
+              <div className="border-b border-slate-100 px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <p className="text-[11px] font-semibold tracking-[0.26em] text-[#8a6a2d]">
+                  STEP 2b · LIBRE CSV
+                </p>
+                <h2 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[#071426] sm:text-2xl">
+                  リブレ2のCSV（任意）
+                </h2>
+                <p className="mt-2 max-w-xl text-[14px] leading-6 text-slate-500 sm:text-sm sm:leading-7">
+                  夜間のグルコースをレポートに重ねる場合のみアップロードしてください。なくても分析は進められます。
+                </p>
+              </div>
+              <div className="px-4 py-5 sm:px-8 sm:py-8 lg:px-10">
+                <GlucoseCsvUploadCard
+                  key={clientId || "no-client"}
+                  clientId={clientId || null}
+                  title="リブレ2のCSV（任意）"
+                  description="FreeStyle Libre / リブレ2 の書き出しCSVを、選択中のクライアントに取り込みます。同一データの再取り込みは重複しません。"
+                />
+              </div>
+            </section>
+          ) : null}
 
           {inputMethod === "oura" && (
             <section className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_80px_-48px_rgba(15,23,42,0.28)]">

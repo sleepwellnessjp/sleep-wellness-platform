@@ -24,7 +24,11 @@ import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextC
 import PreviousHomeworkCard from "@/components/PreviousHomeworkCard";
 import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 import NightGlucoseReportSection from "@/components/analysis/NightGlucoseReportSection";
-import { NIGHT_GLUCOSE_PRIORITY_NOTE } from "@/lib/glucose/night-glucose-report";
+import {
+  EARLY_SLEEP_DINNER_TIP,
+  NIGHT_GLUCOSE_PRIORITY_NOTE,
+  type NightGlucoseReportPayload,
+} from "@/lib/glucose/night-glucose-report";
 import { InstructorCommentEditor } from "@/components/analysis/ClientWellnessReport";
 import { ClientDiagnosticPdf } from "@/components/analysis/ClientDiagnosticPdf";
 import {
@@ -83,7 +87,8 @@ import {
   isReportSectionVisible,
   isResultSectionIdVisible,
 } from "@/lib/report-sections";
-import { displayValue, parseDurationMinutes, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import { displayValue, parseDurationMinutes, parsePercent, type SoxaiGraphBundle } from "@/lib/soxai-graphs";
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
 import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 import { formatGenderLabel, hasAgeAndGender, parseOptionalAge } from "@/lib/client-profile";
 import {
@@ -1182,6 +1187,8 @@ function ResultContent({
   /** ③-2：夜間グルコースデータがあるときだけ目次・本文を出す */
   const [showNightGlucose, setShowNightGlucose] = useState(false);
   const [glucosePriorityNote, setGlucosePriorityNote] = useState(false);
+  const [nightGlucosePayload, setNightGlucosePayload] =
+    useState<NightGlucoseReportPayload | null>(null);
   const autoSheetRef = useRef(false);
   const aiIntelligence = useAnalysisAiIntelligence(
     result,
@@ -1595,9 +1602,20 @@ function ResultContent({
     nasalCongestion: pendingDayNasal,
     // Profile V2 の snoring / nasalCongestionHabitual は取得不可
   });
-  const awakeMinutesForRecovery = parseDurationMinutes(
+  // 睡眠ステージの覚醒時間・覚醒率（体内時計 circadianRhythm とは別。混同しない）
+  const stageAwakeMinutes = parseDurationMinutes(
     String(confirmedMetrics.awakenings ?? ""),
   );
+  const stageAwakeRatePercent = parsePercent(
+    String(confirmedMetrics.awakeningRate ?? ""),
+  );
+  const stageAwakeDisplay =
+    (stageAwakeMinutes != null
+      ? formatMinutesAsDuration(stageAwakeMinutes)
+      : "") ||
+    String(confirmedMetrics.awakenings ?? "").trim() ||
+    null;
+  const awakeMinutesForRecovery = stageAwakeMinutes;
   const recoveryIndex = computeRecoveryIndex(
     isOuraResult
       ? {
@@ -1634,12 +1652,21 @@ function ResultContent({
   const practicePrescription = getPrescription(
     toPracticeMetrics(result.metrics),
   );
-  const homeworkSeedActions = buildHomeworkDisplaySeedActions({
-    priorityImprovements: wellnessModel.priorityImprovements,
-    todaysActions: wellnessModel.todaysActions,
-    todaysRecommendations: todaysRecommendations,
-    melatoninPhase: wellnessModel.melatoninYoga.phase,
-  });
+  const homeworkSeedActions = (() => {
+    const seeds = buildHomeworkDisplaySeedActions({
+      priorityImprovements: wellnessModel.priorityImprovements,
+      todaysActions: wellnessModel.todaysActions,
+      todaysRecommendations: todaysRecommendations,
+      melatoninPhase: wellnessModel.melatoninYoga.phase,
+    });
+    if (nightGlucosePayload?.reading?.flags.earlySleepElevated) {
+      const tip = EARLY_SLEEP_DINNER_TIP;
+      if (!seeds.some((s) => s.text.includes(tip) || tip.includes(s.text))) {
+        seeds.push({ text: tip, source: "today" });
+      }
+    }
+    return seeds;
+  })();
   const sleepMetricRows = MEDICAL_METRIC_ROWS.filter((row) =>
     SLEEP_METRIC_KEYS.has(row.key),
   );
@@ -2300,6 +2327,9 @@ function ResultContent({
                 analysisDate={result.measurementDate.trim().slice(0, 10)}
                 sleepOnsetTime={confirmedMetrics.bedtime}
                 wakeTime={confirmedMetrics.wakeTime}
+                awakeMinutes={stageAwakeMinutes}
+                awakeRatePercent={stageAwakeRatePercent}
+                awakeDisplay={stageAwakeDisplay}
                 awakeSegments={(graphBundle.stages?.segments ?? []).filter(
                   (seg) => seg.stage === "awake",
                 )}
@@ -2307,6 +2337,7 @@ function ResultContent({
                   setShowNightGlucose(Boolean(hasData));
                 }}
                 onPriorityNoteChange={setGlucosePriorityNote}
+                onPayloadChange={setNightGlucosePayload}
               />
             ) : null}
 
@@ -2866,6 +2897,7 @@ function ResultContent({
           lifestyle={pendingLifestyle}
           deviceName={deviceName}
           recovery={recoveryIndex}
+          nightGlucose={nightGlucosePayload}
         />
       </div>
 
@@ -2924,6 +2956,7 @@ function ResultContent({
                   lifestyle={pendingLifestyle}
                   deviceName={deviceName}
                   recovery={recoveryIndex}
+                  nightGlucose={nightGlucosePayload}
                 />
               </div>
             </div>,
