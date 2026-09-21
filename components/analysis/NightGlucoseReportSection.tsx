@@ -1,13 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   formatGlucoseClockTokyo,
+  NIGHT_GLUCOSE_ATTENTION_NOTE,
   NIGHT_GLUCOSE_DISCLAIMER,
+  NIGHT_GLUCOSE_LOW_COVERAGE_NOTE,
   type NightGlucoseReportPayload,
   type NightGlucoseReportPoint,
 } from "@/lib/glucose/night-glucose-report";
+import { hasGlucoseChangeDuringAwake } from "@/lib/glucose/night-glucose-stats";
 import { GOLD, MUTED, NAVY, TEAL } from "@/components/ui/tokens";
 
 const HISTORIC_COLOR = TEAL;
@@ -31,11 +33,7 @@ function NightGlucoseChart({
   const innerH = height - padding.top - padding.bottom;
 
   if (points.length === 0) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-[#071426]/15 bg-[#fafaf8] px-4 py-8 text-center">
-        <p className="text-sm text-slate-500">この夜間帯のグルコース記録はありません</p>
-      </div>
-    );
+    return null;
   }
 
   const startMs = Date.parse(startAtIso);
@@ -44,12 +42,9 @@ function NightGlucoseChart({
   const values = points.map((p) => p.glucoseMgDl);
   const rawMin = Math.min(...values);
   const rawMax = Math.max(...values);
-  const pad =
-    rawMax === rawMin
-      ? Math.max(10, Math.abs(rawMax) * 0.1 || 10)
-      : (rawMax - rawMin) * 0.15;
-  const minValue = Math.max(0, rawMin - pad);
-  const maxValue = rawMax + pad;
+  // 既定 60〜160。データがはみ出すときだけ広げる
+  const minValue = Math.min(60, rawMin);
+  const maxValue = Math.max(160, rawMax);
   const range = Math.max(1, maxValue - minValue);
 
   const xAt = (iso: string) => {
@@ -71,9 +66,12 @@ function NightGlucoseChart({
     })
     .join(" ");
 
-  const yTicks = [minValue, (minValue + maxValue) / 2, maxValue].map((v) =>
-    Math.round(v),
+  const yTicks = [60, 100, 140].filter(
+    (tick) => tick >= minValue && tick <= maxValue,
   );
+  const bandTop = Math.min(140, maxValue);
+  const bandBottom = Math.max(70, minValue);
+  const showGuideBand = bandTop > bandBottom;
   const xLabels = [0, 0.5, 1].map((ratio) => {
     const ms = startMs + span * ratio;
     return {
@@ -82,7 +80,6 @@ function NightGlucoseChart({
     };
   });
 
-  // markers があるとき window 端点＝入眠／起床
   const markerLines: Array<{ x: number; label: string }> = markers
     ? [
         { x: padding.left, label: `入眠 ${markers.sleepOnsetTime}` },
@@ -106,6 +103,15 @@ function NightGlucoseChart({
           fill="#fafaf8"
           stroke="rgba(7,20,38,0.08)"
         />
+        {showGuideBand ? (
+          <rect
+            x={padding.left}
+            y={yAt(bandTop)}
+            width={innerW}
+            height={Math.max(0, yAt(bandBottom) - yAt(bandTop))}
+            fill="rgba(49, 95, 104, 0.06)"
+          />
+        ) : null}
         {yTicks.map((tick) => {
           const y = yAt(tick);
           return (
@@ -121,27 +127,26 @@ function NightGlucoseChart({
                 x={padding.left - 8}
                 y={y + 3}
                 textAnchor="end"
-                fontSize="10"
-                fill={MUTED}
+                className="fill-slate-400"
+                style={{ fontSize: 10 }}
               >
                 {tick}
               </text>
             </g>
           );
         })}
-        {xLabels.map((item) => (
+        {xLabels.map((label) => (
           <text
-            key={`x-${item.label}-${item.x}`}
-            x={item.x}
+            key={`x-${label.x}`}
+            x={label.x}
             y={height - 12}
             textAnchor="middle"
-            fontSize="10"
-            fill={MUTED}
+            className="fill-slate-400"
+            style={{ fontSize: 10 }}
           >
-            {item.label}
+            {label.label}
           </text>
         ))}
-
         {markerLines.map((m) => (
           <g key={m.label}>
             <line
@@ -149,23 +154,19 @@ function NightGlucoseChart({
               x2={m.x}
               y1={padding.top}
               y2={padding.top + innerH}
-              stroke={GOLD}
-              strokeWidth={1.5}
+              stroke="rgba(138,106,45,0.45)"
               strokeDasharray="4 3"
             />
             <text
-              x={m.x + (m.x > padding.left + innerW / 2 ? -4 : 4)}
-              y={padding.top + 12}
-              textAnchor={m.x > padding.left + innerW / 2 ? "end" : "start"}
-              fontSize="9"
-              fill={GOLD}
-              fontWeight={600}
+              x={m.x}
+              y={padding.top - 10}
+              textAnchor={m.x <= padding.left + 4 ? "start" : "end"}
+              style={{ fontSize: 9, fill: GOLD }}
             >
               {m.label}
             </text>
           </g>
         ))}
-
         {linePath ? (
           <path
             d={linePath}
@@ -176,7 +177,6 @@ function NightGlucoseChart({
             strokeLinecap="round"
           />
         ) : null}
-
         {historic.map((p) => (
           <circle
             key={`h-${p.recordedAtIso}`}
@@ -186,14 +186,13 @@ function NightGlucoseChart({
             fill={HISTORIC_COLOR}
           />
         ))}
-
         {scans.map((p) => {
           const cx = xAt(p.recordedAtIso);
           const cy = yAt(p.glucoseMgDl);
-          const s = 4.5;
+          const s = 4;
           return (
             <rect
-              key={`s-${p.recordedAtIso}-${p.recordType}`}
+              key={`s-${p.recordedAtIso}`}
               x={cx - s}
               y={cy - s}
               width={s * 2}
@@ -212,16 +211,86 @@ function NightGlucoseChart({
             className="inline-block h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: HISTORIC_COLOR }}
           />
-          履歴（historic）
+          履歴（15分間隔）
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block h-2.5 w-2.5 rotate-45 border-2 bg-white"
-            style={{ borderColor: SCAN_COLOR }}
-          />
-          スキャン
-        </span>
+        {scans.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rotate-45 border-2 bg-white"
+              style={{ borderColor: SCAN_COLOR }}
+            />
+            スキャン
+          </span>
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+export function NightGlucoseReportView({
+  payload,
+}: {
+  payload: NightGlucoseReportPayload;
+}) {
+  if (!payload.hasData || !payload.stats) return null;
+
+  const coveragePct = Math.round(payload.stats.coverageRatio * 100);
+
+  return (
+    <div className="space-y-4">
+      {payload.coverageBelowThreshold ? (
+        <p className="rounded-lg border border-[#8a6a2d]/25 bg-[#fffdf8] px-3 py-2 text-[12px] leading-5 text-slate-700 sm:text-[13px]">
+          {NIGHT_GLUCOSE_LOW_COVERAGE_NOTE}
+        </p>
+      ) : null}
+
+      <NightGlucoseChart
+        points={payload.points}
+        markers={payload.markers}
+        startAtIso={payload.window.startAtIso}
+        endAtIso={payload.window.endAtIso}
+      />
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+        <StatCard
+          label="平均"
+          value={`${payload.stats.averageMgDl}`}
+          unit="mg/dL"
+        />
+        <StatCard
+          label="最低"
+          value={`${payload.stats.min.glucoseMgDl}`}
+          unit="mg/dL"
+          sub={formatGlucoseClockTokyo(payload.stats.min.recordedAtIso)}
+        />
+        <StatCard
+          label="最高"
+          value={`${payload.stats.max.glucoseMgDl}`}
+          unit="mg/dL"
+          sub={formatGlucoseClockTokyo(payload.stats.max.recordedAtIso)}
+        />
+        <StatCard
+          label="変動幅"
+          value={`${payload.stats.rangeMgDl}`}
+          unit="mg/dL"
+        />
+        <StatCard
+          label="データ取得率"
+          value={`${payload.stats.sampleCount}/${payload.stats.expectedCount}`}
+          unit={`${coveragePct}%`}
+          sub={`記録開始 ${formatGlucoseClockTokyo(payload.stats.firstRecordedAtIso)}`}
+        />
+      </div>
+
+      {payload.showAttentionNote ? (
+        <p className="text-[12px] leading-5 text-slate-600 sm:text-[13px]">
+          {NIGHT_GLUCOSE_ATTENTION_NOTE}
+        </p>
+      ) : null}
+
+      <p className="text-[11px] leading-5 text-slate-500 sm:text-[12px]">
+        {NIGHT_GLUCOSE_DISCLAIMER}
+      </p>
     </div>
   );
 }
@@ -231,84 +300,25 @@ type Props = {
   analysisDate: string;
   sleepOnsetTime?: string | null;
   wakeTime?: string | null;
+  /** データが無いときは false。読み込み中は null */
+  onAvailabilityChange?: (hasData: boolean | null) => void;
+  /** ⑤添文の要否 */
+  onPriorityNoteChange?: (show: boolean) => void;
+  awakeSegments?: Array<{ startTime?: string; endTime?: string }>;
 };
 
 /**
- * 結果レポート用：夜間帯グルコース（グラフ・数値・料理リンク・注記）。
- * 仮説表示はステップ5。
+ * 結果レポート用：夜間帯グルコース。
+ * データが無い場合は何も描画しない（空枠・「データなし」も出さない）。
  */
-export function NightGlucoseReportView({
-  payload,
-}: {
-  payload: NightGlucoseReportPayload;
-}) {
-  return (
-    <div className="space-y-4">
-      <NightGlucoseChart
-        points={payload.points}
-        markers={payload.markers}
-        startAtIso={payload.window.startAtIso}
-        endAtIso={payload.window.endAtIso}
-      />
-
-      {payload.stats ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-          <StatCard
-            label="平均"
-            value={`${payload.stats.averageMgDl}`}
-            unit="mg/dL"
-          />
-          <StatCard
-            label="最低"
-            value={`${payload.stats.min.glucoseMgDl}`}
-            unit="mg/dL"
-            sub={formatGlucoseClockTokyo(payload.stats.min.recordedAtIso)}
-          />
-          <StatCard
-            label="最高"
-            value={`${payload.stats.max.glucoseMgDl}`}
-            unit="mg/dL"
-            sub={formatGlucoseClockTokyo(payload.stats.max.recordedAtIso)}
-          />
-          <StatCard
-            label="変動幅"
-            value={`${payload.stats.rangeMgDl}`}
-            unit="mg/dL"
-          />
-          <StatCard
-            label="変動係数"
-            value={`${payload.stats.cvPercent}`}
-            unit="%"
-          />
-        </div>
-      ) : payload.skipMessage ? (
-        <p className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5 text-[12px] leading-5 text-slate-600 sm:text-[13px]">
-          {payload.skipMessage}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#071426]/08 pt-3">
-        <Link
-          href="/recipes"
-          className="text-[13px] font-semibold underline-offset-4 hover:underline"
-          style={{ color: NAVY }}
-        >
-          睡眠のための料理
-        </Link>
-      </div>
-
-      <p className="whitespace-pre-line text-[11px] leading-5 text-slate-500 sm:text-[12px]">
-        {NIGHT_GLUCOSE_DISCLAIMER}
-      </p>
-    </div>
-  );
-}
-
 export default function NightGlucoseReportSection({
   clientId,
   analysisDate,
   sleepOnsetTime,
   wakeTime,
+  onAvailabilityChange,
+  onPriorityNoteChange,
+  awakeSegments = [],
 }: Props) {
   const [payload, setPayload] = useState<NightGlucoseReportPayload | null>(
     null,
@@ -320,6 +330,8 @@ export default function NightGlucoseReportSection({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    onAvailabilityChange?.(null);
+    onPriorityNoteChange?.(false);
 
     const params = new URLSearchParams({ analysisDate });
     if (sleepOnsetTime?.trim()) params.set("sleepOnset", sleepOnsetTime.trim());
@@ -334,11 +346,35 @@ export default function NightGlucoseReportSection({
           error?: string;
         };
         if (!res.ok) throw new Error(json.error || "取得に失敗しました");
-        if (!cancelled) setPayload(json);
+        if (cancelled) return;
+
+        const suggestPriorityNote =
+          json.stats != null &&
+          hasGlucoseChangeDuringAwake({
+            coverageRatio: json.stats.coverageRatio,
+            glucosePoints: (json.points ?? [])
+              .filter((p) => p.recordType === 0)
+              .map((p) => ({
+                recordedAtIso: p.recordedAtIso,
+                glucoseMgDl: p.glucoseMgDl,
+              })),
+            awakeSegments,
+            analysisDate,
+          });
+
+        const next: NightGlucoseReportPayload = {
+          ...json,
+          suggestPriorityNote,
+        };
+        setPayload(next);
+        onAvailabilityChange?.(Boolean(next.hasData && next.stats));
+        onPriorityNoteChange?.(suggestPriorityNote);
       })
       .catch((err) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "取得に失敗しました");
+          onAvailabilityChange?.(false);
+          onPriorityNoteChange?.(false);
         }
       })
       .finally(() => {
@@ -348,20 +384,55 @@ export default function NightGlucoseReportSection({
     return () => {
       cancelled = true;
     };
-  }, [clientId, analysisDate, sleepOnsetTime, wakeTime]);
+    // awakeSegments は参照比較のため JSON 化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    clientId,
+    analysisDate,
+    sleepOnsetTime,
+    wakeTime,
+    JSON.stringify(awakeSegments),
+  ]);
+
+  if (loading) return null;
+  if (error) return null;
+  if (!payload?.hasData || !payload.stats) return null;
 
   return (
-    <div className="space-y-4">
-      {loading ? (
-        <p className="text-sm text-slate-500">グルコースデータを読み込み中…</p>
-      ) : null}
-      {error ? (
-        <p className="rounded-lg border border-[#a33a3a]/20 bg-white px-3 py-2 text-sm text-[#a33a3a]">
-          {error}
+    <section
+      id="result-section-glucose"
+      className="report-panel report-glucose no-print mt-5 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5"
+    >
+      <div className="report-section-label mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="report-section-mark hidden h-4 w-[3px] shrink-0 rounded-full sm:block"
+            style={{ backgroundColor: GOLD }}
+            aria-hidden
+          />
+          <h2
+            className="min-w-0 break-words text-[15px] font-semibold tracking-[-0.02em] sm:text-[1.05rem]"
+            style={{
+              color: NAVY,
+              fontFamily:
+                '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif',
+            }}
+          >
+            ③-2 夜間のグルコース
+          </h2>
+        </div>
+        <p
+          className="shrink-0 text-[10px] font-semibold tracking-[0.18em]"
+          style={{ color: GOLD }}
+        >
+          GLUCOSE
         </p>
-      ) : null}
-      {payload ? <NightGlucoseReportView payload={payload} /> : null}
-    </div>
+      </div>
+      <p className="report-lead mb-3 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+        入眠から起床までの間質液グルコース（参考値）です。
+      </p>
+      <NightGlucoseReportView payload={payload} />
+    </section>
   );
 }
 
@@ -378,7 +449,10 @@ function StatCard({
 }) {
   return (
     <div className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5">
-      <p className="text-[10px] font-semibold tracking-[0.12em] text-slate-400">
+      <p
+        className="text-[10px] font-semibold tracking-[0.12em]"
+        style={{ color: MUTED }}
+      >
         {label}
       </p>
       <p

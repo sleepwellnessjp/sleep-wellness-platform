@@ -49,9 +49,8 @@ export async function importLibreGlucoseCsvForClient(options: {
 
   const rows = toInsertRows(options.clientId, options.ownerId, readings);
 
-  // 重複はスキップ（同一 client_id + recorded_at + record_type）
-  // 注意: 夜間帯集計は record_type=0（historic）のみ使用すること。
-  // scan(1) は表示可だが集計に含めない（同一時刻の二重計上防止）。
+  // 同一時刻はパーサ側で1件化済み。DB は client_id+recorded_at+record_type で重複スキップ。
+  // 夜間帯集計は record_type=0（historic）のみ。scan(1) はグラフ表示用。
   const { data, error } = await options.supabase
     .from("glucose_readings")
     .upsert(rows, {

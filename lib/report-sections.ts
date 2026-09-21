@@ -8,8 +8,8 @@ export const REPORT_SECTIONS = {
   overall: true, // ① 今日の総合評価
   profile: true, // ② 基本情報
   measurement: true, // ③ SOXAIデータ
-  /** ③の直後・④の前。血糖（Libre）連携。初期オフ */
-  glucose: false,
+  /** ③の直後・④の前。血糖（Libre）連携。データが無いクライアントでは UI 側で非表示 */
+  glucose: true,
   insight: false, // ④ 今日の睡眠の読み解き
   priority: true, // ⑤ 改善優先順位
   melatoninYoga: true, // ⑥ メラトニンヨガ™処方（結果画面）

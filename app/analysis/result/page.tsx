@@ -24,6 +24,7 @@ import RecommendationsUntilNextCard from "@/components/RecommendationsUntilNextC
 import PreviousHomeworkCard from "@/components/PreviousHomeworkCard";
 import RecoveryIndexCard from "@/components/analysis/RecoveryIndexCard";
 import NightGlucoseReportSection from "@/components/analysis/NightGlucoseReportSection";
+import { NIGHT_GLUCOSE_PRIORITY_NOTE } from "@/lib/glucose/night-glucose-report";
 import { InstructorCommentEditor } from "@/components/analysis/ClientWellnessReport";
 import { ClientDiagnosticPdf } from "@/components/analysis/ClientDiagnosticPdf";
 import {
@@ -460,14 +461,24 @@ const RESULT_TOC_PART2 = [
   { id: "result-section-10", label: "⑩ 講師記録・運用" },
 ] as const;
 
-function ResultToc({ dataHeading }: { dataHeading: string }) {
+function ResultToc({
+  dataHeading,
+  showGlucose,
+}: {
+  dataHeading: string;
+  showGlucose: boolean;
+}) {
   const part1 = RESULT_TOC_PART1.filter((item) =>
     isResultSectionIdVisible(item.id),
-  ).map((item) =>
-    item.id === "result-section-3"
-      ? { ...item, label: `③ ${dataHeading}` }
-      : item,
-  );
+  )
+    .filter(
+      (item) => item.id !== "result-section-glucose" || showGlucose,
+    )
+    .map((item) =>
+      item.id === "result-section-3"
+        ? { ...item, label: `③ ${dataHeading}` }
+        : item,
+    );
   const part2 = RESULT_TOC_PART2.filter((item) =>
     isResultSectionIdVisible(item.id),
   );
@@ -1168,6 +1179,9 @@ function ResultContent({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetNotice, setSheetNotice] = useState<string | null>(null);
   const [sheetSaving, setSheetSaving] = useState(false);
+  /** ③-2：夜間グルコースデータがあるときだけ目次・本文を出す */
+  const [showNightGlucose, setShowNightGlucose] = useState(false);
+  const [glucosePriorityNote, setGlucosePriorityNote] = useState(false);
   const autoSheetRef = useRef(false);
   const aiIntelligence = useAnalysisAiIntelligence(
     result,
@@ -1826,7 +1840,10 @@ function ResultContent({
               </div>
             </header>
 
-            <ResultToc dataHeading={dataHeading} />
+            <ResultToc
+              dataHeading={dataHeading}
+              showGlucose={showNightGlucose}
+            />
 
             {isReportSectionVisible("overall") ? (
             <section
@@ -2275,28 +2292,22 @@ function ResultContent({
             </section>
             ) : null}
 
-            {isReportSectionVisible("glucose") ? (
-            <section
-              id="result-section-glucose"
-              className="report-panel report-glucose mt-5 scroll-mt-24 rounded-xl border border-[#071426]/10 bg-white px-4 py-4 sm:mt-6 sm:px-5"
-            >
-              <SectionLabel title="③-2 夜間のグルコース" eyebrow="GLUCOSE" />
-              <ReportLead>
-                入眠から起床までの間質液グルコース（参考値）です。
-              </ReportLead>
-              {result.clientId?.trim() && result.measurementDate?.trim() ? (
-                <NightGlucoseReportSection
-                  clientId={result.clientId.trim()}
-                  analysisDate={result.measurementDate.trim().slice(0, 10)}
-                  sleepOnsetTime={confirmedMetrics.bedtime}
-                  wakeTime={confirmedMetrics.wakeTime}
-                />
-              ) : (
-                <p className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5 text-[12px] leading-5 text-slate-600 sm:text-[13px]">
-                  クライアントと測定日が紐づいていないため、夜間の集計は表示していません
-                </p>
-              )}
-            </section>
+            {isReportSectionVisible("glucose") &&
+            result.clientId?.trim() &&
+            result.measurementDate?.trim() ? (
+              <NightGlucoseReportSection
+                clientId={result.clientId.trim()}
+                analysisDate={result.measurementDate.trim().slice(0, 10)}
+                sleepOnsetTime={confirmedMetrics.bedtime}
+                wakeTime={confirmedMetrics.wakeTime}
+                awakeSegments={(graphBundle.stages?.segments ?? []).filter(
+                  (seg) => seg.stage === "awake",
+                )}
+                onAvailabilityChange={(hasData) => {
+                  setShowNightGlucose(Boolean(hasData));
+                }}
+                onPriorityNoteChange={setGlucosePriorityNote}
+              />
             ) : null}
 
             {isReportSectionVisible("insight") ? (
@@ -2471,6 +2482,11 @@ function ResultContent({
                       </div>
                     );
                   })}
+                  {glucosePriorityNote ? (
+                    <p className="rounded-lg border border-[#071426]/08 bg-[#fafaf8] px-3 py-2.5 text-[12px] leading-5 text-slate-600 sm:text-[13px]">
+                      {NIGHT_GLUCOSE_PRIORITY_NOTE}
+                    </p>
+                  ) : null}
                 </div>
               )}
             </section>

@@ -1,6 +1,7 @@
 /**
  * FreeStyle Libre（日本語）CSV パーサ。
- * メタ行 + ヘッダ行のあとデータ行。パース後は必ず recorded_at 昇順にソートする。
+ * メタ行 + ヘッダ行のあとデータ行。列は見出し名で特定する。
+ * 記録タイプ 0（履歴）と 1（スキャン）のみ取り込み。時刻は Asia/Tokyo。
  */
 
 export type GlucoseReadingSource =
@@ -20,16 +21,12 @@ export type ParsedGlucoseReading = {
   note: string | null;
 };
 
-const COL = {
-  device: 0,
-  serial: 1,
-  timestamp: 2,
-  recordType: 3,
-  historicGlucose: 4,
-  scanGlucose: 5,
-  note: 13,
-  stripGlucose: 14,
-} as const;
+const REQUIRED_HEADERS = [
+  "タイムスタンプ測定器",
+  "記録タイプ",
+  "過去のグルコース値 mg/dL",
+  "血糖値をスキャンする mg/dL",
+] as const;
 
 function parseCsvLine(line: string): string[] {
   const out: string[] = [];
@@ -73,6 +70,10 @@ function splitCsvRows(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function normalizeHeader(raw: string): string {
+  return raw.normalize("NFKC").trim().replace(/\s+/g, " ");
+}
+
 function parseIntOrNull(raw: string | undefined): number | null {
   const t = (raw ?? "").trim();
   if (!t) return null;
@@ -99,17 +100,44 @@ export function parseLibreDeviceTimestamp(raw: string): string | null {
   return new Date(ms).toISOString();
 }
 
-function sourceForRecordType(
-  recordType: number,
-  hasHistoric: boolean,
-  hasScan: boolean,
-  hasStrip: boolean,
-): GlucoseReadingSource {
-  if (recordType === 0 || hasHistoric) return "historic";
-  if (recordType === 1 || hasScan) return "scan";
-  if (hasStrip) return "strip";
-  if (recordType === 6) return "note";
+function sourceForRecordType(recordType: number): GlucoseReadingSource {
+  if (recordType === 0) return "historic";
+  if (recordType === 1) return "scan";
   return "other";
+}
+
+function resolveHeaderIndexes(headerCells: string[]): {
+  timestamp: number;
+  recordType: number;
+  historicGlucose: number;
+  scanGlucose: number;
+  device: number | null;
+  serial: number | null;
+  note: number | null;
+} {
+  const indexByName = new Map<string, number>();
+  headerCells.forEach((cell, i) => {
+    const key = normalizeHeader(cell);
+    if (key && !indexByName.has(key)) indexByName.set(key, i);
+  });
+
+  const missing = REQUIRED_HEADERS.filter((name) => !indexByName.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `LibreView CSV の見出しが見つかりません: ${missing.join(" / ")}。` +
+        `1行目がメタ情報、2行目が見出し（タイムスタンプ測定器・記録タイプ・過去のグルコース値 mg/dL・血糖値をスキャンする mg/dL）であることを確認してください。`,
+    );
+  }
+
+  return {
+    timestamp: indexByName.get("タイムスタンプ測定器")!,
+    recordType: indexByName.get("記録タイプ")!,
+    historicGlucose: indexByName.get("過去のグルコース値 mg/dL")!,
+    scanGlucose: indexByName.get("血糖値をスキャンする mg/dL")!,
+    device: indexByName.get("測定器") ?? null,
+    serial: indexByName.get("シリアル番号") ?? null,
+    note: indexByName.get("メモ") ?? null,
+  };
 }
 
 export function parseLibreGlucoseCsv(text: string): ParsedGlucoseReading[] {
@@ -118,55 +146,68 @@ export function parseLibreGlucoseCsv(text: string): ParsedGlucoseReading[] {
     throw new Error("CSVの行が足りません（メタ行・ヘッダ行が必要です）");
   }
 
-  // 1行目がメタ、2行目がヘッダ。ヘッダ検出に失敗したら先頭をヘッダ扱い。
-  let dataStart = 2;
+  // 1行目がメタ、2行目がヘッダ。ヘッダ検出に失敗したら分かりやすいエラー。
+  let headerLineIndex = 1;
   const headerCells = parseCsvLine(lines[1] ?? "");
   const looksLikeHeader =
-    headerCells.some((c) => c.includes("タイムスタンプ")) ||
-    headerCells.some((c) => c.includes("記録タイプ"));
+    headerCells.some((c) => normalizeHeader(c).includes("タイムスタンプ")) ||
+    headerCells.some((c) => normalizeHeader(c).includes("記録タイプ"));
   if (!looksLikeHeader) {
-    dataStart = 1;
+    // 先頭行が見出しのケースも許容
+    const firstCells = parseCsvLine(lines[0] ?? "");
+    const firstLooksLikeHeader =
+      firstCells.some((c) => normalizeHeader(c).includes("タイムスタンプ")) ||
+      firstCells.some((c) => normalizeHeader(c).includes("記録タイプ"));
+    if (!firstLooksLikeHeader) {
+      throw new Error(
+        "LibreView CSV の見出し行を特定できません。2行目に「タイムスタンプ測定器」「記録タイプ」などの見出しがあるか確認してください。",
+      );
+    }
+    headerLineIndex = 0;
   }
 
+  const cols = resolveHeaderIndexes(parseCsvLine(lines[headerLineIndex] ?? ""));
+  const dataStart = headerLineIndex + 1;
   const parsed: ParsedGlucoseReading[] = [];
 
   for (let i = dataStart; i < lines.length; i += 1) {
-    const cols = parseCsvLine(lines[i] ?? "");
-    if (cols.length < 4) continue;
+    const cells = parseCsvLine(lines[i] ?? "");
+    if (cells.length < 4) continue;
 
-    const recordedAtIso = parseLibreDeviceTimestamp(cols[COL.timestamp] ?? "");
+    const recordedAtIso = parseLibreDeviceTimestamp(cells[cols.timestamp] ?? "");
     if (!recordedAtIso) continue;
 
-    const recordType = parseIntOrNull(cols[COL.recordType]);
+    const recordType = parseIntOrNull(cells[cols.recordType]);
     if (recordType == null) continue;
+    // 記録タイプ 0・1 のみ。それ以外は無視。
+    if (recordType !== 0 && recordType !== 1) continue;
 
-    const historic = parseIntOrNull(cols[COL.historicGlucose]);
-    const scan = parseIntOrNull(cols[COL.scanGlucose]);
-    const strip = parseIntOrNull(cols[COL.stripGlucose]);
-    const note = (cols[COL.note] ?? "").trim() || null;
+    const historic = parseIntOrNull(cells[cols.historicGlucose]);
+    const scan = parseIntOrNull(cells[cols.scanGlucose]);
+    const note =
+      cols.note != null ? (cells[cols.note] ?? "").trim() || null : null;
 
     let glucoseMgDl: number | null = null;
-    if (historic != null) glucoseMgDl = historic;
+    if (recordType === 0 && historic != null) glucoseMgDl = historic;
+    else if (recordType === 1 && scan != null) glucoseMgDl = scan;
+    else if (historic != null) glucoseMgDl = historic;
     else if (scan != null) glucoseMgDl = scan;
-    else if (strip != null) glucoseMgDl = strip;
 
-    // 血糖もメモも無い行はスキップ
     if (glucoseMgDl == null && !note) continue;
-
-    const source = sourceForRecordType(
-      recordType,
-      historic != null,
-      scan != null,
-      strip != null,
-    );
 
     parsed.push({
       recordedAtIso,
       recordType,
-      source,
+      source: sourceForRecordType(recordType),
       glucoseMgDl,
-      deviceName: (cols[COL.device] ?? "").trim() || null,
-      serialNumber: (cols[COL.serial] ?? "").trim() || null,
+      deviceName:
+        cols.device != null
+          ? (cells[cols.device] ?? "").trim() || null
+          : null,
+      serialNumber:
+        cols.serial != null
+          ? (cells[cols.serial] ?? "").trim() || null
+          : null,
       note,
     });
   }
@@ -177,15 +218,20 @@ export function parseLibreGlucoseCsv(text: string): ParsedGlucoseReading[] {
     return a.recordType - b.recordType;
   });
 
-  // 同一キーの行が CSV 内に重複している場合は後ろを採用
+  // 同一時刻は1件にまとめる（履歴=0 を優先）
   const deduped = new Map<string, ParsedGlucoseReading>();
   for (const row of parsed) {
-    deduped.set(`${row.recordedAtIso}|${row.recordType}`, row);
+    const existing = deduped.get(row.recordedAtIso);
+    if (!existing) {
+      deduped.set(row.recordedAtIso, row);
+      continue;
+    }
+    if (existing.recordType !== 0 && row.recordType === 0) {
+      deduped.set(row.recordedAtIso, row);
+    }
   }
 
-  return [...deduped.values()].sort((a, b) => {
-    const t = a.recordedAtIso.localeCompare(b.recordedAtIso);
-    if (t !== 0) return t;
-    return a.recordType - b.recordType;
-  });
+  return [...deduped.values()].sort((a, b) =>
+    a.recordedAtIso.localeCompare(b.recordedAtIso),
+  );
 }

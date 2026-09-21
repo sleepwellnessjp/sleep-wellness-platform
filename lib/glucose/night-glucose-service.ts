@@ -40,7 +40,8 @@ function addDaysYmd(ymd: string, days: number): string {
 /**
  * client_id の analyses（analysis_date あり）を走査し、
  * historic 血糖から夜間帯指標を算出する。
- * SOXAI 行が無い日・入眠/起床が欠ける日・夜間6点未満はスキップ。
+ * SOXAI 行が無い日・夜間帯に historic サンプルが無い日はスキップ。
+ * 入眠/起床が無い場合は 22:00〜07:00 で集計する。
  */
 export async function computeNightGlucoseForClient(options: {
   supabase: Client;
