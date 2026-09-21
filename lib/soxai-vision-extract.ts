@@ -54,6 +54,9 @@ export type HeartHrvDedicatedStatus =
   | "timeout"
   | "skipped";
 
+/** 専用パスの入力選定 */
+export type HeartHrvDedicatedMode = "slot" | "label_fallback" | "none";
+
 export type SoxaiVisionImageSizeTelemetry = {
   index: number;
   section: string;
@@ -73,6 +76,8 @@ export type SoxaiVisionTelemetry = {
   heartHrvDedicatedStatus: HeartHrvDedicatedStatus;
   heartHrvDedicatedError: string | null;
   heartHrvDedicatedDurationMs: number | null;
+  /** slot: heart_hrv スロット画像 / label_fallback: 全画像をラベル探索 */
+  heartHrvDedicatedMode: HeartHrvDedicatedMode;
   bulkDurationMs: number | null;
   totalDurationMs: number | null;
   restingHeartRateAvg: string | null;
@@ -198,20 +203,24 @@ export function buildSoxaiVisionTelemetry(params: {
   heartHrvDedicatedStatus?: HeartHrvDedicatedStatus;
   heartHrvDedicatedError?: string | null;
   heartHrvDedicatedDurationMs?: number | null;
+  heartHrvDedicatedMode?: HeartHrvDedicatedMode;
   bulkDurationMs?: number | null;
   totalDurationMs?: number | null;
   imageSizes?: SoxaiVisionImageSizeTelemetry[];
 }): SoxaiVisionTelemetry {
   const { vision } = params;
+  const mode = params.heartHrvDedicatedMode ?? "none";
   return {
     imageCount: params.imageCount,
     sections: [...params.sections],
-    hasHeartHrv: params.sections.includes("heart_hrv"),
+    hasHeartHrv:
+      params.sections.includes("heart_hrv") || mode === "label_fallback",
     heartHrvDedicatedPass: params.heartHrvDedicatedPass === true,
     heartHrvImageCount: params.heartHrvImageCount ?? 0,
     heartHrvDedicatedStatus: params.heartHrvDedicatedStatus ?? "skipped",
     heartHrvDedicatedError: params.heartHrvDedicatedError ?? null,
     heartHrvDedicatedDurationMs: params.heartHrvDedicatedDurationMs ?? null,
+    heartHrvDedicatedMode: mode,
     bulkDurationMs: params.bulkDurationMs ?? null,
     totalDurationMs: params.totalDurationMs ?? null,
     restingHeartRateAvg:
@@ -314,11 +323,22 @@ skinTemperature, circadianShift, breathingEvents`;
 /**
  * heart_hrv 専用パス用。安静時心拍・心拍変動の見出し枠内だけを読む。
  * 画像は切り取りせず全体を渡す。複数枚ある場合はすべて見る。
+ * labelFallback: スロット不明時。全画像から見出しラベルで枠を探す。
  */
-export function buildHeartHrvVisionPrompt(imageCount: number): string {
-  return `あなたは SOXAI Ring の「呼吸・心拍」画面専用の読み取り器です。
+export function buildHeartHrvVisionPrompt(
+  imageCount: number,
+  options?: { labelFallback?: boolean },
+): string {
+  const intro = options?.labelFallback
+    ? `あなたは SOXAI Ring 画面の心拍系ラベル探索器です。
+画面種別（スロット）は不明です。${imageCount}枚すべてを見て、
+見出し「安静時心拍数」「心拍変動」（または「HRV」）のカード枠だけを探して読んでください。
+該当見出しが無い画像は無視し、見つかった枠の数値だけを集約してください。`
+    : `あなたは SOXAI Ring の「呼吸・心拍」画面専用の読み取り器です。
 ${imageCount}枚の画像をすべて見てください（切り取りなし・全画面）。
-安静時心拍数と心拍変動が別スクショに分かれている場合も、全枚から集約してください。
+安静時心拍数と心拍変動が別スクショに分かれている場合も、全枚から集約してください。`;
+
+  return `${intro}
 
 厳守（これ以外はすべて無視）:
 1. 「安静時心拍数」見出しのカード枠の中だけ

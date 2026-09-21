@@ -15,6 +15,7 @@ import type {
   SoxaiExtractSection,
   SoxaiOcrImageStatusRecord,
 } from "@/lib/soxai-ocr-runner";
+import { areSoxaiSectionsBlank } from "@/lib/soxai-vision-inputs";
 
 export const VISION_CLIENT_TIMEOUT_MS = 240_000;
 
@@ -113,6 +114,13 @@ export async function resolveSoxaiVisionExtraction(
     return emptyVisionResult(images, sections, {
       error: "画像がありません",
     });
+  }
+
+  if (areSoxaiSectionsBlank(sections)) {
+    console.warn(
+      "[soxai-vision-runner] sections が空です。サーバー側ラベル探索フォールバックに任せます。",
+      { imageCount: images.length },
+    );
   }
 
   if (signal?.aborted) {

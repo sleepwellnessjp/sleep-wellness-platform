@@ -16,6 +16,7 @@ import {
   emptyBulkRetryVisionKeys,
   mergeVisionPreferFilled,
   retryFilledBulkKeys,
+  type HeartHrvDedicatedMode,
   type HeartHrvDedicatedStatus,
   type SoxaiVisionCriticalKey,
   type SoxaiVisionImageSizeTelemetry,
@@ -76,14 +77,6 @@ function parseNumeric(value: unknown): number | null {
       ? value
       : Number(String(value).replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : null;
-}
-
-function clearHeartHrvFields(vision: SoxaiVision24): SoxaiVision24 {
-  const next = { ...vision };
-  for (const key of SOXAI_VISION_HEART_HRV_KEYS) {
-    next[key] = null;
-  }
-  return next;
 }
 
 /**
@@ -220,15 +213,16 @@ export async function callSoxaiVisionOnce(params: {
 async function callHeartHrvVisionOnce(params: {
   client: OpenAI;
   images: string[];
+  labelFallback?: boolean;
 }): Promise<{
   heart: Pick<SoxaiVision24, (typeof SOXAI_VISION_HEART_HRV_KEYS)[number]>;
   usage: ReturnType<typeof tokensFromUsage>;
 }> {
-  const { client, images } = params;
+  const { client, images, labelFallback = false } = params;
   const content = [
     {
       type: "input_text" as const,
-      text: buildHeartHrvVisionPrompt(images.length),
+      text: buildHeartHrvVisionPrompt(images.length, { labelFallback }),
     },
     ...images.map((url) => ({
       type: "input_image" as const,
@@ -295,8 +289,9 @@ export type SoxaiVisionRunResult = {
 /**
  * 1) 一括 Vision と heart_hrv 専用パスを並行実行
  * 2) sleep 系が空なら一括だけ 1 回リトライ
- * 3) 専用の非空で心拍系を置換。専用失敗・空なら一括を残す（RHR Avg は平均同居の手がかり必須）
- * 4) heart_hrv 画像が無い場合は心拍系を要確認（null）
+ * 3) 専用の非空で心拍系を置換。専用失敗・空・skipped なら一括を残す
+ *    （RHR Avg は「平均」ラベル同居の手がかりがあるときだけ残す）
+ * 4) heart_hrv スロットが無いときは全画像をラベル探索（フォールバック）
  */
 export async function runSoxaiVisionExtract(params: {
   client: OpenAI;
@@ -310,7 +305,20 @@ export async function runSoxaiVisionExtract(params: {
   const heartIndexes = images
     .map((_, index) => index)
     .filter((index) => sections[index] === "heart_hrv");
-  const heartImages = heartIndexes.map((index) => images[index]);
+
+  let heartHrvDedicatedMode: HeartHrvDedicatedMode = "none";
+  let dedicatedImages: string[] = [];
+  let labelFallback = false;
+
+  if (heartIndexes.length > 0) {
+    heartHrvDedicatedMode = "slot";
+    dedicatedImages = heartIndexes.map((index) => images[index]);
+  } else if (images.length > 0) {
+    // スロット不明: 全画像から「安静時心拍数」「心拍変動」見出しを探す
+    heartHrvDedicatedMode = "label_fallback";
+    dedicatedImages = images;
+    labelFallback = true;
+  }
 
   type DedicatedOutcome =
     | {
@@ -339,14 +347,15 @@ export async function runSoxaiVisionExtract(params: {
   );
 
   const dedicatedPromise: Promise<DedicatedOutcome> =
-    heartImages.length === 0
+    dedicatedImages.length === 0
       ? Promise.resolve({ kind: "skipped" as const })
       : (async (): Promise<DedicatedOutcome> => {
           const t0 = Date.now();
           try {
             const result = await callHeartHrvVisionOnce({
               client,
-              images: heartImages,
+              images: dedicatedImages,
+              labelFallback,
             });
             return {
               kind: "ok",
@@ -360,7 +369,8 @@ export async function runSoxaiVisionExtract(params: {
               status: classified.status,
               message: classified.message,
               durationMs: Date.now() - t0,
-              heartHrvImageCount: heartImages.length,
+              heartHrvImageCount: dedicatedImages.length,
+              heartHrvDedicatedMode,
             });
             return {
               kind: "fail",
@@ -399,10 +409,7 @@ export async function runSoxaiVisionExtract(params: {
   let heartHrvDedicatedError: string | null = null;
   let heartHrvDedicatedDurationMs: number | null = null;
 
-  if (heartImages.length === 0) {
-    vision = clearHeartHrvFields(vision);
-    heartHrvDedicatedStatus = "skipped";
-  } else if (dedicatedOutcome.kind === "ok") {
+  if (dedicatedOutcome.kind === "ok") {
     heartHrvDedicatedPass = true;
     heartHrvDedicatedDurationMs = dedicatedOutcome.durationMs;
     usage = addUsage(usage, dedicatedOutcome.usage);
@@ -415,6 +422,7 @@ export async function runSoxaiVisionExtract(params: {
       });
     } else {
       heartHrvDedicatedStatus = "empty";
+      // 空でも一括を消さない（RHR Avg はラベル同居のときだけ残す）
       vision = mergeHeartHrvPreferDedicatedKeepBulk({
         bulk: vision,
         dedicated: dedicatedOutcome.heart,
@@ -426,6 +434,14 @@ export async function runSoxaiVisionExtract(params: {
     heartHrvDedicatedStatus = dedicatedOutcome.status;
     heartHrvDedicatedError = dedicatedOutcome.message;
     heartHrvDedicatedDurationMs = dedicatedOutcome.durationMs;
+    vision = mergeHeartHrvPreferDedicatedKeepBulk({
+      bulk: vision,
+      dedicated: null,
+      dedicatedOk: false,
+    });
+  } else {
+    // skipped: 画像0枚など。心拍系を null クリアせず、一括をラベル規則で残す
+    heartHrvDedicatedStatus = "skipped";
     vision = mergeHeartHrvPreferDedicatedKeepBulk({
       bulk: vision,
       dedicated: null,
@@ -454,10 +470,11 @@ export async function runSoxaiVisionExtract(params: {
     retried,
     retryFilledKeys: filledByRetry,
     heartHrvDedicatedPass,
-    heartHrvImageCount: heartImages.length,
+    heartHrvImageCount: dedicatedImages.length,
     heartHrvDedicatedStatus,
     heartHrvDedicatedError,
     heartHrvDedicatedDurationMs,
+    heartHrvDedicatedMode,
     bulkDurationMs,
     totalDurationMs: Date.now() - startedAt,
     imageSizes: imageSizes ?? [],

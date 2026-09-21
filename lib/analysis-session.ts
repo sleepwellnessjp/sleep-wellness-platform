@@ -206,8 +206,8 @@ export type ExtractionDraft = {
   graphs: SoxaiGraphBundle;
   /** 画像単位の OCR 成否（成功 / 失敗 / タイムアウト / 中止） */
   ocrImageStatuses?: SoxaiOcrImageStatusRecord[];
-  /** アップロード時の section 対応 */
-  ocrSections?: SoxaiExtractSection[];
+  /** アップロード時の section 対応（unknown は ""） */
+  ocrSections?: Array<SoxaiExtractSection | "">;
   /** 選択クライアントの固定プロフィール（あれば） */
   fixedProfile?: ClientProfileSections;
   /** 当日情報（将来用。今回は通常未設定） */
@@ -2431,7 +2431,7 @@ export function getBackgroundSoxaiGeneration(): number {
  */
 export async function resolveSoxaiExtraction(
   images: string[],
-  sections?: SoxaiExtractSection[],
+  sections?: Array<SoxaiExtractSection | "">,
   options?: {
     onProgress?: (snapshot: OcrProgressSnapshot) => void;
     signal?: AbortSignal;
@@ -2529,7 +2529,7 @@ export function clearBackgroundSoxaiExtraction() {
 /** 確認画面から失敗画像のみ再解析（Vision 一括再実行） */
 export async function reanalyzeSoxaiImages(params: {
   images: string[];
-  sections?: SoxaiExtractSection[];
+  sections?: Array<SoxaiExtractSection | "">;
   indexes: number[];
   seed: {
     metrics: AnalysisMetrics;

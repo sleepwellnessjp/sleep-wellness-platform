@@ -186,6 +186,7 @@ export async function POST(request: Request) {
       hasHeartHrv: telemetry.hasHeartHrv,
       heartHrvImageCount: telemetry.heartHrvImageCount,
       heartHrvDedicatedStatus: telemetry.heartHrvDedicatedStatus,
+      heartHrvDedicatedMode: telemetry.heartHrvDedicatedMode,
       heartHrvDedicatedError: telemetry.heartHrvDedicatedError,
       heartHrvDedicatedDurationMs: telemetry.heartHrvDedicatedDurationMs,
       bulkDurationMs: telemetry.bulkDurationMs,

@@ -31,6 +31,7 @@ import {
   logVisionPreviewCacheCleared,
   type SoxaiVisionPreviewCacheEntry,
 } from "@/lib/soxai-vision-preview-cache";
+import { buildSoxaiFilesAndSections } from "@/lib/soxai-vision-inputs";
 
 export type CategoryImageMap = Partial<
   Record<WearableImageCategory, WearableUploadedImage[]>
@@ -150,27 +151,33 @@ export default function MultiImageUploader({
   );
 
   /**
-   * SOXAI 一括解析専用: 画面種類の事前分類は行わない。
-   * （Oura は OuraAnalysisPanel を使用。このコンポーネントでは扱わない）
+   * SOXAI 一括解析: category → soxaiSection を付けて Vision へ送る。
+   * sections を空配列のまま送らない。
    */
   const runBulkVisionOnMap = useCallback(
     async (map: CategoryImageMap, signal: AbortSignal) => {
       if (deviceType !== "soxai") return;
-      const allForExtract = flattenImages(map).map((image) => image.file);
-      if (allForExtract.length === 0) return;
+      const { files, sections } = buildSoxaiFilesAndSections(specs, map);
+      if (files.length === 0) return;
 
       setBulkExtractSummary(null);
       setBulkExtractError(null);
       clearBulkVisionPreviewCache("プレビュー解析の再実行");
-      setExtractPhase(`${allForExtract.length}枚の画像を解析中…`);
+      setExtractPhase(`${files.length}枚の画像を解析中…`);
       setExtracting(true);
 
       try {
-        const dataUrls = await Promise.all(allForExtract.map(fileToDataUrl));
+        const dataUrls = await Promise.all(files.map(fileToDataUrl));
         if (signal.aborted) return;
 
+        console.info("[MultiImageUploader] vision preview sections", {
+          imageCount: files.length,
+          sections,
+          hasHeartHrv: sections.includes("heart_hrv"),
+        });
+
         setExtractPhase("データを抽出しています…");
-        const vision = await resolveSoxaiVisionExtraction(dataUrls, [], {
+        const vision = await resolveSoxaiVisionExtraction(dataUrls, sections, {
           signal,
         });
         if (signal.aborted) return;
@@ -179,7 +186,7 @@ export default function MultiImageUploader({
         setExtractPhase("抽出結果を統合しています…");
         const summary = buildBulkExtractSummary({
           metrics: vision.metrics,
-          imageCount: allForExtract.length,
+          imageCount: files.length,
         });
         setBulkExtractSummary(summary);
         if (vision.error) setBulkExtractError(vision.error);
@@ -196,7 +203,7 @@ export default function MultiImageUploader({
           onBulkVisionPreviewCacheChange
         ) {
           onBulkVisionPreviewCacheChange({
-            fingerprint: filesFingerprint(allForExtract),
+            fingerprint: filesFingerprint(files),
             vision,
             cachedAt: Date.now(),
           });
@@ -212,7 +219,12 @@ export default function MultiImageUploader({
         setExtractPhase(null);
       }
     },
-    [clearBulkVisionPreviewCache, deviceType, onBulkVisionPreviewCacheChange],
+    [
+      clearBulkVisionPreviewCache,
+      deviceType,
+      onBulkVisionPreviewCacheChange,
+      specs,
+    ],
   );
 
   const ingestBulkFiles = useCallback(
@@ -233,7 +245,36 @@ export default function MultiImageUploader({
       const controller = new AbortController();
       bulkAbortRef.current = controller;
 
-      // 分類せず解析セットへ追加（カテゴリ確定はしない）
+      if (deviceType === "soxai") {
+        // 分類してスロット（sections）を付けてから Vision へ送る
+        setClassifying(true);
+        const { items, successRate, elapsedMs } = await classifyWearableImages({
+          files: accepted,
+          deviceType,
+          signal: controller.signal,
+        });
+        setClassifying(false);
+        if (controller.signal.aborted) return;
+
+        const next: CategoryImageMap = { ...imagesByCategory };
+        for (const item of items) {
+          const category = item.image.imageCategory;
+          const placed = {
+            ...item.image,
+            // Vision 対象として ready 扱い（candidate / needs_manual も解析に含める）
+            status: "ready" as const,
+          };
+          next[category] = [...(next[category] ?? []), placed];
+        }
+        commitMap(next);
+        setSlotNote(
+          `${accepted.length}枚を分類しました（参考成功率 ${successRate}% · ${elapsedMs}ms）。Vision解析を開始します。`,
+        );
+        await runBulkVisionOnMap(next, controller.signal);
+        return;
+      }
+
+      // 非 SOXAI: 従来どおり解析セットへ
       const created: WearableUploadedImage[] = accepted.map((file) => ({
         ...toWearableUploadedImage({
           file,
@@ -251,11 +292,6 @@ export default function MultiImageUploader({
         unknown: [...(imagesByCategory.unknown ?? []), ...created],
       };
       commitMap(next);
-
-      if (deviceType === "soxai") {
-        await runBulkVisionOnMap(next, controller.signal);
-        return;
-      }
 
       setSlotNote(
         `${accepted.length}枚を解析セットに追加しました。分析開始でデータを読み取ります。`,
@@ -808,15 +844,10 @@ export function filesFromCategoryMap(
   specs: readonly WearableRequiredImageSpec[],
   map: CategoryImageMap,
 ): File[] {
-  const fromSpecs = specs.flatMap((spec) =>
-    (map[spec.category] ?? []).map((image) => image.file),
-  );
-  // 一括解析セット（unknown）も提出対象に含める
-  const fromBulk = (map.unknown ?? []).map((image) => image.file);
-  return [...fromSpecs, ...fromBulk];
+  return buildSoxaiFilesAndSections(specs, map).files;
 }
 
-/** SOXAI 用: category map → slot Files（一括解析セット unknown も含める） */
+/** SOXAI 用: category map → slot Files（unknown は sleep_overview に寄せない） */
 export function soxaiSlotFilesFromCategoryMap(
   specs: readonly WearableRequiredImageSpec[],
   map: CategoryImageMap,
@@ -831,15 +862,6 @@ export function soxaiSlotFilesFromCategoryMap(
     const files = (map[spec.category] ?? []).map((image) => image.file);
     if (files.length > 0) out[spec.soxaiSection] = files;
   }
-  // 一括解析セット（カテゴリ未割当）も Vision 解析から除外しない
-  const unknownFiles = (map.unknown ?? []).map((image) => image.file);
-  if (unknownFiles.length > 0) {
-    const anchor =
-      specs.find((s) => s.soxaiSection === "sleep_overview")?.soxaiSection ??
-      specs.find((s) => s.soxaiSection)?.soxaiSection;
-    if (anchor) {
-      out[anchor] = [...(out[anchor] ?? []), ...unknownFiles];
-    }
-  }
+  // unknown は sections="" として Vision に渡す（提出は buildSoxaiFilesAndSections 側）
   return out;
 }

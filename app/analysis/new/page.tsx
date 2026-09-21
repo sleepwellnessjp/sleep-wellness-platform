@@ -52,7 +52,6 @@ import { prepareImagesForVision } from "@/lib/oura-image-prep";
 import AnalysisStartButton from "@/components/analysis/AnalysisStartButton";
 import DeviceSelector from "@/components/analysis/DeviceSelector";
 import MultiImageUploader, {
-  soxaiSlotFilesFromCategoryMap,
   type CategoryImageMap,
 } from "@/components/analysis/MultiImageUploader";
 import OuraAnalysisPanel from "@/components/analysis/OuraAnalysisPanel";
@@ -62,6 +61,7 @@ import {
 } from "@/lib/wearable-analysis";
 import type { WearableDevice } from "@/lib/wearable-analysis";
 import { getRequiredImageSpecs } from "@/lib/wearable-devices";
+import { buildSoxaiFilesAndSections } from "@/lib/soxai-vision-inputs";
 import { toSwsMetrics } from "@/lib/sws-standard";
 import {
   CLIENT_GENDER_OPTIONS,
@@ -266,14 +266,6 @@ type InputMethod =
   | "apple";
 
 const SOXAI_IMAGE_SPECS = getRequiredImageSpecs("soxai");
-const SOXAI_UPLOAD_SLOTS = SOXAI_IMAGE_SPECS.filter(
-  (spec) => spec.soxaiSection != null,
-).map((spec) => ({
-  id: spec.soxaiSection!,
-  title: spec.label,
-  description: spec.description,
-  items: spec.metrics,
-}));
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -549,9 +541,6 @@ function NewAnalysisPageInner() {
 
   const [inputMethod, setInputMethod] = useState<InputMethod>("soxai");
   const [flowStep, setFlowStep] = useState<"method" | "input">("method");
-  const [slotFiles, setSlotFiles] = useState<
-    Partial<Record<SoxaiExtractSection, File[]>>
-  >({});
   const [ouraFiles, setOuraFiles] = useState<File[]>([]);
   const [soxaiImagesByCategory, setSoxaiImagesByCategory] =
     useState<CategoryImageMap>({});
@@ -581,7 +570,7 @@ function NewAnalysisPageInner() {
   const [pendingDraftPayload, setPendingDraftPayload] = useState<{
     lifestyle: Parameters<typeof setExtractionDraft>[0]["lifestyle"];
     images: string[];
-    sections: SoxaiExtractSection[];
+    sections: Array<SoxaiExtractSection | "">;
     extraction: {
       metrics: AnalysisMetrics;
       conflicts: MetricConflict[];
@@ -630,22 +619,9 @@ function NewAnalysisPageInner() {
     setProfile((current) => ({ ...current, [key]: value }));
   };
 
-  const files = useMemo(
-    () =>
-      SOXAI_UPLOAD_SLOTS.flatMap((slot) => {
-        const list = slotFiles[slot.id];
-        return Array.isArray(list) ? list : [];
-      }),
-    [slotFiles],
-  );
-  const sections = useMemo(
-    () =>
-      SOXAI_UPLOAD_SLOTS.flatMap((slot) => {
-        const list = slotFiles[slot.id];
-        if (!Array.isArray(list) || list.length === 0) return [];
-        return list.map(() => slot.id);
-      }),
-    [slotFiles],
+  const { files, sections } = useMemo(
+    () => buildSoxaiFilesAndSections(SOXAI_IMAGE_SPECS, soxaiImagesByCategory),
+    [soxaiImagesByCategory],
   );
 
   /** 遷移・bfcache 復帰・unmount 時に OCR overlay を必ず落とす（Safari 幽霊レイヤー対策） */
@@ -782,7 +758,6 @@ function NewAnalysisPageInner() {
       Object.values(soxaiImagesByCategory).flatMap((list) => list ?? []),
     );
     setSoxaiImagesByCategory({});
-    setSlotFiles({});
     setError(null);
   };
 
@@ -790,7 +765,6 @@ function NewAnalysisPageInner() {
     setUploadGuideTouched(true);
     setTouchedUpload(true);
     setSoxaiImagesByCategory(next);
-    setSlotFiles(soxaiSlotFilesFromCategoryMap(SOXAI_IMAGE_SPECS, next));
     setError(null);
   };
 
