@@ -25,56 +25,40 @@ const glucoseMetrics = [
   "変動係数（推移の安定度）",
 ];
 
-const reportShots = [
-  {
-    src: "/method-analysis/report-top.png",
-    alt: "Sleep Wellness Report の入口画面",
-    caption: "レポートの入口。Sleep Wellness Score と目次",
-  },
-  {
-    src: "/method-analysis/report-score.png",
-    alt: "総合評価と4領域スコアの画面",
-    caption: "総合評価と4領域のスコア",
-  },
-  {
-    src: "/method-analysis/report-soxai.png",
-    alt: "SOXAIリングの睡眠データ画面",
-    caption: "SOXAI リングで計測した睡眠データ",
-  },
-] as const;
-
 const flowSteps = [
   {
-    number: "01",
+    number: "STEP 1",
     title: "計測する",
     description:
       "スマートリングを着けて眠る。同じ期間、FreeStyle リブレ2のセンサーを腕に着けて過ごす。",
-    image: null as string | null,
-    imageAlt: "",
+    image: "/method/analysis-01-measure.svg",
+    imageAlt: "スマートリングとリブレ2のセンサーを着けて眠る",
   },
   {
-    number: "02",
+    number: "STEP 2",
     title: "取り込む",
     description:
       "リングの睡眠データとリブレ2のCSVを、認定講師が分析画面に取り込み、カルテに記録する。",
-    image: "/method-analysis/device-select.png",
-    imageAlt: "分析画面のデバイス選択",
+    image: "/method/analysis-02-import.svg",
+    imageAlt:
+      "睡眠データとリブレ2のCSVを分析画面に取り込み、カルテに保存する",
   },
   {
-    number: "03",
+    number: "STEP 3",
     title: "読み解く",
     description:
       "睡眠の推移と夜間のグルコースの動きを重ねて見て、改善の優先順位をレポートにまとめる。",
-    image: null as string | null,
-    imageAlt: "",
+    image: "/method/analysis-03-read.svg",
+    imageAlt:
+      "睡眠の推移と夜間グルコースを重ねて読み、改善の優先順位を整理する",
   },
   {
-    number: "04",
+    number: "STEP 4",
     title: "実践する",
     description:
       "その人の状態に合わせて、メラトニンヨガ™の夜の実践、間のヨガ™の昼の実践、睡眠のための食事を処方する。",
-    image: "/method-analysis/report-practice.png",
-    imageAlt: "実践処方のレポート画面",
+    image: "/method/analysis-04-practice.svg",
+    imageAlt: "夜の実践・昼の実践・睡眠のための食事を処方する",
   },
 ] as const;
 
@@ -90,21 +74,6 @@ const unknownItems = [
   "検査値としての正確な血糖値",
   "一晩のデータだけで断定できる原因",
 ];
-
-const pdfPages = [
-  {
-    src: "/method-analysis/report-pdf-1.jpg",
-    alt: "レポートPDF 1ページ目",
-  },
-  {
-    src: "/method-analysis/report-pdf-2.jpg",
-    alt: "レポートPDF 2ページ目",
-  },
-  {
-    src: "/method-analysis/report-pdf-3.jpg",
-    alt: "レポートPDF 3ページ目",
-  },
-] as const;
 
 /**
  * 二つの計測（スマートリング＋持続血糖）による分析の説明ページ。
@@ -167,13 +136,14 @@ export default function MethodAnalysisPage() {
                 二つの計測で、眠りの精度を上げる
               </h1>
               <p className="mt-6 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
-                眠っている間、体の中では二つのことが同時に起きています。ひとつは睡眠そのものの深さやリズム。もうひとつは、血糖値の動きです。
+                スマートリング（SOXAI / Oura）で睡眠を計測し、さらに FreeStyle
+                リブレ2 で夜間のグルコース値も見ます。主役は睡眠データ。グルコースは、その夜を別の角度から読むための補助データです。
               </p>
             </div>
             <div className="relative aspect-[4/5] overflow-hidden rounded-[22px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[24px] lg:aspect-[3/4]">
               <Image
-                src="/method-analysis/sensor-on-arm.jpg"
-                alt="上腕に貼った血糖センサー"
+                src="/method-analysis/rings.jpg"
+                alt="SOXAIスマートリング"
                 fill
                 className="object-cover"
                 sizes="(min-width:1024px) 40vw, 90vw"
@@ -201,7 +171,7 @@ export default function MethodAnalysisPage() {
                 睡眠スコアは、その夜がどうだったかを教えてくれます。けれど「なぜそうなったのか」までは教えてくれません。
               </p>
               <p>
-                同じスコア70の夜でも、中身は違います。夜間の血糖が穏やかに推移した夜と、大きく上下した夜。体の休まり方は同じではありません。
+                同じスコア70の夜でも、中身は違います。スマートリングが見た睡眠の構成に、夜間の血糖の動きを重ねると、体の休まり方の違いに近づきやすくなります。
               </p>
               <p>
                 計測を二つに増やすのは、数字を増やすためではありません。
@@ -216,7 +186,7 @@ export default function MethodAnalysisPage() {
             </div>
           </section>
 
-          {/* 02 */}
+          {/* 02 スマートリング */}
           <section className="mt-16 sm:mt-20">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"
@@ -228,92 +198,39 @@ export default function MethodAnalysisPage() {
               className="mt-3 text-xl font-semibold tracking-[-0.03em] sm:text-2xl"
               style={{ color: NAVY }}
             >
-              何を計測しているか
+              スマートリングで測る眠り
             </h2>
+            <p className="mt-6 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
+              SOXAI や Oura
+              などのスマートリングが、睡眠中の体の状態を記録します。このメソッドでは、まずこの睡眠データを中心に読みます。
+            </p>
 
-            <div className="mt-8 grid gap-4 sm:gap-5 lg:grid-cols-2">
-              <article className="overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
-                <div className="relative aspect-[4/3] border-b border-[rgba(7,20,38,0.06)] bg-[#f0f0ed]">
-                  <Image
-                    src="/method-analysis/rings.jpg"
-                    alt="SOXAIスマートリング"
-                    fill
-                    className="object-cover"
-                    sizes="(min-width:1024px) 40vw, 90vw"
-                  />
-                </div>
-                <div className="px-5 py-5 sm:px-6 sm:py-6">
-                  <p
-                    className="text-[10px] font-semibold tracking-[0.18em]"
-                    style={{ color: GOLD }}
-                  >
-                    スマートリング｜眠りの状態
-                  </p>
-                  <p className="mt-3 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8">
-                    SOXAI リングが、睡眠中の体の状態を記録します。
-                  </p>
-                  <ul className="mt-4 space-y-2 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
-                    {ringMetrics.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span style={{ color: GOLD }} aria-hidden>
-                          ·
-                        </span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </article>
+            <ul className="mt-6 space-y-2 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
+              {ringMetrics.map((item) => (
+                <li key={item} className="flex gap-2">
+                  <span style={{ color: GOLD }} aria-hidden>
+                    ·
+                  </span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
 
-              <article className="overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
-                <div className="relative aspect-[4/3] border-b border-[rgba(7,20,38,0.06)] bg-[#f0f0ed]">
-                  <Image
-                    src="/method-analysis/libre-kit.jpg"
-                    alt="FreeStyle リブレ2 のキット"
-                    fill
-                    className="object-cover"
-                    sizes="(min-width:1024px) 40vw, 90vw"
-                  />
-                </div>
-                <figure className="border-b border-[rgba(7,20,38,0.06)] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- 指示どおり SVG は img で表示 */}
-                  <img
-                    src="/method-analysis/fig-glucose-daily.svg"
-                    alt="1日のグルコース推移。分析ではこのうち夜間帯を切り出します。"
-                    className="mx-auto h-auto w-full max-w-full"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </figure>
-                <div className="px-5 py-5 sm:px-6 sm:py-6">
-                  <p
-                    className="text-[10px] font-semibold tracking-[0.18em]"
-                    style={{ color: GOLD }}
-                  >
-                    持続血糖測定｜夜間の血糖推移
-                  </p>
-                  <div className="mt-3 space-y-4 text-[15px] leading-7 text-slate-700 sm:text-base sm:leading-8">
-                    <p>
-                      FreeStyle リブレ2 が、15分ごとに血糖値を記録します。上腕に貼ったセンサーが、間質液のブドウ糖濃度を測り続けます。
-                    </p>
-                    <p>分析では、入眠から起床までを切り出して次を見ます。</p>
-                  </div>
-                  <ul className="mt-4 space-y-2 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
-                    {glucoseMetrics.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span style={{ color: GOLD }} aria-hidden>
-                          ·
-                        </span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </article>
+            <div className="mt-8 overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
+              <Image
+                src="/method/report-soxai-stages.png"
+                alt="SOXAI Ringで計測した睡眠ステージの表示例"
+                width={1200}
+                height={1600}
+                className="h-auto w-full"
+              />
             </div>
+            <p className="mt-3 text-[12px] leading-5 text-slate-600 sm:text-[13px] sm:leading-6">
+              深い睡眠・浅い睡眠・レム・覚醒など、睡眠ステージの内訳を確認します。
+            </p>
           </section>
 
-          {/* 03 */}
+          {/* 03 リブレ2 / グルコース */}
           <section className="mt-16 sm:mt-20">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"
@@ -325,45 +242,103 @@ export default function MethodAnalysisPage() {
               className="mt-3 text-xl font-semibold tracking-[-0.03em] sm:text-2xl"
               style={{ color: NAVY }}
             >
-              分析レポート
+              リブレ2で見る夜間のグルコース
             </h2>
             <p className="mt-6 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
-              取り込んだデータは、Sleep Wellness Report として整理されます。
+              FreeStyle リブレ2
+              は補助データです。上腕のセンサーが間質液のブドウ糖濃度を15分ごとに記録し、分析では入眠から起床までの夜間帯を切り出して見ます。
             </p>
 
-            <ul className="mt-8 grid gap-4 sm:grid-cols-3 sm:gap-4">
-              {reportShots.map((shot) => (
-                <li key={shot.src}>
-                  <figure>
-                    <div className="relative aspect-[9/16] overflow-hidden rounded-[18px] border border-[rgba(7,20,38,0.10)] bg-white shadow-[0_1px_0_rgba(7,20,38,0.04)] sm:rounded-[20px]">
-                      <Image
-                        src={shot.src}
-                        alt={shot.alt}
-                        fill
-                        className="object-cover object-top"
-                        sizes="(min-width:640px) 30vw, 90vw"
-                      />
-                    </div>
-                    <figcaption className="mt-3 text-[12px] leading-5 text-slate-600 sm:text-[13px] sm:leading-6">
-                      {shot.caption}
-                    </figcaption>
-                  </figure>
-                </li>
-              ))}
-            </ul>
-
-            <p className="mt-8 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
-              睡眠スコアだけでなく、睡眠段階・心拍変動・呼吸数・血中酸素飽和度まで一覧にします。そこに夜間の血糖推移を重ね、改善の優先順位を1つに絞り込みます。
-            </p>
+            <div className="mt-8 overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
+              <div className="relative aspect-[4/3] bg-[#f0f0ed]">
+                <Image
+                  src="/method-analysis/libre-kit.jpg"
+                  alt="FreeStyle リブレ2 のキット"
+                  fill
+                  className="object-cover"
+                  sizes="(min-width:1024px) 60vw, 90vw"
+                />
+              </div>
+              <figure className="bg-white px-4 py-4 sm:px-5 sm:py-5">
+                {/* eslint-disable-next-line @next/next/no-img-element -- SVG は img で表示 */}
+                <img
+                  src="/method-analysis/fig-glucose-daily.svg"
+                  alt="1日のグルコース推移。分析ではこのうち夜間帯を切り出します。"
+                  className="mx-auto h-auto w-full max-w-full"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </figure>
+              <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+                <ul className="space-y-2 text-[13px] leading-6 text-slate-600 sm:text-[14px]">
+                  {glucoseMetrics.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span style={{ color: GOLD }} aria-hidden>
+                        ·
+                      </span>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </section>
 
-          {/* 04 */}
-          <section className="mt-16 pb-[var(--sw-beta-chrome-offset)] sm:mt-20 sm:pb-0">
+          {/* 04 分析レポート（睡眠） */}
+          <section className="mt-16 sm:mt-20">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
             >
               04
+            </p>
+            <h2
+              className="mt-3 text-xl font-semibold tracking-[-0.03em] sm:text-2xl"
+              style={{ color: NAVY }}
+            >
+              分析レポート
+            </h2>
+            <p className="mt-6 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
+              取り込んだ睡眠データは、Sleep Wellness Report
+              として整理されます。スコアと目次から入り、その夜の全体像を共有します。スマートリングの睡眠データを中心に、リブレ2のグルコース推移もあわせて整理します。
+            </p>
+
+            <div className="mt-8 overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
+              <Image
+                src="/method/report-score.png"
+                alt="Sleep Wellness Expert Reportの表紙とスコア"
+                width={1200}
+                height={1600}
+                className="h-auto w-full"
+              />
+            </div>
+
+            <p className="mt-8 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
+              総合評価では、回復・リズム・深さ・安定などの観点を踏まえ、今日の優先順位につながるコメントをまとめます。
+            </p>
+
+            <div className="mt-8 overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
+              <Image
+                src="/method/report-overall.png"
+                alt="今日の総合評価と総合コメントの表示例"
+                width={1200}
+                height={1600}
+                className="h-auto w-full"
+              />
+            </div>
+
+            <p className="mt-8 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
+              睡眠スコアだけでなく、睡眠段階・心拍変動・呼吸数・血中酸素飽和度まで一覧にします。そのうえで、必要に応じて夜間の血糖推移を重ね、改善の優先順位を1つに絞り込みます。
+            </p>
+          </section>
+
+          {/* 05 計測から実践まで */}
+          <section className="mt-16 pb-[var(--sw-beta-chrome-offset)] sm:mt-20 sm:pb-0">
+            <p
+              className="text-[11px] font-semibold tracking-[0.28em]"
+              style={{ color: GOLD }}
+            >
+              05
             </p>
             <h2
               className="mt-3 text-xl font-semibold tracking-[-0.03em] sm:text-2xl"
@@ -376,17 +351,6 @@ export default function MethodAnalysisPage() {
               {flowSteps.map((step) => (
                 <li key={step.number}>
                   <article className="flex h-full flex-col overflow-hidden rounded-[20px] border border-[rgba(7,20,38,0.08)] bg-white sm:rounded-[22px]">
-                    {step.image ? (
-                      <div className="relative aspect-[16/10] border-b border-[rgba(7,20,38,0.06)] bg-[#f7f7f5]">
-                        <Image
-                          src={step.image}
-                          alt={step.imageAlt}
-                          fill
-                          className="object-contain object-center p-2"
-                          sizes="(min-width:640px) 40vw, 90vw"
-                        />
-                      </div>
-                    ) : null}
                     <div className="flex flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5">
                       <p
                         className="text-[10px] font-semibold tracking-[0.18em]"
@@ -404,6 +368,16 @@ export default function MethodAnalysisPage() {
                         {step.description}
                       </p>
                     </div>
+                    <div className="w-full bg-white py-4">
+                      <Image
+                        src={step.image}
+                        alt={step.imageAlt}
+                        width={800}
+                        height={500}
+                        className="h-auto w-full"
+                        unoptimized
+                      />
+                    </div>
                   </article>
                 </li>
               ))}
@@ -417,33 +391,28 @@ export default function MethodAnalysisPage() {
               分析は、答えを出すためのものではありません。次に何を試すかを決めるためのものです。
             </p>
 
-            <ul className="mt-8 grid gap-4 sm:grid-cols-3 sm:gap-4">
-              {pdfPages.map((page) => (
-                <li key={page.src}>
-                  <div className="relative aspect-[210/297] overflow-hidden rounded-[14px] border border-[rgba(7,20,38,0.10)] bg-white shadow-[0_1px_0_rgba(7,20,38,0.04)] sm:rounded-[16px]">
-                    <Image
-                      src={page.src}
-                      alt={page.alt}
-                      fill
-                      className="object-cover object-top"
-                      sizes="(min-width:640px) 30vw, 90vw"
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-8">
+              <Image
+                src="/method/analysis-report-illustration.svg"
+                alt="クライアントに渡す睡眠ウェルネスレポートのイメージ"
+                width={800}
+                height={500}
+                className="h-auto w-full"
+                unoptimized
+              />
+            </div>
             <p className="mt-4 text-[12px] leading-5 text-slate-600 sm:text-[13px] sm:leading-6">
               実際のレポート（3ページ）。クライアントにはPDFでお渡ししています。
             </p>
           </section>
 
-          {/* 05 */}
+          {/* 06 */}
           <section className="mt-16 sm:mt-20">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
             >
-              05
+              06
             </p>
             <h2
               className="mt-3 text-xl font-semibold tracking-[-0.03em] sm:text-2xl"
