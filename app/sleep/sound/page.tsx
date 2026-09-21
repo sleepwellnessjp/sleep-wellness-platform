@@ -16,10 +16,14 @@ export const metadata: Metadata = {
 };
 
 export default async function SleepSoundPage() {
-  const [music, nature] = await Promise.all([
+  const [music, natureRaw] = await Promise.all([
     listPublishedRestContentByKind("sleep_music"),
     listPublishedRestContentByKind("nature_sound"),
   ]);
+  // 「しずかな余白」は公開リストから除外（自然音セクション非表示）
+  const nature = natureRaw.filter(
+    (item) => item.title !== "しずかな余白" && item.slug !== "nature-space",
+  );
 
   return (
     <main

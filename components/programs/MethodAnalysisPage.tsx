@@ -48,7 +48,7 @@ const flowSteps = [
     number: "01",
     title: "計測する",
     description:
-      "スマートリングを着けて眠る。血糖センサーは装着したまま過ごす。",
+      "スマートリングを着けて眠る。同じ期間、FreeStyle リブレ2のセンサーを腕に着けて過ごす。",
     image: null as string | null,
     imageAlt: "",
   },
@@ -56,7 +56,7 @@ const flowSteps = [
     number: "02",
     title: "取り込む",
     description:
-      "リングのデータと血糖CSVを、認定講師が分析画面に取り込む。",
+      "リングの睡眠データとリブレ2のCSVを、認定講師が分析画面に取り込み、カルテに記録する。",
     image: "/method-analysis/device-select.png",
     imageAlt: "分析画面のデバイス選択",
   },
@@ -64,7 +64,7 @@ const flowSteps = [
     number: "03",
     title: "読み解く",
     description:
-      "睡眠データ・夜間グルコース・改善の優先順位を、レポートとして整理する。",
+      "睡眠の推移と夜間のグルコースの動きを重ねて見て、改善の優先順位をレポートにまとめる。",
     image: null as string | null,
     imageAlt: "",
   },
@@ -150,7 +150,7 @@ export default function MethodAnalysisPage() {
           aria-hidden
         />
 
-        <div className="relative mx-auto max-w-4xl px-6 pb-14 pt-8 sm:px-8 sm:pb-16 sm:pt-14 lg:px-10 lg:pb-20 lg:pt-16">
+        <div className="relative mx-auto max-w-4xl px-6 pb-[var(--sw-sleep-page-bottom-pad)] pt-8 sm:px-8 sm:pt-14 lg:max-w-4xl lg:px-10 lg:pb-20 lg:pt-16">
           {/* ヒーロー */}
           <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
             <div>
@@ -358,7 +358,7 @@ export default function MethodAnalysisPage() {
           </section>
 
           {/* 04 */}
-          <section className="mt-16 sm:mt-20">
+          <section className="mt-16 pb-[var(--sw-beta-chrome-offset)] sm:mt-20 sm:pb-0">
             <p
               className="text-[11px] font-semibold tracking-[0.28em]"
               style={{ color: GOLD }}
@@ -408,6 +408,10 @@ export default function MethodAnalysisPage() {
                 </li>
               ))}
             </ul>
+
+            <p className="mt-4 text-[12px] leading-5 text-slate-500 sm:text-[13px] sm:leading-6">
+              ※グルコース値は間質液での計測のため、目安として扱います。
+            </p>
 
             <p className="mt-8 text-[15px] leading-8 text-slate-700 sm:text-base sm:leading-8">
               分析は、答えを出すためのものではありません。次に何を試すかを決めるためのものです。
