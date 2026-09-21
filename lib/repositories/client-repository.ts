@@ -40,6 +40,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatSupabaseError } from "@/lib/supabase/errors";
 import { DataAccessError } from "@/lib/data-access-errors";
 import { insertAnalysisWithSchemaFallback } from "@/lib/repositories/analyses-insert";
+import { isAdminOrAbove } from "@/lib/clients/access";
 
 export type {
   ClientListItem,
@@ -948,37 +949,45 @@ export async function getClientById(id: string): Promise<StoredClient | null> {
 
   const { supabase, userId } = auth;
   const instructorCol = await resolveInstructorColumn(auth);
+  const hqAdmin = await isAdminOrAbove(supabase);
 
-  // 担当講師一致 + RLS で他講師のクライアントは取得できない
-  const { data: clientRow, error: clientError } = await supabase
-    .from("clients")
-    .select("*")
-    .eq(clientsInstructorFilterColumn(instructorCol), userId)
-    .eq("id", id)
-    .maybeSingle();
+  // 講師は担当のみ。HQ admin は RLS（clients_select_admin）で全件可。
+  let clientQuery = supabase.from("clients").select("*").eq("id", id);
+  if (!hqAdmin) {
+    clientQuery = clientQuery.eq(
+      clientsInstructorFilterColumn(instructorCol),
+      userId,
+    );
+  }
+  const { data: clientRow, error: clientError } = await clientQuery.maybeSingle();
 
   if (clientError) {
     throw formatSupabaseError(clientError, "getClientById:client");
   }
   if (!clientRow) return null;
 
-  const { data: analysisRows, error: analysisError } = await supabase
+  let analysisQuery = supabase
     .from("analyses")
     .select("*")
-    .eq("owner_id", userId)
     .eq("client_id", id)
     .order("created_at", { ascending: false });
+  if (!hqAdmin) {
+    analysisQuery = analysisQuery.eq("owner_id", userId);
+  }
+  const { data: analysisRows, error: analysisError } = await analysisQuery;
 
   if (analysisError) {
     throw formatSupabaseError(analysisError, "getClientById:analyses");
   }
 
-  const { data: profileRow } = await supabase
+  let profileQuery = supabase
     .from("client_profiles")
     .select("basic, health, lifestyle, exercise")
-    .eq("owner_id", userId)
-    .eq("client_id", id)
-    .maybeSingle();
+    .eq("client_id", id);
+  if (!hqAdmin) {
+    profileQuery = profileQuery.eq("owner_id", userId);
+  }
+  const { data: profileRow } = await profileQuery.maybeSingle();
 
   const analyses = ((analysisRows ?? []) as DbAnalysisRow[]).map(mapDbAnalysis);
 

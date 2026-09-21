@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import AdminShell from "@/components/AdminShell";
 import SectionCard from "@/components/ui/SectionCard";
@@ -101,8 +102,14 @@ export default function AdminClientsPage() {
                     key={item.id}
                     className="border-b border-slate-50 hover:bg-[#fafaf8]"
                   >
-                    <td className="py-3.5 pr-4 font-semibold" style={{ color: NAVY }}>
-                      {item.name}
+                    <td className="py-3.5 pr-4 font-semibold">
+                      <Link
+                        href={`/clients/${encodeURIComponent(item.id)}`}
+                        className="underline-offset-2 transition hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#315f68]"
+                        style={{ color: NAVY }}
+                      >
+                        {item.name}
+                      </Link>
                     </td>
                     <td className="py-3.5 pr-4 text-slate-600">
                       {item.instructorName}

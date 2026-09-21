@@ -27,8 +27,8 @@ function NightGlucoseChart({
   endAtIso: string;
 }) {
   const width = 640;
-  const height = 240;
-  const padding = { top: 28, right: 20, bottom: 40, left: 44 };
+  const height = 248;
+  const padding = { top: 32, right: 20, bottom: 44, left: 44 };
   const innerW = width - padding.left - padding.right;
   const innerH = height - padding.top - padding.bottom;
 
@@ -139,10 +139,10 @@ function NightGlucoseChart({
           <text
             key={`x-${label.x}`}
             x={label.x}
-            y={height - 12}
+            y={height - 14}
             textAnchor="middle"
-            className="fill-slate-400"
-            style={{ fontSize: 10 }}
+            className="fill-slate-500"
+            style={{ fontSize: 12 }}
           >
             {label.label}
           </text>
@@ -159,9 +159,9 @@ function NightGlucoseChart({
             />
             <text
               x={m.x}
-              y={padding.top - 10}
+              y={padding.top - 12}
               textAnchor={m.x <= padding.left + 4 ? "start" : "end"}
-              style={{ fontSize: 9, fill: GOLD }}
+              style={{ fontSize: 12, fill: GOLD, fontWeight: 600 }}
             >
               {m.label}
             </text>

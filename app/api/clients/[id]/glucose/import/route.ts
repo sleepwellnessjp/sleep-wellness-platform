@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { importLibreGlucoseCsvForClient } from "@/lib/glucose/glucose-import-service";
+import { canAccessClientAsInstructorOrAdmin } from "@/lib/clients/access";
 import { requireApiUser } from "@/lib/auth/require-api-user";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -42,7 +43,13 @@ export async function POST(request: Request, context: RouteContext) {
       { status: 404 },
     );
   }
-  if (client.instructor_id !== auth.user.id) {
+
+  const allowed = await canAccessClientAsInstructorOrAdmin({
+    supabase,
+    userId: auth.user.id,
+    clientInstructorId: client.instructor_id,
+  });
+  if (!allowed) {
     return NextResponse.json(
       { error: "このクライアントへの権限がありません" },
       { status: 403 },

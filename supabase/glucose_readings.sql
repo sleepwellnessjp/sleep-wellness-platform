@@ -97,3 +97,29 @@ create policy "glucose_readings_delete_own"
       where c.id = client_id and c.instructor_id = auth.uid()
     )
   );
+
+-- HQ admin（admin / super_admin）は全クライアント参照・取込可
+drop policy if exists "glucose_readings_select_admin"
+  on public.glucose_readings;
+create policy "glucose_readings_select_admin"
+  on public.glucose_readings for select
+  using (public.is_admin_or_above());
+
+drop policy if exists "glucose_readings_insert_admin"
+  on public.glucose_readings;
+create policy "glucose_readings_insert_admin"
+  on public.glucose_readings for insert
+  with check (public.is_admin_or_above());
+
+drop policy if exists "glucose_readings_update_admin"
+  on public.glucose_readings;
+create policy "glucose_readings_update_admin"
+  on public.glucose_readings for update
+  using (public.is_admin_or_above())
+  with check (public.is_admin_or_above());
+
+drop policy if exists "glucose_readings_delete_admin"
+  on public.glucose_readings;
+create policy "glucose_readings_delete_admin"
+  on public.glucose_readings for delete
+  using (public.is_admin_or_above());
