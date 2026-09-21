@@ -47,15 +47,40 @@ export type SoxaiVisionCriticalKey =
 export type SoxaiVisionBulkRetryKey =
   (typeof SOXAI_VISION_BULK_RETRY_KEYS)[number];
 
+export type HeartHrvDedicatedStatus =
+  | "success"
+  | "empty"
+  | "error"
+  | "timeout"
+  | "skipped";
+
+export type SoxaiVisionImageSizeTelemetry = {
+  index: number;
+  section: string;
+  profile: string;
+  maxEdgePx: number;
+  jpegQuality: number;
+  bytes: number;
+  dataUrlChars: number;
+};
+
 export type SoxaiVisionTelemetry = {
   imageCount: number;
   sections: Array<SoxaiExtractSection | "">;
   hasHeartHrv: boolean;
   heartHrvDedicatedPass: boolean;
   heartHrvImageCount: number;
+  heartHrvDedicatedStatus: HeartHrvDedicatedStatus;
+  heartHrvDedicatedError: string | null;
+  heartHrvDedicatedDurationMs: number | null;
+  bulkDurationMs: number | null;
+  totalDurationMs: number | null;
   restingHeartRateAvg: string | null;
   restingHeartRateMin: string | null;
   restingHeartRateMax: string | null;
+  hrvAvg: string | null;
+  hrvMax: string | null;
+  imageSizes: SoxaiVisionImageSizeTelemetry[];
   emptyCriticalKeys: SoxaiVisionCriticalKey[];
   retried: boolean;
   retryFilledKeys: SoxaiVisionCriticalKey[];
@@ -170,6 +195,12 @@ export function buildSoxaiVisionTelemetry(params: {
   retryFilledKeys?: SoxaiVisionCriticalKey[];
   heartHrvDedicatedPass?: boolean;
   heartHrvImageCount?: number;
+  heartHrvDedicatedStatus?: HeartHrvDedicatedStatus;
+  heartHrvDedicatedError?: string | null;
+  heartHrvDedicatedDurationMs?: number | null;
+  bulkDurationMs?: number | null;
+  totalDurationMs?: number | null;
+  imageSizes?: SoxaiVisionImageSizeTelemetry[];
 }): SoxaiVisionTelemetry {
   const { vision } = params;
   return {
@@ -178,6 +209,11 @@ export function buildSoxaiVisionTelemetry(params: {
     hasHeartHrv: params.sections.includes("heart_hrv"),
     heartHrvDedicatedPass: params.heartHrvDedicatedPass === true,
     heartHrvImageCount: params.heartHrvImageCount ?? 0,
+    heartHrvDedicatedStatus: params.heartHrvDedicatedStatus ?? "skipped",
+    heartHrvDedicatedError: params.heartHrvDedicatedError ?? null,
+    heartHrvDedicatedDurationMs: params.heartHrvDedicatedDurationMs ?? null,
+    bulkDurationMs: params.bulkDurationMs ?? null,
+    totalDurationMs: params.totalDurationMs ?? null,
     restingHeartRateAvg:
       vision.restingHeartRateAvg == null
         ? null
@@ -190,6 +226,9 @@ export function buildSoxaiVisionTelemetry(params: {
       vision.restingHeartRateMax == null
         ? null
         : String(vision.restingHeartRateMax),
+    hrvAvg: vision.hrvAvg == null ? null : String(vision.hrvAvg),
+    hrvMax: vision.hrvMax == null ? null : String(vision.hrvMax),
+    imageSizes: params.imageSizes ? [...params.imageSizes] : [],
     emptyCriticalKeys: emptyCriticalVisionKeys(vision),
     retried: params.retried,
     retryFilledKeys: params.retryFilledKeys ?? [],

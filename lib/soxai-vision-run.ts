@@ -1,8 +1,9 @@
 /**
- * 共有: SOXAI Vision 一括抽出 + heart_hrv 専用パス + 重要項目リトライ。
+ * 共有: SOXAI Vision 一括抽出 + heart_hrv 専用パス（並行）+ 重要項目リトライ。
  * API ルートと検証スクリプトから使う（画像・個人名はログしない）。
  *
  * heart_hrv 専用パスは切り取りをせず、スロット内の全画像をそのまま渡す。
+ * 専用が失敗・空のときは一括値を残す（空で上書きしない）。
  */
 
 import type OpenAI from "openai";
@@ -15,7 +16,9 @@ import {
   emptyBulkRetryVisionKeys,
   mergeVisionPreferFilled,
   retryFilledBulkKeys,
+  type HeartHrvDedicatedStatus,
   type SoxaiVisionCriticalKey,
+  type SoxaiVisionImageSizeTelemetry,
   type SoxaiVisionTelemetry,
 } from "@/lib/soxai-vision-extract";
 import {
@@ -59,6 +62,22 @@ function addUsage(
   };
 }
 
+function isBlank(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "number") return !Number.isFinite(value);
+  if (typeof value !== "string") return true;
+  return value.trim().length === 0;
+}
+
+function parseNumeric(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
 function clearHeartHrvFields(vision: SoxaiVision24): SoxaiVision24 {
   const next = { ...vision };
   for (const key of SOXAI_VISION_HEART_HRV_KEYS) {
@@ -67,16 +86,74 @@ function clearHeartHrvFields(vision: SoxaiVision24): SoxaiVision24 {
   return next;
 }
 
-/** 専用パス結果で心拍系を置換（一括値とは混ぜない） */
-function overwriteHeartHrvFields(
-  bulk: SoxaiVision24,
-  heart: Pick<SoxaiVision24, (typeof SOXAI_VISION_HEART_HRV_KEYS)[number]>,
-): SoxaiVision24 {
-  const next = clearHeartHrvFields(bulk);
+/**
+ * 一括の安静時心拍 Avg を残してよいか。
+ * 「平均」ラベル付き枠は Min と同居するのが SOXAI の通常 UI。
+ * Min が無い Avg は概要の unlabeled 数値の可能性が高い → 要確認。
+ */
+export function bulkRestingAvgLooksLabeled(bulk: SoxaiVision24): boolean {
+  if (isBlank(bulk.restingHeartRateAvg)) return false;
+  if (isBlank(bulk.restingHeartRateMin)) return false;
+  const avgN = parseNumeric(bulk.restingHeartRateAvg);
+  const minN = parseNumeric(bulk.restingHeartRateMin);
+  if (avgN == null || minN == null) return false;
+  if (avgN === minN) return false;
+  return true;
+}
+
+/**
+ * 専用の非空を優先。専用が空・失敗したキーは一括を残す。
+ * 一括の restingHeartRateAvg は「平均」同居の手がかりがあるときだけ残す。
+ */
+export function mergeHeartHrvPreferDedicatedKeepBulk(params: {
+  bulk: SoxaiVision24;
+  dedicated: Partial<
+    Pick<SoxaiVision24, (typeof SOXAI_VISION_HEART_HRV_KEYS)[number]>
+  > | null;
+  dedicatedOk: boolean;
+}): SoxaiVision24 {
+  const { bulk, dedicated, dedicatedOk } = params;
+  const next = { ...bulk };
+
   for (const key of SOXAI_VISION_HEART_HRV_KEYS) {
-    next[key] = heart[key] ?? null;
+    const fromDedicated =
+      dedicatedOk && dedicated && !isBlank(dedicated[key])
+        ? dedicated[key]
+        : null;
+
+    if (fromDedicated != null) {
+      next[key] = fromDedicated;
+      continue;
+    }
+
+    // 専用が空／失敗 → 一括を残す（空で上書きしない）
+    if (key === "restingHeartRateAvg") {
+      next[key] = bulkRestingAvgLooksLabeled(bulk)
+        ? bulk.restingHeartRateAvg
+        : null;
+    } else {
+      next[key] = isBlank(bulk[key]) ? null : bulk[key];
+    }
   }
+
   return next;
+}
+
+function classifyDedicatedError(error: unknown): {
+  status: HeartHrvDedicatedStatus;
+  message: string;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/timeout|timed out|ETIMEDOUT|abort/i.test(message)) {
+    return { status: "timeout", message };
+  }
+  return { status: "error", message };
+}
+
+function dedicatedHasAnyValue(
+  heart: Pick<SoxaiVision24, (typeof SOXAI_VISION_HEART_HRV_KEYS)[number]>,
+): boolean {
+  return SOXAI_VISION_HEART_HRV_KEYS.some((key) => !isBlank(heart[key]));
 }
 
 export async function callSoxaiVisionOnce(params: {
@@ -216,25 +293,100 @@ export type SoxaiVisionRunResult = {
 };
 
 /**
- * 1) 一括 Vision（sleep 系の空欄のみ 1 回リトライ）
- * 2) heart_hrv スロットの全画像を切り取りなしで専用パスへ（安静時心拍・HRV を置換、混ぜない）
- * 3) heart_hrv が無い場合は心拍系を要確認（null）
+ * 1) 一括 Vision と heart_hrv 専用パスを並行実行
+ * 2) sleep 系が空なら一括だけ 1 回リトライ
+ * 3) 専用の非空で心拍系を置換。専用失敗・空なら一括を残す（RHR Avg は平均同居の手がかり必須）
+ * 4) heart_hrv 画像が無い場合は心拍系を要確認（null）
  */
 export async function runSoxaiVisionExtract(params: {
   client: OpenAI;
   images: string[];
   sections: Array<SoxaiExtractSection | "">;
+  imageSizes?: SoxaiVisionImageSizeTelemetry[];
 }): Promise<SoxaiVisionRunResult> {
-  const { client, images, sections } = params;
-  const first = await callSoxaiVisionOnce({ client, images, sections });
-  let vision = first.vision;
-  let usage = first.usage;
+  const { client, images, sections, imageSizes } = params;
+  const startedAt = Date.now();
+
+  const heartIndexes = images
+    .map((_, index) => index)
+    .filter((index) => sections[index] === "heart_hrv");
+  const heartImages = heartIndexes.map((index) => images[index]);
+
+  type DedicatedOutcome =
+    | {
+        kind: "ok";
+        heart: Pick<
+          SoxaiVision24,
+          (typeof SOXAI_VISION_HEART_HRV_KEYS)[number]
+        >;
+        usage: ReturnType<typeof tokensFromUsage>;
+        durationMs: number;
+      }
+    | {
+        kind: "fail";
+        status: HeartHrvDedicatedStatus;
+        message: string;
+        durationMs: number;
+      }
+    | { kind: "skipped" };
+
+  const bulkStarted = Date.now();
+  const bulkPromise = callSoxaiVisionOnce({ client, images, sections }).then(
+    (result) => ({
+      ...result,
+      durationMs: Date.now() - bulkStarted,
+    }),
+  );
+
+  const dedicatedPromise: Promise<DedicatedOutcome> =
+    heartImages.length === 0
+      ? Promise.resolve({ kind: "skipped" as const })
+      : (async (): Promise<DedicatedOutcome> => {
+          const t0 = Date.now();
+          try {
+            const result = await callHeartHrvVisionOnce({
+              client,
+              images: heartImages,
+            });
+            return {
+              kind: "ok",
+              heart: result.heart,
+              usage: result.usage,
+              durationMs: Date.now() - t0,
+            };
+          } catch (error) {
+            const classified = classifyDedicatedError(error);
+            console.error("[soxai-vision-run] heart_hrv dedicated failed", {
+              status: classified.status,
+              message: classified.message,
+              durationMs: Date.now() - t0,
+              heartHrvImageCount: heartImages.length,
+            });
+            return {
+              kind: "fail",
+              status: classified.status,
+              message: classified.message,
+              durationMs: Date.now() - t0,
+            };
+          }
+        })();
+
+  const [bulkFirst, dedicatedOutcome] = await Promise.all([
+    bulkPromise,
+    dedicatedPromise,
+  ]);
+
+  let vision = bulkFirst.vision;
+  let usage = bulkFirst.usage;
+  let bulkDurationMs = bulkFirst.durationMs;
   let retried = false;
   const filledByRetry: SoxaiVisionCriticalKey[] = [];
 
   if (emptyBulkRetryVisionKeys(vision).length > 0) {
     retried = true;
+    const retryStarted = Date.now();
     const second = await callSoxaiVisionOnce({ client, images, sections });
+    bulkDurationMs += Date.now() - retryStarted;
     for (const key of retryFilledBulkKeys(vision, second.vision)) {
       filledByRetry.push(key);
     }
@@ -242,23 +394,43 @@ export async function runSoxaiVisionExtract(params: {
     usage = addUsage(usage, second.usage);
   }
 
-  const heartIndexes = images
-    .map((_, index) => index)
-    .filter((index) => sections[index] === "heart_hrv");
-  const heartImages = heartIndexes.map((index) => images[index]);
   let heartHrvDedicatedPass = false;
+  let heartHrvDedicatedStatus: HeartHrvDedicatedStatus = "skipped";
+  let heartHrvDedicatedError: string | null = null;
+  let heartHrvDedicatedDurationMs: number | null = null;
 
   if (heartImages.length === 0) {
     vision = clearHeartHrvFields(vision);
-  } else {
+    heartHrvDedicatedStatus = "skipped";
+  } else if (dedicatedOutcome.kind === "ok") {
     heartHrvDedicatedPass = true;
-    // スロット内の全枚を一度に渡す（切り取りなし・一括値とは混ぜない）
-    const dedicated = await callHeartHrvVisionOnce({
-      client,
-      images: heartImages,
+    heartHrvDedicatedDurationMs = dedicatedOutcome.durationMs;
+    usage = addUsage(usage, dedicatedOutcome.usage);
+    if (dedicatedHasAnyValue(dedicatedOutcome.heart)) {
+      heartHrvDedicatedStatus = "success";
+      vision = mergeHeartHrvPreferDedicatedKeepBulk({
+        bulk: vision,
+        dedicated: dedicatedOutcome.heart,
+        dedicatedOk: true,
+      });
+    } else {
+      heartHrvDedicatedStatus = "empty";
+      vision = mergeHeartHrvPreferDedicatedKeepBulk({
+        bulk: vision,
+        dedicated: dedicatedOutcome.heart,
+        dedicatedOk: false,
+      });
+    }
+  } else if (dedicatedOutcome.kind === "fail") {
+    heartHrvDedicatedPass = true;
+    heartHrvDedicatedStatus = dedicatedOutcome.status;
+    heartHrvDedicatedError = dedicatedOutcome.message;
+    heartHrvDedicatedDurationMs = dedicatedOutcome.durationMs;
+    vision = mergeHeartHrvPreferDedicatedKeepBulk({
+      bulk: vision,
+      dedicated: null,
+      dedicatedOk: false,
     });
-    usage = addUsage(usage, dedicated.usage);
-    vision = overwriteHeartHrvFields(vision, dedicated.heart);
   }
 
   const qolGuard = guardQolAgainstHomeScoreCrossFill(vision);
@@ -283,6 +455,12 @@ export async function runSoxaiVisionExtract(params: {
     retryFilledKeys: filledByRetry,
     heartHrvDedicatedPass,
     heartHrvImageCount: heartImages.length,
+    heartHrvDedicatedStatus,
+    heartHrvDedicatedError,
+    heartHrvDedicatedDurationMs,
+    bulkDurationMs,
+    totalDurationMs: Date.now() - startedAt,
+    imageSizes: imageSizes ?? [],
   });
 
   return { vision, metrics, telemetry, usage, retried };

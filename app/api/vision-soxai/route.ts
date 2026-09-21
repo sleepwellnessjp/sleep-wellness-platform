@@ -12,7 +12,16 @@ import {
   normalizeImageDataUrl,
   openaiErrorMessage,
 } from "@/lib/openai-helpers";
-import { normalizeVisionSections } from "@/lib/soxai-vision-extract";
+import {
+  estimateDataUrlBytes,
+  IMAGE_PREP_PROFILES,
+  prepProfileForSection,
+  type PreparedImageMeta,
+} from "@/lib/soxai-image-prep";
+import {
+  normalizeVisionSections,
+  type SoxaiVisionImageSizeTelemetry,
+} from "@/lib/soxai-vision-extract";
 import {
   runSoxaiVisionExtract,
   SOXAI_VISION_MODEL,
@@ -29,7 +38,60 @@ const OPENAI_TIMEOUT_MS = 180_000;
 type VisionRequestBody = {
   images?: unknown;
   sections?: unknown;
+  imagePrepMetas?: unknown;
 };
+
+function normalizeImagePrepMetas(
+  raw: unknown,
+  images: string[],
+  sections: string[],
+): SoxaiVisionImageSizeTelemetry[] {
+  if (Array.isArray(raw) && raw.length === images.length) {
+    return raw.map((item, index) => {
+      const record =
+        item && typeof item === "object"
+          ? (item as Partial<PreparedImageMeta>)
+          : {};
+      const section = String(sections[index] ?? record.section ?? "");
+      const profile = prepProfileForSection(section);
+      const cfg = IMAGE_PREP_PROFILES[profile];
+      return {
+        index,
+        section: section || "unknown",
+        profile: String(record.profile ?? profile),
+        maxEdgePx:
+          typeof record.maxEdgePx === "number" ? record.maxEdgePx : cfg.maxEdgePx,
+        jpegQuality:
+          typeof record.jpegQuality === "number"
+            ? record.jpegQuality
+            : cfg.jpegQuality,
+        bytes:
+          typeof record.bytes === "number"
+            ? record.bytes
+            : estimateDataUrlBytes(images[index] ?? ""),
+        dataUrlChars:
+          typeof record.dataUrlChars === "number"
+            ? record.dataUrlChars
+            : (images[index]?.length ?? 0),
+      };
+    });
+  }
+
+  return images.map((dataUrl, index) => {
+    const section = String(sections[index] ?? "");
+    const profile = prepProfileForSection(section);
+    const cfg = IMAGE_PREP_PROFILES[profile];
+    return {
+      index,
+      section: section || "unknown",
+      profile,
+      maxEdgePx: cfg.maxEdgePx,
+      jpegQuality: cfg.jpegQuality,
+      bytes: estimateDataUrlBytes(dataUrl),
+      dataUrlChars: dataUrl.length,
+    };
+  });
+}
 
 export async function POST(request: Request) {
   const auth = await requireApiUser();
@@ -85,6 +147,11 @@ export async function POST(request: Request) {
   }
 
   const sections = normalizeVisionSections(body.sections, images.length);
+  const imageSizes = normalizeImagePrepMetas(
+    body.imagePrepMetas,
+    images,
+    sections.map((s) => s || ""),
+  );
 
   const started = Date.now();
   try {
@@ -95,24 +162,19 @@ export async function POST(request: Request) {
     });
 
     const { vision, metrics, telemetry, usage, retried } =
-      await runSoxaiVisionExtract({ client, images, sections });
-
-    // PII・画像は含めない（セクション種別と数値生値のみ）
-    console.info("[api/vision-soxai] extract-telemetry", telemetry);
-
-    if (isDev) {
-      console.info("[vision-soxai] response JSON", {
-        vision,
-        metrics: {
-          sleepDuration: metrics.sleepDuration,
-          timeInBed: metrics.timeInBed,
-          qol: metrics.qol,
-          conditionScore: metrics.conditionScore,
-          sleepScore: metrics.sleepScore,
-        },
-        collectedCount: collectedMetricKeys(metrics).length,
+      await runSoxaiVisionExtract({
+        client,
+        images,
+        sections,
+        imageSizes,
       });
-    }
+
+    // Vercel ログ画面で追えるよう、1行 JSON でも出す（個人名・画像本体は含めない）
+    console.info(
+      "[api/vision-soxai] extract-telemetry-json",
+      JSON.stringify(telemetry),
+    );
+    console.info("[api/vision-soxai] extract-telemetry", telemetry);
 
     console.info("[api/vision-soxai] done", {
       imageCount: images.length,
@@ -121,6 +183,19 @@ export async function POST(request: Request) {
       model: SOXAI_VISION_MODEL,
       temperature: SOXAI_VISION_TEMPERATURE,
       retried,
+      hasHeartHrv: telemetry.hasHeartHrv,
+      heartHrvImageCount: telemetry.heartHrvImageCount,
+      heartHrvDedicatedStatus: telemetry.heartHrvDedicatedStatus,
+      heartHrvDedicatedError: telemetry.heartHrvDedicatedError,
+      heartHrvDedicatedDurationMs: telemetry.heartHrvDedicatedDurationMs,
+      bulkDurationMs: telemetry.bulkDurationMs,
+      totalDurationMs: telemetry.totalDurationMs,
+      restingHeartRateAvg: telemetry.restingHeartRateAvg,
+      restingHeartRateMin: telemetry.restingHeartRateMin,
+      restingHeartRateMax: telemetry.restingHeartRateMax,
+      hrvAvg: telemetry.hrvAvg,
+      hrvMax: telemetry.hrvMax,
+      imageSizes: telemetry.imageSizes,
       usage,
     });
 

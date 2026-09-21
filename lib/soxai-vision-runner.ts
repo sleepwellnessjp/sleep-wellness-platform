@@ -3,7 +3,7 @@
  * OCR runner は残すが本番フローでは使わない。戻り形は confirm/result 互換。
  */
 
-import { prepareImageForOcr } from "@/lib/soxai-image-prep";
+import { prepareSoxaiImagesForVision } from "@/lib/soxai-image-prep";
 import {
   collectedMetricKeys,
   emptyMetrics,
@@ -129,8 +129,9 @@ export async function resolveSoxaiVisionExtraction(
     status: "running",
   });
 
-  const prepared = await Promise.all(
-    images.map((image) => prepareImageForOcr(image)),
+  const { prepared, metas: imagePrepMetas } = await prepareSoxaiImagesForVision(
+    images,
+    sections.map((section) => section || ""),
   );
 
   if (signal?.aborted) {
@@ -159,6 +160,7 @@ export async function resolveSoxaiVisionExtraction(
       body: JSON.stringify({
         images: prepared,
         sections: sections.map((section) => section || ""),
+        imagePrepMetas,
       }),
       signal: controller.signal,
     });
