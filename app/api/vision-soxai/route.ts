@@ -1,6 +1,7 @@
 /**
- * SOXAI Vision API: 9枚をそのまま Vision へ送り、24項目 JSON を返す。
+ * SOXAI Vision API: 画像を Vision へ送り、項目 JSON を返す。
  * OCR / ROI / reading-map / 画面分類 / 再OCR は使わない。
+ * sections があれば各画像の画面種別をプロンプトに含める。
  */
 
 import OpenAI from "openai";
@@ -11,82 +12,24 @@ import {
   normalizeImageDataUrl,
   openaiErrorMessage,
 } from "@/lib/openai-helpers";
-import { tokensFromUsage } from "@/lib/openai-usage";
+import { normalizeVisionSections } from "@/lib/soxai-vision-extract";
 import {
-  emptySoxaiVision24,
-  guardQolAgainstHomeScoreCrossFill,
-  mapVision24ToAnalysisMetrics,
-  normalizeSoxaiVision24,
-  soxaiVision24JsonSchema,
-  type SoxaiVision24,
-} from "@/lib/soxai-vision-schema";
-import { normalizeMetricsForDisplay } from "@/lib/soxai-display-normalize";
+  runSoxaiVisionExtract,
+  SOXAI_VISION_MODEL,
+  SOXAI_VISION_TEMPERATURE,
+} from "@/lib/soxai-vision-run";
 import { collectedMetricKeys } from "@/lib/soxai-metrics";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const isDev = process.env.NODE_ENV === "development";
-const VISION_MODEL = "gpt-4o" as const;
 const OPENAI_TIMEOUT_MS = 180_000;
 
 type VisionRequestBody = {
   images?: unknown;
+  sections?: unknown;
 };
-
-function parseJsonObject(text: string): unknown {
-  let raw = text.trim();
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence?.[1]) raw = fence[1].trim();
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start >= 0 && end > start) raw = raw.slice(start, end + 1);
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return JSON.parse(raw.replace(/,\s*([}\]])/g, "$1")) as unknown;
-  }
-}
-
-function buildVisionPrompt(imageCount: number): string {
-  return `あなたは SOXAI Ring アプリのスクリーンショット解析器です。
-${imageCount}枚の画像を横断して読み、見える数値だけを JSON にまとめてください。
-
-ルール:
-- 捏造禁止。画像に無い項目は null
-- 単位が画面にあれば値に含める（%、bpm、ms、rpm、℃、時間分 など）
-- 入眠時間(bedTime)と入眠潜時(sleepLatency)を取り違えない
-- 起床時間(wakeTime)と覚醒時間(awakeDuration)を取り違えない
-- 睡眠時間(sleepDuration)と全就床時間(timeInBed)を取り違えない（別項目）
-- 全就床時間(timeInBed): 見出し「全就床時間」の主値（例: 5:47）。下段の小さな比較値は捨てる。見えるときは省略禁止
-- 睡眠効率(sleepEfficiency)と覚醒率(awakePercent)を取り違えない
-- 安静時心拍(bpm)とHRV(ms)を取り違えない
-- 平均酸素レベルは spo2
-- 呼吸速度は respirationRate
-- 体内時計の位相差は circadianShift
-- ホーム画面のスコアはそれぞれ独立。互いに流用・コピーしてはならない:
-  - sleepScore → 見出し「睡眠」行、または睡眠画面のスコア
-  - conditionScore → 見出し「体調」「体調スコア」
-  - qol → 「QoL」「現在のスコア」などの QoL 円／ラベルが画面にあるときだけ
-  - yesterdayQol → 「昨日のスコア」「昨日のQoL」
-- QoL の円や「QoL」ラベルが画面に存在しない場合、qol は必ず null（SOXAIアップデートで QoL 表示が消えているケースがある）
-- 同じ数値を sleepScore / conditionScore / qol / yesterdayQol の複数キーに入れない（偶然の一致でも、見出しが無いキーは null）
-- 睡眠ステージは画面の行どおりに分ける（合算・言い換え禁止）:
-  - 「覚醒」行 → awakeDuration / awakePercent
-  - 「レム睡眠」行 → remDuration / remPercent
-  - 「浅い睡眠」行 → lightSleepDuration / lightSleepPercent
-  - 「深い睡眠」行 → deepSleepDuration / deepSleepPercent
-- 浅い睡眠をノンレムにしない。深い睡眠をノンレムにしない。合算しない
-- breathingEvents が見えなければ null
-
-必須キー（すべて返す）:
-sleepScore, qol, yesterdayQol, conditionScore, sleepDuration, timeInBed, sleepEfficiency,
-sleepDebt, bedTime, wakeTime, sleepLatency, awakeDuration, awakePercent,
-remDuration, remPercent, lightSleepDuration, lightSleepPercent,
-deepSleepDuration, deepSleepPercent, restingHeartRateAvg, restingHeartRateMin,
-restingHeartRateMax, respirationRate, spo2, hrvAvg, hrvMin, hrvMax, stress,
-skinTemperature, circadianShift, breathingEvents`;
-}
 
 export async function POST(request: Request) {
   const auth = await requireApiUser();
@@ -141,6 +84,8 @@ export async function POST(request: Request) {
     );
   }
 
+  const sections = normalizeVisionSections(body.sections, images.length);
+
   const started = Date.now();
   try {
     const client = new OpenAI({
@@ -149,63 +94,11 @@ export async function POST(request: Request) {
       maxRetries: 1,
     });
 
-    const content = [
-      { type: "input_text" as const, text: buildVisionPrompt(images.length) },
-      ...images.map((url) => ({
-        type: "input_image" as const,
-        image_url: url,
-        detail: "high" as const,
-      })),
-    ];
+    const { vision, metrics, telemetry, usage, retried } =
+      await runSoxaiVisionExtract({ client, images, sections });
 
-    const response = await client.responses.create({
-      model: VISION_MODEL,
-      input: [
-        {
-          role: "user",
-          content,
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "soxai_vision_24",
-          strict: true,
-          schema: soxaiVision24JsonSchema as unknown as Record<string, unknown>,
-        },
-      },
-    });
-
-    const outputText = response.output_text?.trim() ?? "";
-    if (!outputText) {
-      throw new Error("Vision response.output_text was empty.");
-    }
-
-    let vision: SoxaiVision24 = emptySoxaiVision24();
-    try {
-      vision = normalizeSoxaiVision24(parseJsonObject(outputText));
-    } catch (parseError) {
-      console.error("[api/vision-soxai] JSON parse failed", parseError, {
-        preview: outputText.slice(0, 400),
-      });
-      throw new Error("Vision JSON の解析に失敗しました。");
-    }
-
-    const qolGuard = guardQolAgainstHomeScoreCrossFill(vision);
-    vision = qolGuard.vision;
-    if (isDev && qolGuard.qolCleared) {
-      console.info("[vision-soxai] qol cleared (home score cross-fill)", {
-        sharedScore: qolGuard.sharedScore,
-        sleepScore: vision.sleepScore,
-        conditionScore: vision.conditionScore,
-        qol: vision.qol,
-      });
-    }
-
-    const metrics = normalizeMetricsForDisplay(
-      mapVision24ToAnalysisMetrics(vision),
-    );
-    const usage = tokensFromUsage(response.usage);
+    // PII・画像は含めない（セクション種別と数値生値のみ）
+    console.info("[api/vision-soxai] extract-telemetry", telemetry);
 
     if (isDev) {
       console.info("[vision-soxai] response JSON", {
@@ -217,7 +110,6 @@ export async function POST(request: Request) {
           conditionScore: metrics.conditionScore,
           sleepScore: metrics.sleepScore,
         },
-        qolClearedByGuard: qolGuard.qolCleared,
         collectedCount: collectedMetricKeys(metrics).length,
       });
     }
@@ -226,7 +118,9 @@ export async function POST(request: Request) {
       imageCount: images.length,
       durationMs: Date.now() - started,
       metricCount: collectedMetricKeys(metrics).length,
-      model: VISION_MODEL,
+      model: SOXAI_VISION_MODEL,
+      temperature: SOXAI_VISION_TEMPERATURE,
+      retried,
       usage,
     });
 
@@ -235,9 +129,10 @@ export async function POST(request: Request) {
       metrics,
       imageCount: images.length,
       collectedCount: collectedMetricKeys(metrics).length,
-      model: VISION_MODEL,
+      model: SOXAI_VISION_MODEL,
       usage,
       durationMs: Date.now() - started,
+      telemetry,
     });
   } catch (error) {
     const message = openaiErrorMessage(error);

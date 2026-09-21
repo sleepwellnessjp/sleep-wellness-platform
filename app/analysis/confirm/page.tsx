@@ -370,6 +370,13 @@ export default function ConfirmExtractionPage() {
     : "/analysis/new";
   const isManualInput = draft?.inputSource === "manual";
   const isOuraInput = draft?.inputSource === "oura";
+  /** 呼吸・心拍スロット未アップロード時のやわらかい注意（Vision 経路） */
+  const missingHeartHrvUpload = useMemo(() => {
+    if (!draft || isManualInput || isOuraInput) return false;
+    const sections = draft.ocrSections ?? [];
+    if (sections.length === 0) return false;
+    return !sections.includes("heart_hrv");
+  }, [draft, isManualInput, isOuraInput]);
   const ouraDisplayCategories = useMemo(
     () =>
       isOuraInput
@@ -1004,6 +1011,21 @@ export default function ConfirmExtractionPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {missingHeartHrvUpload && (
+          <div
+            className="mx-auto mt-4 max-w-3xl rounded-2xl border border-slate-200/90 bg-[#fafaf8] px-4 py-4 text-[14px] leading-7 text-slate-600 sm:px-5"
+            role="status"
+          >
+            <p className="font-semibold text-[#071426]">
+              「呼吸・心拍」の画像がありません
+            </p>
+            <p className="mt-1 text-[13px] text-slate-500">
+              安静時心拍数や HRV
+              は、この画面から読み取ります。必要なら分析画面に戻って追加アップロードすると、確認が減りやすくなります。
+            </p>
           </div>
         )}
 

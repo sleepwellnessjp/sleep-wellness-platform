@@ -156,7 +156,10 @@ export async function resolveSoxaiVisionExtraction(
     const response = await fetch("/api/vision-soxai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ images: prepared }),
+      body: JSON.stringify({
+        images: prepared,
+        sections: sections.map((section) => section || ""),
+      }),
       signal: controller.signal,
     });
 
@@ -165,6 +168,7 @@ export async function resolveSoxaiVisionExtraction(
       vision?: SoxaiVision24;
       error?: string;
       details?: string;
+      telemetry?: unknown;
     } | null;
 
     if (!response.ok || !payload?.metrics) {

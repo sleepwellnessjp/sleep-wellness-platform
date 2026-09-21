@@ -196,6 +196,28 @@ export const soxaiVision24JsonSchema = {
   ),
 } as const;
 
+/** heart_hrv 専用パス（安静時心拍・HRV のみ） */
+export const SOXAI_VISION_HEART_HRV_KEYS = [
+  "restingHeartRateAvg",
+  "restingHeartRateMin",
+  "restingHeartRateMax",
+  "hrvAvg",
+  "hrvMin",
+  "hrvMax",
+] as const satisfies ReadonlyArray<keyof SoxaiVision24>;
+
+export const soxaiVisionHeartHrvJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [...SOXAI_VISION_HEART_HRV_KEYS],
+  properties: Object.fromEntries(
+    SOXAI_VISION_HEART_HRV_KEYS.map((key) => [
+      key,
+      { type: ["string", "null"] },
+    ]),
+  ),
+} as const;
+
 /** ホーム系スコア（0–100）を比較用に正規化。取れなければ null */
 function comparableHomeScore(value: unknown): number | null {
   if (value == null || value === "") return null;
@@ -231,6 +253,106 @@ export function guardQolAgainstHomeScoreCrossFill(
     vision: { ...vision, qol: null },
     qolCleared: true,
     sharedScore: sleep,
+  };
+}
+
+function parseVisionNumeric(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n =
+    typeof value === "number"
+      ? value
+      : Number(String(value).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+export type AvgMinMaxGuardResult = {
+  avg: string | null;
+  min: string | null;
+  max: string | null;
+  /** 主値 Avg を落として要確認にした */
+  avgCleared: boolean;
+  reason: "avg_equals_min" | "order_violation" | null;
+};
+
+/**
+ * 読み取れた値だけで Min ≤ Avg ≤ Max を検証する。
+ * - Max（や Min）が画面に無く null のときは、存在する組み合わせだけ判定
+ * - Avg と Min が同値 → Avg を捨てて要確認（入れ替え誤読の可能性）
+ * - 順序が崩れている → Avg を捨てて要確認
+ */
+export function guardAvgMinMaxOrdering(params: {
+  avg: string | null;
+  min: string | null;
+  max: string | null;
+}): AvgMinMaxGuardResult {
+  let avg = params.avg;
+  let min = params.min;
+  let max = params.max;
+  const avgN = parseVisionNumeric(avg);
+  const minN = parseVisionNumeric(min);
+  const maxN = parseVisionNumeric(max);
+
+  if (avgN != null && minN != null && avgN === minN) {
+    return {
+      avg: null,
+      min,
+      max,
+      avgCleared: true,
+      reason: "avg_equals_min",
+    };
+  }
+
+  const orderBroken =
+    (minN != null && avgN != null && minN > avgN) ||
+    (avgN != null && maxN != null && avgN > maxN) ||
+    (minN != null && maxN != null && minN > maxN);
+
+  if (orderBroken) {
+    return {
+      avg: null,
+      min,
+      max,
+      avgCleared: true,
+      reason: "order_violation",
+    };
+  }
+
+  return { avg, min, max, avgCleared: false, reason: null };
+}
+
+/**
+ * 安静時心拍・HRV の Avg/Min/Max 安全策（欠けた Max は必須にしない）。
+ */
+export function guardHeartHrvAvgMinMax(vision: SoxaiVision24): {
+  vision: SoxaiVision24;
+  restingCleared: boolean;
+  hrvCleared: boolean;
+} {
+  const rhr = guardAvgMinMaxOrdering({
+    avg: vision.restingHeartRateAvg,
+    min: vision.restingHeartRateMin,
+    max: vision.restingHeartRateMax,
+  });
+  const hrv = guardAvgMinMaxOrdering({
+    avg: vision.hrvAvg,
+    min: vision.hrvMin,
+    max: vision.hrvMax,
+  });
+  if (!rhr.avgCleared && !hrv.avgCleared) {
+    return { vision, restingCleared: false, hrvCleared: false };
+  }
+  return {
+    vision: {
+      ...vision,
+      restingHeartRateAvg: rhr.avg,
+      restingHeartRateMin: rhr.min,
+      restingHeartRateMax: rhr.max,
+      hrvAvg: hrv.avg,
+      hrvMin: hrv.min,
+      hrvMax: hrv.max,
+    },
+    restingCleared: rhr.avgCleared,
+    hrvCleared: hrv.avgCleared,
   };
 }
 
