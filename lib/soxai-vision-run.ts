@@ -1,10 +1,11 @@
 /**
  * 共有: SOXAI Vision 一括抽出 + heart_hrv 専用パス + 重要項目リトライ。
  * API ルートと検証スクリプトから使う（画像・個人名はログしない）。
+ *
+ * heart_hrv 専用パスは切り取りをせず、スロット内の全画像をそのまま渡す。
  */
 
 import type OpenAI from "openai";
-import sharp from "sharp";
 import { tokensFromUsage } from "@/lib/openai-usage";
 import type { SoxaiExtractSection } from "@/lib/soxai-ocr-runner";
 import {
@@ -12,7 +13,6 @@ import {
   buildSoxaiVisionTelemetry,
   buildVisionPrompt,
   emptyBulkRetryVisionKeys,
-  mergeVisionFillBlanksOnly,
   mergeVisionPreferFilled,
   retryFilledBulkKeys,
   type SoxaiVisionCriticalKey,
@@ -34,14 +34,6 @@ import type { AnalysisMetrics } from "@/lib/soxai-metrics";
 
 export const SOXAI_VISION_MODEL = "gpt-4o" as const;
 export const SOXAI_VISION_TEMPERATURE = 0;
-
-/** heart_hrv 専用: ラベル付き数値帯の切り出し（開始比・終了比、高さに対する比） */
-const HEART_HRV_CROP_WINDOWS: ReadonlyArray<{ top: number; bottom: number }> = [
-  // 安静時: 「最小」「平均51」枠（グラフ本体より上）。準備後 1024px でもこの帯が数値を含む
-  { top: 0.25, bottom: 0.62 },
-  // 心拍変動: 画面上部の「平均」「最大」枠
-  { top: 0.0, bottom: 0.42 },
-];
 
 function parseJsonObject(text: string): unknown {
   let raw = text.trim();
@@ -85,42 +77,6 @@ function overwriteHeartHrvFields(
     next[key] = heart[key] ?? null;
   }
   return next;
-}
-
-/**
- * heart_hrv 専用: グラフを避け、ラベル付き数値帯だけ切り出す。
- * 失敗時は空配列（呼び出し側で元画像フォールバック可）。
- */
-async function cropHeartHrvNumericWindows(
-  dataUrl: string,
-): Promise<string[]> {
-  try {
-    const match = dataUrl.match(/^data:image\/[a-zA-Z0-9+.-]+;base64,(.+)$/);
-    if (!match?.[1]) return [];
-    const input = Buffer.from(match[1], "base64");
-    const meta = await sharp(input).metadata();
-    const width = meta.width ?? 0;
-    const height = meta.height ?? 0;
-    if (!width || !height) return [];
-
-    const out: string[] = [];
-    for (const window of HEART_HRV_CROP_WINDOWS) {
-      const top = Math.max(0, Math.min(height - 1, Math.round(height * window.top)));
-      const bottom = Math.max(
-        top + 1,
-        Math.min(height, Math.round(height * window.bottom)),
-      );
-      const cropHeight = bottom - top;
-      const buf = await sharp(input)
-        .extract({ left: 0, top, width, height: cropHeight })
-        .jpeg({ quality: 95 })
-        .toBuffer();
-      out.push(`data:image/jpeg;base64,${buf.toString("base64")}`);
-    }
-    return out;
-  } catch {
-    return [];
-  }
 }
 
 export async function callSoxaiVisionOnce(params: {
@@ -261,7 +217,7 @@ export type SoxaiVisionRunResult = {
 
 /**
  * 1) 一括 Vision（sleep 系の空欄のみ 1 回リトライ）
- * 2) heart_hrv 画像だけの専用パスで安静時心拍・HRV を置換（混ぜない）
+ * 2) heart_hrv スロットの全画像を切り取りなしで専用パスへ（安静時心拍・HRV を置換、混ぜない）
  * 3) heart_hrv が無い場合は心拍系を要確認（null）
  */
 export async function runSoxaiVisionExtract(params: {
@@ -296,25 +252,13 @@ export async function runSoxaiVisionExtract(params: {
     vision = clearHeartHrvFields(vision);
   } else {
     heartHrvDedicatedPass = true;
-    // 枚×数値帯クロップごとに読み、心拍キーだけを専用パス内で結合（一括とは混ぜない）
-    let heartMerged = clearHeartHrvFields(emptySoxaiVision24());
-    for (const image of heartImages) {
-      const windows = await cropHeartHrvNumericWindows(image);
-      const targets = windows.length > 0 ? windows : [image];
-      for (const target of targets) {
-        const dedicated = await callHeartHrvVisionOnce({
-          client,
-          images: [target],
-        });
-        usage = addUsage(usage, dedicated.usage);
-        const asVision = clearHeartHrvFields(emptySoxaiVision24());
-        for (const key of SOXAI_VISION_HEART_HRV_KEYS) {
-          asVision[key] = dedicated.heart[key];
-        }
-        heartMerged = mergeVisionFillBlanksOnly(heartMerged, asVision);
-      }
-    }
-    vision = overwriteHeartHrvFields(vision, heartMerged);
+    // スロット内の全枚を一度に渡す（切り取りなし・一括値とは混ぜない）
+    const dedicated = await callHeartHrvVisionOnce({
+      client,
+      images: heartImages,
+    });
+    usage = addUsage(usage, dedicated.usage);
+    vision = overwriteHeartHrvFields(vision, dedicated.heart);
   }
 
   const qolGuard = guardQolAgainstHomeScoreCrossFill(vision);
