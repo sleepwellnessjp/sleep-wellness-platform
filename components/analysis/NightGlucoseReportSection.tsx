@@ -5,6 +5,7 @@ import {
   formatGlucoseClockTokyo,
   NIGHT_GLUCOSE_ATTENTION_NOTE,
   NIGHT_GLUCOSE_DISCLAIMER,
+  NIGHT_GLUCOSE_FALLBACK_WINDOW_NOTE,
   NIGHT_GLUCOSE_LOW_COVERAGE_NOTE,
   type NightGlucoseReportPayload,
   type NightGlucoseReportPoint,
@@ -238,6 +239,12 @@ export function NightGlucoseReportView({
 
   return (
     <div className="space-y-4">
+      {payload.usedFallbackWindow ? (
+        <p className="rounded-lg border border-[#8a6a2d]/25 bg-[#fffdf8] px-3 py-2 text-[12px] leading-5 text-slate-700 sm:text-[13px]">
+          {NIGHT_GLUCOSE_FALLBACK_WINDOW_NOTE}
+        </p>
+      ) : null}
+
       {payload.coverageBelowThreshold ? (
         <p className="rounded-lg border border-[#8a6a2d]/25 bg-[#fffdf8] px-3 py-2 text-[12px] leading-5 text-slate-700 sm:text-[13px]">
           {NIGHT_GLUCOSE_LOW_COVERAGE_NOTE}

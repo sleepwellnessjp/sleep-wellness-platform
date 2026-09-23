@@ -196,6 +196,8 @@ export async function POST(request: Request) {
       restingHeartRateMax: telemetry.restingHeartRateMax,
       hrvAvg: telemetry.hrvAvg,
       hrvMax: telemetry.hrvMax,
+      bedTime: telemetry.bedTime,
+      wakeTime: telemetry.wakeTime,
       imageSizes: telemetry.imageSizes,
       usage,
     });

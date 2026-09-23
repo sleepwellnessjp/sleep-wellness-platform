@@ -20,6 +20,10 @@ import {
 export const NIGHT_GLUCOSE_LOW_COVERAGE_NOTE =
   "記録が不足しているため参考表示";
 
+/** 入眠・起床が取れず 22:00〜07:00 で集計したとき */
+export const NIGHT_GLUCOSE_FALLBACK_WINDOW_NOTE =
+  "睡眠時間が取得できないため 22:00〜07:00 で集計";
+
 export const NIGHT_GLUCOSE_DISCLAIMER =
   "間質液での計測のため目安として扱います。医療的な判断や診断には使用できません。";
 
@@ -66,6 +70,8 @@ export type NightGlucoseReportPayload = {
   points: NightGlucoseReportPoint[];
   /** 縦線用。睡眠時刻が取れたときだけ */
   markers: { sleepOnsetTime: string; wakeTime: string } | null;
+  /** 入眠・起床が無く予備の 22:00〜07:00 で集計した */
+  usedFallbackWindow: boolean;
   window: NightGlucoseWindow;
   stats: NightGlucoseStats | null;
   coverageBelowThreshold: boolean;
@@ -176,6 +182,7 @@ export function buildNightGlucoseReportPayload(options: {
           wakeTime: window.wakeTime,
         }
       : null,
+    usedFallbackWindow: !hasSleepTimes,
     window,
     stats,
     coverageBelowThreshold,

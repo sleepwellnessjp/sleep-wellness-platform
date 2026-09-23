@@ -28,6 +28,7 @@ import { isReportSectionVisible } from "@/lib/report-sections";
 import {
   formatGlucoseClockTokyo,
   NIGHT_GLUCOSE_DISCLAIMER,
+  NIGHT_GLUCOSE_FALLBACK_WINDOW_NOTE,
   type NightGlucoseReportPayload,
 } from "@/lib/glucose/night-glucose-report";
 
@@ -240,6 +241,11 @@ function PdfNightGlucoseBlock({
         eyebrow="NIGHT GLUCOSE"
         title="夜間のグルコース（参考）"
       />
+      {payload.usedFallbackWindow ? (
+        <p className="mt-1 text-[8px] leading-[1.4] text-slate-600">
+          {NIGHT_GLUCOSE_FALLBACK_WINDOW_NOTE}
+        </p>
+      ) : null}
       <PdfNightGlucoseMiniChart payload={payload} />
       <div className="mt-1 grid grid-cols-4 gap-1.5">
         <div className="rounded px-1.5 py-1" style={{ background: SURFACE }}>

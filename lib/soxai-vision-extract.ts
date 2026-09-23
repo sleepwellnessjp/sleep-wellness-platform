@@ -32,6 +32,8 @@ export const SOXAI_VISION_CRITICAL_KEYS = [
   "sleepDuration",
   "awakeDuration",
   "sleepDebt",
+  "bedTime",
+  "wakeTime",
 ] as const satisfies ReadonlyArray<keyof SoxaiVision24>;
 
 /** 一括パスの再読み取り対象（心拍・HRV は heart_hrv 専用パスに任せる） */
@@ -39,6 +41,8 @@ export const SOXAI_VISION_BULK_RETRY_KEYS = [
   "sleepDuration",
   "awakeDuration",
   "sleepDebt",
+  "bedTime",
+  "wakeTime",
 ] as const satisfies ReadonlyArray<keyof SoxaiVision24>;
 
 export type SoxaiVisionCriticalKey =
@@ -85,6 +89,8 @@ export type SoxaiVisionTelemetry = {
   restingHeartRateMax: string | null;
   hrvAvg: string | null;
   hrvMax: string | null;
+  bedTime: string | null;
+  wakeTime: string | null;
   imageSizes: SoxaiVisionImageSizeTelemetry[];
   emptyCriticalKeys: SoxaiVisionCriticalKey[];
   retried: boolean;
@@ -237,6 +243,8 @@ export function buildSoxaiVisionTelemetry(params: {
         : String(vision.restingHeartRateMax),
     hrvAvg: vision.hrvAvg == null ? null : String(vision.hrvAvg),
     hrvMax: vision.hrvMax == null ? null : String(vision.hrvMax),
+    bedTime: vision.bedTime == null ? null : String(vision.bedTime),
+    wakeTime: vision.wakeTime == null ? null : String(vision.wakeTime),
     imageSizes: params.imageSizes ? [...params.imageSizes] : [],
     emptyCriticalKeys: emptyCriticalVisionKeys(vision),
     retried: params.retried,
@@ -267,6 +275,7 @@ ${imageCount}枚の画像を横断して読み、見える数値だけを JSON �
 画像と画面種別の対応（この順番どおり）:
 ${sectionLines}
 - heart_hrv（呼吸・心拍）の画像では、安静時心拍・HRV・呼吸・SpO₂ を優先して読む
+- sleep_overview（睡眠概要）では、就寝時刻・起床時刻を読む。bedTime は就寝時刻、wakeTime は起床時刻。入眠潜時・覚醒時間・グラフ端点は使わない
 - sleep_detail では睡眠負債・体内時計を優先して読む
 - sleep_stages では覚醒・レム・浅い・深いの行を優先して読む
 
