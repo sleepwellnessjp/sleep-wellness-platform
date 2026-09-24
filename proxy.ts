@@ -79,6 +79,9 @@ function isPublicPath(pathname: string): boolean {
   ) {
     return true;
   }
+  if (pathname === "/navigator" || pathname.startsWith("/navigator/")) {
+    return true;
+  }
   return false;
 }
 

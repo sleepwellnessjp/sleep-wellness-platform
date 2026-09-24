@@ -21,6 +21,7 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/evidence", label: "実証データ", match: "/admin/evidence" },
   { href: "/admin/roles", label: "権限", match: "/admin/roles" },
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
+  { href: "/admin/navigator-applications", label: "ナビゲーター申請", match: "/admin/navigator-applications" },
   { href: "/admin/instructor-activities", label: "講師イベント", match: "/admin/instructor-activities" },
   { href: "/admin/instructor-activity-schedules", label: "活動予定", match: "/admin/instructor-activity-schedules" },
   { href: "/admin/sleep-content", label: "睡眠コンテンツ", match: "/admin/sleep-content" },

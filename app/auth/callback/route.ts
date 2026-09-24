@@ -66,11 +66,13 @@ export async function GET(request: Request) {
     flow,
     type,
   );
+  const needsPasswordSetup =
+    isRecovery || flow === "invite" || type === "invite";
 
   if (errorDescription) {
     const loginUrl = new URL("/login", origin);
     loginUrl.searchParams.set("error", errorDescription);
-    if (isRecovery) {
+    if (needsPasswordSetup) {
       loginUrl.searchParams.set("mode", "update-password");
     }
     return NextResponse.redirect(loginUrl);
@@ -112,7 +114,7 @@ export async function GET(request: Request) {
         error.message ||
           "再設定リンクが無効か期限切れです。もう一度お試しください。",
       );
-      if (type === "recovery" || isRecovery) {
+      if (needsPasswordSetup) {
         loginUrl.searchParams.set("mode", "update-password");
       }
       return NextResponse.redirect(loginUrl);
@@ -132,7 +134,7 @@ export async function GET(request: Request) {
           ? "再設定リンクは、メール送信を依頼した同じブラウザで開いてください。別アプリのプレビューで開くと失敗することがあります。"
           : error.message,
       );
-      if (isRecovery) {
+      if (needsPasswordSetup) {
         loginUrl.searchParams.set("mode", "update-password");
       }
       return NextResponse.redirect(loginUrl);
@@ -143,14 +145,14 @@ export async function GET(request: Request) {
       "error",
       "認証コードが見つかりませんでした。メールのリンクから再度お試しください。",
     );
-    if (isRecovery) {
+    if (needsPasswordSetup) {
       loginUrl.searchParams.set("mode", "update-password");
     }
     return NextResponse.redirect(loginUrl);
   }
 
-  // パスワード再設定: Closed Beta 判定で signOut しない（セッションを維持して更新画面へ）
-  if (isRecovery || type === "recovery") {
+  // パスワード再設定と招待は、パスワード設定が終わるまで Closed Beta 判定で signOut しない
+  if (needsPasswordSetup) {
     return NextResponse.redirect(new URL(PASSWORD_UPDATE_PATH, origin));
   }
 

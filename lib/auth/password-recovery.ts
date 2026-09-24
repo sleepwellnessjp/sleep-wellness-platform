@@ -42,7 +42,14 @@ export function isPasswordRecoveryRedirect(
   flow: string | null | undefined,
   type: string | null | undefined,
 ): boolean {
-  if (flow === "recovery" || type === "recovery") return true;
+  if (
+    flow === "recovery" ||
+    type === "recovery" ||
+    flow === "invite" ||
+    type === "invite"
+  ) {
+    return true;
+  }
   if (!redirect) return false;
   const normalized = redirect.trim().toLowerCase();
   return (

@@ -59,6 +59,10 @@ export const SITE_NAV_GROUPS: readonly NavGroup[] = [
         requiresAuth: true,
       },
       { label: "認定講師専用ページ", href: "/login" },
+      {
+        label: "睡眠ウェルネスナビゲーター申請",
+        href: "/navigator/apply",
+      },
     ],
   },
   {

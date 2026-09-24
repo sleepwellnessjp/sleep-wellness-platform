@@ -10,7 +10,6 @@ import {
   listAllDemoInvitations,
   listDemoInvitations,
   revokeDemoInvitation,
-  sendDemoInvitation,
   getDemoInvitationByCode,
 } from "./demo-invitation-store";
 import {
@@ -26,14 +25,8 @@ import type {
   SendInvitationResult,
 } from "./types";
 
-/** 実メール送信プロバイダが設定されているか（未設定なら送信済みと扱わない） */
-export function isInviteEmailDeliveryConfigured(): boolean {
-  return Boolean(
-    process.env.RESEND_API_KEY?.trim() ||
-      process.env.SMTP_HOST?.trim() ||
-      process.env.INVITE_EMAIL_PROVIDER?.trim(),
-  );
-}
+const MANUAL_INVITE_SHARE_MESSAGE =
+  "メールは送信していません。リンクを手動で共有してください。";
 
 function mapInvitation(row: Record<string, unknown>): InvitationRecord {
   return {
@@ -206,23 +199,13 @@ export async function createInvitation(
 
 export async function sendInvitation(id: string): Promise<SendInvitationResult> {
   if (!isSupabaseConfigured()) {
-    if (!isInviteEmailDeliveryConfigured()) {
-      const existing =
-        listAllDemoInvitations().find((row) => row.id === id) ?? null;
-      if (!existing) throw new Error("招待が見つかりません");
-      return {
-        invitation: existing,
-        emailSent: false,
-        message:
-          "メール送信設定が未完了のため、招待URLとコードを手動で共有してください。",
-      };
-    }
-    const updated = sendDemoInvitation(id);
-    if (!updated) throw new Error("招待が見つかりません");
+    const existing =
+      listAllDemoInvitations().find((row) => row.id === id) ?? null;
+    if (!existing) throw new Error("招待が見つかりません");
     return {
-      invitation: updated,
-      emailSent: true,
-      message: "招待メールを送信しました。",
+      invitation: existing,
+      emailSent: false,
+      message: MANUAL_INVITE_SHARE_MESSAGE,
     };
   }
 
@@ -246,33 +229,10 @@ export async function sendInvitation(id: string): Promise<SendInvitationResult> 
 
   const invitation = mapInvitation(existing as Record<string, unknown>);
 
-  if (!isInviteEmailDeliveryConfigured()) {
-    return {
-      invitation,
-      emailSent: false,
-      message:
-        "メール送信設定が未完了のため、招待URLとコードを手動で共有してください。",
-    };
-  }
-
-  // 実メール送信プロバイダ接続後にここに送信処理を追加する。
-  // 現状は設定フラグのみ。誤って sent にしない。
-  const { data, error } = await supabase
-    .from("invitations")
-    .update({
-      status: "sent",
-      sent_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("instructor_id", profile.id)
-    .select("*")
-    .single();
-
-  if (error) throw new Error(error.message);
   return {
-    invitation: mapInvitation(data as Record<string, unknown>),
-    emailSent: true,
-    message: "招待メールを送信しました。",
+    invitation,
+    emailSent: false,
+    message: MANUAL_INVITE_SHARE_MESSAGE,
   };
 }
 

@@ -200,7 +200,9 @@ export function decidePathAccess(
     path === "/license/verify" ||
     path.startsWith("/license/verify/") ||
     path === "/academy/certified-instructor" ||
-    path.startsWith("/academy/certified-instructor/")
+    path.startsWith("/academy/certified-instructor/") ||
+    path === "/navigator" ||
+    path.startsWith("/navigator/")
   ) {
     return {
       allowed: true,

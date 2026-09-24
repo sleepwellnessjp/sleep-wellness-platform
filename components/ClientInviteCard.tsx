@@ -121,7 +121,7 @@ export default function ClientInviteCard({
         sendJson.message ??
           (sent
             ? null
-            : "メール送信設定が未完了のため、招待URLとコードを手動で共有してください。"),
+            : "メールは送信していません。リンクを手動で共有してください。"),
       );
       success(
         sent
@@ -147,8 +147,7 @@ export default function ClientInviteCard({
         CLIENT INVITE
       </p>
       <p className="mt-2 text-[14px] leading-7 text-slate-600">
-        認定講師のみが招待コードを発行できます。メール送信設定が無い場合は URL
-        とコードを共有してください。
+        認定講師のみが招待コードを発行できます。メールは送信していません。リンクを手動で共有してください。
       </p>
       {invitation ? (
         <div className="mt-4 space-y-3">
