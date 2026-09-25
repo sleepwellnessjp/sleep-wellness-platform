@@ -9,7 +9,9 @@ import {
   parseLeadingNumber,
   parsePercent,
 } from "@/lib/soxai-graphs";
-import { evaluateSleepDebtDisplay } from "@/lib/sleep-debt-evaluation";
+import {
+  resolveSleepDebtReportPresentation,
+} from "@/lib/sleep-debt-evaluation";
 import {
   DURATION_AMBIGUOUS_LABEL_CIRCADIAN,
   DURATION_AMBIGUOUS_LABEL_SLEEP_DEBT,
@@ -88,6 +90,7 @@ export function evaluateMetric(
     case "sleepLatency": {
       const m = parseDurationMinutes(metrics.sleepLatency);
       if (m == null) return null;
+      if (m < 5) return evalFrom(2, "短め");
       if (m <= 15) return evalFrom(5, "とても良い");
       if (m <= 20) return evalFrom(4, "良い");
       if (m <= 30) return evalFrom(3, "普通");
@@ -100,11 +103,12 @@ export function evaluateMetric(
       if (isDurationDirectionAmbiguous(raw, "sleepDebt").ambiguous) {
         return evalFrom(null, DURATION_AMBIGUOUS_LABEL_SLEEP_DEBT);
       }
-      const m = parseDurationMinutes(raw);
-      if (m == null) return null;
-      const debt = evaluateSleepDebtDisplay(m);
-      if (!debt) return null;
-      return evalFrom(debt.stars, debt.label);
+      const presentation = resolveSleepDebtReportPresentation({
+        raw,
+        sleepDurationMinutes: parseDurationMinutes(metrics.sleepDuration),
+      });
+      if (!presentation) return null;
+      return evalFrom(presentation.stars, presentation.label);
     }
     case "remSleepRate": {
       const p = parsePercent(metrics.remSleepRate);
@@ -269,12 +273,12 @@ export function metricGuideline(
     case "sleepEfficiency":
       return "90%以上が理想　85%以上で良好　80%未満は整え余地あり";
     case "sleepLatency":
-      return "一般：15〜20分以内　30分超が続く場合は入眠環境を確認";
+      return "一般：5〜20分程度　5分未満は睡眠不足のサインのこともあります\n30分超が続く場合は入眠環境を確認";
     case "sleepDebt":
       if (inputSource === "oura") {
         return "過去2週間の睡眠不足の累積です。\n0に近いほど理想。直近の睡眠に比重を置いて算出されます";
       }
-      return "0に近いほど理想　積み重なると日中の回復感に影響しやすい\nマイナスは、それだけ早く就寝する余地があることを示します";
+      return "0に近いほど理想　積み重なると日中の回復感に影響しやすい\nプラスは睡眠不足の累積、マイナスは早く就寝する余地を示します";
     case "bedtime":
     case "wakeTime":
       return "毎日の入眠・起床時刻のばらつきが小さいほど体内時計が整いやすい";
@@ -321,6 +325,28 @@ export function metricGuideline(
     default:
       return "";
   }
+}
+
+/** 睡眠負債の符号・睡眠時間に合わせた目安（PDF・分析画面のカード用） */
+export function sleepDebtGuidelineForValue(
+  raw: string | null | undefined,
+  inputSource?: "soxai" | "manual" | "oura" | null,
+  sleepDurationMinutes?: number | null,
+): string {
+  if (inputSource === "oura") {
+    return metricGuideline("sleepDebt", inputSource);
+  }
+  const trimmed = raw?.trim();
+  if (!trimmed) return metricGuideline("sleepDebt", inputSource);
+  if (isDurationDirectionAmbiguous(trimmed, "sleepDebt").ambiguous) {
+    return metricGuideline("sleepDebt", inputSource);
+  }
+  const presentation = resolveSleepDebtReportPresentation({
+    raw: trimmed,
+    sleepDurationMinutes,
+  });
+  if (presentation) return presentation.guideline;
+  return metricGuideline("sleepDebt", inputSource);
 }
 
 export function formatHrvRange(metrics: AnalysisMetrics): string {

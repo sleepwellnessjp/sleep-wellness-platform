@@ -4,6 +4,43 @@
  * - 同一実測フレーズの重複抑制
  */
 
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
+
+/** 一般目安（7時間）を下回るとき、睡眠「確保」系の矛盾表現を抑える */
+export function sanitizeScoreNarrativeForShortSleep(
+  text: string,
+  sleepDurationMinutes: number | null | undefined,
+): string {
+  if (!text.trim()) return text;
+  if (
+    sleepDurationMinutes == null ||
+    !Number.isFinite(sleepDurationMinutes) ||
+    sleepDurationMinutes >= 420
+  ) {
+    return text;
+  }
+  return text
+    .replace(
+      /[^。]*しっかり(?:とした)?睡眠(?:が)?確保[^。]*。?/g,
+      "",
+    )
+    .replace(
+      /[^。]*十分(?:な)?睡眠(?:が)?(?:確保|とれ)[^。]*。?/g,
+      "",
+    )
+    .replace(/\s{2,}/g, " ")
+    .replace(/。{2,}/g, "。")
+    .trim();
+}
+
+/** scoreComment 用に睡眠時間を metrics から取り出す */
+export function sleepDurationMinutesFromMetrics(
+  sleepDuration: string | null | undefined,
+): number | null {
+  if (!sleepDuration?.trim()) return null;
+  return parseDurationMinutes(sleepDuration);
+}
+
 /** 表示・AIコメントから「ノンレム」を除去し、深い睡眠系へ寄せる */
 export function stripNonRemWording(text: string): string {
   if (!text) return text;

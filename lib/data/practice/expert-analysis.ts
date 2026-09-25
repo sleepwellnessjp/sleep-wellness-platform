@@ -186,6 +186,27 @@ function asSentence(text: string): string {
   return /[。．!?！？]$/.test(t) ? t : `${t}。`;
 }
 
+/** 改善項目の長文タイトルから、分析文用の短い項目名を取り出す */
+function priorityDisplayLabel(title: string): string {
+  const t = title.replace(/\s+/g, " ").trim();
+  if (!t) return "今回いちばん整えたいところ";
+
+  const metricMatch = t.match(
+    /^(睡眠時間|入眠潜時|深い?睡眠|睡眠効率|覚醒時間|HRV|測定ストレス|平均SpO₂|呼吸数|体内時計)([\d.:：〜\-]+(?:時間|分|%|ms|bpm|回\/分)?)?(?:は|が)/,
+  );
+  if (metricMatch) {
+    const label = metricMatch[1]!;
+    const value = metricMatch[2]?.trim();
+    return value ? `${label}（${value}）` : label;
+  }
+
+  const beforePredicate = t.split(/(?:は|が)/)[0]?.trim();
+  if (beforePredicate && beforePredicate.length <= 24) {
+    return beforePredicate;
+  }
+  return "今回いちばん整えたいところ";
+}
+
 function closingFromPriority(item: ExpertAnalysisPriorityItem): string {
   const action = (item.action ?? "").trim();
   if (action) {
@@ -198,9 +219,10 @@ function closingFromPriority(item: ExpertAnalysisPriorityItem): string {
 /** 最優先項目から、既存テンプレに近い語りかけ調の3段落を組み立てる */
 function paragraphsFromPriority(item: ExpertAnalysisPriorityItem): string[] {
   const title = item.title.trim() || "今回いちばん整えたいところ";
+  const focusLabel = priorityDisplayLabel(title);
   const reason = asSentence(item.reason);
-  const first = reason || `${title}が、今回いちばん先に見ておきたい状態です。`;
-  const second = `今のデータのなかで、いちばん先に整えたいのは「${title}」です。ここが整うと、ほかの指標も追いつきやすくなります。`;
+  const first = reason || `${focusLabel}が、今回いちばん先に見ておきたい状態です。`;
+  const second = `今のデータのなかで、いちばん先に整えたいのは${focusLabel}です。ここが整うと、ほかの指標も追いつきやすくなります。`;
   return [first, second, closingFromPriority(item)];
 }
 

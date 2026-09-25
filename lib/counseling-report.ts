@@ -22,9 +22,11 @@ import {
 } from "@/lib/analysis-lifestyle-mention-guard";
 import type { AnalysisMetrics, MetricFieldKey } from "@/lib/soxai-metrics";
 import { normalizeMetricDisplayValue } from "@/lib/soxai-display-normalize";
+import { resolveSleepDebtReportPresentation } from "@/lib/sleep-debt-evaluation";
 import {
   evaluateMetric,
   metricGuideline,
+  sleepDebtGuidelineForValue,
 } from "@/lib/report-metric-guide";
 import {
   buildClientWellnessReport,
@@ -180,7 +182,7 @@ const KEY_METRIC_FILL: KeyMetricDef[] = [
 
 /** 分析ページ「睡眠指標＋バイオシグナル」のうち、カウンセリングで参照する一般指標 */
 const ANALYSIS_PAGE_METRICS: KeyMetricDef[] = [
-  { label: "睡眠スコア", key: "sleepScore", pick: (m) => m.sleepScore },
+  { label: "睡眠スコア（SOXAI）", key: "sleepScore", pick: (m) => m.sleepScore },
   { label: "睡眠時間", key: "sleepDuration", pick: (m) => m.sleepDuration },
   { label: "入眠時間", key: "bedtime", pick: (m) => m.bedtime },
   { label: "起床時間", key: "wakeTime", pick: (m) => m.wakeTime },
@@ -198,11 +200,30 @@ function enrichMetric(
   value: string,
   inputSource?: AnalysisResult["inputSource"],
 ): CounselingKeyMetric {
+  const sleepDurationMinutes = parseDurationMinutes(metrics.sleepDuration);
+  const sleepDebtPresentation =
+    item.key === "sleepDebt" && metrics.sleepDebt?.trim()
+      ? resolveSleepDebtReportPresentation({
+          raw: metrics.sleepDebt,
+          sleepDurationMinutes,
+        })
+      : null;
+
   const evaluation = item.key ? evaluateMetric(item.key, metrics) : null;
-  const guide = item.key ? metricGuideline(item.key, inputSource) : "";
+  const guide =
+    item.key === "sleepDebt"
+      ? sleepDebtGuidelineForValue(
+          metrics.sleepDebt,
+          inputSource,
+          sleepDurationMinutes,
+        )
+      : item.key
+        ? metricGuideline(item.key, inputSource)
+        : "";
+
   return {
     label: item.label,
-    value,
+    value: sleepDebtPresentation?.displayValue ?? value,
     key: item.key,
     guide,
     starsLabel: evaluation?.starsLabel,

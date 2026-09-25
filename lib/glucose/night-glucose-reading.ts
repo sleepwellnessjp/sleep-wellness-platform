@@ -258,25 +258,24 @@ export function buildNightGlucoseReading(options: {
   const preWakeStartMs = endMs - T.preWakeHours * 3600_000;
   const earlyEndMs = startMs + T.earlySleepHours * 3600_000;
 
-  const preWakePoints = points.filter((p) => {
-    const t = Date.parse(p.recordedAtIso);
-    return t >= preWakeStartMs && t <= endMs;
-  });
+  const preWakePoints = points
+    .filter((p) => {
+      const t = Date.parse(p.recordedAtIso);
+      return t >= preWakeStartMs && t <= endMs;
+    })
+    .sort((a, b) => a.recordedAtIso.localeCompare(b.recordedAtIso));
   if (preWakePoints.length >= 2) {
-    const vals = preWakePoints.map((p) => p.glucoseMgDl);
-    const trough = Math.min(...vals);
-    const peak = Math.max(...vals);
-    const troughIso = preWakePoints.find((p) => p.glucoseMgDl === trough)!
-      .recordedAtIso;
-    const peakIso = preWakePoints.find((p) => p.glucoseMgDl === peak)!
-      .recordedAtIso;
-    if (
-      peak - trough >= T.preWakeRiseMgDl &&
-      Date.parse(peakIso) >= Date.parse(troughIso)
-    ) {
+    const first = preWakePoints[0]!;
+    const last = preWakePoints[preWakePoints.length - 1]!;
+    const delta = last.glucoseMgDl - first.glucoseMgDl;
+    if (delta >= T.preWakeRiseMgDl) {
       flags.preWakeRise = true;
       sentencesB.push(
         "起床前にゆるやかに上がっており、朝に向けて体が目覚めの準備を始める動きとして見られるものです",
+      );
+    } else if (delta <= -T.preWakeRiseMgDl) {
+      sentencesB.push(
+        "起床前にゆるやかに下がっており、夜の休息に伴う落ち着きが見られる動きです",
       );
     }
   }

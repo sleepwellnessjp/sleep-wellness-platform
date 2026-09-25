@@ -24,6 +24,10 @@ import {
   toPracticeMetrics,
   type PrescriptionCard,
 } from "@/lib/data/practice";
+import {
+  sanitizeScoreNarrativeForShortSleep,
+  sleepDurationMinutesFromMetrics,
+} from "@/lib/analysis-narrative";
 import { isReportSectionVisible } from "@/lib/report-sections";
 import {
   formatGlucoseClockTokyo,
@@ -451,19 +455,28 @@ export function ClientDiagnosticPdf({
   /** 夜間グルコース。データ無し・未取得時は null（ブロック非表示） */
   nightGlucose?: NightGlucoseReportPayload | null;
 }) {
-  const resolvedDeviceName =
+  const baseDeviceName =
     deviceName?.trim() ||
     (result.inputSource === "oura"
       ? formatOuraDeviceLabel()
       : result.inputSource === "manual"
         ? "手入力"
         : "SOXAI Ring");
+  const resolvedDeviceName =
+    nightGlucose?.hasData && result.inputSource !== "oura"
+      ? `${baseDeviceName}／FreeStyleリブレ`
+      : baseDeviceName;
   const pdfLifestyle = ouraLifestyleForPdf(result.inputSource, lifestyle);
   const report = buildCounselingReportContent(result, pdfLifestyle);
   const practiceMetrics = toPracticeMetrics(result.metrics);
   const practicePrescription = getPrescription(practiceMetrics);
   const score = Math.max(0, Math.min(100, Math.round(result.score)));
-  const scoreComment = clampPdfComment(result.scoreComment);
+  const scoreComment = clampPdfComment(
+    sanitizeScoreNarrativeForShortSleep(
+      result.scoreComment,
+      sleepDurationMinutesFromMetrics(result.metrics.sleepDuration),
+    ),
+  );
   const expertParagraphs = getExpertAnalysis(
     practiceMetrics,
     report.priorityImprovements,
@@ -545,7 +558,7 @@ export function ClientDiagnosticPdf({
                 <p className="pb-1 text-[11px] text-slate-400">/ 100</p>
               </div>
               <p className="mt-1.5 text-[10px] leading-4 text-slate-500">
-                生活・環境・測定を総合した独自指標
+                身体・心・生活・環境を総合した独自指標
               </p>
             </div>
             {isReportSectionVisible("recoveryIndex") && recovery.available ? (

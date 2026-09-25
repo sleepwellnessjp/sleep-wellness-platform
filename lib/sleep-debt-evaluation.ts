@@ -3,9 +3,19 @@
  * 値そのものは変更せず、符号を保った星・文言のみを返す。
  * wellness 用の数値スコアは別途 abs ベースを維持すること。
  *
+ * SOXAI の符号（アプリ表示の向き）:
+ * - プラス … 睡眠不足の累積（負債）
+ * - マイナス … 早め就寝の余裕（負債が少ない／寝足り側）
+ *
+ * レポート表示は resolveSleepDebtReportPresentation() で睡眠時間と照合し、
+ * 睡眠が短いのにマイナスだと「負債なし」と誤解されないよう調整する。
+ *
  * マイナス（早く就寝する余地）: ★は出さずラベルのみ（案A）。
  * プラス／0: 現行どおり★＋ラベル。
  */
+
+import { formatMinutesAsDuration } from "@/lib/soxai-display-normalize";
+import { parseDurationMinutes } from "@/lib/soxai-graphs";
 
 export type MetricStars = 1 | 2 | 3 | 4 | 5;
 
@@ -56,6 +66,34 @@ const NEGATIVE_LABELS: Record<MetricStars, string> = {
   1: "大きく前倒し可",
 };
 
+/** 睡眠時間が足りているときのマイナス表示（不足がないことが伝わる文言） */
+const ADEQUATE_SURPLUS_LABELS: Record<MetricStars, string> = {
+  5: "寝足りている",
+  4: "余裕あり",
+  3: "前倒し余地あり",
+  2: "早め就寝の余地",
+  1: "大きく前倒し可",
+};
+
+/** 一般目安（7時間）未満を「睡眠時間が短い」とみなす */
+export const SLEEP_DURATION_GUIDELINE_MINUTES = 420;
+
+const SHORTFALL_GUIDELINE =
+  "0に近いほど理想。積み重なると日中の回復感に影響しやすい";
+
+const ADEQUATE_SURPLUS_GUIDELINE =
+  "0に近いほど理想。マイナスは、それだけ早く就寝する余地があることを示します";
+
+const ADEQUATE_DEBT_GUIDELINE =
+  "0に近いほど理想。プラスは睡眠不足の累積を示します。回復夜の確保が有効です";
+
+export type SleepDebtReportPresentation = {
+  displayValue: string;
+  stars: MetricStars | null;
+  label: string;
+  guideline: string;
+};
+
 function starsFromAbs(absMinutes: number): MetricStars {
   for (const band of DISPLAY_BANDS) {
     if (absMinutes <= band.maxAbs) return band.stars;
@@ -93,6 +131,69 @@ export function evaluateSleepDebtDisplay(
     stars: direction === "negative" ? null : bandStars,
     bandStars,
     label,
+  };
+}
+
+function isSleepDurationShort(sleepDurationMinutes: number | null): boolean {
+  return (
+    sleepDurationMinutes != null &&
+    Number.isFinite(sleepDurationMinutes) &&
+    sleepDurationMinutes < SLEEP_DURATION_GUIDELINE_MINUTES
+  );
+}
+
+/**
+ * PDF／カウンセリングレポート用。
+ * 睡眠時間が短い日は SOXAI マイナスでも「不足」としてプラス表記にそろえる。
+ */
+export function resolveSleepDebtReportPresentation(options: {
+  raw: string;
+  sleepDurationMinutes?: number | null;
+}): SleepDebtReportPresentation | null {
+  const trimmed = options.raw.trim();
+  if (!trimmed) return null;
+
+  const signed = parseDurationMinutes(trimmed);
+  if (signed == null || !Number.isFinite(signed)) return null;
+
+  const absMinutes = Math.abs(signed);
+  const bandStars = starsFromAbs(absMinutes);
+  const sleepShort = isSleepDurationShort(options.sleepDurationMinutes ?? null);
+
+  if (sleepShort) {
+    return {
+      displayValue: formatMinutesAsDuration(absMinutes),
+      stars: bandStars,
+      label: "不足",
+      guideline: SHORTFALL_GUIDELINE,
+    };
+  }
+
+  if (signed > 0) {
+    const debt = evaluateSleepDebtDisplay(signed);
+    if (!debt) return null;
+    return {
+      displayValue: formatMinutesAsDuration(signed),
+      stars: debt.stars,
+      label: debt.label,
+      guideline: ADEQUATE_DEBT_GUIDELINE,
+    };
+  }
+
+  if (signed === 0) {
+    return {
+      displayValue: formatMinutesAsDuration(0),
+      stars: 5,
+      label: "寝足りている",
+      guideline: "0が理想です",
+    };
+  }
+
+  return {
+    displayValue: formatMinutesAsDuration(signed),
+    stars: null,
+    label: ADEQUATE_SURPLUS_LABELS[bandStars],
+    guideline: ADEQUATE_SURPLUS_GUIDELINE,
   };
 }
 
