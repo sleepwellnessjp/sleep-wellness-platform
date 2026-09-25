@@ -73,12 +73,12 @@ export default function OnboardingGuide({ enabled = true }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center overflow-x-hidden bg-[#071426]/45 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-16 backdrop-blur-[2px] sm:items-center sm:pb-8"
+      className="fixed inset-0 z-[90] flex items-end justify-center overflow-x-hidden bg-[#071426]/45 px-4 pt-16 pb-[var(--sw-sleep-tabbar-clearance)] backdrop-blur-[2px] lg:items-center lg:pb-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
     >
-      <div className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-[#8a6a2d]/25 bg-white shadow-[0_30px_80px_-40px_rgba(7,20,38,0.55)] animate-fade-up">
+      <div className="relative flex w-full max-w-md max-h-[calc(100dvh-4rem-var(--sw-sleep-tabbar-clearance))] flex-col overflow-hidden rounded-[28px] border border-[#8a6a2d]/25 bg-white shadow-[0_30px_80px_-40px_rgba(7,20,38,0.55)] animate-fade-up lg:max-h-[calc(100dvh-4rem-2rem)]">
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
           style={{
@@ -94,7 +94,7 @@ export default function OnboardingGuide({ enabled = true }: Props) {
           aria-hidden
         />
 
-        <div className="relative px-5 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-6 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8">
           <div className="flex items-center justify-between gap-3">
             <p
               className="text-[10px] font-semibold tracking-[0.22em]"
