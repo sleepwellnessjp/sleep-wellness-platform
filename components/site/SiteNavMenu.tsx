@@ -45,6 +45,10 @@ export const SITE_NAV_GROUPS: readonly NavGroup[] = [
         label: "メラトニンヨガ™が目指すところ",
         href: "/melatonin-yoga/vision",
       },
+      {
+        label: "相談会・ワークショップ・養成コースのお申し込み",
+        href: "/melatonin-yoga/apply",
+      },
       { label: "ワークショップ・リトリート", href: "/retreat" },
     ],
   },
@@ -109,6 +113,12 @@ function isActivePath(
     return (
       pathname === "/academy/certified-instructor" ||
       pathname.startsWith("/academy/certified-instructor/")
+    );
+  }
+  if (base === "/melatonin-yoga/apply") {
+    return (
+      pathname === "/melatonin-yoga/apply" ||
+      pathname.startsWith("/melatonin-yoga/apply/")
     );
   }
   if (base === "/retreat") {

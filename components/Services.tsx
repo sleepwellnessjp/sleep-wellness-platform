@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import MelatoninYogaHomeApplyBanner from "@/components/melatonin-yoga/MelatoninYogaHomeApplyBanner";
 
 type ServiceCard = {
   number: string;
@@ -207,6 +208,8 @@ export default function Services() {
             </span>
           </div>
         </Link>
+
+        <MelatoninYogaHomeApplyBanner />
       </div>
     </section>
   );

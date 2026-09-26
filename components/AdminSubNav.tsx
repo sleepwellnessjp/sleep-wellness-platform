@@ -87,6 +87,12 @@ const ITEMS: NavItem[] = [
     match: "prefix",
     hqOnly: true,
   },
+  {
+    href: "/admin/melatonin-yoga",
+    label: "メラトニンヨガ申込",
+    match: "prefix",
+    hqOnly: true,
+  },
   { href: "/admin/clients", label: "クライアント", match: "prefix", hqOnly: true },
   { href: "/admin/ai", label: "AI Intelligence", match: "prefix", hqOnly: true },
   { href: "/admin/journey", label: "Journey", match: "prefix", hqOnly: true },

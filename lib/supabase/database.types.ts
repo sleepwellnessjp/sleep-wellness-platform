@@ -2271,6 +2271,188 @@ export type Database = {
           },
         ];
       };
+      melatonin_yoga_event_sessions: {
+        Row: {
+          id: string;
+          event_type: string;
+          starts_at: string;
+          ends_at: string | null;
+          format: string;
+          location: string;
+          capacity: number;
+          registration_closed: boolean;
+          published: boolean;
+          admin_note: string;
+          schedule_note: string;
+          fee_note: string;
+          archive_available: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          event_type: string;
+          starts_at: string;
+          ends_at?: string | null;
+          format: string;
+          location?: string;
+          capacity: number;
+          registration_closed?: boolean;
+          published?: boolean;
+          admin_note?: string;
+          schedule_note?: string;
+          fee_note?: string;
+          archive_available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          event_type?: string;
+          starts_at?: string;
+          ends_at?: string | null;
+          format?: string;
+          location?: string;
+          capacity?: number;
+          registration_closed?: boolean;
+          published?: boolean;
+          admin_note?: string;
+          schedule_note?: string;
+          fee_note?: string;
+          archive_available?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      melatonin_yoga_session_days: {
+        Row: {
+          id: string;
+          session_id: string;
+          starts_at: string;
+          ends_at: string;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          starts_at: string;
+          ends_at: string;
+          sort_order: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          session_id?: string;
+          starts_at?: string;
+          ends_at?: string;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "melatonin_yoga_session_days_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "melatonin_yoga_event_sessions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      melatonin_yoga_registrations: {
+        Row: {
+          id: string;
+          name_kanji: string;
+          name_kana: string;
+          email: string;
+          phone: string;
+          training_format: string | null;
+          has_yoga_experience: boolean;
+          message: string;
+          referral_source: string | null;
+          status: string;
+          admin_memo: string;
+          submitter_ip: string;
+          submitted_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name_kanji: string;
+          name_kana: string;
+          email: string;
+          phone: string;
+          training_format?: string | null;
+          has_yoga_experience: boolean;
+          message?: string;
+          referral_source?: string | null;
+          status?: string;
+          admin_memo?: string;
+          submitter_ip: string;
+          submitted_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name_kanji?: string;
+          name_kana?: string;
+          email?: string;
+          phone?: string;
+          training_format?: string | null;
+          has_yoga_experience?: boolean;
+          message?: string;
+          referral_source?: string | null;
+          status?: string;
+          admin_memo?: string;
+          submitter_ip?: string;
+          submitted_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      melatonin_yoga_registration_selections: {
+        Row: {
+          id: string;
+          registration_id: string;
+          event_type: string;
+          session_id: string | null;
+          is_flexible: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          registration_id: string;
+          event_type: string;
+          session_id?: string | null;
+          is_flexible?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          registration_id?: string;
+          event_type?: string;
+          session_id?: string | null;
+          is_flexible?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "melatonin_yoga_registration_selections_registration_id_fkey";
+            columns: ["registration_id"];
+            isOneToOne: false;
+            referencedRelation: "melatonin_yoga_registrations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "melatonin_yoga_registration_selections_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "melatonin_yoga_event_sessions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       navigator_applications: {
         Row: {
           id: string;
@@ -4458,6 +4640,42 @@ export type Database = {
           p_client_id?: string | null;
         };
         Returns: Database["public"]["Tables"]["invitations"]["Row"];
+      };
+      create_melatonin_yoga_registration: {
+        Args: {
+          p_name_kanji: string;
+          p_name_kana: string;
+          p_email: string;
+          p_phone: string;
+          p_training_format: string | null;
+          p_has_yoga_experience: boolean;
+          p_message: string;
+          p_referral_source: string | null;
+          p_submitter_ip: string;
+          p_selections: Json;
+        };
+        Returns: string;
+      };
+      melatonin_yoga_session_reserved_count: {
+        Args: { p_session_id: string };
+        Returns: number;
+      };
+      save_melatonin_yoga_event_session: {
+        Args: {
+          p_id: string | null;
+          p_event_type: string;
+          p_format: string;
+          p_location: string;
+          p_capacity: number;
+          p_registration_closed: boolean;
+          p_published: boolean;
+          p_archive_available: boolean;
+          p_admin_note: string;
+          p_schedule_note: string;
+          p_fee_note: string;
+          p_days: Json;
+        };
+        Returns: string;
       };
     };
     Enums: Record<string, never>;
