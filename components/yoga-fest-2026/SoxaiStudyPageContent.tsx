@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import SoxaiStudyHero from "@/components/yoga-fest-2026/SoxaiStudyHero";
 import SoxaiStudyPosterImage from "@/components/yoga-fest-2026/SoxaiStudyPosterImage";
-import SoxaiStudyRegisterBanner from "@/components/yoga-fest-2026/SoxaiStudyRegisterBanner";
 import SoxaiStudyRegistrationForm from "@/components/yoga-fest-2026/SoxaiStudyRegistrationForm";
 
 function Section({
@@ -26,10 +25,7 @@ function Section({
 export default function SoxaiStudyPageContent() {
   return (
     <div className="space-y-10 sm:space-y-12">
-      <div className="space-y-4">
-        <SoxaiStudyHero />
-        <SoxaiStudyRegisterBanner />
-      </div>
+      <SoxaiStudyHero />
 
       <SoxaiStudyPosterImage />
 

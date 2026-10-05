@@ -1,10 +1,11 @@
 "use client";
 
+import SoxaiStudyRegisterBanner from "@/components/yoga-fest-2026/SoxaiStudyRegisterBanner";
 import { GOLD_LIGHT } from "@/components/ui/tokens";
 
 export default function SoxaiStudyHero() {
   return (
-    <header className="relative -mx-4 overflow-hidden rounded-[1.75rem] sm:-mx-6">
+    <header className="relative w-full overflow-hidden rounded-[1.75rem]">
       <div
         className="relative px-5 py-10 sm:px-8 sm:py-12"
         style={{
@@ -42,6 +43,7 @@ export default function SoxaiStudyHero() {
           <p className="max-w-xl text-sm leading-7 text-[#c8c0b4] sm:text-base sm:leading-8">
             クラスの間、指にリングを着けるだけ。あなたのヨガの時間が、ヨガの価値を伝える新しいデータになります。
           </p>
+          <SoxaiStudyRegisterBanner />
         </div>
       </div>
     </header>
