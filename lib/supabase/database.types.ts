@@ -2360,6 +2360,45 @@ export type Database = {
           },
         ];
       };
+      yoga_fest_soxai_registrations: {
+        Row: {
+          id: string;
+          class_id: string;
+          name: string;
+          age_band: string;
+          email: string;
+          guardian_name: string;
+          guardian_consent: boolean;
+          info_consent: boolean;
+          submitter_ip: string;
+          submitted_at: string;
+        };
+        Insert: {
+          id?: string;
+          class_id: string;
+          name: string;
+          age_band: string;
+          email: string;
+          guardian_name?: string;
+          guardian_consent?: boolean;
+          info_consent?: boolean;
+          submitter_ip: string;
+          submitted_at?: string;
+        };
+        Update: {
+          id?: string;
+          class_id?: string;
+          name?: string;
+          age_band?: string;
+          email?: string;
+          guardian_name?: string;
+          guardian_consent?: boolean;
+          info_consent?: boolean;
+          submitter_ip?: string;
+          submitted_at?: string;
+        };
+        Relationships: [];
+      };
       melatonin_yoga_registrations: {
         Row: {
           id: string;
@@ -4653,6 +4692,19 @@ export type Database = {
           p_referral_source: string | null;
           p_submitter_ip: string;
           p_selections: Json;
+        };
+        Returns: string;
+      };
+      create_yoga_fest_soxai_registration: {
+        Args: {
+          p_class_id: string;
+          p_name: string;
+          p_age_band: string;
+          p_email: string;
+          p_guardian_name: string | null;
+          p_guardian_consent: boolean;
+          p_info_consent: boolean;
+          p_submitter_ip: string;
         };
         Returns: string;
       };

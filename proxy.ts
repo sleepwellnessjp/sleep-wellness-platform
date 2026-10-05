@@ -39,6 +39,12 @@ function isPublicPath(pathname: string): boolean {
   ) {
     return true;
   }
+  if (
+    pathname === "/yoga-fest-2026" ||
+    pathname.startsWith("/yoga-fest-2026/")
+  ) {
+    return true;
+  }
   if (pathname === "/practice" || pathname.startsWith("/practice/")) {
     return true;
   }

@@ -1,6 +1,7 @@
 import Hero from "@/components/Hero";
 import MySleepSection from "@/components/home/MySleepSection";
 import SleepWordsBanner from "@/components/home/SleepWordsBanner";
+import YogaFestSoxaiHomeBanner from "@/components/yoga-fest-2026/YogaFestSoxaiHomeBanner";
 import JapanNightBackdrop from "@/components/site/JapanNightBackdrop";
 
 type HomeFirstViewProps = {
@@ -30,6 +31,7 @@ export default function HomeFirstView({ analysisHref }: HomeFirstViewProps) {
         className="relative z-10 px-5 pt-2 pb-[var(--sw-sleep-tabbar-clearance)] sm:px-8 sm:pt-3 md:pt-2 md:pb-[calc(6.25rem+env(safe-area-inset-bottom,0px))] lg:px-10 lg:pb-8 lg:pt-3"
       >
         <SleepWordsBanner tone="onDark" />
+        <YogaFestSoxaiHomeBanner />
       </div>
     </div>
   );

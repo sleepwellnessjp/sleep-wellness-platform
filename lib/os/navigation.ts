@@ -23,6 +23,11 @@ const ADMIN_NAV: OsNavItem[] = [
   { href: "/admin/certification", label: "認定講師", match: "/admin/certification" },
   { href: "/admin/navigator-applications", label: "ナビゲーター申請", match: "/admin/navigator-applications" },
   { href: "/admin/melatonin-yoga", label: "メラトニンヨガ申込", match: "/admin/melatonin-yoga" },
+  {
+    href: "/admin/yoga-fest-2026-soxai",
+    label: "ヨガフェスタSOXAI",
+    match: "/admin/yoga-fest-2026-soxai",
+  },
   { href: "/admin/instructor-activities", label: "講師イベント", match: "/admin/instructor-activities" },
   { href: "/admin/instructor-activity-schedules", label: "活動予定", match: "/admin/instructor-activity-schedules" },
   { href: "/admin/sleep-content", label: "睡眠コンテンツ", match: "/admin/sleep-content" },

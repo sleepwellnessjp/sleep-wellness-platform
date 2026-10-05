@@ -189,6 +189,8 @@ export function decidePathAccess(
     path.startsWith("/ma-no-yoga/") ||
     path === "/melatonin-yoga" ||
     path.startsWith("/melatonin-yoga/") ||
+    path === "/yoga-fest-2026" ||
+    path.startsWith("/yoga-fest-2026/") ||
     path === "/practice" ||
     path.startsWith("/practice/") ||
     path === "/sleep-words" ||
