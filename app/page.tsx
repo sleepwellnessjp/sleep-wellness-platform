@@ -9,6 +9,7 @@ import InstructorsCta from "@/components/InstructorsCta";
 import Partners from "@/components/Partners";
 import Founder from "@/components/Founder";
 import Contact from "@/components/Contact";
+import OfficialLinePromoCard from "@/components/official-line/OfficialLinePromoCard";
 import HomeActivitiesSection from "@/components/instructor-activities/HomeActivitiesSection";
 import HomeSchedulesSection from "@/components/instructor-activity-schedules/HomeSchedulesSection";
 import Footer from "@/components/Footer";
@@ -69,6 +70,7 @@ export default async function Home() {
       <HomeSchedulesSection schedules={activitySchedules} />
       <Partners />
       <Founder />
+      <OfficialLinePromoCard />
       <Contact />
       <Footer />
     </main>
