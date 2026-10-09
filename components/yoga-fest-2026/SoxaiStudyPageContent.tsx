@@ -29,26 +29,6 @@ export default function SoxaiStudyPageContent() {
 
       <SoxaiStudyPosterImage />
 
-      <Section title="参加の流れ">
-        <div>
-          <p className="font-semibold text-[#071426]">クラス前</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-5">
-            <li>SOXAIアプリをダウンロード</li>
-            <li>リングとご自身のスマホをペアリング</li>
-            <li>プロフィールは「職業」だけ入力し、ほかはスキップでOK</li>
-            <li>左手の親指以外の指にリングをはめて、クラスを受講</li>
-          </ol>
-        </div>
-        <div>
-          <p className="font-semibold text-[#071426]">クラス後</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-5" start={5}>
-            <li>このページで参加登録（クラスの後でも大丈夫です）</li>
-            <li>リングを返却</li>
-          </ol>
-        </div>
-        <p className="text-slate-600">※当日はスマホをお持ちください。</p>
-      </Section>
-
       <Section title="この検証の目的">
         <p>
           ヨガのクラス中に、心と体がどのように変化しているのかを記録し、ヨガの体験を「見える化」することが目的です。数値に良い・悪いはありません。その日の体調や取り組み方によって、人それぞれさまざまな変化が表れます。その一人ひとりの違いも含めた、ありのままのデータが大切な研究材料になります。
@@ -80,9 +60,12 @@ export default function SoxaiStudyPageContent() {
         </ul>
       </Section>
 
-      <Section title="リングの貸し出しについて">
+      <Section title="クラスのあとに">
         <p>
-          リングは当日お貸しし、クラス終了後にご返却いただきます。万一の紛失・盗難の場合も、故意または重大な過失がない限り、費用をご負担いただくことはありません。
+          クラス終了後、検証実験にご協力いただいた皆さんと講師で記念撮影を行います。撮影のあと、リングをご返却ください。
+        </p>
+        <p className="text-xs leading-6 text-slate-600 sm:text-sm">
+          ※写真に写りたくない方は、スタッフにお声がけください。
         </p>
       </Section>
 
