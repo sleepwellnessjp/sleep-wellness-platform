@@ -1,6 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { HOME_TOP_HREF } from "@/lib/home-intro";
+import {
+  LINE_OFFICIAL_ADD_FRIEND_BTN_SRC,
+  LINE_OFFICIAL_ADD_FRIEND_URL,
+} from "@/lib/official-line/constants";
 
 const navigation = [
   { label: "Sleep Wellness Method™", href: "/#about" },
@@ -41,7 +45,7 @@ export default function Footer() {
 
       <div className="relative mx-auto max-w-7xl px-6 pt-16 pb-8 sm:pt-20 lg:px-8 lg:pt-24">
         <div className="grid gap-12 pb-14 lg:grid-cols-[1fr_1fr_0.9fr] lg:gap-16 lg:pb-16">
-          <div>
+          <div className="flex flex-col items-start gap-4">
             <Link
               href={HOME_TOP_HREF}
               aria-label="Sleep Wellness Institute Japan"
@@ -56,6 +60,29 @@ export default function Footer() {
                 className="h-auto w-[220px] object-contain sm:w-[260px] lg:w-[300px]"
               />
             </Link>
+
+            <div className="w-full max-w-[252px] rounded-2xl border border-[#d8b36a]/25 bg-white/[0.04] px-4 py-4 sm:max-w-[292px] lg:max-w-[332px]">
+              <p className="text-xs font-semibold tracking-[0.28em] text-[#d8b36a]">
+                公式LINE
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                睡眠ウェルネスの最新情報をお届けします
+              </p>
+              <div className="mt-3">
+                <a
+                  href={LINE_OFFICIAL_ADD_FRIEND_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <img
+                    src={LINE_OFFICIAL_ADD_FRIEND_BTN_SRC}
+                    alt="友だち追加"
+                    height={36}
+                    className="border-0"
+                  />
+                </a>
+              </div>
+            </div>
           </div>
 
           <div>
